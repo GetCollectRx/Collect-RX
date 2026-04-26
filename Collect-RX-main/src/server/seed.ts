@@ -15,7 +15,7 @@ async function main() {
   // Create practice
   const practice = await prisma.practice.create({
     data: {
-      name: 'Sunshine Dental',
+      name: 'Tenth Line Family Dentistry',
       timezone: 'America/New_York',
       passwordHash,
     },
