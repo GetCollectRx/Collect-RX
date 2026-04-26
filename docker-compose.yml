@@ -1,0 +1,23 @@
+# Local PostgreSQL for Collect-RX-main (matches production engine: PostgreSQL 16).
+# Usage: docker compose up -d
+# Then set DATABASE_URL in Collect-RX-main/.env (see Collect-RX-main/.env.example).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: collectrx
+      POSTGRES_PASSWORD: collectrx_local_dev_only
+      POSTGRES_DB: collectrx
+    volumes:
+      - collectrx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collectrx -d collectrx"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  collectrx_pgdata:

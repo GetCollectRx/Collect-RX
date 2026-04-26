@@ -1,0 +1,226 @@
+{
+  "carrier_id": "cdcp_sunlife",
+  "carrier_name": "Sun Life - Canadian Dental Care Plan (CDCP)",
+  "carrier_type": "CDCP",
+  "active": true,
+  "market_share": 100,
+  
+  "contact_info": {
+    "provider_phone": "1-866-509-1444",
+    "provider_phone_alternate": null,
+    "fax": "1-866-608-6682",
+    "email": "provider.cdcp@sunlife.com",
+    "portal_url": "https://dental.provider.sunlife.ca",
+    "hours_of_operation": "Mon-Fri 8:00am-8:00pm ET",
+    "timezone": "ET"
+  },
+  
+  "authentication": {
+    "required_fields": [
+      "cdcp_provider_number",
+      "practice_name",
+      "practice_phone"
+    ],
+    "authentication_method": "touchtone",
+    "patient_lookup_fields": [
+      "patient_health_card",
+      "patient_dob",
+      "patient_name",
+      "date_of_service"
+    ],
+    "security_questions": [
+      "Can you confirm the practice address?",
+      "What is the patient's date of birth?",
+      "What was the date of service?"
+    ],
+    "notes": "CDCP provider number is 6 digits. Different from regular Sun Life provider ID."
+  },
+  
+  "ivr_navigation": {
+    "ivr_type": "hybrid",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le français, faites le 2.",
+        "action": "Press 1",
+        "wait_time": 2
+      },
+      {
+        "step_number": 2,
+        "expected_prompt": "For Canadian Dental Care Plan provider inquiries, press 1. For Sun Life dental benefits, press 2.",
+        "action": "Press 1",
+        "wait_time": 1,
+        "notes": "CRITICAL: Must select CDCP option, not regular dental"
+      },
+      {
+        "step_number": 3,
+        "expected_prompt": "Please enter your six-digit CDCP provider enrollment number, followed by the pound key.",
+        "action": "Enter [CDCP_PROVIDER_NUMBER] then press #",
+        "wait_time": 3,
+        "notes": "Must use CDCP-specific provider number, NOT regular Sun Life provider ID"
+      },
+      {
+        "step_number": 4,
+        "expected_prompt": "For claim status inquiries, press 1. For eligibility verification, press 2. For predetermination status, press 3. To speak with a representative, press 0.",
+        "action": "Press 1",
+        "alternative_actions": ["Press 0 to reach rep directly"],
+        "wait_time": 1
+      },
+      {
+        "step_number": 5,
+        "expected_prompt": "Please enter the patient's health card number.",
+        "action": "Enter [PATIENT_HEALTH_CARD]",
+        "wait_time": 3,
+        "notes": "Provincial health card number - format varies by province"
+      },
+      {
+        "step_number": 6,
+        "expected_prompt": "Please enter the patient's date of birth in the format MMDDYYYY.",
+        "action": "Enter [PATIENT_DOB] in MMDDYYYY format",
+        "wait_time": 2
+      },
+      {
+        "step_number": 7,
+        "expected_prompt": "Your estimated wait time is [X] minutes. Please stay on the line.",
+        "action": "Wait for representative",
+        "notes": "Hold times average 30-50 minutes as of Feb 2025"
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0 at any time",
+        "destination": "Representative queue (bypasses automated options)"
+      }
+    ],
+    "last_verified": "2025-02-15"
+  },
+  
+  "call_metrics": {
+    "average_hold_time_minutes": 42,
+    "peak_hours": ["9am-11am ET", "1pm-3pm ET"],
+    "best_times_to_call": ["8am-9am ET", "4pm-7pm ET"],
+    "success_rate": 75,
+    "average_call_duration_minutes": 55
+  },
+  
+  "claim_processing": {
+    "typical_processing_time_days": 30,
+    "follow_up_threshold_days": 45,
+    "common_denial_reasons": [
+      {
+        "code": "E01",
+        "description": "Patient not enrolled in CDCP",
+        "resolution": "Verify patient enrollment at canada.ca/dental or have patient call 1-833-537-4342",
+        "frequency": "very_common"
+      },
+      {
+        "code": "E02",
+        "description": "Incorrect copay tier applied",
+        "resolution": "Copay tier is based on household income. Verify correct tier: 0%, 40%, or 60%",
+        "frequency": "very_common"
+      },
+      {
+        "code": "E03",
+        "description": "Service not covered under CDCP benefit schedule",
+        "resolution": "Check CDCP benefit grid. Cosmetic procedures and some orthodontics not covered",
+        "frequency": "common"
+      },
+      {
+        "code": "E04",
+        "description": "Missing or incomplete predetermination",
+        "resolution": "Services over $300 require predetermination. Submit Form CDCP-100",
+        "frequency": "very_common"
+      },
+      {
+        "code": "E05",
+        "description": "Patient has other dental coverage (COB issue)",
+        "resolution": "CDCP is payer of last resort. Must submit to private insurance first and provide EOB",
+        "frequency": "common"
+      },
+      {
+        "code": "E06",
+        "description": "Claim submitted to wrong plan",
+        "resolution": "If patient has Sun Life private coverage, claim may have routed incorrectly. Resubmit specifying CDCP",
+        "frequency": "occasional"
+      },
+      {
+        "code": "E07",
+        "description": "Missing clinical documentation",
+        "resolution": "Complex cases require X-rays, perio charting, or narrative. Fax to 1-866-608-6682",
+        "frequency": "common"
+      }
+    ],
+    "required_attachments": [
+      "X-rays for major restorative work",
+      "Periodontal charting for scaling/root planing",
+      "Clinical narrative for complex cases",
+      "EOB from primary insurance (if COB applies)"
+    ],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet (Payer ID: CDCP01)"
+  },
+  
+  "cdcp_specific": {
+    "administering_carrier": "Sun Life Financial",
+    "copay_tiers": ["0%", "40%", "60%"],
+    "predetermination_threshold": 300,
+    "is_payer_of_last_resort": true,
+    "enrollment_verification_required": true,
+    "common_eligibility_issues": [
+      "Patient income changed mid-year - copay tier may be incorrect",
+      "Patient recently aged out of parent's private insurance but CDCP enrollment delayed",
+      "Duplicate coverage not disclosed - patient has workplace benefits",
+      "Provincial vs federal coverage confusion (provinces have own dental programs)",
+      "Patient moved provinces - health card number changed"
+    ]
+  },
+  
+  "special_requirements": {
+    "requires_cob_verification": true,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English", "French"]
+  },
+  
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "I'm calling on behalf of [Practice Name] regarding a Canadian Dental Care Plan claim",
+      "Can you confirm the patient's copay tier percentage?",
+      "Has the predetermination been received and approved?",
+      "Can you verify if there is any other active dental coverage for this patient?",
+      "What is the reason code for the denial?",
+      "What specific documentation is required to process this claim?"
+    ],
+    "avoid_phrases": [
+      "Sun Life insurance (specify CDCP to avoid confusion with private Sun Life plans)",
+      "Why was this denied? (too confrontational - ask for reason code instead)",
+      "This is urgent (doesn't speed up CDCP processing)"
+    ],
+    "escalation_triggers": [
+      "Representative states patient enrollment is 'complex' or 'under review'",
+      "Multiple system errors mentioned",
+      "Copay tier discrepancy exceeds $200",
+      "Claim older than 90 days with no clear resolution path",
+      "Representative unable to locate claim despite valid reference number"
+    ],
+    "representative_script_hints": "Reps will often put you on hold to check CRA (Canada Revenue Agency) income verification system. This can add 5-10 minutes to call. Be patient."
+  },
+  
+  "metadata": {
+    "created_date": "2025-02-15T10:00:00Z",
+    "last_updated": "2025-02-15T10:00:00Z",
+    "last_verified_by": "Khalid - CollectRx",
+    "verification_method": "documentation",
+    "confidence_score": 70,
+    "notes": "CDCP is new (launched May 2024) and processes are still stabilizing. Denial rates are high (~52% for complex cases). Sun Life reps are still learning the system. Expect longer hold times and occasional system errors. This config should be re-verified monthly during 2025.",
+    "change_log": [
+      {
+        "date": "2025-02-15",
+        "change": "Initial configuration created",
+        "reason": "CDCP market research"
+      }
+    ]
+  }
+}

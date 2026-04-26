@@ -1,0 +1,206 @@
+{
+  "carrier_id": "sunlife_private",
+  "carrier_name": "Sun Life Financial - Private Dental Benefits",
+  "carrier_type": "PRIVATE",
+  "active": true,
+  "market_share": 22,
+  
+  "contact_info": {
+    "provider_phone": "1-877-786-5433",
+    "provider_phone_alternate": null,
+    "fax": "1-866-298-8815",
+    "email": "dental.provider@sunlife.com",
+    "portal_url": "https://www.sunnet.sunlife.com",
+    "hours_of_operation": "Mon-Fri 8:00am-8:00pm ET, Sat 9:00am-1:00pm ET",
+    "timezone": "ET"
+  },
+  
+  "authentication": {
+    "required_fields": [
+      "provider_id",
+      "practice_name"
+    ],
+    "authentication_method": "touchtone",
+    "patient_lookup_fields": [
+      "patient_member_id",
+      "patient_dob",
+      "patient_name"
+    ],
+    "security_questions": [
+      "Can you confirm the patient's group number?",
+      "What is the patient's employer name?",
+      "What was the date of service?"
+    ],
+    "notes": "Sun Life provider ID is different from CDCP provider number. Make sure to use the correct one based on plan type."
+  },
+  
+  "ivr_navigation": {
+    "ivr_type": "hybrid",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le français, faites le 2.",
+        "action": "Press 1",
+        "wait_time": 2
+      },
+      {
+        "step_number": 2,
+        "expected_prompt": "For Canadian Dental Care Plan provider inquiries, press 1. For Sun Life dental benefits, press 2.",
+        "action": "Press 2",
+        "wait_time": 1,
+        "notes": "IMPORTANT: Press 2 for private Sun Life plans, NOT 1 (which is CDCP)"
+      },
+      {
+        "step_number": 3,
+        "expected_prompt": "Please enter your ten-digit provider identification number.",
+        "action": "Enter [PROVIDER_ID] (10 digits)",
+        "wait_time": 3
+      },
+      {
+        "step_number": 4,
+        "expected_prompt": "For claim inquiries, press 1. For eligibility verification, press 2. For predeterminations, press 3. To speak with a representative, press 0.",
+        "action": "Press 1",
+        "alternative_actions": ["Press 0 for direct rep access"],
+        "wait_time": 1
+      },
+      {
+        "step_number": 5,
+        "expected_prompt": "Please enter the patient's member identification number.",
+        "action": "Enter [PATIENT_MEMBER_ID]",
+        "wait_time": 2
+      },
+      {
+        "step_number": 6,
+        "expected_prompt": "Please hold while we connect you to a representative.",
+        "action": "Wait for representative",
+        "notes": "Typical hold time 20-35 minutes"
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0 anytime",
+        "destination": "Representative queue"
+      },
+      {
+        "shortcut": "Say 'representative'",
+        "destination": "May skip some IVR steps (not guaranteed)"
+      }
+    ],
+    "last_verified": "2025-02-15"
+  },
+  
+  "call_metrics": {
+    "average_hold_time_minutes": 27,
+    "peak_hours": ["10am-12pm ET", "2pm-4pm ET"],
+    "best_times_to_call": ["8am-9am ET", "6pm-8pm ET"],
+    "success_rate": 85,
+    "average_call_duration_minutes": 38
+  },
+  
+  "claim_processing": {
+    "typical_processing_time_days": 15,
+    "follow_up_threshold_days": 30,
+    "common_denial_reasons": [
+      {
+        "code": "D01",
+        "description": "Service not covered under plan",
+        "resolution": "Check plan benefit schedule. Some plans exclude cosmetic or orthodontic work",
+        "frequency": "common"
+      },
+      {
+        "code": "D02",
+        "description": "Annual maximum exceeded",
+        "resolution": "Most plans have $1000-$2000 annual max. Patient responsible for overage",
+        "frequency": "common"
+      },
+      {
+        "code": "D03",
+        "description": "Frequency limitation exceeded",
+        "resolution": "Most common: 2 cleanings per year, 1 set of X-rays per year. Check plan specifics",
+        "frequency": "very_common"
+      },
+      {
+        "code": "D04",
+        "description": "Missing predetermination",
+        "resolution": "Major work over certain threshold ($500-$1000) requires pre-auth. Submit Form SL-D100",
+        "frequency": "common"
+      },
+      {
+        "code": "D05",
+        "description": "Coordination of benefits - other carrier is primary",
+        "resolution": "If patient has spouse coverage, determine which is primary. Submit to primary first",
+        "frequency": "occasional"
+      },
+      {
+        "code": "D06",
+        "description": "Patient not eligible on date of service",
+        "resolution": "Verify employment status and coverage dates. Patient may have left employer",
+        "frequency": "occasional"
+      },
+      {
+        "code": "D07",
+        "description": "Duplicate claim",
+        "resolution": "Claim already processed. Check if payment was issued but not posted",
+        "frequency": "occasional"
+      }
+    ],
+    "required_attachments": [
+      "X-rays for crowns, bridges, root canals",
+      "Periodontal charting for deep scaling/SRP",
+      "Clinical photos for esthetic work (if covered)"
+    ],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet, ITRANS"
+  },
+  
+  "cdcp_specific": null,
+  
+  "special_requirements": {
+    "requires_cob_verification": true,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English", "French"]
+  },
+  
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "I'm calling on behalf of [Practice Name] regarding claim number [CLAIM_NUMBER]",
+      "Can you confirm this claim was received electronically on [DATE]?",
+      "What is the current status - pending, processing, or denied?",
+      "Can you provide the specific reason code for the denial?",
+      "What documentation is needed to complete processing?",
+      "When can we expect payment to be issued?"
+    ],
+    "avoid_phrases": [
+      "CDCP (wrong plan type - will confuse the system)",
+      "Government plan (Sun Life private is employer-based)",
+      "Why is this taking so long? (non-productive)"
+    ],
+    "escalation_triggers": [
+      "Claim cannot be located despite valid claim number",
+      "Payment issued over 30 days ago but not received",
+      "Denial reason unclear or seems incorrect",
+      "Representative suggests appeal but won't explain why",
+      "Claim involves COB and both carriers denying responsibility"
+    ],
+    "representative_script_hints": "Sun Life private reps are generally well-trained and efficient. They can usually look up claim status quickly. If they say 'still processing' for a claim over 45 days old, ask for escalation."
+  },
+  
+  "metadata": {
+    "created_date": "2025-02-15T10:30:00Z",
+    "last_updated": "2025-02-15T10:30:00Z",
+    "last_verified_by": "Khalid - CollectRx",
+    "verification_method": "documentation",
+    "confidence_score": 75,
+    "notes": "Sun Life is one of Canada's largest dental insurers. They handle both private employer plans AND the federal CDCP, so it's critical to route calls correctly. Private plans generally process faster than CDCP. Sun Life has both voice and touchtone IVR - system is fairly robust.",
+    "change_log": [
+      {
+        "date": "2025-02-15",
+        "change": "Initial configuration created",
+        "reason": "Core carrier research"
+      }
+    ]
+  }
+}

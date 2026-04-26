@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CollectRx Platform - Integrated Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // H14: Environment-aware config instead of hardcoded values
+    const API_URL = window.__COLLECTRX_CONFIG__?.apiUrl
+      || (location.hostname === 'localhost' ? `http://localhost:3001/api` : '/api');
+    const PRACTICE_ID = window.__COLLECTRX_CONFIG__?.practiceId
+      || new URLSearchParams(location.search).get('practiceId')
+      || 'practice_001';
+
+    // Auth token management
+    let authToken = sessionStorage.getItem('collectrx_token') || null;
+
+    function authHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      return headers;
+    }
+
+    // L4: Centralized fetch with error handling
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
+      if (res.status === 401) {
+        // Auto-login for demo (in production, redirect to login page)
+        const loginRes = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ practiceId: PRACTICE_ID, password: 'demo' })
+        });
+        if (loginRes.ok) {
+          const loginData = await loginRes.json();
+          authToken = loginData.token;
+          sessionStorage.setItem('collectrx_token', authToken);
+          // Retry original request with new token
+          return fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } }).then(r => {
+            if (!r.ok) throw new Error(`Request failed (${r.status})`);
+            return r.json();
+          });
+        }
+        throw new Error('Authentication failed');
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Request failed (${res.status})`);
+      }
+      return res.json();
+    }
+
+    const CollectRxIntegratedPlatform = () => {
+      const [selectedTab, setSelectedTab] = useState('overview');
+      const [searchTerm, setSearchTerm] = useState('');
+      const [filterStatus, setFilterStatus] = useState('all');
+      const [loading, setLoading] = useState(false);
+      const [dashboardData, setDashboardData] = useState(null);
+      const [patients, setPatients] = useState([]);
+      const [error, setError] = useState(null);
+
+      const fetchDashboard = async () => {
+        try {
+          setError(null);
+          const data = await apiFetch(`${API_URL}/practices/${PRACTICE_ID}/dashboard`);
+          setDashboardData(data);
+        } catch (err) {
+          console.error('Dashboard error:', err);
+          setError(err.message);
+        }
+      };
+
+      const fetchPatients = async () => {
+        try {
+          const params = new URLSearchParams({ status: filterStatus, page: '1', limit: '50' });
+          if (searchTerm) params.append('search', searchTerm);
+          const data = await apiFetch(`${API_URL}/practices/${PRACTICE_ID}/patients?${params}`);
+          setPatients(data.patients || []);
+        } catch (err) {
+          console.error('Patients error:', err);
+          setError(err.message);
+        }
+      };
+
+      const sendEmail = async (patientId) => {
+        setLoading(true);
+        try {
+          const data = await apiFetch(`${API_URL}/patients/${patientId}/send-email`, {
+            method: 'POST',
+            body: JSON.stringify({ workflowId: 'workflow_followup_1' })
+          });
+          alert('Email sent: ' + data.message);
+          fetchPatients();
+          fetchDashboard();
+        } catch (err) {
+          alert('Failed to send email: ' + err.message);
+        }
+        setLoading(false);
+      };
+
+      const generateLink = async (patientId) => {
+        setLoading(true);
+        try {
+          const data = await apiFetch(`${API_URL}/patients/${patientId}/payment-link`, {
+            method: 'POST'
+          });
+          navigator.clipboard.writeText(data.paymentLink);
+          alert('Payment link copied to clipboard!\n' + data.paymentLink);
+        } catch (err) {
+          alert('Failed to generate payment link: ' + err.message);
+        }
+        setLoading(false);
+      };
+
+      useEffect(() => {
+        fetchDashboard();
+        fetchPatients();
+      }, []);
+
+      useEffect(() => {
+        fetchPatients();
+      }, [filterStatus, searchTerm]);
+
+      if (!dashboardData) {
+        return (
+          <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'system-ui, -apple-system, sans-serif'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <h2 style={{ color: '#2d5f4c', marginBottom: '16px' }}>Loading CollectRx Platform...</h2>
+              <p style={{ color: '#7a7a7a' }}>Make sure your backend server is running on port 3001</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', background: '#fafaf9', minHeight: '100vh' }}>
+          <style>{`
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            .card { background: #fff; border: 1px solid #e8e5e1; border-radius: 12px; padding: 24px; }
+            .btn { 
+              background: #2d5f4c; 
+              color: #fff; 
+              padding: 8px 16px; 
+              border: none; 
+              border-radius: 8px; 
+              cursor: pointer; 
+              font-size: 14px; 
+              font-weight: 600;
+              transition: all 0.2s;
+            }
+            .btn:hover { background: #234a3a; transform: translateY(-1px); }
+            .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+            .btn-blue { background: #3b82f6; }
+            .btn-blue:hover { background: #2563eb; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 12px; }
+            th { 
+              background: #fafaf9; 
+              font-size: 12px; 
+              color: #7a7a7a; 
+              text-transform: uppercase;
+              font-weight: 600;
+            }
+            tr { border-bottom: 1px solid #f5f5f4; }
+            tr:hover { background: #fafaf9; }
+            input, select { 
+              padding: 10px; 
+              border: 1px solid #e8e5e1; 
+              border-radius: 8px;
+              font-family: system-ui;
+              font-size: 14px;
+            }
+            input:focus, select:focus {
+              outline: none;
+              border-color: #2d5f4c;
+            }
+          `}</style>
+
+          <header style={{ background: '#fff', borderBottom: '1px solid #e8e5e1', padding: '24px' }}>
+            <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h1 style={{ fontSize: '28px', color: '#2d5f4c', fontWeight: 'bold', marginBottom: '4px' }}>CollectRx</h1>
+                <p style={{ fontSize: '14px', color: '#7a7a7a' }}>{dashboardData.practice.name}</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <span style={{ fontSize: '14px', color: '#2d5f4c', fontWeight: '600' }}>
+                  {dashboardData.practice.plan} Plan
+                </span>
+                <div style={{ 
+                  width: '8px', 
+                  height: '8px', 
+                  borderRadius: '50%', 
+                  background: '#22c55e',
+                  animation: 'pulse 2s infinite'
+                }} title="System Active"></div>
+              </div>
+            </div>
+          </header>
+
+          <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px' }}>
+            {/* Stats Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginBottom: '32px' }}>
+              <div className="card">
+                <div style={{ fontSize: '12px', color: '#7a7a7a', marginBottom: '8px', fontWeight: '600' }}>TOTAL AR OUTSTANDING</div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2d5f4c' }}>
+                  ${dashboardData.practice.totalAR.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '14px', color: '#7a7a7a', marginTop: '8px' }}>
+                  {dashboardData.practice.activeBalances} patient balances
+                </div>
+              </div>
+              
+              <div className="card">
+                <div style={{ fontSize: '12px', color: '#7a7a7a', marginBottom: '8px', fontWeight: '600' }}>COLLECTED THIS MONTH</div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#22c55e' }}>
+                  ${dashboardData.metrics.monthlyRecovered.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '14px', color: '#22c55e', marginTop: '8px' }}>
+                  {dashboardData.metrics.recoveryRate}% recovery rate
+                </div>
+              </div>
+              
+              <div className="card">
+                <div style={{ fontSize: '12px', color: '#7a7a7a', marginBottom: '8px', fontWeight: '600' }}>EMAILS SENT</div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2d5f4c' }}>
+                  {dashboardData.metrics.emailsSent}
+                </div>
+                <div style={{ fontSize: '14px', color: '#7a7a7a', marginTop: '8px' }}>
+                  This month
+                </div>
+              </div>
+
+              <div className="card">
+                <div style={{ fontSize: '12px', color: '#7a7a7a', marginBottom: '8px', fontWeight: '600' }}>AUTOMATION SAVINGS</div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2d5f4c' }}>
+                  ${dashboardData.metrics.automationSavings}
+                </div>
+                <div style={{ fontSize: '14px', color: '#7a7a7a', marginTop: '8px' }}>
+                  Staff time saved
+                </div>
+              </div>
+            </div>
+
+            {/* Patient List */}
+            <div className="card">
+              <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#2d5f4c', marginBottom: '24px' }}>
+                Patient Balances ({patients.length})
+              </h2>
+
+              <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <input 
+                  type="text"
+                  placeholder="Search patients by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                  <option value="all">All Statuses</option>
+                  <option value="pending_payment">Pending Payment</option>
+                  <option value="payment_plan">Payment Plans</option>
+                  <option value="responsive">Responsive</option>
+                  <option value="needs_attention">Needs Attention</option>
+                </select>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Patient</th>
+                      <th>Balance</th>
+                      <th>Days Outstanding</th>
+                      <th>Contact Attempts</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patients.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#7a7a7a' }}>
+                          No patients found
+                        </td>
+                      </tr>
+                    ) : (
+                      patients.map(p => (
+                        <tr key={p.id}>
+                          <td>
+                            <div style={{ fontWeight: '600', color: '#2d5f4c' }}>
+                              {p.firstName} {p.lastName}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#7a7a7a' }}>
+                              {p.email}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: 'bold', color: '#2d5f4c' }}>
+                            ${p.balanceAmount.toLocaleString()}
+                          </td>
+                          <td>{p.daysOutstanding} days</td>
+                          <td>
+                            <div>{p.emailContactAttempts} attempts</div>
+                            <div style={{ fontSize: '12px', color: '#7a7a7a' }}>
+                              {p.emailOpens} opens, {p.emailClicks} clicks
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{
+                              padding: '4px 12px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              background: 
+                                p.status === 'needs_attention' ? '#fee2e2' :
+                                p.status === 'responsive' ? '#dcfce7' :
+                                p.status === 'payment_plan' ? '#dbeafe' :
+                                '#fef3c7',
+                              color:
+                                p.status === 'needs_attention' ? '#dc2626' :
+                                p.status === 'responsive' ? '#16a34a' :
+                                p.status === 'payment_plan' ? '#2563eb' :
+                                '#f59e0b'
+                            }}>
+                              {p.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button 
+                              className="btn" 
+                              onClick={() => sendEmail(p.id)} 
+                              disabled={loading}
+                              style={{ marginRight: '8px' }}
+                            >
+                              Send Email
+                            </button>
+                            <button 
+                              className="btn btn-blue" 
+                              onClick={() => generateLink(p.id)} 
+                              disabled={loading}
+                            >
+                              Payment Link
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </main>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<CollectRxIntegratedPlatform />);
+  </script>
+</body>
+</html>

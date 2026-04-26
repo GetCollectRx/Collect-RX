@@ -1,0 +1,492 @@
+import { useEffect, useState } from 'react'
+import { usePractice } from '../context/PracticeContext'
+import { apiFetch } from '../lib/apiFetch'
+import {
+  Card, CardHeader, Button, Input, Select, Badge, InlineToast, useToast,
+} from '../components/ui'
+import { AdminOnboardingChecklist } from '../components/AdminOnboardingChecklist'
+
+const CARRIER_ROWS = [
+  { id: 'sun_life',         name: 'Sun Life Financial' },
+  { id: 'canada_life',      name: 'Canada Life' },
+  { id: 'manulife',         name: 'Manulife' },
+  { id: 'green_shield',     name: 'Green Shield Canada' },
+  { id: 'rbc_insurance',    name: 'RBC Insurance' },
+  { id: 'telus_adjudicare', name: 'TELUS AdjudiCare' },
+] as const
+
+type CarrierFlags = { active: boolean; block: boolean }
+const defaultFlags = (): Record<string, CarrierFlags> => {
+  const o: Record<string, CarrierFlags> = {}
+  for (const c of CARRIER_ROWS) o[c.id] = { active: true, block: false }
+  return o
+}
+
+export default function Admin() {
+  const { practices, practiceId, setPracticeId } = usePractice()
+  const [balanceCount, setBalanceCount] = useState('50')
+  const [loading,      setLoading]      = useState(false)
+  const [savingCarriers, setSavingCarriers] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [csvBusy,        setCsvBusy]        = useState(false)
+  const [csvResult,      setCsvResult]      = useState<{
+    imported: number
+    updated: number
+    skipped: number
+    errors: { patient: string; error: string }[]
+  } | null>(null)
+  const [carriers, setCarriers] = useState<Record<string, CarrierFlags>>(defaultFlags)
+  const [integrations, setIntegrations] = useState<{
+    sendgrid: { apiKey: boolean; fromEmail: boolean; eventWebhookVerifyKey: boolean }
+    twilio: { apiAndFrom: boolean; inboundUrlForSignature: boolean }
+    stripe: { secretKey: boolean; testMode: boolean }
+    stripeConnect: { account: boolean; onboardingComplete: boolean; chargesEnabled: boolean }
+    vapi: { webhookSecret: boolean }
+    email: { unsubscribeHmac: boolean; publicApiBase: string }
+  } | null>(null)
+  const [integrationsLoading, setIntegrationsLoading] = useState(true)
+  const [auditEntries, setAuditEntries] = useState<
+    {
+      id: string
+      createdAt: string
+      action: string
+      subjectType: string | null
+      subjectId: string | null
+      details: unknown
+      requestIp: string | null
+    }[]
+  >([])
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [auditTick, setAuditTick] = useState(0)
+  const { toast, showToast }            = useToast()
+
+  useEffect(() => {
+    if (!practiceId) { setSettingsLoading(false); return }
+    setSettingsLoading(true)
+    apiFetch('/api/admin/settings')
+      .then((r) => (r.ok ? r.json() : { settings: null }))
+      .then((d: { settings?: { carriers?: Record<string, CarrierFlags> } | null }) => {
+        if (d.settings?.carriers) {
+          setCarriers((prev) => {
+            const next = { ...prev }
+            for (const [k, v] of Object.entries(d.settings!.carriers!)) {
+              if (v && typeof v === 'object') {
+                next[k] = { active: !!v.active, block: !!v.block }
+              }
+            }
+            return next
+          })
+        } else {
+          setCarriers(defaultFlags())
+        }
+      })
+      .catch(() => setCarriers(defaultFlags()))
+      .finally(() => setSettingsLoading(false))
+  }, [practiceId])
+
+  useEffect(() => {
+    if (!practiceId) {
+      setIntegrationsLoading(false)
+      return
+    }
+    setIntegrationsLoading(true)
+    apiFetch('/api/admin/integrations')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setIntegrations(d))
+      .catch(() => setIntegrations(null))
+      .finally(() => setIntegrationsLoading(false))
+  }, [practiceId])
+
+  useEffect(() => {
+    if (!practiceId) {
+      setAuditLoading(false)
+      return
+    }
+    setAuditLoading(true)
+    apiFetch('/api/admin/audit-log?limit=30')
+      .then((r) => (r.ok ? r.json() : { entries: [] }))
+      .then((d: { entries?: typeof auditEntries }) => setAuditEntries(d.entries ?? []))
+      .catch(() => setAuditEntries([]))
+      .finally(() => setAuditLoading(false))
+  }, [practiceId, auditTick])
+
+  const refreshAudit = () => setAuditTick((n) => n + 1)
+
+  const saveCarrierSettings = async () => {
+    if (!practiceId) return
+    setSavingCarriers(true)
+    try {
+      const res = await apiFetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { carriers } }),
+      })
+      const data = await res.json()
+      if (res.ok) showToast('ok', 'Carrier preferences saved for this practice.')
+      else         showToast('err', (data as { error?: string }).error || 'Save failed')
+    } catch {
+      showToast('err', 'Save failed')
+    } finally {
+      setSavingCarriers(false)
+    }
+  }
+
+  const generateBalances = async () => {
+    if (!practiceId) return
+    setLoading(true)
+    try {
+      const res  = await apiFetch('/api/admin/generate-balances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: parseInt(balanceCount) }),
+      })
+      const data = await res.json()
+      if (res.ok) showToast('ok', data.message)
+      else        showToast('err', data.error)
+    } catch {
+      showToast('err', 'Failed to generate balances')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const importPatientCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !practiceId) return
+    setCsvBusy(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const res  = await apiFetch('/api/admin/import-patient-csv', { method: 'POST', body: fd })
+      const data = await res.json() as {
+        imported?: number
+        updated?: number
+        skipped?: number
+        errors?: { patient: string; error: string }[]
+        error?: string
+      }
+      if (res.ok) {
+        setCsvResult({
+          imported: data.imported ?? 0,
+          updated: data.updated ?? 0,
+          skipped: data.skipped ?? 0,
+          errors: data.errors ?? [],
+        })
+        const errN = data.errors?.length ?? 0
+        showToast(
+          'ok',
+          `Import: ${data.imported ?? 0} new, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped${errN ? `, ${errN} row issue(s)` : '.'}`,
+        )
+      } else {
+        setCsvResult(null)
+        showToast('err', data.error || 'Import failed')
+      }
+    } catch {
+      setCsvResult(null)
+      showToast('err', 'Import failed')
+    } finally {
+      setCsvBusy(false)
+      e.target.value = ''
+    }
+  }
+
+  return (
+    <div className="page-enter p-6 space-y-6 max-w-3xl">
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Practice settings, carrier configuration, and test data tools</p>
+      </div>
+
+      {toast && <InlineToast toast={toast} />}
+
+      <AdminOnboardingChecklist practiceId={practiceId} />
+
+      {/* P4 — go-live integration health (no secrets shown) */}
+      <Card>
+        <CardHeader
+          title="Integrations (go-live)"
+          subtitle="Confirms env and Stripe Connect for this practice. Set keys in your host (e.g. Railway Variables), not in git."
+        />
+        {integrationsLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : integrations ? (
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">SendGrid (P4-01)</p>
+              <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
+                <li>API key: {integrations.sendgrid.apiKey ? 'set' : 'missing'}</li>
+                <li>From email: {integrations.sendgrid.fromEmail ? 'set' : 'missing'}</li>
+                <li>Event Webhook verify key: {integrations.sendgrid.eventWebhookVerifyKey ? 'set' : 'missing (set for production)'}</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">Twilio (P4-03)</p>
+              <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
+                <li>Account + from number: {integrations.twilio.apiAndFrom ? 'set' : 'missing'}</li>
+                <li>Inbound webhook URL (signature): {integrations.twilio.inboundUrlForSignature ? 'set' : 'missing'}</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">Stripe (P4-04)</p>
+              <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
+                <li>Secret key: {integrations.stripe.secretKey ? 'set' : 'missing'}</li>
+                <li>Mode: {integrations.stripe.testMode ? 'test (sk_test_…)' : integrations.stripe.secretKey ? 'live' : '—'}</li>
+                <li>Connect account: {integrations.stripeConnect.account ? 'present' : 'missing'}</li>
+                <li>Connect onboarding: {integrations.stripeConnect.onboardingComplete ? 'complete' : 'incomplete'}</li>
+                <li>Charges enabled: {integrations.stripeConnect.chargesEnabled ? 'yes' : 'no'}</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">Vapi (P4-05)</p>
+              <p className="text-gray-600 dark:text-gray-300">Webhook secret: {integrations.vapi.webhookSecret ? 'set' : 'missing'}</p>
+            </div>
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">Email unsubscribe (P4-02)</p>
+              <p className="text-gray-600 dark:text-gray-300">
+                HMAC secret: {integrations.email.unsubscribeHmac ? 'set' : 'missing'}
+              </p>
+              <p className="text-xs text-gray-500 break-all">Public API base for links: {integrations.email.publicApiBase}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-red-600">Could not load integration status.</p>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Audit log (P5-04)"
+          subtitle="Recent staff-originated changes; append-only. Does not log every data read. See docs/compliance/DATA-CLASSIFICATION.md."
+        />
+        <div className="flex justify-end mb-2">
+          <Button type="button" variant="secondary" size="sm" onClick={refreshAudit} disabled={!practiceId || auditLoading}>
+            Refresh
+          </Button>
+        </div>
+        {auditLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : auditEntries.length === 0 ? (
+          <p className="text-sm text-gray-500">No entries yet.</p>
+        ) : (
+          <div className="overflow-x-auto text-xs">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-600 text-gray-500">
+                  <th className="py-1.5 pr-2">Time (UTC)</th>
+                  <th className="py-1.5 pr-2">Action</th>
+                  <th className="py-1.5 pr-2">Subject</th>
+                  <th className="py-1.5">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditEntries.map((row) => (
+                  <tr key={row.id} className="border-b border-gray-50 dark:border-gray-800/80">
+                    <td className="py-1.5 pr-2 align-top text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                      {new Date(row.createdAt).toISOString().replace('T', ' ').slice(0, 19)}
+                    </td>
+                    <td className="py-1.5 pr-2 align-top font-mono text-crx-700 dark:text-crx-400">{row.action}</td>
+                    <td className="py-1.5 pr-2 align-top text-gray-600 dark:text-gray-300">
+                      {row.subjectType && row.subjectId ? `${row.subjectType} ${row.subjectId.slice(0, 8)}…` : '—'}
+                    </td>
+                    <td className="py-1.5 align-top text-gray-500 max-w-xs truncate" title={JSON.stringify(row.details ?? {})}>
+                      {row.details != null ? JSON.stringify(row.details) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Seed data generator */}
+      <Card>
+        <CardHeader
+          title="Abeldent Sync Simulator"
+          subtitle="Generate synthetic patient balances as if imported from Abeldent"
+        />
+
+        <div className="space-y-4">
+          {practices.length > 1 && (
+            <Select
+              label="Practice"
+              value={practiceId}
+              onChange={e => setPracticeId(e.target.value)}
+            >
+              {practices.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </Select>
+          )}
+
+          <Input
+            label="Number of balances"
+            type="number"
+            value={balanceCount}
+            onChange={e => setBalanceCount(e.target.value)}
+            hint="Between 1 and 200"
+            min="1"
+            max="200"
+            className="w-36"
+          />
+
+          <Button
+            variant="primary"
+            loading={loading}
+            disabled={!practiceId}
+            onClick={generateBalances}
+          >
+            Generate Synthetic Balances
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Patient AR CSV import"
+          subtitle="Required: patient name + patient_owes. Headers normalize to snake_case; common aliases (first_name, balance, dos, …) map automatically. See docs/product/CSV-IMPORT-IDEMPOTENCY.md (P3-30 / P3-31)."
+        />
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+          Re-imports with the same natural key (<code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">abeldent_patient_id</code> + <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">treatment_date</code> + <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">procedure_code</code>) update rows instead of duplicating.
+        </p>
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="text-sm text-gray-600 dark:text-gray-300"
+            disabled={!practiceId || csvBusy}
+            onChange={e => void importPatientCsv(e)}
+          />
+          {csvBusy && <span className="text-xs text-gray-500">Uploading…</span>}
+        </label>
+        {csvResult && (
+          <div
+            className="mt-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-sm"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="font-medium text-gray-800 dark:text-gray-200">
+              {csvResult.imported} new, {csvResult.updated} updated, {csvResult.skipped} skipped
+              {csvResult.errors.length > 0
+                ? ` — ${csvResult.errors.length} row issue(s) below`
+                : ' — no row errors.'}
+            </p>
+            {csvResult.errors.length > 0 && (
+              <ul className="mt-2 max-h-48 overflow-y-auto space-y-1.5 text-gray-700 dark:text-gray-300 list-disc list-inside">
+                {csvResult.errors.map((e, idx) => (
+                  <li key={idx}>
+                    <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{e.patient}</span>
+                    {' '}
+                    <span className="text-red-700 dark:text-red-400">{e.error}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Rules engine status */}
+      <Card>
+        <CardHeader title="Rules Engine" subtitle="Evaluates and escalates balances every 60 seconds" />
+        <div className="flex items-center gap-2 mb-4">
+          <span className="w-2 h-2 rounded-full bg-crx-500 animate-pulse" aria-hidden="true" />
+          <span className="text-sm font-medium text-crx-600 dark:text-crx-400">Running</span>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 space-y-2">
+          <p className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Active Rules</p>
+          {[
+            'On BALANCE_CREATED → Send NOTIFIED message immediately',
+            'After 5 days in NOTIFIED → Send REMINDER_1',
+            'After 10 days in REMINDER_1 → Send REMINDER_2',
+            'After 20 days in REMINDER_2 OR amount ≥ $500 → ESCALATED + STAFF_REVIEW',
+          ].map(rule => (
+            <div key={rule} className="flex items-start gap-2">
+              <span className="text-crx-500 flex-shrink-0 mt-0.5">→</span>
+              <span>{rule}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Carrier configuration */}
+      <Card>
+        <CardHeader title="Carrier Configuration" subtitle="Per-practice display preferences (call order uses Queue settings)" />
+        {settingsLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : (
+        <div className="space-y-3">
+          {CARRIER_ROWS.map(c => {
+            const f = carriers[c.id] || { active: true, block: false }
+            return (
+            <div
+              key={c.id}
+              className="flex items-center justify-between py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{c.name}</span>
+                {f.block && <Badge color="red" dot>Blocked</Badge>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-xs text-crx-600 dark:text-crx-400 font-medium"
+                  onClick={() => setCarriers(prev => ({ ...prev, [c.id]: { ...f, active: !f.active } }))}
+                >
+                  {f.active ? 'Active' : 'Paused'}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 hover:text-red-500"
+                  onClick={() => setCarriers(prev => ({ ...prev, [c.id]: { ...f, block: !f.block } }))}
+                >
+                  {f.block ? 'Unblock' : 'Block'}
+                </button>
+              </div>
+            </div>
+          )})}
+        </div>
+        )}
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+          Call windows: Mon–Fri 8am–5pm Eastern. Max 3 attempts per claim.
+        </p>
+        <div className="mt-4">
+          <Button variant="primary" size="sm" onClick={saveCarrierSettings} disabled={!practiceId || savingCarriers} loading={savingCarriers}>
+            Save carrier settings
+          </Button>
+        </div>
+      </Card>
+
+      {/* Go-live checklist (derived from integration status + docs) */}
+      <Card>
+        <CardHeader
+          title="Go-live checklist"
+          subtitle="Use with docs/operations/PHASE4-GO-LIVE.md. PMS/connector scope: docs/product/PMS-INTEGRATION-PLAN.md (program decision)."
+        />
+        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          {integrations && (
+            <ul className="list-disc list-inside space-y-1">
+              <li className={integrations.sendgrid.apiKey && integrations.sendgrid.fromEmail ? 'text-crx-700 dark:text-crx-400' : ''}>
+                SendGrid: API key + from address; Event Webhook → /api/webhooks/sendgrid with verify key
+              </li>
+              <li className={integrations.twilio.apiAndFrom && integrations.twilio.inboundUrlForSignature ? 'text-crx-700 dark:text-crx-400' : ''}>
+                Twilio: credentials + TWILIO_SMS_INBOUND_URL matches public URL (signature)
+              </li>
+              <li className={integrations.stripe.secretKey && !integrations.stripe.testMode && integrations.stripeConnect.chargesEnabled ? 'text-crx-700 dark:text-crx-400' : ''}>
+                Stripe live: sk_live_… + Connect charges enabled (use test mode until ready)
+              </li>
+              <li className={integrations.vapi.webhookSecret ? 'text-crx-700 dark:text-crx-400' : ''}>
+                Vapi: webhook secret + URL /api/vapi/webhook
+              </li>
+              <li>DNS: SPF/DKIM/DMARC for your from-domain (SendGrid)</li>
+              <li>Secrets: host variables only; rotation runbook in docs/operations/SECRETS-GO-LIVE.md</li>
+            </ul>
+          )}
+          {!integrations && !integrationsLoading && <p>Load failed — refresh the page.</p>}
+        </div>
+      </Card>
+    </div>
+  )
+}

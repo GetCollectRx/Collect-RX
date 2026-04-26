@@ -1,0 +1,193 @@
+{
+  "carrier_id": "manulife",
+  "carrier_name": "Manulife Financial",
+  "carrier_type": "PRIVATE",
+  "active": true,
+  "market_share": 18,
+  
+  "contact_info": {
+    "provider_phone": "1-888-626-8543",
+    "provider_phone_alternate": "1-519-747-7000",
+    "fax": "1-888-398-4325",
+    "email": "dental.providers@manulife.com",
+    "portal_url": "https://provider.manulife.ca",
+    "hours_of_operation": "Mon-Fri 8:00am-6:00pm ET",
+    "timezone": "ET"
+  },
+  
+  "authentication": {
+    "required_fields": [
+      "provider_id",
+      "practice_name"
+    ],
+    "authentication_method": "touchtone",
+    "patient_lookup_fields": [
+      "patient_member_id",
+      "group_number",
+      "patient_dob"
+    ],
+    "security_questions": [
+      "What is the group number?",
+      "What is the patient's date of birth?",
+      "Can you confirm the employer name?"
+    ],
+    "notes": "Manulife often requires group number upfront. Make sure to have it ready."
+  },
+  
+  "ivr_navigation": {
+    "ivr_type": "touchtone",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "Welcome to Manulife. For English, press 1. French, press 2.",
+        "action": "Press 1",
+        "wait_time": 2
+      },
+      {
+        "step_number": 2,
+        "expected_prompt": "For dental providers, press 1. For members, press 2.",
+        "action": "Press 1",
+        "wait_time": 1
+      },
+      {
+        "step_number": 3,
+        "expected_prompt": "Please enter the group number followed by the pound sign.",
+        "action": "Enter [GROUP_NUMBER] then press #",
+        "wait_time": 3,
+        "notes": "Group number is often 6-8 digits. Different from member ID"
+      },
+      {
+        "step_number": 4,
+        "expected_prompt": "For claim status, press 1. For eligibility, press 2. For all other inquiries, press 3.",
+        "action": "Press 1",
+        "wait_time": 1
+      },
+      {
+        "step_number": 5,
+        "expected_prompt": "Please enter the member ID.",
+        "action": "Enter [PATIENT_MEMBER_ID]",
+        "wait_time": 2
+      },
+      {
+        "step_number": 6,
+        "expected_prompt": "Please hold for the next available representative.",
+        "action": "Wait for representative",
+        "notes": "Average hold 15-25 minutes"
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0",
+        "destination": "Operator (may redirect to appropriate queue)"
+      }
+    ],
+    "last_verified": "2025-02-10"
+  },
+  
+  "call_metrics": {
+    "average_hold_time_minutes": 20,
+    "peak_hours": ["11am-1pm ET", "3pm-5pm ET"],
+    "best_times_to_call": ["8am-10am ET", "After 5pm ET"],
+    "success_rate": 88,
+    "average_call_duration_minutes": 32
+  },
+  
+  "claim_processing": {
+    "typical_processing_time_days": 10,
+    "follow_up_threshold_days": 25,
+    "common_denial_reasons": [
+      {
+        "code": "M01",
+        "description": "Exceeds plan maximum",
+        "resolution": "Check annual or lifetime maximums. Patient pays overage",
+        "frequency": "very_common"
+      },
+      {
+        "code": "M02",
+        "description": "Not a covered service",
+        "resolution": "Verify service is on plan schedule. Some plans exclude specific procedures",
+        "frequency": "common"
+      },
+      {
+        "code": "M03",
+        "description": "Frequency exceeded",
+        "resolution": "Common for cleanings (2/year), X-rays (1/year), fluoride. Check plan frequency schedule",
+        "frequency": "very_common"
+      },
+      {
+        "code": "M04",
+        "description": "Missing or insufficient documentation",
+        "resolution": "Submit X-rays, narratives, or perio charts via fax or portal",
+        "frequency": "common"
+      },
+      {
+        "code": "M05",
+        "description": "Duplicate claim submission",
+        "resolution": "Verify claim wasn't already paid. Check payment history",
+        "frequency": "occasional"
+      },
+      {
+        "code": "M06",
+        "description": "Patient not covered on DOS",
+        "resolution": "Verify employment dates and coverage effective date",
+        "frequency": "occasional"
+      }
+    ],
+    "required_attachments": [
+      "X-rays for major restorative",
+      "Perio charting for scaling/SRP",
+      "Pre-treatment photos for esthetic procedures"
+    ],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet, ITRANS"
+  },
+  
+  "cdcp_specific": null,
+  
+  "special_requirements": {
+    "requires_cob_verification": true,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English", "French"]
+  },
+  
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "I'm calling from [Practice Name] regarding a claim for [Patient Name]",
+      "The group number is [GROUP_NUMBER]",
+      "Can you confirm the claim status?",
+      "What is the reason for the denial?",
+      "What additional information is required?",
+      "When was the claim received?"
+    ],
+    "avoid_phrases": [
+      "This is taking too long (Manulife processing is actually quite fast)",
+      "We sent this weeks ago (verify submission first)"
+    ],
+    "escalation_triggers": [
+      "Representative cannot locate claim with valid reference",
+      "Denial seems inconsistent with plan documents",
+      "Payment issued but never received (over 30 days)",
+      "Multiple coordination of benefits issues"
+    ],
+    "representative_script_hints": "Manulife reps are generally efficient and knowledgeable. They have good system access and can usually resolve issues on first call. If they can't find a claim, it likely wasn't received - prepare to resubmit."
+  },
+  
+  "metadata": {
+    "created_date": "2025-02-15T11:00:00Z",
+    "last_updated": "2025-02-15T11:00:00Z",
+    "last_verified_by": "Khalid - CollectRx",
+    "verification_method": "documentation",
+    "confidence_score": 78,
+    "notes": "Manulife is one of the faster processors. They have a good provider portal that often has claim status before calling is necessary. Consider checking portal first. IVR is straightforward and reliable.",
+    "change_log": [
+      {
+        "date": "2025-02-15",
+        "change": "Initial configuration created",
+        "reason": "Top 3 Canadian carrier"
+      }
+    ]
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "carrier_id": "rbc_insurance",
+  "carrier_name": "RBC Insurance",
+  "carrier_type": "PRIVATE",
+  "active": true,
+  "market_share": 8,
+
+  "contact_info": {
+    "provider_phone": "1-855-264-2174",
+    "provider_phone_alternate": null,
+    "fax": null,
+    "email": null,
+    "portal_url": "https://www.providerconnect.ca",
+    "hours_of_operation": "Mon-Fri 8:30am-8:30pm ET",
+    "timezone": "ET"
+  },
+
+  "authentication": {
+    "required_fields": [
+      "provider_id",
+      "practice_name"
+    ],
+    "authentication_method": "touchtone",
+    "patient_lookup_fields": [
+      "patient_member_id",
+      "patient_dob"
+    ],
+    "security_questions": [
+      "What is the patient's certificate or identification number?",
+      "What is the date of service?",
+      "What is the patient's date of birth?"
+    ],
+    "notes": "RBC Insurance administers dental through Green Shield Canada (GSC) infrastructure — providerConnect.ca is the portal. Carrier ID on CDAnet is 000124. Group/plan number field is not used by RBCI — populate with 9999 if required. Member ID may include a hyphen with dependent code (e.g. 1234567-02) — enter all digits without the hyphen (123456702) unless your software has a separate dependent field."
+  },
+
+  "ivr_navigation": {
+    "ivr_type": "touchtone",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "Thank you for calling RBC Insurance. For English, press 1. Pour le français, faites le 2.",
+        "action": "Press 1",
+        "wait_time": 2
+      },
+      {
+        "step_number": 2,
+        "expected_prompt": "For group benefits and dental claims, press 1. For travel insurance, press 2. For life and disability, press 3.",
+        "action": "Press 1",
+        "wait_time": 1
+      },
+      {
+        "step_number": 3,
+        "expected_prompt": "For providers calling about a claim or patient eligibility, press 1. For plan members, press 2.",
+        "action": "Press 1",
+        "wait_time": 1
+      },
+      {
+        "step_number": 4,
+        "expected_prompt": "Please enter your provider identification number.",
+        "action": "Enter [PROVIDER_ID] digit by digit",
+        "wait_time": 3
+      },
+      {
+        "step_number": 5,
+        "expected_prompt": "For claim status, press 1. For eligibility verification, press 2. For all other inquiries, press 3. To speak with a representative, press 0.",
+        "action": "Press 1",
+        "alternative_actions": ["Press 0 to reach representative directly"],
+        "wait_time": 1
+      },
+      {
+        "step_number": 6,
+        "expected_prompt": "Please enter the patient's identification number.",
+        "action": "Enter [PATIENT_MEMBER_ID] digit by digit — omit any hyphens",
+        "wait_time": 2,
+        "notes": "Do not include hyphens. Enter all digits as one continuous number."
+      },
+      {
+        "step_number": 7,
+        "expected_prompt": "Please hold while we connect you to the next available representative.",
+        "action": "Wait for representative",
+        "notes": "Average hold 15-25 minutes"
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0 at any menu",
+        "destination": "Representative queue"
+      }
+    ],
+    "last_verified": "2025-02-15"
+  },
+
+  "call_metrics": {
+    "average_hold_time_minutes": 20,
+    "peak_hours": ["10am-12pm ET", "2pm-4pm ET"],
+    "best_times_to_call": ["8:30am-9:30am ET", "6pm-8pm ET"],
+    "success_rate": 82,
+    "average_call_duration_minutes": 30
+  },
+
+  "claim_processing": {
+    "typical_processing_time_days": 14,
+    "follow_up_threshold_days": 30,
+    "common_denial_reasons": [
+      {
+        "code": "R01",
+        "description": "Service not covered under plan",
+        "resolution": "Verify procedure is on the patient's benefit schedule. Some plans exclude cosmetic, implants, or orthodontics",
+        "frequency": "common"
+      },
+      {
+        "code": "R02",
+        "description": "Annual maximum reached",
+        "resolution": "Most plans cap at $1,000-$2,000/year. Patient responsible for overage. Bill patient directly.",
+        "frequency": "common"
+      },
+      {
+        "code": "R03",
+        "description": "Frequency limitation exceeded",
+        "resolution": "Standard limits: 2 cleanings/year, bitewing X-rays 1/year. Verify plan frequency schedule.",
+        "frequency": "very_common"
+      },
+      {
+        "code": "R04",
+        "description": "Missing predetermination",
+        "resolution": "Major work typically over $500 requires pre-authorization. Submit via providerConnect.ca or fax.",
+        "frequency": "common"
+      },
+      {
+        "code": "R05",
+        "description": "Coordination of benefits — other carrier is primary",
+        "resolution": "Submit to primary plan first, then submit EOB with COB claim to RBC Insurance.",
+        "frequency": "occasional"
+      },
+      {
+        "code": "R06",
+        "description": "Patient not eligible on date of service",
+        "resolution": "Verify employment and coverage dates. Patient may have left employer or changed plans.",
+        "frequency": "occasional"
+      },
+      {
+        "code": "R07",
+        "description": "Claim submitted under wrong carrier ID",
+        "resolution": "Ensure claim is submitted under carrier ID 000124, not old Green Shield ID. Resubmit with correct carrier.",
+        "frequency": "occasional"
+      }
+    ],
+    "required_attachments": [
+      "X-rays for crowns, bridges, root canals",
+      "Periodontal charting for scaling/root planing",
+      "Clinical narrative for complex restorative",
+      "EOB from primary carrier for COB claims"
+    ],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet (Carrier ID: 000124), ITRANS"
+  },
+
+  "cdcp_specific": null,
+
+  "special_requirements": {
+    "requires_cob_verification": true,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English", "French"]
+  },
+
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "I'm calling on behalf of [Practice Name] regarding an RBC Insurance claim",
+      "The carrier ID is 000124 and the patient's certificate number is [ID]",
+      "Can you confirm the claim was received and the current adjudication status?",
+      "What is the specific denial reason code?",
+      "Was an EOB issued to the patient or provider?",
+      "Is this claim eligible for appeal and what is the deadline?"
+    ],
+    "avoid_phrases": [
+      "Green Shield Canada — RBC Insurance uses its own carrier ID 000124 since 2016",
+      "Group number — RBCI does not use group numbers, say 9999 if asked",
+      "This should have been paid by now — non-productive, ask for status instead"
+    ],
+    "escalation_triggers": [
+      "Claim cannot be located despite valid certificate number and date of service",
+      "Rep confirms payment was issued over 30 days ago but practice has not received it",
+      "Denial reason references Green Shield systems — may be a routing error",
+      "Claim is flagged for audit — requires clinical documentation submission",
+      "COB dispute where both carriers are denying as secondary"
+    ],
+    "representative_script_hints": "RBC Insurance dental is administered through providerConnect (Green Shield infrastructure). Reps are trained on the portal and can usually locate claims quickly with certificate number and date of service. If they say 'not found', first verify you are using carrier ID 000124 and that the member ID was entered without hyphens."
+  },
+
+  "metadata": {
+    "created_date": "2025-02-26T00:00:00Z",
+    "last_updated": "2025-02-26T00:00:00Z",
+    "last_verified_by": "Khalid - CollectRx",
+    "verification_method": "documentation",
+    "confidence_score": 72,
+    "notes": "RBC Insurance migrated from Green Shield Canada carrier ID to their own ID (000124) in October 2016. Some older practices may still have the wrong carrier configured. providerConnect.ca is the portal. RBC Insurance is one of Tenth Line Family Dentistry's top carriers by outstanding balance — high priority.",
+    "change_log": [
+      {
+        "date": "2025-02-26",
+        "change": "Initial configuration created",
+        "reason": "Top carrier by outstanding balance in Tenth Line Family Dentistry aging report"
+      }
+    ]
+  }
+}

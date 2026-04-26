@@ -1,0 +1,116 @@
+{
+  "carrier_id": "CHANGEME_lowercase_no_spaces",
+  "carrier_name": "Official Carrier Name",
+  "carrier_type": "PRIVATE or CDCP or HYBRID",
+  "active": true,
+  "market_share": 0,
+  
+  "contact_info": {
+    "provider_phone": "1-XXX-XXX-XXXX",
+    "provider_phone_alternate": null,
+    "fax": "1-XXX-XXX-XXXX",
+    "email": "provider@carrier.com",
+    "portal_url": "https://provider.carrier.com",
+    "hours_of_operation": "Mon-Fri X:XXam-X:XXpm ET",
+    "timezone": "ET"
+  },
+  
+  "authentication": {
+    "required_fields": [
+      "FILL IN: provider_id, cdcp_provider_number, practice_name, etc"
+    ],
+    "authentication_method": "touchtone or voice or both",
+    "patient_lookup_fields": [
+      "FILL IN: patient_member_id, patient_dob, etc"
+    ],
+    "security_questions": [
+      "FILL IN: Common questions asked by reps"
+    ],
+    "notes": "FILL IN: Any special authentication quirks"
+  },
+  
+  "ivr_navigation": {
+    "ivr_type": "touchtone or voice_recognition or hybrid",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "What the IVR says",
+        "action": "What to press or say",
+        "alternative_actions": ["Backup options"],
+        "wait_time": 2,
+        "notes": "Special considerations"
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0",
+        "destination": "Where it goes"
+      }
+    ],
+    "last_verified": "YYYY-MM-DD"
+  },
+  
+  "call_metrics": {
+    "average_hold_time_minutes": 0,
+    "peak_hours": [],
+    "best_times_to_call": [],
+    "success_rate": 0,
+    "average_call_duration_minutes": 0
+  },
+  
+  "claim_processing": {
+    "typical_processing_time_days": 0,
+    "follow_up_threshold_days": 30,
+    "common_denial_reasons": [
+      {
+        "code": "CODE",
+        "description": "What it means",
+        "resolution": "How to fix",
+        "frequency": "very_common, common, occasional, or rare"
+      }
+    ],
+    "required_attachments": [],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet, ITRANS, or other"
+  },
+  
+  "cdcp_specific": null,
+  
+  "special_requirements": {
+    "requires_cob_verification": false,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English"]
+  },
+  
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "FILL IN: Effective phrases for this carrier"
+    ],
+    "avoid_phrases": [
+      "FILL IN: Things not to say"
+    ],
+    "escalation_triggers": [
+      "FILL IN: When to flag for human"
+    ],
+    "representative_script_hints": "FILL IN: How reps typically behave"
+  },
+  
+  "metadata": {
+    "created_date": "YYYY-MM-DDTHH:MM:SSZ",
+    "last_updated": "YYYY-MM-DDTHH:MM:SSZ",
+    "last_verified_by": "Your Name",
+    "verification_method": "manual_call, ai_test, documentation, or provider_feedback",
+    "confidence_score": 0,
+    "notes": "General observations",
+    "change_log": [
+      {
+        "date": "YYYY-MM-DD",
+        "change": "What changed",
+        "reason": "Why it changed"
+      }
+    ]
+  }
+}

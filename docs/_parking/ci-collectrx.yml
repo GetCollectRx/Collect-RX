@@ -1,0 +1,97 @@
+# P2-03 / P2-04 / P2-09 — CI for the canonical Collect-RX-main app (npm workspaces)
+name: CI (Collect-RX-main)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    paths:
+      - 'Collect-RX-main/**'
+      - '.github/workflows/ci-collectrx.yml'
+      - 'docker-compose.yml'
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: collectrx
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: collectrx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U collectrx -d collectrx_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://collectrx:test@localhost:5432/collectrx_test
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
+      # Vitest + Stripe webhook integration test
+      STRIPE_SECRET_KEY: sk_test_4eC39HqLyjWDarjtT1zdp7dc
+      STRIPE_WEBHOOK_SECRET: whsec_test_00000000000000000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run db:generate -w dental-ar-system
+
+      - name: Prisma migrate deploy
+        run: npm run db:migrate -w dental-ar-system
+
+      - name: Seed database (E2E + dev-like data)
+        run: npm run db:seed -w dental-ar-system
+
+      - name: Typecheck
+        run: npm run typecheck -w dental-ar-system
+
+      - name: Lint
+        run: npm run lint -w dental-ar-system
+
+      - name: Unit tests
+        run: npm run test -w dental-ar-system
+
+      - name: Semgrep (P5-10, p/ci)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" returntocorp/semgrep semgrep --config=p/ci --error /src/Collect-RX-main/src
+
+      - name: npm audit (high or above)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Production build
+        run: npm run build -w dental-ar-system
+
+      - name: E2E practice id
+        id: e2e_practice
+        working-directory: Collect-RX-main
+        run: |
+          E2E_PRACTICE_ID=$(npx tsx scripts/print-e2e-practice-id.ts)
+          echo "E2E_PRACTICE_ID=$E2E_PRACTICE_ID" >> "$GITHUB_ENV"
+          echo "E2E_PRACTICE_ID=$E2E_PRACTICE_ID"
+
+      - name: Install Playwright (chromium)
+        working-directory: Collect-RX-main
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (P7-01) — Playwright
+        working-directory: Collect-RX-main
+        run: npm run e2e:ci
+        env:
+          CI: "true"

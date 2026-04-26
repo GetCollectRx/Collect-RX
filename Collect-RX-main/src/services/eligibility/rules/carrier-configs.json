@@ -1,0 +1,372 @@
+{
+  "carriers": {
+    "sun_life": {
+      "carrierId": "sun_life",
+      "name": "Sun Life Financial",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 50
+      },
+      "deductible": {
+        "individual": 50,
+        "family": 150,
+        "appliesToTiers": ["basic", "major"]
+      },
+      "annualMax": {
+        "individual": 1500,
+        "family": null
+      },
+      "waitingPeriods": [
+        {
+          "tier": "ortho",
+          "months": 12,
+          "description": "12-month waiting period before orthodontic coverage activates"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis (cleaning) — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays (4 images) — once per 12 months"
+        }
+      ],
+      "notes": "Major group insurer. Standard COB. Ortho lifetime max tracked separately.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 32
+    },
+
+    "canada_life": {
+      "carrierId": "canada_life",
+      "name": "Canada Life",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 0
+      },
+      "deductible": {
+        "individual": 75,
+        "family": 225,
+        "appliesToTiers": ["basic", "major"]
+      },
+      "annualMax": {
+        "individual": 1200,
+        "family": null
+      },
+      "waitingPeriods": [
+        {
+          "tier": "major",
+          "months": 12,
+          "description": "12-month waiting period for major restorative on new plans"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        }
+      ],
+      "notes": "Standard COB. No ortho coverage on most plans. Higher deductible than Sun Life.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 32
+    },
+
+    "manulife": {
+      "carrierId": "manulife",
+      "name": "Manulife Financial",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 85,
+        "major": 60,
+        "ortho": 0
+      },
+      "deductible": {
+        "individual": 0,
+        "family": 0,
+        "appliesToTiers": []
+      },
+      "annualMax": {
+        "individual": 2000,
+        "family": 4000
+      },
+      "waitingPeriods": [
+        {
+          "tier": "major",
+          "months": 6,
+          "description": "6-month waiting period for major restorative on new plans"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        }
+      ],
+      "notes": "No deductible — industry differentiator. Higher basic/major coverage. Family annual max is tracked per individual and per household.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 32
+    },
+
+    "green_shield": {
+      "carrierId": "green_shield",
+      "name": "Green Shield Canada",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 0
+      },
+      "deductible": {
+        "individual": 50,
+        "family": 150,
+        "appliesToTiers": ["basic", "major"]
+      },
+      "annualMax": {
+        "individual": 1500,
+        "family": null
+      },
+      "waitingPeriods": [
+        {
+          "tier": "major",
+          "months": 12,
+          "description": "12-month waiting period for major restorative"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months (strict enforcement)"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months (strict enforcement)"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        },
+        {
+          "cdtCodePattern": "D4341",
+          "limitPerMonths": 24,
+          "description": "Periodontal scaling — once per 24 months per quadrant"
+        }
+      ],
+      "notes": "Known for strict frequency limit enforcement. Automated adjudication rejects duplicates quickly. No ortho on standard plans.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 32
+    },
+
+    "rbc": {
+      "carrierId": "rbc",
+      "name": "RBC Insurance",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 50
+      },
+      "deductible": {
+        "individual": 100,
+        "family": 300,
+        "appliesToTiers": ["basic", "major"]
+      },
+      "annualMax": {
+        "individual": 1800,
+        "family": null
+      },
+      "waitingPeriods": [
+        {
+          "tier": "ortho",
+          "months": 12,
+          "description": "12-month waiting period for orthodontic coverage"
+        },
+        {
+          "tier": "major",
+          "months": 6,
+          "description": "6-month waiting period for major restorative on new plans"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        }
+      ],
+      "notes": "Higher deductible. Ortho coverage included. Higher annual max offset by deductible.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 32
+    },
+
+    "telus_adjudicare": {
+      "carrierId": "telus_adjudicare",
+      "name": "TELUS AdjudiCare",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 0
+      },
+      "deductible": {
+        "individual": 50,
+        "family": 150,
+        "appliesToTiers": ["basic", "major"]
+      },
+      "annualMax": {
+        "individual": 1500,
+        "family": null
+      },
+      "waitingPeriods": [
+        {
+          "tier": "major",
+          "months": 12,
+          "description": "12-month waiting for major restorative — varies by underlying TPA"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        }
+      ],
+      "notes": "TELUS AdjudiCare is a clearinghouse/TPA platform — not a single insurer. Must identify underlying TPA from member card before IVR navigation. Benefits shown are defaults; actual plan varies by employer group.",
+      "isClearinghouse": true,
+      "minWaitDayForClaims": 21,
+      "telusTpaProfiles": {
+        "group_prefix_ranges": {
+          "A": "Alberta Blue Cross",
+          "B": "Benecaid",
+          "C": "ClaimSecure",
+          "D": "Desjardins Insurance",
+          "E": "Empire Life",
+          "F": "First Canadian Benefits",
+          "G": "GroupHEALTH",
+          "H": "Johnston Group",
+          "I": "Industrial Alliance",
+          "M": "Maximum Benefit",
+          "P": "Pacific Blue Cross",
+          "S": "SSQ Insurance",
+          "T": "Third-party TPA (manual verification required)"
+        }
+      }
+    }
+  }
+}

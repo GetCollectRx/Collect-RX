@@ -1,0 +1,212 @@
+{
+  "carrier_id": "green_shield",
+  "carrier_name": "Green Shield Canada",
+  "carrier_type": "PRIVATE",
+  "active": true,
+  "market_share": 10,
+
+  "contact_info": {
+    "provider_phone": "1-888-711-1119",
+    "provider_phone_alternate": null,
+    "fax": null,
+    "email": null,
+    "portal_url": "https://www.providerconnect.ca",
+    "hours_of_operation": "Mon-Fri 8:30am-8:30pm ET",
+    "timezone": "ET"
+  },
+
+  "authentication": {
+    "required_fields": [
+      "provider_id",
+      "practice_name"
+    ],
+    "authentication_method": "touchtone",
+    "patient_lookup_fields": [
+      "patient_member_id",
+      "patient_dob",
+      "patient_name"
+    ],
+    "security_questions": [
+      "What is the patient's ID number?",
+      "What is the patient's date of birth?",
+      "What was the date of service?"
+    ],
+    "notes": "Green Shield Canada (GSC) also administers claims for RBC Insurance under carrier ID 000124 on the same providerConnect infrastructure. When calling about a Green Shield plan, their own CDAnet carrier code is 000060. Make sure you are calling the right line — the GSC provider line (1-888-711-1119) handles GSC plans only, not RBC Insurance plans."
+  },
+
+  "ivr_navigation": {
+    "ivr_type": "hybrid",
+    "steps": [
+      {
+        "step_number": 1,
+        "expected_prompt": "Thank you for calling Green Shield Canada. For English, press 1. Pour le français, faites le 2.",
+        "action": "Press 1",
+        "wait_time": 2
+      },
+      {
+        "step_number": 2,
+        "expected_prompt": "For dental and health providers, press 1. For plan members, press 2. For plan administrators, press 3.",
+        "action": "Press 1",
+        "wait_time": 1
+      },
+      {
+        "step_number": 3,
+        "expected_prompt": "Please enter your provider number.",
+        "action": "Enter [PROVIDER_ID] digit by digit",
+        "wait_time": 3
+      },
+      {
+        "step_number": 4,
+        "expected_prompt": "For claim inquiries, press 1. For eligibility and coverage verification, press 2. For predetermination status, press 3. To speak with a representative, press 0.",
+        "action": "Press 1",
+        "alternative_actions": ["Press 0 for representative"],
+        "wait_time": 1
+      },
+      {
+        "step_number": 5,
+        "expected_prompt": "Please enter the plan member's identification number.",
+        "action": "Enter [PATIENT_MEMBER_ID] digit by digit",
+        "wait_time": 2
+      },
+      {
+        "step_number": 6,
+        "expected_prompt": "Please hold for the next available representative.",
+        "action": "Wait for representative",
+        "notes": "Average hold 15-20 minutes. GSC tends to have shorter hold times than Sun Life or CDCP."
+      }
+    ],
+    "shortcuts": [
+      {
+        "shortcut": "Press 0 anytime",
+        "destination": "Representative queue"
+      },
+      {
+        "shortcut": "Say 'representative'",
+        "destination": "May skip to representative queue on voice-recognition prompts"
+      }
+    ],
+    "last_verified": "2025-02-15"
+  },
+
+  "call_metrics": {
+    "average_hold_time_minutes": 17,
+    "peak_hours": ["10am-12pm ET", "2pm-4pm ET"],
+    "best_times_to_call": ["8:30am-9:30am ET", "5pm-7pm ET"],
+    "success_rate": 87,
+    "average_call_duration_minutes": 28
+  },
+
+  "claim_processing": {
+    "typical_processing_time_days": 10,
+    "follow_up_threshold_days": 25,
+    "common_denial_reasons": [
+      {
+        "code": "G01",
+        "description": "Service not covered under plan",
+        "resolution": "Check GSC benefit schedule for the specific plan. Plan designs vary widely — some exclude implants, orthodontics, or cosmetic procedures.",
+        "frequency": "common"
+      },
+      {
+        "code": "G02",
+        "description": "Annual or lifetime maximum reached",
+        "resolution": "GSC plans have annual maximums that vary by employer. Patient is responsible for overage — bill patient directly.",
+        "frequency": "common"
+      },
+      {
+        "code": "G03",
+        "description": "Frequency limitation exceeded",
+        "resolution": "Common: 2 recall exams/year, bitewings 1/year, polishing 2/year. Confirm specific plan limits with rep.",
+        "frequency": "very_common"
+      },
+      {
+        "code": "G04",
+        "description": "Predetermination required",
+        "resolution": "Major restorative work over certain threshold requires pre-auth. Submit via providerConnect.ca portal or CDAnet.",
+        "frequency": "common"
+      },
+      {
+        "code": "G05",
+        "description": "Supporting documentation required",
+        "resolution": "Submit X-rays or periodontal charting through providerConnect.ca portal — fastest method. Fax is also accepted.",
+        "frequency": "common"
+      },
+      {
+        "code": "G06",
+        "description": "Duplicate claim",
+        "resolution": "Claim already processed. Ask rep for the original payment date and amount to verify receipt.",
+        "frequency": "occasional"
+      },
+      {
+        "code": "G07",
+        "description": "Coordination of benefits required",
+        "resolution": "Submit to primary plan first. Attach EOB when submitting to GSC as secondary.",
+        "frequency": "occasional"
+      },
+      {
+        "code": "G08",
+        "description": "Patient not enrolled or coverage lapsed",
+        "resolution": "Verify employment status and coverage dates. Patient may have had a qualifying life event that changed coverage.",
+        "frequency": "occasional"
+      }
+    ],
+    "required_attachments": [
+      "X-rays for crowns, bridges, root canals",
+      "Periodontal charting for scaling/root planing",
+      "Clinical photos for esthetic or complex cases",
+      "EOB from primary carrier for COB claims"
+    ],
+    "accepts_electronic_claims": true,
+    "clearinghouse": "CDAnet (Carrier ID: 000060), ITRANS, providerConnect.ca"
+  },
+
+  "cdcp_specific": null,
+
+  "special_requirements": {
+    "requires_cob_verification": true,
+    "accepts_ai_callers": "unknown",
+    "has_antibot_detection": false,
+    "requires_human_voice_verification": false,
+    "language_options": ["English", "French"]
+  },
+
+  "ai_agent_guidance": {
+    "tone": "professional",
+    "key_phrases": [
+      "I'm calling from [Practice Name] regarding a Green Shield Canada dental claim",
+      "The CDAnet carrier ID is 000060 and the patient's ID number is [ID]",
+      "Can you confirm the current adjudication status of this claim?",
+      "What is the specific denial reason code and is an appeal possible?",
+      "Can documentation be uploaded through the providerConnect portal?",
+      "What is the expected payment date if the claim is approved?"
+    ],
+    "avoid_phrases": [
+      "RBC Insurance — GSC administers RBC plans but they are separate; use the RBC line for RBC plans",
+      "Green Shield is slow — GSC actually has faster processing than most carriers",
+      "Why was this denied without telling us — ask for specific denial code instead"
+    ],
+    "escalation_triggers": [
+      "Claim not found despite valid member ID and date of service — may be routing issue with RBC plans",
+      "Rep confirms payment issued but not received after 30+ days",
+      "Claim flagged for clinical review with no clear timeline provided",
+      "Denial reason appears inconsistent with plan documents on file",
+      "COB issue where GSC and another carrier are both rejecting as secondary payer"
+    ],
+    "representative_script_hints": "GSC reps are generally efficient and knowledgeable. Their providerConnect.ca portal is one of the better ones in the industry — many issues can be resolved via portal before calling. If a rep asks you to upload documents, they can usually process within 3-5 business days. GSC has some of the shorter hold times among major Canadian dental carriers."
+  },
+
+  "metadata": {
+    "created_date": "2025-02-26T00:00:00Z",
+    "last_updated": "2025-02-26T00:00:00Z",
+    "last_verified_by": "Khalid - CollectRx",
+    "verification_method": "documentation",
+    "confidence_score": 76,
+    "notes": "Green Shield Canada is a non-profit health and dental benefits carrier — one of the few in Canada. They also run the providerConnect.ca portal infrastructure used by RBC Insurance. GSC has a reputation for faster adjudication than most competitors. For Tenth Line Family Dentistry in Orleans, GSC is a common carrier among tech and public sector employers in the Ottawa region. Important: do not confuse GSC plans (carrier 000060) with RBC Insurance plans (carrier 000124) — they share infrastructure but are billed separately.",
+    "change_log": [
+      {
+        "date": "2025-02-26",
+        "change": "Initial configuration created",
+        "reason": "Major carrier in Ottawa market — common among tech and public sector employers"
+      }
+    ]
+  }
+}

@@ -1,0 +1,117 @@
+/**
+ * P7-03 + P7-04 — API and auth; P7-02 — Stripe webhook (HTTP + handler).
+ *
+ * Liveness and “missing signature” run without a database. DB-dependent cases are skipped
+ * with a clear log if `DATABASE_URL` is unreachable (e.g. laptop without VPN, wrong host).
+ * CI has Postgres; `npm test` there should be fully green.
+ */
+import { afterAll, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import Stripe from 'stripe';
+import { handleWebhook } from '../src/server/stripe/connect.js';
+import { app, prisma } from '../src/server/index.js';
+import { createPracticeForTests, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
+
+const TEST_STRIPE_SECRET = 'whsec_test_00000000000000000000000000000000';
+const TEST_STRIPE_KEY = 'sk_test_4eC39HqLyjWDarjtT1zdp7dc';
+const STRIPE_API_VERSION = '2026-03-25.dahlia' as const;
+
+let dbReady = false;
+try {
+  await prisma.$connect();
+  await prisma.$queryRaw`SELECT 1`;
+  dbReady = true;
+} catch (e) {
+  console.warn(
+    '[app.integration] DATABASE_URL unreachable — DB-dependent tests will be skipped:',
+    (e as Error).message
+  );
+}
+
+afterAll(async () => {
+  await prisma.$disconnect().catch(() => undefined);
+});
+
+describe('API (integration) — liveness (no DB required for /api/health)', () => {
+  it('GET /api/health returns 200', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+  });
+});
+
+describe('Stripe webhook (HTTP) — P7-02', () => {
+  it('returns 400 when stripe-signature is missing', async () => {
+    const res = await request(app)
+      .post('/api/stripe/webhook')
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from('{}'));
+    expect(res.status).toBe(400);
+  });
+});
+
+describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () => {
+  it('GET /api/health/ready returns 200 with DB', async () => {
+    const res = await request(app).get('/api/health/ready');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ready');
+  });
+
+  it('POST /api/auth/login returns 400 without body', async () => {
+    const res = await request(app).post('/api/auth/login').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/auth/login returns 401 for unknown practice', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ practiceId: '00000000-0000-4000-8000-00000000dead', password: 'nope' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/auth/login returns 200 for factory practice', async () => {
+    const p = await createPracticeForTests(prisma);
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ practiceId: p.id, password: FIXTURE_PRACTICE_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeDefined();
+    await prisma.practice.delete({ where: { id: p.id } });
+  });
+
+  it('GET /api/auth/me is 401 without session', async () => {
+    const res = await request(app).get('/api/auth/me');
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * Call `handleWebhook` directly with the raw Buffer Stripe expects — supertest can alter
+ * the raw body and break HMAC verification.
+ */
+describe.skipIf(!dbReady)('Stripe webhook (handler) — P7-02 (signature + Prisma)', () => {
+  it('constructEvent + handler: unhandled customer.created', async () => {
+    process.env.STRIPE_SECRET_KEY = TEST_STRIPE_KEY;
+    process.env.STRIPE_WEBHOOK_SECRET = TEST_STRIPE_SECRET;
+
+    const stripe = new Stripe(TEST_STRIPE_KEY, { apiVersion: STRIPE_API_VERSION });
+    const payload = JSON.stringify({
+      id: 'evt_p7_02_ci_mock_1',
+      object: 'event',
+      type: 'customer.created',
+      api_version: '2020-08-27',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'cus_x', object: 'customer' } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    });
+    const header = stripe.webhooks.generateTestHeaderString({
+      payload,
+      secret: TEST_STRIPE_SECRET,
+    });
+    const body = Buffer.from(payload, 'utf8');
+    const result = await handleWebhook(body, header, prisma);
+    expect(result).toMatchObject({ handled: false, reason: 'unhandled event type' });
+  });
+});

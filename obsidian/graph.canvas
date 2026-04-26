@@ -1,0 +1,5002 @@
+{
+  "nodes": [
+    {
+      "id": "g0",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_vite_config_ts_timestamp_1775343933000_4935e3249a2a6_mjs",
+      "type": "file",
+      "file": "graphify/obsidian/vite.config.ts.timestamp-1775343933000-4935e3249a2a6.mjs.md",
+      "x": 20,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g1",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_vite_config_ts_timestamp_1775344255462_403dc58e826f7_mjs",
+      "type": "file",
+      "file": "graphify/obsidian/vite.config.ts.timestamp-1775344255462-403dc58e826f7.mjs.md",
+      "x": 980,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g2",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_tailwind_config_ts",
+      "type": "file",
+      "file": "graphify/obsidian/tailwind.config.ts.md",
+      "x": 1720,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g3",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_vite_config_ts",
+      "type": "file",
+      "file": "graphify/obsidian/vite.config.ts.md",
+      "x": 2460,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "label": "Users Module",
+      "x": 3180,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_vite_config_ts_timestamp_1775344264290_46ae9b506b0d8_mjs",
+      "type": "file",
+      "file": "graphify/obsidian/vite.config.ts.timestamp-1775344264290-46ae9b506b0d8.mjs.md",
+      "x": 3200,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g5",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_vitest_config_ts",
+      "type": "file",
+      "file": "graphify/obsidian/vitest.config.ts.md",
+      "x": 4160,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g6",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_postcss_config_js",
+      "type": "file",
+      "file": "graphify/obsidian/postcss.config.js.md",
+      "x": 4840,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g7",
+      "type": "group",
+      "label": "Server Module",
+      "x": 5500,
+      "y": 0,
+      "width": 3080,
+      "height": 6220,
+      "color": "2"
+    },
+    {
+      "id": "n_server_paymentservice_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor()_1.md",
+      "x": 5520,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_workflowscheduler_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor()_5.md",
+      "x": 5720,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_workflowscheduler_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor()_2.md",
+      "x": 5920,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_emailservice_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor()_3.md",
+      "x": 5520,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_paymentservice_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor()_4.md",
+      "x": 5720,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_emailservice_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/.constructor().md",
+      "x": 5920,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_paymentservice_createpaymentplan",
+      "type": "file",
+      "file": "graphify/obsidian/.createPaymentPlan()_1.md",
+      "x": 5520,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_paymentservice_createpaymentplan",
+      "type": "file",
+      "file": "graphify/obsidian/.createPaymentPlan().md",
+      "x": 5720,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_templateengine_createtemplate",
+      "type": "file",
+      "file": "graphify/obsidian/.createTemplate()_1.md",
+      "x": 5920,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_templateengine_createtemplate",
+      "type": "file",
+      "file": "graphify/obsidian/.createTemplate().md",
+      "x": 5520,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_workflowscheduler_findeligiblepatients",
+      "type": "file",
+      "file": "graphify/obsidian/.findEligiblePatients()_1.md",
+      "x": 5720,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_workflowscheduler_findeligiblepatients",
+      "type": "file",
+      "file": "graphify/obsidian/.findEligiblePatients().md",
+      "x": 5920,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_paymentservice_generatepaymentlink",
+      "type": "file",
+      "file": "graphify/obsidian/.generatePaymentLink().md",
+      "x": 5520,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_paymentservice_generatepaymentlink",
+      "type": "file",
+      "file": "graphify/obsidian/.generatePaymentLink()_1.md",
+      "x": 5720,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_templateengine_gettemplatebyid",
+      "type": "file",
+      "file": "graphify/obsidian/.getTemplateById()_1.md",
+      "x": 5920,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_templateengine_gettemplatebyid",
+      "type": "file",
+      "file": "graphify/obsidian/.getTemplateById().md",
+      "x": 5520,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_emailservice_logemailsent",
+      "type": "file",
+      "file": "graphify/obsidian/.logEmailSent().md",
+      "x": 5720,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_emailservice_logemailsent",
+      "type": "file",
+      "file": "graphify/obsidian/.logEmailSent()_1.md",
+      "x": 5920,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_paymentservice_processpayment",
+      "type": "file",
+      "file": "graphify/obsidian/.processPayment()_1.md",
+      "x": 5520,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_paymentservice_processpayment",
+      "type": "file",
+      "file": "graphify/obsidian/.processPayment().md",
+      "x": 5720,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_workflowscheduler_processscheduledemails",
+      "type": "file",
+      "file": "graphify/obsidian/.processScheduledEmails().md",
+      "x": 5920,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_workflowscheduler_processscheduledemails",
+      "type": "file",
+      "file": "graphify/obsidian/.processScheduledEmails()_1.md",
+      "x": 5520,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_templateengine_rendertemplate",
+      "type": "file",
+      "file": "graphify/obsidian/.renderTemplate().md",
+      "x": 5720,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_templateengine_rendertemplate",
+      "type": "file",
+      "file": "graphify/obsidian/.renderTemplate()_1.md",
+      "x": 5920,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_emailservice_sendemail",
+      "type": "file",
+      "file": "graphify/obsidian/.sendEmail()_1.md",
+      "x": 5520,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_emailservice_sendemail",
+      "type": "file",
+      "file": "graphify/obsidian/.sendEmail().md",
+      "x": 5720,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_workflowscheduler_sendworkflowemail",
+      "type": "file",
+      "file": "graphify/obsidian/.sendWorkflowEmail()_1.md",
+      "x": 5920,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_workflowscheduler_sendworkflowemail",
+      "type": "file",
+      "file": "graphify/obsidian/.sendWorkflowEmail().md",
+      "x": 5520,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_emailservice_trackevent",
+      "type": "file",
+      "file": "graphify/obsidian/.trackEvent()_1.md",
+      "x": 5720,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_emailservice_trackevent",
+      "type": "file",
+      "file": "graphify/obsidian/.trackEvent().md",
+      "x": 5920,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_admin_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Admin.tsx.md",
+      "x": 5520,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_carrierprioritypanel_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/CarrierPriorityPanel.tsx.md",
+      "x": 5720,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_emailservice",
+      "type": "file",
+      "file": "graphify/obsidian/EmailService.md",
+      "x": 5920,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_emailservice",
+      "type": "file",
+      "file": "graphify/obsidian/EmailService_1.md",
+      "x": 5520,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_patientar_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/PatientAR.tsx.md",
+      "x": 5720,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_paymentservice",
+      "type": "file",
+      "file": "graphify/obsidian/PaymentService.md",
+      "x": 5920,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_paymentservice",
+      "type": "file",
+      "file": "graphify/obsidian/PaymentService_1.md",
+      "x": 5520,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_settings_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Settings.tsx.md",
+      "x": 5720,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_templateengine",
+      "type": "file",
+      "file": "graphify/obsidian/TemplateEngine.md",
+      "x": 5920,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_templateengine",
+      "type": "file",
+      "file": "graphify/obsidian/TemplateEngine_1.md",
+      "x": 5520,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_toast_toast",
+      "type": "file",
+      "file": "graphify/obsidian/Toast().md",
+      "x": 5720,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_toast_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Toast.tsx_1.md",
+      "x": 5920,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_toast_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Toast.tsx.md",
+      "x": 5520,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_toast_toastprovider",
+      "type": "file",
+      "file": "graphify/obsidian/ToastProvider().md",
+      "x": 5720,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_workflowscheduler",
+      "type": "file",
+      "file": "graphify/obsidian/WorkflowScheduler_1.md",
+      "x": 5920,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_workflowscheduler",
+      "type": "file",
+      "file": "graphify/obsidian/WorkflowScheduler.md",
+      "x": 5520,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "type": "file",
+      "file": "graphify/obsidian/abeldent-sync.js.md",
+      "x": 5720,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_rulesengine_advancestage",
+      "type": "file",
+      "file": "graphify/obsidian/advanceStage().md",
+      "x": 5920,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_assertobject",
+      "type": "file",
+      "file": "graphify/obsidian/assertObject().md",
+      "x": 5520,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_assertstring",
+      "type": "file",
+      "file": "graphify/obsidian/assertString().md",
+      "x": 5720,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "type": "file",
+      "file": "graphify/obsidian/auditLog.ts.md",
+      "x": 5920,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auditlog_auditmiddleware",
+      "type": "file",
+      "file": "graphify/obsidian/auditMiddleware().md",
+      "x": 5520,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "type": "file",
+      "file": "graphify/obsidian/auth.ts.md",
+      "x": 5720,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "type": "file",
+      "file": "graphify/obsidian/auth.ts_1.md",
+      "x": 5920,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_authenticate",
+      "type": "file",
+      "file": "graphify/obsidian/authenticate().md",
+      "x": 5520,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_authorizepatient",
+      "type": "file",
+      "file": "graphify/obsidian/authorizePatient().md",
+      "x": 5720,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_authorizepractice",
+      "type": "file",
+      "file": "graphify/obsidian/authorizePractice().md",
+      "x": 5920,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts",
+      "type": "file",
+      "file": "graphify/obsidian/awsConfig.ts.md",
+      "x": 5520,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "type": "file",
+      "file": "graphify/obsidian/balances.ts.md",
+      "x": 5720,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_buildbalancequery",
+      "type": "file",
+      "file": "graphify/obsidian/buildBalanceQuery().md",
+      "x": 5920,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_buildmenu",
+      "type": "file",
+      "file": "graphify/obsidian/buildMenu().md",
+      "x": 5520,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_buildtraymenu",
+      "type": "file",
+      "file": "graphify/obsidian/buildTrayMenu().md",
+      "x": 5720,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimatecalculator_calculateage",
+      "type": "file",
+      "file": "graphify/obsidian/calculateAge().md",
+      "x": 5920,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimatecalculator_calculateestimate",
+      "type": "file",
+      "file": "graphify/obsidian/calculateEstimate()_1.md",
+      "x": 5520,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimatecalculator_calculatemultiestimate",
+      "type": "file",
+      "file": "graphify/obsidian/calculateMultiEstimate().md",
+      "x": 5720,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "type": "file",
+      "file": "graphify/obsidian/carrierRules.ts.md",
+      "x": 5920,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimatecalculator_checkfrequencylimits",
+      "type": "file",
+      "file": "graphify/obsidian/checkFrequencyLimits().md",
+      "x": 5520,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_createauthrouter",
+      "type": "file",
+      "file": "graphify/obsidian/createAuthRouter().md",
+      "x": 5720,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimates_createestimaterouter",
+      "type": "file",
+      "file": "graphify/obsidian/createEstimateRouter().md",
+      "x": 5920,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_estimates_createreconciliationrouter",
+      "type": "file",
+      "file": "graphify/obsidian/createReconciliationRouter().md",
+      "x": 5520,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_syncimport_createsyncimportrouter",
+      "type": "file",
+      "file": "graphify/obsidian/createSyncImportRouter().md",
+      "x": 5720,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_createtray",
+      "type": "file",
+      "file": "graphify/obsidian/createTray().md",
+      "x": 5920,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_createwindow",
+      "type": "file",
+      "file": "graphify/obsidian/createWindow().md",
+      "x": 5520,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reminderengine_ensurepaymentlink",
+      "type": "file",
+      "file": "graphify/obsidian/ensurePaymentLink().md",
+      "x": 5720,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_escapehtml",
+      "type": "file",
+      "file": "graphify/obsidian/escapeHtml().md",
+      "x": 5920,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_escaperegex",
+      "type": "file",
+      "file": "graphify/obsidian/escapeRegex().md",
+      "x": 5520,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts",
+      "type": "file",
+      "file": "graphify/obsidian/estimateCalculator.test 2.ts.md",
+      "x": 5720,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts",
+      "type": "file",
+      "file": "graphify/obsidian/estimateCalculator.test.ts.md",
+      "x": 5920,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "type": "file",
+      "file": "graphify/obsidian/estimateCalculator.ts.md",
+      "x": 5520,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "type": "file",
+      "file": "graphify/obsidian/estimates.ts.md",
+      "x": 5720,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_patientar_executewriteoff",
+      "type": "file",
+      "file": "graphify/obsidian/executeWriteOff().md",
+      "x": 5920,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_fetchchangelog",
+      "type": "file",
+      "file": "graphify/obsidian/fetchChangelog().md",
+      "x": 5520,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_fetchfromabeldent",
+      "type": "file",
+      "file": "graphify/obsidian/fetchFromAbeldent().md",
+      "x": 5720,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_fetchpatientbalances",
+      "type": "file",
+      "file": "graphify/obsidian/fetchPatientBalances().md",
+      "x": 5920,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messaging_fmt",
+      "type": "file",
+      "file": "graphify/obsidian/fmt().md",
+      "x": 5520,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_patientar_fmtcurrency",
+      "type": "file",
+      "file": "graphify/obsidian/fmtCurrency()_2.md",
+      "x": 5720,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_patientar_fmtdate",
+      "type": "file",
+      "file": "graphify/obsidian/fmtDate().md",
+      "x": 5920,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_formatlastsync",
+      "type": "file",
+      "file": "graphify/obsidian/formatLastSync().md",
+      "x": 5520,
+      "y": 2400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_admin_generatebalances",
+      "type": "file",
+      "file": "graphify/obsidian/generateBalances().md",
+      "x": 5720,
+      "y": 2400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_generateid",
+      "type": "file",
+      "file": "graphify/obsidian/generateId().md",
+      "x": 5920,
+      "y": 2400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messagetemplates_generatemessagebody",
+      "type": "file",
+      "file": "graphify/obsidian/generateMessageBody().md",
+      "x": 5520,
+      "y": 2480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_generatepatients",
+      "type": "file",
+      "file": "graphify/obsidian/generatePatients().md",
+      "x": 5720,
+      "y": 2480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_generatepatients",
+      "type": "file",
+      "file": "graphify/obsidian/generatePatients()_1.md",
+      "x": 5920,
+      "y": 2480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_getbalance",
+      "type": "file",
+      "file": "graphify/obsidian/getBalance().md",
+      "x": 5520,
+      "y": 2560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_carrierrules_getcarrierrule",
+      "type": "file",
+      "file": "graphify/obsidian/getCarrierRule().md",
+      "x": 5720,
+      "y": 2560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_carrierrules_getcdtcoveragecategory",
+      "type": "file",
+      "file": "graphify/obsidian/getCdtCoverageCategory().md",
+      "x": 5920,
+      "y": 2560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_getremindercandidates",
+      "type": "file",
+      "file": "graphify/obsidian/getReminderCandidates().md",
+      "x": 5520,
+      "y": 2640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_awsconfig_getsecret",
+      "type": "file",
+      "file": "graphify/obsidian/getSecret().md",
+      "x": 5720,
+      "y": 2640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messaging_getsendgrid",
+      "type": "file",
+      "file": "graphify/obsidian/getSendGrid().md",
+      "x": 5920,
+      "y": 2640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messaging_gettwilio",
+      "type": "file",
+      "file": "graphify/obsidian/getTwilio().md",
+      "x": 5520,
+      "y": 2720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_gracefulshutdown",
+      "type": "file",
+      "file": "graphify/obsidian/gracefulShutdown().md",
+      "x": 5720,
+      "y": 2720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_validation_guardsqlinjection",
+      "type": "file",
+      "file": "graphify/obsidian/guardSqlInjection().md",
+      "x": 5920,
+      "y": 2720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_handlechange",
+      "type": "file",
+      "file": "graphify/obsidian/handleChange().md",
+      "x": 5520,
+      "y": 2800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_handlesave",
+      "type": "file",
+      "file": "graphify/obsidian/handleSave().md",
+      "x": 5720,
+      "y": 2800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_patientar_handlesendreminder",
+      "type": "file",
+      "file": "graphify/obsidian/handleSendReminder().md",
+      "x": 5920,
+      "y": 2800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_carrierprioritypanel_handlesubmit",
+      "type": "file",
+      "file": "graphify/obsidian/handleSubmit().md",
+      "x": 5520,
+      "y": 2880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_handletestconnection",
+      "type": "file",
+      "file": "graphify/obsidian/handleTestConnection().md",
+      "x": 5720,
+      "y": 2880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_patientar_handlewriteoff",
+      "type": "file",
+      "file": "graphify/obsidian/handleWriteOff().md",
+      "x": 5920,
+      "y": 2880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "type": "file",
+      "file": "graphify/obsidian/index.ts.md",
+      "x": 5520,
+      "y": 2960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_initializeapp",
+      "type": "file",
+      "file": "graphify/obsidian/initializeApp().md",
+      "x": 5720,
+      "y": 2960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_complete_initializedata",
+      "type": "file",
+      "file": "graphify/obsidian/initializeData()_1.md",
+      "x": 5920,
+      "y": 2960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_initializedata",
+      "type": "file",
+      "file": "graphify/obsidian/initializeData().md",
+      "x": 5520,
+      "y": 3040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_listbalances",
+      "type": "file",
+      "file": "graphify/obsidian/listBalances().md",
+      "x": 5720,
+      "y": 3040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_awsconfig_loadsecretsfromparameterstore",
+      "type": "file",
+      "file": "graphify/obsidian/loadSecretsFromParameterStore().md",
+      "x": 5920,
+      "y": 3040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_loadtrayicon",
+      "type": "file",
+      "file": "graphify/obsidian/loadTrayIcon().md",
+      "x": 5520,
+      "y": 3120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auditlog_logaudit",
+      "type": "file",
+      "file": "graphify/obsidian/logAudit().md",
+      "x": 5720,
+      "y": 3120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "type": "file",
+      "file": "graphify/obsidian/main.js_1.md",
+      "x": 5920,
+      "y": 3120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "type": "file",
+      "file": "graphify/obsidian/main.js.md",
+      "x": 5520,
+      "y": 3200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_makedoticon",
+      "type": "file",
+      "file": "graphify/obsidian/makeDotIcon().md",
+      "x": 5720,
+      "y": 3200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_messagetemplates_ts",
+      "type": "file",
+      "file": "graphify/obsidian/messageTemplates.ts.md",
+      "x": 5920,
+      "y": 3200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "type": "file",
+      "file": "graphify/obsidian/messaging.ts.md",
+      "x": 5520,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reminderengine_nextreminderstatus",
+      "type": "file",
+      "file": "graphify/obsidian/nextReminderStatus().md",
+      "x": 5720,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_posttorailway",
+      "type": "file",
+      "file": "graphify/obsidian/postToRailway().md",
+      "x": 5920,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_ratelimiter_ts",
+      "type": "file",
+      "file": "graphify/obsidian/rateLimiter.ts.md",
+      "x": 5520,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_readconfig",
+      "type": "file",
+      "file": "graphify/obsidian/readConfig().md",
+      "x": 5720,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_rebuildtraymenu",
+      "type": "file",
+      "file": "graphify/obsidian/rebuildTrayMenu().md",
+      "x": 5920,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reconciliationengine_reconcilebatch",
+      "type": "file",
+      "file": "graphify/obsidian/reconcileBatch().md",
+      "x": 5520,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reconciliationengine_reconcilepayment",
+      "type": "file",
+      "file": "graphify/obsidian/reconcilePayment().md",
+      "x": 5720,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "type": "file",
+      "file": "graphify/obsidian/reconciliationEngine.ts.md",
+      "x": 5920,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_recordpayment",
+      "type": "file",
+      "file": "graphify/obsidian/recordPayment().md",
+      "x": 5520,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_recordremindersent",
+      "type": "file",
+      "file": "graphify/obsidian/recordReminderSent().md",
+      "x": 5720,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_toast_reducer",
+      "type": "file",
+      "file": "graphify/obsidian/reducer().md",
+      "x": 5920,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts",
+      "type": "file",
+      "file": "graphify/obsidian/reminderEngine.ts.md",
+      "x": 5520,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_requireadmin",
+      "type": "file",
+      "file": "graphify/obsidian/requireAdmin().md",
+      "x": 5720,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_requireauth",
+      "type": "file",
+      "file": "graphify/obsidian/requireAuth().md",
+      "x": 5920,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_requirepracticescope",
+      "type": "file",
+      "file": "graphify/obsidian/requirePracticeScope().md",
+      "x": 5520,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_requirerole",
+      "type": "file",
+      "file": "graphify/obsidian/requireRole().md",
+      "x": 5720,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_restartsyncservice",
+      "type": "file",
+      "file": "graphify/obsidian/restartSyncService().md",
+      "x": 5920,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "type": "file",
+      "file": "graphify/obsidian/rulesEngine.ts.md",
+      "x": 5520,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_runallsyncs",
+      "type": "file",
+      "file": "graphify/obsidian/runAllSyncs().md",
+      "x": 5720,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_runclaimssync",
+      "type": "file",
+      "file": "graphify/obsidian/runClaimsSync().md",
+      "x": 5920,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_runpatientbalancesync",
+      "type": "file",
+      "file": "graphify/obsidian/runPatientBalanceSync().md",
+      "x": 5520,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reminderengine_runremindercycle",
+      "type": "file",
+      "file": "graphify/obsidian/runReminderCycle().md",
+      "x": 5720,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_validation_sanitizebody",
+      "type": "file",
+      "file": "graphify/obsidian/sanitizeBody().md",
+      "x": 5920,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_sanitizepatientfordetail",
+      "type": "file",
+      "file": "graphify/obsidian/sanitizePatientForDetail().md",
+      "x": 5520,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_sanitizepatientforlist",
+      "type": "file",
+      "file": "graphify/obsidian/sanitizePatientForList().md",
+      "x": 5720,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_sanitizepracticeforresponse",
+      "type": "file",
+      "file": "graphify/obsidian/sanitizePracticeForResponse().md",
+      "x": 5920,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_send",
+      "type": "file",
+      "file": "graphify/obsidian/send().md",
+      "x": 5520,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messaging_sendemail",
+      "type": "file",
+      "file": "graphify/obsidian/sendEmail().md",
+      "x": 5720,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_rulesengine_sendmessage",
+      "type": "file",
+      "file": "graphify/obsidian/sendMessage().md",
+      "x": 5920,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_messaging_sendsms",
+      "type": "file",
+      "file": "graphify/obsidian/sendSMS().md",
+      "x": 5520,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_abeldent_sync_sendstatus",
+      "type": "file",
+      "file": "graphify/obsidian/sendStatus().md",
+      "x": 5720,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_collectrx_platform_server_complete_js",
+      "type": "file",
+      "file": "graphify/obsidian/server-complete.js.md",
+      "x": 5920,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_collectrx_platform_server_js",
+      "type": "file",
+      "file": "graphify/obsidian/server.js.md",
+      "x": 5520,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_setpaymentlink",
+      "type": "file",
+      "file": "graphify/obsidian/setPaymentLink().md",
+      "x": 5720,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_setstatus",
+      "type": "file",
+      "file": "graphify/obsidian/setStatus().md",
+      "x": 5920,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_setupautoupdater",
+      "type": "file",
+      "file": "graphify/obsidian/setupAutoUpdater().md",
+      "x": 5520,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_setupstartuplaunch",
+      "type": "file",
+      "file": "graphify/obsidian/setupStartupLaunch().md",
+      "x": 5720,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_showtoast",
+      "type": "file",
+      "file": "graphify/obsidian/showToast().md",
+      "x": 5920,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_signtoken",
+      "type": "file",
+      "file": "graphify/obsidian/signToken().md",
+      "x": 5520,
+      "y": 4320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_spawnsyncservice",
+      "type": "file",
+      "file": "graphify/obsidian/spawnSyncService().md",
+      "x": 5720,
+      "y": 4320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_reminderengine_startreminderengine",
+      "type": "file",
+      "file": "graphify/obsidian/startReminderEngine().md",
+      "x": 5920,
+      "y": 4320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_rulesengine_startrulesengine",
+      "type": "file",
+      "file": "graphify/obsidian/startRulesEngine().md",
+      "x": 5520,
+      "y": 4400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_startserver",
+      "type": "file",
+      "file": "graphify/obsidian/startServer().md",
+      "x": 5720,
+      "y": 4400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_statuslabel",
+      "type": "file",
+      "file": "graphify/obsidian/statusLabel().md",
+      "x": 5920,
+      "y": 4400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_validation_striptags",
+      "type": "file",
+      "file": "graphify/obsidian/stripTags().md",
+      "x": 5520,
+      "y": 4480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "type": "file",
+      "file": "graphify/obsidian/syncImport.ts.md",
+      "x": 5720,
+      "y": 4480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_settings_syncvariant",
+      "type": "file",
+      "file": "graphify/obsidian/syncVariant().md",
+      "x": 5920,
+      "y": 4480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_syncimport_todate",
+      "type": "file",
+      "file": "graphify/obsidian/toDate().md",
+      "x": 5520,
+      "y": 4560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_syncimport_tofloat",
+      "type": "file",
+      "file": "graphify/obsidian/toFloat().md",
+      "x": 5720,
+      "y": 4560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_syncimport_toint",
+      "type": "file",
+      "file": "graphify/obsidian/toInt().md",
+      "x": 5920,
+      "y": 4560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_carrierprioritypanel_todayiso",
+      "type": "file",
+      "file": "graphify/obsidian/todayISO().md",
+      "x": 5520,
+      "y": 4640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_triggermanualsync",
+      "type": "file",
+      "file": "graphify/obsidian/triggerManualSync().md",
+      "x": 5720,
+      "y": 4640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_updatesyncstatus",
+      "type": "file",
+      "file": "graphify/obsidian/updateSyncStatus().md",
+      "x": 5920,
+      "y": 4640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_upsertbalances",
+      "type": "file",
+      "file": "graphify/obsidian/upsertBalances().md",
+      "x": 5520,
+      "y": 4720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_toast_usetoast",
+      "type": "file",
+      "file": "graphify/obsidian/useToast().md",
+      "x": 5720,
+      "y": 4720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_server_validate",
+      "type": "file",
+      "file": "graphify/obsidian/validate().md",
+      "x": 5920,
+      "y": 4720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_validation_validatebody",
+      "type": "file",
+      "file": "graphify/obsidian/validateBody().md",
+      "x": 5520,
+      "y": 4800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_validation_validatequery",
+      "type": "file",
+      "file": "graphify/obsidian/validateQuery().md",
+      "x": 5720,
+      "y": 4800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "type": "file",
+      "file": "graphify/obsidian/validation.ts.md",
+      "x": 5920,
+      "y": 4800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_auth_verifytoken",
+      "type": "file",
+      "file": "graphify/obsidian/verifyToken().md",
+      "x": 5520,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_writeconfig",
+      "type": "file",
+      "file": "graphify/obsidian/writeConfig().md",
+      "x": 5720,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_writeoffbalance",
+      "type": "file",
+      "file": "graphify/obsidian/writeOffBalance().md",
+      "x": 5920,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g8",
+      "type": "group",
+      "label": "Preload Module",
+      "x": 8660,
+      "y": 0,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_preload_handler",
+      "type": "file",
+      "file": "graphify/obsidian/handler().md",
+      "x": 8680,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_desktop_preload_js",
+      "type": "file",
+      "file": "graphify/obsidian/preload.js.md",
+      "x": 8880,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g9",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_preload_fn",
+      "type": "file",
+      "file": "graphify/obsidian/fn().md",
+      "x": 20,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_electron_preload_js",
+      "type": "file",
+      "file": "graphify/obsidian/preload.js_1.md",
+      "x": 220,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g10",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 6300,
+      "width": 660,
+      "height": 420,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_app_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/App.tsx.md",
+      "x": 980,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_errorboundary_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/ErrorBoundary.tsx.md",
+      "x": 1180,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_app_navlink",
+      "type": "file",
+      "file": "graphify/obsidian/NavLink().md",
+      "x": 1380,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_errorboundary_componentdidcatch",
+      "type": "file",
+      "file": "graphify/obsidian/componentDidCatch().md",
+      "x": 980,
+      "y": 6460,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_errorboundary_constructor",
+      "type": "file",
+      "file": "graphify/obsidian/constructor().md",
+      "x": 1180,
+      "y": 6460,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_errorboundary_getderivedstatefromerror",
+      "type": "file",
+      "file": "graphify/obsidian/getDerivedStateFromError().md",
+      "x": 1380,
+      "y": 6460,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_main_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/main.tsx.md",
+      "x": 980,
+      "y": 6540,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g11",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_types_ts",
+      "type": "file",
+      "file": "graphify/obsidian/types.ts.md",
+      "x": 1720,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g12",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_vite_env_d_ts",
+      "type": "file",
+      "file": "graphify/obsidian/vite-env.d.ts.md",
+      "x": 2460,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g13",
+      "type": "group",
+      "label": "Users Module",
+      "x": 3180,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_context_authcontext_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/AuthContext.tsx.md",
+      "x": 3200,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_authcontext_authprovider",
+      "type": "file",
+      "file": "graphify/obsidian/AuthProvider().md",
+      "x": 3400,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_authcontext_useauth",
+      "type": "file",
+      "file": "graphify/obsidian/useAuth().md",
+      "x": 3600,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g14",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_context_practicecontext_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/PracticeContext.tsx.md",
+      "x": 4160,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_practicecontext_practiceprovider",
+      "type": "file",
+      "file": "graphify/obsidian/PracticeProvider().md",
+      "x": 4360,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_practicecontext_usepractice",
+      "type": "file",
+      "file": "graphify/obsidian/usePractice().md",
+      "x": 4560,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g15",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_seed_main",
+      "type": "file",
+      "file": "graphify/obsidian/main().md",
+      "x": 4840,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_seed_ts",
+      "type": "file",
+      "file": "graphify/obsidian/seed.ts.md",
+      "x": 5040,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g16",
+      "type": "group",
+      "label": "Seedcdtcodes Module",
+      "x": 5500,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_seedcdtcodes_seed",
+      "type": "file",
+      "file": "graphify/obsidian/seed().md",
+      "x": 5520,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_seedcdtcodes_ts",
+      "type": "file",
+      "file": "graphify/obsidian/seedCdtCodes.ts.md",
+      "x": 5720,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g17",
+      "type": "group",
+      "label": "Users Module",
+      "x": 8660,
+      "y": 6300,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_createadminuser_ts",
+      "type": "file",
+      "file": "graphify/obsidian/createAdminUser.ts.md",
+      "x": 8680,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_createadminuser_main",
+      "type": "file",
+      "file": "graphify/obsidian/main()_1.md",
+      "x": 8880,
+      "y": 6380,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g18",
+      "type": "group",
+      "label": "Schema Module",
+      "x": 0,
+      "y": 6800,
+      "width": 880,
+      "height": 720,
+      "color": "1"
+    },
+    {
+      "id": "n_schema_addusedamount",
+      "type": "file",
+      "file": "graphify/obsidian/addUsedAmount().md",
+      "x": 20,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_calculator_calculateestimate",
+      "type": "file",
+      "file": "graphify/obsidian/calculateEstimate().md",
+      "x": 220,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_calculator_ts",
+      "type": "file",
+      "file": "graphify/obsidian/calculator.ts.md",
+      "x": 420,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_cdttocategory",
+      "type": "file",
+      "file": "graphify/obsidian/cdtToCategory().md",
+      "x": 20,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getbenefits",
+      "type": "file",
+      "file": "graphify/obsidian/getBenefits().md",
+      "x": 220,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getcoverage",
+      "type": "file",
+      "file": "graphify/obsidian/getCoverage().md",
+      "x": 420,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getcoverageforcategory",
+      "type": "file",
+      "file": "graphify/obsidian/getCoverageForCategory().md",
+      "x": 20,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getcurrentbenefits",
+      "type": "file",
+      "file": "graphify/obsidian/getCurrentBenefits().md",
+      "x": 220,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getpendingclaimstotal",
+      "type": "file",
+      "file": "graphify/obsidian/getPendingClaimsTotal().md",
+      "x": 420,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_getplanyear",
+      "type": "file",
+      "file": "graphify/obsidian/getPlanYear().md",
+      "x": 20,
+      "y": 7120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_markstale",
+      "type": "file",
+      "file": "graphify/obsidian/markStale().md",
+      "x": 220,
+      "y": 7120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "type": "file",
+      "file": "graphify/obsidian/schema.ts.md",
+      "x": 420,
+      "y": 7120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_updatelastservicedate",
+      "type": "file",
+      "file": "graphify/obsidian/updateLastServiceDate().md",
+      "x": 20,
+      "y": 7200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_upsertbenefits",
+      "type": "file",
+      "file": "graphify/obsidian/upsertBenefits().md",
+      "x": 220,
+      "y": 7200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_upsertcoverage",
+      "type": "file",
+      "file": "graphify/obsidian/upsertCoverage().md",
+      "x": 420,
+      "y": 7200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_schema_upsertplanyear",
+      "type": "file",
+      "file": "graphify/obsidian/upsertPlanYear().md",
+      "x": 20,
+      "y": 7280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g19",
+      "type": "group",
+      "label": "Encryption Module",
+      "x": 960,
+      "y": 6800,
+      "width": 660,
+      "height": 420,
+      "color": "2"
+    },
+    {
+      "id": "n_encryption_decrypt",
+      "type": "file",
+      "file": "graphify/obsidian/decrypt().md",
+      "x": 980,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_encryption_decryptfromstring",
+      "type": "file",
+      "file": "graphify/obsidian/decryptFromString().md",
+      "x": 1180,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_encryption_encrypt",
+      "type": "file",
+      "file": "graphify/obsidian/encrypt().md",
+      "x": 1380,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_encryption_encrypttostring",
+      "type": "file",
+      "file": "graphify/obsidian/encryptToString().md",
+      "x": 980,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_encryption_ts",
+      "type": "file",
+      "file": "graphify/obsidian/encryption.ts.md",
+      "x": 1180,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_encryption_getkey",
+      "type": "file",
+      "file": "graphify/obsidian/getKey().md",
+      "x": 1380,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_encryption_hashphi",
+      "type": "file",
+      "file": "graphify/obsidian/hashPhi().md",
+      "x": 980,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g20",
+      "type": "group",
+      "label": "Connect Module",
+      "x": 1700,
+      "y": 6800,
+      "width": 660,
+      "height": 420,
+      "color": "3"
+    },
+    {
+      "id": "n_connect_server_url",
+      "type": "file",
+      "file": "graphify/obsidian/SERVER_URL().md",
+      "x": 1720,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_server_stripe_connect_ts",
+      "type": "file",
+      "file": "graphify/obsidian/connect.ts.md",
+      "x": 1920,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_createonboardinglink",
+      "type": "file",
+      "file": "graphify/obsidian/createOnboardingLink().md",
+      "x": 2120,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_generatepaymentlink",
+      "type": "file",
+      "file": "graphify/obsidian/generatePaymentLink().md",
+      "x": 1720,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_getconnectaccount",
+      "type": "file",
+      "file": "graphify/obsidian/getConnectAccount().md",
+      "x": 1920,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_getstripe",
+      "type": "file",
+      "file": "graphify/obsidian/getStripe().md",
+      "x": 2120,
+      "y": 6960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_handlewebhook",
+      "type": "file",
+      "file": "graphify/obsidian/handleWebhook().md",
+      "x": 1720,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_connect_refreshaccountstatus",
+      "type": "file",
+      "file": "graphify/obsidian/refreshAccountStatus().md",
+      "x": 1920,
+      "y": 7040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g21",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_utils_api_ts",
+      "type": "file",
+      "file": "graphify/obsidian/api.ts.md",
+      "x": 2460,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_api_apifetch",
+      "type": "file",
+      "file": "graphify/obsidian/apiFetch().md",
+      "x": 2660,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_api_authheaders",
+      "type": "file",
+      "file": "graphify/obsidian/authHeaders().md",
+      "x": 2860,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g22",
+      "type": "group",
+      "label": "Confirmmodal Module",
+      "x": 3180,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_confirmmodal_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/ConfirmModal.tsx.md",
+      "x": 3200,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_confirmmodal_handlekeydown",
+      "type": "file",
+      "file": "graphify/obsidian/handleKeyDown().md",
+      "x": 3400,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g23",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_annualmaxtracker_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/AnnualMaxTracker.tsx.md",
+      "x": 4160,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_annualmaxtracker_daysuntil",
+      "type": "file",
+      "file": "graphify/obsidian/daysUntil().md",
+      "x": 4360,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_annualmaxtracker_fmtcurrency",
+      "type": "file",
+      "file": "graphify/obsidian/fmtCurrency().md",
+      "x": 4560,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g24",
+      "type": "group",
+      "label": "Coveragebreakdown Module",
+      "x": 4820,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_coveragebreakdown_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/CoverageBreakdown.tsx.md",
+      "x": 4840,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_coveragebreakdown_waitingperiodbadge",
+      "type": "file",
+      "file": "graphify/obsidian/WaitingPeriodBadge().md",
+      "x": 5040,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_coveragebreakdown_fmtcurrency",
+      "type": "file",
+      "file": "graphify/obsidian/fmtCurrency()_1.md",
+      "x": 5240,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g25",
+      "type": "group",
+      "label": "Users Module",
+      "x": 5500,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_card_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Card.stories.tsx.md",
+      "x": 5520,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g26",
+      "type": "group",
+      "label": "Bottomsheet Module",
+      "x": 8660,
+      "y": 6800,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_bottomsheet_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/BottomSheet.tsx.md",
+      "x": 8680,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_bottomsheet_handle",
+      "type": "file",
+      "file": "graphify/obsidian/handle().md",
+      "x": 8880,
+      "y": 6880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g27",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_input_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Input.stories.tsx.md",
+      "x": 20,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g28",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_button_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Button.stories.tsx.md",
+      "x": 980,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g29",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_toast_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Toast.stories.tsx.md",
+      "x": 1720,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g30",
+      "type": "group",
+      "label": "Card Module",
+      "x": 2440,
+      "y": 7600,
+      "width": 660,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_card_card",
+      "type": "file",
+      "file": "graphify/obsidian/Card().md",
+      "x": 2460,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_card_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Card.tsx.md",
+      "x": 2660,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_card_carddivider",
+      "type": "file",
+      "file": "graphify/obsidian/CardDivider().md",
+      "x": 2860,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_card_cardheader",
+      "type": "file",
+      "file": "graphify/obsidian/CardHeader().md",
+      "x": 2460,
+      "y": 7760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_card_cardtitle",
+      "type": "file",
+      "file": "graphify/obsidian/CardTitle().md",
+      "x": 2660,
+      "y": 7760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g31",
+      "type": "group",
+      "label": "Users Module",
+      "x": 3180,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_radio_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Radio.tsx.md",
+      "x": 3200,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g32",
+      "type": "group",
+      "label": "Skeletonloader Module",
+      "x": 4140,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_skeletonloader_skeleton",
+      "type": "file",
+      "file": "graphify/obsidian/Skeleton().md",
+      "x": 4160,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_skeletonloader_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/SkeletonLoader.tsx.md",
+      "x": 4360,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g33",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_checkbox_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Checkbox.stories.tsx.md",
+      "x": 4840,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g34",
+      "type": "group",
+      "label": "Label Module",
+      "x": 5500,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_label_label",
+      "type": "file",
+      "file": "graphify/obsidian/Label().md",
+      "x": 5520,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_label_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Label.tsx.md",
+      "x": 5720,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g35",
+      "type": "group",
+      "label": "Users Module",
+      "x": 8660,
+      "y": 7600,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_select_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Select.stories.tsx.md",
+      "x": 8680,
+      "y": 7680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g36",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_breadcrumb_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Breadcrumb.tsx.md",
+      "x": 20,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g37",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_listitem_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/ListItem.stories.tsx.md",
+      "x": 980,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g38",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_skeletonloader_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/SkeletonLoader.stories.tsx.md",
+      "x": 1720,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g39",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_header_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Header.tsx.md",
+      "x": 2460,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g40",
+      "type": "group",
+      "label": "Users Module",
+      "x": 3180,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_header_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Header.stories.tsx.md",
+      "x": 3200,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g41",
+      "type": "group",
+      "label": "Badge Module",
+      "x": 4140,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_badge_badge",
+      "type": "file",
+      "file": "graphify/obsidian/Badge().md",
+      "x": 4160,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_badge_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Badge.tsx.md",
+      "x": 4360,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g42",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_listitem_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/ListItem.tsx.md",
+      "x": 4840,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g43",
+      "type": "group",
+      "label": "Table Module",
+      "x": 5500,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_table_sorticon",
+      "type": "file",
+      "file": "graphify/obsidian/SortIcon().md",
+      "x": 5520,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_table_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Table.tsx.md",
+      "x": 5720,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_table_handlesort",
+      "type": "file",
+      "file": "graphify/obsidian/handleSort().md",
+      "x": 5920,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g44",
+      "type": "group",
+      "label": "Users Module",
+      "x": 8660,
+      "y": 8080,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_index_ts",
+      "type": "file",
+      "file": "graphify/obsidian/index.ts_1.md",
+      "x": 8680,
+      "y": 8160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g45",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_radio_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Radio.stories.tsx.md",
+      "x": 20,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g46",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_table_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Table.stories.tsx.md",
+      "x": 980,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g47",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_bottomsheet_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/BottomSheet.stories.tsx.md",
+      "x": 1720,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g48",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_button_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Button.tsx.md",
+      "x": 2460,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g49",
+      "type": "group",
+      "label": "Modal Module",
+      "x": 3180,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_modal_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Modal.tsx.md",
+      "x": 3200,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_modal_handlekeydown",
+      "type": "file",
+      "file": "graphify/obsidian/handleKeyDown()_1.md",
+      "x": 3400,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g50",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_loadingstate_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/LoadingState.stories.tsx.md",
+      "x": 4160,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g51",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_checkbox_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Checkbox.tsx.md",
+      "x": 4840,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_checkbox_setref",
+      "type": "file",
+      "file": "graphify/obsidian/setRef().md",
+      "x": 5040,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g52",
+      "type": "group",
+      "label": "Users Module",
+      "x": 5500,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_emptystate_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/EmptyState.stories.tsx.md",
+      "x": 5520,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_emptystate_stories_fileicon",
+      "type": "file",
+      "file": "graphify/obsidian/FileIcon().md",
+      "x": 5720,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g53",
+      "type": "group",
+      "label": "Users Module",
+      "x": 8660,
+      "y": 8560,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_emptystate_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/EmptyState.tsx.md",
+      "x": 8680,
+      "y": 8640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g54",
+      "type": "group",
+      "label": "Users Module",
+      "x": 0,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_badge_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Badge.stories.tsx.md",
+      "x": 20,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g55",
+      "type": "group",
+      "label": "Users Module",
+      "x": 960,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_tabbar_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/TabBar.tsx.md",
+      "x": 980,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g56",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_select_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Select.tsx.md",
+      "x": 1720,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g57",
+      "type": "group",
+      "label": "Modal Module",
+      "x": 2440,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_modal_stories_demo",
+      "type": "file",
+      "file": "graphify/obsidian/Demo().md",
+      "x": 2460,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_modal_stories_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Modal.stories.tsx.md",
+      "x": 2660,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g58",
+      "type": "group",
+      "label": "Users Module",
+      "x": 3180,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_input_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Input.tsx.md",
+      "x": 3200,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g59",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_loadingstate_loadingstate",
+      "type": "file",
+      "file": "graphify/obsidian/LoadingState().md",
+      "x": 4160,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_components_base_loadingstate_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/LoadingState.tsx.md",
+      "x": 4360,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g60",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_usedebounce_usedebounce",
+      "type": "file",
+      "file": "graphify/obsidian/useDebounce().md",
+      "x": 4840,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_hooks_usedebounce_ts",
+      "type": "file",
+      "file": "graphify/obsidian/useDebounce.ts.md",
+      "x": 5040,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g61",
+      "type": "group",
+      "label": "Users Module",
+      "x": 5500,
+      "y": 9040,
+      "width": 660,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_outbox_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Outbox.tsx.md",
+      "x": 5520,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_outbox_deliveryvariant",
+      "type": "file",
+      "file": "graphify/obsidian/deliveryVariant().md",
+      "x": 5720,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_outbox_handlerespond",
+      "type": "file",
+      "file": "graphify/obsidian/handleRespond().md",
+      "x": 5920,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_outbox_responselabel",
+      "type": "file",
+      "file": "graphify/obsidian/responseLabel().md",
+      "x": 5520,
+      "y": 9200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_outbox_responsevariant",
+      "type": "file",
+      "file": "graphify/obsidian/responseVariant().md",
+      "x": 5720,
+      "y": 9200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g62",
+      "type": "group",
+      "label": "Users Module",
+      "x": 8660,
+      "y": 9040,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_balances_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Balances.tsx.md",
+      "x": 8680,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_agevariant",
+      "type": "file",
+      "file": "graphify/obsidian/ageVariant().md",
+      "x": 8880,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_stagelabel",
+      "type": "file",
+      "file": "graphify/obsidian/stageLabel().md",
+      "x": 9080,
+      "y": 9120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balances_stagevariant",
+      "type": "file",
+      "file": "graphify/obsidian/stageVariant().md",
+      "x": 8680,
+      "y": 9200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g63",
+      "type": "group",
+      "label": "Login Module",
+      "x": 0,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_login_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Login.tsx.md",
+      "x": 20,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_login_handlesubmit",
+      "type": "file",
+      "file": "graphify/obsidian/handleSubmit()_1.md",
+      "x": 220,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g64",
+      "type": "group",
+      "label": "Dashboard Module",
+      "x": 960,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_dashboard_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Dashboard.tsx.md",
+      "x": 980,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_dashboard_stagebadge",
+      "type": "file",
+      "file": "graphify/obsidian/StageBadge().md",
+      "x": 1180,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_dashboard_fmt",
+      "type": "file",
+      "file": "graphify/obsidian/fmt()_1.md",
+      "x": 1380,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g65",
+      "type": "group",
+      "label": "Users Module",
+      "x": 1700,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_analytics_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Analytics.tsx.md",
+      "x": 1720,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_analytics_fetchallanalytics",
+      "type": "file",
+      "file": "graphify/obsidian/fetchAllAnalytics().md",
+      "x": 1920,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_analytics_fetchsection",
+      "type": "file",
+      "file": "graphify/obsidian/fetchSection().md",
+      "x": 2120,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_analytics_initsection",
+      "type": "file",
+      "file": "graphify/obsidian/initSection().md",
+      "x": 1720,
+      "y": 9680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g66",
+      "type": "group",
+      "label": "Users Module",
+      "x": 2440,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_balancedetail_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/BalanceDetail.tsx.md",
+      "x": 2460,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_balancedetail_fetchbalance",
+      "type": "file",
+      "file": "graphify/obsidian/fetchBalance().md",
+      "x": 2660,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g67",
+      "type": "group",
+      "label": "Pretreatmentestimate Module",
+      "x": 3180,
+      "y": 9520,
+      "width": 880,
+      "height": 520,
+      "color": "2"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_pretreatmentestimate_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/PreTreatmentEstimate.tsx.md",
+      "x": 3200,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_addprocedure",
+      "type": "file",
+      "file": "graphify/obsidian/addProcedure().md",
+      "x": 3400,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_coveragecategorybadge",
+      "type": "file",
+      "file": "graphify/obsidian/coverageCategoryBadge().md",
+      "x": 3600,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_fmtcad",
+      "type": "file",
+      "file": "graphify/obsidian/fmtCAD().md",
+      "x": 3200,
+      "y": 9680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_handleclick",
+      "type": "file",
+      "file": "graphify/obsidian/handleClick().md",
+      "x": 3400,
+      "y": 9680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_handleinput",
+      "type": "file",
+      "file": "graphify/obsidian/handleInput().md",
+      "x": 3600,
+      "y": 9680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_removeprocedure",
+      "type": "file",
+      "file": "graphify/obsidian/removeProcedure().md",
+      "x": 3200,
+      "y": 9760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_selectcode",
+      "type": "file",
+      "file": "graphify/obsidian/selectCode().md",
+      "x": 3400,
+      "y": 9760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_setcode",
+      "type": "file",
+      "file": "graphify/obsidian/setCode().md",
+      "x": 3600,
+      "y": 9760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_pretreatmentestimate_updatefee",
+      "type": "file",
+      "file": "graphify/obsidian/updateFee().md",
+      "x": 3200,
+      "y": 9840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g68",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4140,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_click_main_src_pages_paymentpage_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/PaymentPage.tsx.md",
+      "x": 4160,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_paymentpage_fetchbalance",
+      "type": "file",
+      "file": "graphify/obsidian/fetchBalance()_1.md",
+      "x": 4360,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_paymentpage_handlepayment",
+      "type": "file",
+      "file": "graphify/obsidian/handlePayment().md",
+      "x": 4560,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g69",
+      "type": "group",
+      "label": "Users Module",
+      "x": 4820,
+      "y": 9520,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_users_khalidegeh_desktop_dentist_collectrx_platform_src_frontend_components_dashboard_tsx",
+      "type": "file",
+      "file": "graphify/obsidian/Dashboard.tsx_1.md",
+      "x": 4840,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_dashboard_metriccard",
+      "type": "file",
+      "file": "graphify/obsidian/MetricCard().md",
+      "x": 5040,
+      "y": 9600,
+      "width": 180,
+      "height": 60
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_2_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_tests_phase3_estimatecalculator_test_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_preload_js_preload_handler",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_preload_js",
+      "toNode": "n_preload_handler",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_loadtrayicon",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_loadtrayicon",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_statuslabel",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_statuslabel",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_updatesyncstatus",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_updatesyncstatus",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_spawnsyncservice",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_spawnsyncservice",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_createwindow",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_createwindow",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_rebuildtraymenu",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_rebuildtraymenu",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_createtray",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_createtray",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_main_js_main_buildmenu",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_main_js",
+      "toNode": "n_main_buildmenu",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_main_loadtrayicon_main_updatesyncstatus",
+      "fromNode": "n_main_loadtrayicon",
+      "toNode": "n_main_updatesyncstatus",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_loadtrayicon_main_createtray",
+      "fromNode": "n_main_loadtrayicon",
+      "toNode": "n_main_createtray",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_statuslabel_main_updatesyncstatus",
+      "fromNode": "n_main_statuslabel",
+      "toNode": "n_main_updatesyncstatus",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_statuslabel_main_rebuildtraymenu",
+      "fromNode": "n_main_statuslabel",
+      "toNode": "n_main_rebuildtraymenu",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_updatesyncstatus_main_rebuildtraymenu",
+      "fromNode": "n_main_updatesyncstatus",
+      "toNode": "n_main_rebuildtraymenu",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_updatesyncstatus_main_spawnsyncservice",
+      "fromNode": "n_main_updatesyncstatus",
+      "toNode": "n_main_spawnsyncservice",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_updatesyncstatus_abeldent_sync_send",
+      "fromNode": "n_main_updatesyncstatus",
+      "toNode": "n_abeldent_sync_send",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_main_spawnsyncservice_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "fromNode": "n_main_spawnsyncservice",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_main_spawnsyncservice_main_setstatus",
+      "fromNode": "n_main_spawnsyncservice",
+      "toNode": "n_main_setstatus",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_spawnsyncservice_main_readconfig",
+      "fromNode": "n_main_spawnsyncservice",
+      "toNode": "n_main_readconfig",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_spawnsyncservice_main_restartsyncservice",
+      "fromNode": "n_main_spawnsyncservice",
+      "toNode": "n_main_restartsyncservice",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_createwindow_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "fromNode": "n_main_createwindow",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_main_rebuildtraymenu_main_createtray",
+      "fromNode": "n_main_rebuildtraymenu",
+      "toNode": "n_main_createtray",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_createtray_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "fromNode": "n_main_createtray",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_main_createtray_main_buildtraymenu",
+      "fromNode": "n_main_createtray",
+      "toNode": "n_main_buildtraymenu",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_send",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_send",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_sendstatus",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_sendstatus",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_fetchfromabeldent",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_fetchfromabeldent",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_posttorailway",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_posttorailway",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_buildbalancequery",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_buildbalancequery",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_fetchpatientbalances",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_fetchpatientbalances",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_runclaimssync",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_runclaimssync",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_runpatientbalancesync",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_runpatientbalancesync",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js_abeldent_sync_runallsyncs",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_desktop_services_abeldent_sync_js",
+      "toNode": "n_abeldent_sync_runallsyncs",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_send_abeldent_sync_sendstatus",
+      "fromNode": "n_abeldent_sync_send",
+      "toNode": "n_abeldent_sync_sendstatus",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_send_main_setstatus",
+      "fromNode": "n_abeldent_sync_send",
+      "toNode": "n_main_setstatus",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_abeldent_sync_send_awsconfig_getsecret",
+      "fromNode": "n_abeldent_sync_send",
+      "toNode": "n_awsconfig_getsecret",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_abeldent_sync_send_messaging_sendemail",
+      "fromNode": "n_abeldent_sync_send",
+      "toNode": "n_messaging_sendemail",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_abeldent_sync_sendstatus_abeldent_sync_runclaimssync",
+      "fromNode": "n_abeldent_sync_sendstatus",
+      "toNode": "n_abeldent_sync_runclaimssync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_sendstatus_abeldent_sync_runpatientbalancesync",
+      "fromNode": "n_abeldent_sync_sendstatus",
+      "toNode": "n_abeldent_sync_runpatientbalancesync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_sendstatus_abeldent_sync_runallsyncs",
+      "fromNode": "n_abeldent_sync_sendstatus",
+      "toNode": "n_abeldent_sync_runallsyncs",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_fetchfromabeldent_abeldent_sync_runclaimssync",
+      "fromNode": "n_abeldent_sync_fetchfromabeldent",
+      "toNode": "n_abeldent_sync_runclaimssync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_posttorailway_abeldent_sync_runclaimssync",
+      "fromNode": "n_abeldent_sync_posttorailway",
+      "toNode": "n_abeldent_sync_runclaimssync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_posttorailway_abeldent_sync_runpatientbalancesync",
+      "fromNode": "n_abeldent_sync_posttorailway",
+      "toNode": "n_abeldent_sync_runpatientbalancesync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_buildbalancequery_abeldent_sync_fetchpatientbalances",
+      "fromNode": "n_abeldent_sync_buildbalancequery",
+      "toNode": "n_abeldent_sync_fetchpatientbalances",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_fetchpatientbalances_abeldent_sync_runpatientbalancesync",
+      "fromNode": "n_abeldent_sync_fetchpatientbalances",
+      "toNode": "n_abeldent_sync_runpatientbalancesync",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_runclaimssync_abeldent_sync_runallsyncs",
+      "fromNode": "n_abeldent_sync_runclaimssync",
+      "toNode": "n_abeldent_sync_runallsyncs",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_abeldent_sync_runpatientbalancesync_abeldent_sync_runallsyncs",
+      "fromNode": "n_abeldent_sync_runpatientbalancesync",
+      "toNode": "n_abeldent_sync_runallsyncs",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_preload_js_preload_fn",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_preload_js",
+      "toNode": "n_preload_fn",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_readconfig",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_readconfig",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_writeconfig",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_writeconfig",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_assertstring",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_assertstring",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_assertobject",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_assertobject",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_makedoticon",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_makedoticon",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_buildtraymenu",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_buildtraymenu",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_setstatus",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_setstatus",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_setupstartuplaunch",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_setupstartuplaunch",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_fetchchangelog",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_fetchchangelog",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_setupautoupdater",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_setupautoupdater",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_triggermanualsync",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_triggermanualsync",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_electron_main_js_main_restartsyncservice",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_electron_main_js",
+      "toNode": "n_main_restartsyncservice",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_main_readconfig_main_writeconfig",
+      "fromNode": "n_main_readconfig",
+      "toNode": "n_main_writeconfig",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_buildtraymenu_main_setstatus",
+      "fromNode": "n_main_buildtraymenu",
+      "toNode": "n_main_setstatus",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_main_setstatus_carrierprioritypanel_handlesubmit",
+      "fromNode": "n_main_setstatus",
+      "toNode": "n_carrierprioritypanel_handlesubmit",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_main_triggermanualsync_settings_handletestconnection",
+      "fromNode": "n_main_triggermanualsync",
+      "toNode": "n_settings_handletestconnection",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_app_tsx_app_navlink",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_app_tsx",
+      "toNode": "n_app_navlink",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_app_tsx_users_khalidegeh_desktop_dentist_click_main_src_main_tsx",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_app_tsx",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_main_tsx",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_main_tsx_users_khalidegeh_desktop_dentist_click_main_src_components_errorboundary_tsx",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_main_tsx",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_components_errorboundary_tsx",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_context_authcontext_tsx_authcontext_authprovider",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_context_authcontext_tsx",
+      "toNode": "n_authcontext_authprovider",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_context_authcontext_tsx_authcontext_useauth",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_context_authcontext_tsx",
+      "toNode": "n_authcontext_useauth",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_context_practicecontext_tsx_practicecontext_practiceprovider",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_context_practicecontext_tsx",
+      "toNode": "n_practicecontext_practiceprovider",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_context_practicecontext_tsx_practicecontext_usepractice",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_context_practicecontext_tsx",
+      "toNode": "n_practicecontext_usepractice",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_messagetemplates_ts_messagetemplates_generatemessagebody",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_messagetemplates_ts",
+      "toNode": "n_messagetemplates_generatemessagebody",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_messagetemplates_ts_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_messagetemplates_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_messagetemplates_generatemessagebody_rulesengine_sendmessage",
+      "fromNode": "n_messagetemplates_generatemessagebody",
+      "toNode": "n_rulesengine_sendmessage",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts_awsconfig_getsecret",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts",
+      "toNode": "n_awsconfig_getsecret",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts_awsconfig_loadsecretsfromparameterstore",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts",
+      "toNode": "n_awsconfig_loadsecretsfromparameterstore",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_awsconfig_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_awsconfig_getsecret_awsconfig_loadsecretsfromparameterstore",
+      "fromNode": "n_awsconfig_getsecret",
+      "toNode": "n_awsconfig_loadsecretsfromparameterstore",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_awsconfig_loadsecretsfromparameterstore_index_initializeapp",
+      "fromNode": "n_awsconfig_loadsecretsfromparameterstore",
+      "toNode": "n_index_initializeapp",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_seed_ts_seed_main",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_seed_ts",
+      "toNode": "n_seed_main",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_seedcdtcodes_ts_seedcdtcodes_seed",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_seedcdtcodes_ts",
+      "toNode": "n_seedcdtcodes_seed",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_createadminuser_ts_createadminuser_main",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_createadminuser_ts",
+      "toNode": "n_createadminuser_main",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts_rulesengine_startrulesengine",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "toNode": "n_rulesengine_startrulesengine",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts_rulesengine_sendmessage",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "toNode": "n_rulesengine_sendmessage",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts_rulesengine_advancestage",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "toNode": "n_rulesengine_advancestage",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_rulesengine_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_ratelimiter_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_ratelimiter_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_index_initializeapp",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_index_initializeapp",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts_index_startserver",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_index_ts",
+      "toNode": "n_index_startserver",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_index_initializeapp_index_startserver",
+      "fromNode": "n_index_initializeapp",
+      "toNode": "n_index_startserver",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_startserver_auditlog_auditmiddleware",
+      "fromNode": "n_index_startserver",
+      "toNode": "n_auditlog_auditmiddleware",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_index_startserver_auth_createauthrouter",
+      "fromNode": "n_index_startserver",
+      "toNode": "n_auth_createauthrouter",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_index_startserver_estimates_createestimaterouter",
+      "fromNode": "n_index_startserver",
+      "toNode": "n_estimates_createestimaterouter",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_index_startserver_estimates_createreconciliationrouter",
+      "fromNode": "n_index_startserver",
+      "toNode": "n_estimates_createreconciliationrouter",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_index_startserver_syncimport_createsyncimportrouter",
+      "fromNode": "n_index_startserver",
+      "toNode": "n_syncimport_createsyncimportrouter",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts_messaging_getsendgrid",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "toNode": "n_messaging_getsendgrid",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts_messaging_gettwilio",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "toNode": "n_messaging_gettwilio",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts_messaging_fmt",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "toNode": "n_messaging_fmt",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts_messaging_sendemail",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "toNode": "n_messaging_sendemail",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts_messaging_sendsms",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_messaging_ts",
+      "toNode": "n_messaging_sendsms",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_messaging_getsendgrid_messaging_sendemail",
+      "fromNode": "n_messaging_getsendgrid",
+      "toNode": "n_messaging_sendemail",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_messaging_gettwilio_messaging_sendsms",
+      "fromNode": "n_messaging_gettwilio",
+      "toNode": "n_messaging_sendsms",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_messaging_fmt_messaging_sendemail",
+      "fromNode": "n_messaging_fmt",
+      "toNode": "n_messaging_sendemail",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_messaging_fmt_messaging_sendsms",
+      "fromNode": "n_messaging_fmt",
+      "toNode": "n_messaging_sendsms",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_messaging_sendsms_reminderengine_runremindercycle",
+      "fromNode": "n_messaging_sendsms",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_upsertbalances",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_upsertbalances",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_listbalances",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_listbalances",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_getbalance",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_getbalance",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_recordremindersent",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_recordremindersent",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_setpaymentlink",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_setpaymentlink",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_recordpayment",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_recordpayment",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_writeoffbalance",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_writeoffbalance",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts_balances_getremindercandidates",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_balances_ts",
+      "toNode": "n_balances_getremindercandidates",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_balances_recordremindersent_reminderengine_runremindercycle",
+      "fromNode": "n_balances_recordremindersent",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_balances_setpaymentlink_reminderengine_ensurepaymentlink",
+      "fromNode": "n_balances_setpaymentlink",
+      "toNode": "n_reminderengine_ensurepaymentlink",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_balances_getremindercandidates_reminderengine_runremindercycle",
+      "fromNode": "n_balances_getremindercandidates",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts_reminderengine_nextreminderstatus",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts",
+      "toNode": "n_reminderengine_nextreminderstatus",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts_reminderengine_ensurepaymentlink",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts",
+      "toNode": "n_reminderengine_ensurepaymentlink",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts_reminderengine_runremindercycle",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts_reminderengine_startreminderengine",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_patients_reminderengine_ts",
+      "toNode": "n_reminderengine_startreminderengine",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_reminderengine_nextreminderstatus_reminderengine_runremindercycle",
+      "fromNode": "n_reminderengine_nextreminderstatus",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_reminderengine_ensurepaymentlink_reminderengine_runremindercycle",
+      "fromNode": "n_reminderengine_ensurepaymentlink",
+      "toNode": "n_reminderengine_runremindercycle",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_reminderengine_ensurepaymentlink_server_complete_paymentservice_generatepaymentlink",
+      "fromNode": "n_reminderengine_ensurepaymentlink",
+      "toNode": "n_server_complete_paymentservice_generatepaymentlink",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_reminderengine_runremindercycle_server_complete_emailservice_sendemail",
+      "fromNode": "n_reminderengine_runremindercycle",
+      "toNode": "n_server_complete_emailservice_sendemail",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_reminderengine_startreminderengine_server_validate",
+      "fromNode": "n_reminderengine_startreminderengine",
+      "toNode": "n_server_validate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts_validation_validatebody",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "toNode": "n_validation_validatebody",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts_validation_validatequery",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "toNode": "n_validation_validatequery",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts_validation_striptags",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "toNode": "n_validation_striptags",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts_validation_sanitizebody",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "toNode": "n_validation_sanitizebody",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts_validation_guardsqlinjection",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_validation_ts",
+      "toNode": "n_validation_guardsqlinjection",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_validation_striptags_validation_sanitizebody",
+      "fromNode": "n_validation_striptags",
+      "toNode": "n_validation_sanitizebody",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts_auditlog_logaudit",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "toNode": "n_auditlog_logaudit",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts_auditlog_auditmiddleware",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "toNode": "n_auditlog_auditmiddleware",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auditlog_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_auth_signtoken",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_auth_signtoken",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_auth_verifytoken",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_auth_verifytoken",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_auth_requireauth",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_auth_requireauth",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_auth_requirerole",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_auth_requirerole",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_auth_requirepracticescope",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_auth_requirepracticescope",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_middleware_auth_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_auth_verifytoken_auth_requireauth",
+      "fromNode": "n_auth_verifytoken",
+      "toNode": "n_auth_requireauth",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_cdttocategory",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_cdttocategory",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getbenefits",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getbenefits",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getcurrentbenefits",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getcurrentbenefits",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_upsertbenefits",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_upsertbenefits",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_addusedamount",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_addusedamount",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_markstale",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_markstale",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getcoverage",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getcoverage",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getcoverageforcategory",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getcoverageforcategory",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_upsertcoverage",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_upsertcoverage",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_updatelastservicedate",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_updatelastservicedate",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getplanyear",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getplanyear",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_upsertplanyear",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_upsertplanyear",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts_schema_getpendingclaimstotal",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_schema_ts",
+      "toNode": "n_schema_getpendingclaimstotal",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_schema_cdttocategory_calculator_calculateestimate",
+      "fromNode": "n_schema_cdttocategory",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_schema_getbenefits_schema_getcurrentbenefits",
+      "fromNode": "n_schema_getbenefits",
+      "toNode": "n_schema_getcurrentbenefits",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_schema_getcurrentbenefits_calculator_calculateestimate",
+      "fromNode": "n_schema_getcurrentbenefits",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_schema_getcoverageforcategory_calculator_calculateestimate",
+      "fromNode": "n_schema_getcoverageforcategory",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_schema_getplanyear_calculator_calculateestimate",
+      "fromNode": "n_schema_getplanyear",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_schema_getpendingclaimstotal_calculator_calculateestimate",
+      "fromNode": "n_schema_getpendingclaimstotal",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_calculator_ts_calculator_calculateestimate",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_benefits_calculator_ts",
+      "toNode": "n_calculator_calculateestimate",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts_syncimport_tofloat",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "toNode": "n_syncimport_tofloat",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts_syncimport_toint",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "toNode": "n_syncimport_toint",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts_syncimport_todate",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "toNode": "n_syncimport_todate",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts_syncimport_createsyncimportrouter",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_syncimport_ts",
+      "toNode": "n_syncimport_createsyncimportrouter",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts_estimates_createestimaterouter",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "toNode": "n_estimates_createestimaterouter",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts_estimates_createreconciliationrouter",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_estimates_ts",
+      "toNode": "n_estimates_createreconciliationrouter",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts_auth_createauthrouter",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_routes_auth_ts",
+      "toNode": "n_auth_createauthrouter",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "toNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "label": "imports_from [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts_estimatecalculator_calculateestimate",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "toNode": "n_estimatecalculator_calculateestimate",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts_estimatecalculator_checkfrequencylimits",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "toNode": "n_estimatecalculator_checkfrequencylimits",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts_estimatecalculator_calculateage",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "toNode": "n_estimatecalculator_calculateage",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts_estimatecalculator_calculatemultiestimate",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_estimatecalculator_ts",
+      "toNode": "n_estimatecalculator_calculatemultiestimate",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_estimatecalculator_calculateestimate_estimatecalculator_checkfrequencylimits",
+      "fromNode": "n_estimatecalculator_calculateestimate",
+      "toNode": "n_estimatecalculator_checkfrequencylimits",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_estimatecalculator_calculateestimate_estimatecalculator_calculatemultiestimate",
+      "fromNode": "n_estimatecalculator_calculateestimate",
+      "toNode": "n_estimatecalculator_calculatemultiestimate",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_estimatecalculator_calculateestimate_carrierrules_getcarrierrule",
+      "fromNode": "n_estimatecalculator_calculateestimate",
+      "toNode": "n_carrierrules_getcarrierrule",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_estimatecalculator_calculateestimate_carrierrules_getcdtcoveragecategory",
+      "fromNode": "n_estimatecalculator_calculateestimate",
+      "toNode": "n_carrierrules_getcdtcoveragecategory",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_estimatecalculator_checkfrequencylimits_estimatecalculator_calculateage",
+      "fromNode": "n_estimatecalculator_checkfrequencylimits",
+      "toNode": "n_estimatecalculator_calculateage",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_estimatecalculator_calculatemultiestimate_carrierrules_getcarrierrule",
+      "fromNode": "n_estimatecalculator_calculatemultiestimate",
+      "toNode": "n_carrierrules_getcarrierrule",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts_reconciliationengine_reconcilepayment",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "toNode": "n_reconciliationengine_reconcilepayment",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts_reconciliationengine_reconcilebatch",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_reconciliationengine_ts",
+      "toNode": "n_reconciliationengine_reconcilebatch",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts_carrierrules_getcarrierrule",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "toNode": "n_carrierrules_getcarrierrule",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts_carrierrules_getcdtcoveragecategory",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_carrierrules_ts",
+      "toNode": "n_carrierrules_getcdtcoveragecategory",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_users_khalidegeh_desktop_dentist_click_main_src_server_services_encryption_ts_encryption_getkey",
+      "fromNode": "n_users_khalidegeh_desktop_dentist_click_main_src_server_services_encryption_ts",
+      "toNode": "n_encryption_getkey",
+      "label": "contains [EXTRACTED]"
+    }
+  ]
+}

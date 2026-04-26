@@ -1,0 +1,274 @@
+# Outstanding Work for a Production-Ready Product
+
+**Product intent:** The target is a **complete, deployable** CollectRx—something you can run in **staging and production** with a supported database, CI, secrets, monitoring, and compliance work appropriate to handling healthcare-adjacent data. This backlog is **not** “how to stay a demo”; it is the ordered work to get from the current codebase to that bar. (Some copy in older READMEs may still say “POC”; treat this document as the north star.)
+
+**Purpose:** Backlog of **ticket-sized** tasks, grouped by **phase**. Phases are sequential in priority: finish Phase 1 decisions before large Phase 2–3 build-outs; Phase 4+ can overlap once the core path is defined.
+
+**Ticket format:** Each item is sized for a single issue/PR (roughly **0.5–3 days** unless marked **[L]** for larger epics to split further).
+
+> **Context:** The repo currently mixes two stacks (`Collect-RX-main/` Prisma + Vite vs root `src/api` + `src/frontend`). **Phase 1** must resolve what ships as the product.
+
+---
+
+## Phase 1 — Product & architecture decisions
+
+*Goal: Agree what “the product” is, which codebase is canonical, and what MVP scope is.*
+
+**Status (2026-04-22):** P1-01 through P1-07 have deliverables in-repo: [docs/product/MVP-SCOPE.md](docs/product/MVP-SCOPE.md), [docs/adr/0001-primary-application-stack.md](docs/adr/0001-primary-application-stack.md), [docs/product/SCREENS-API-DATA-MAP.md](docs/product/SCREENS-API-DATA-MAP.md), [docs/ENVIRONMENT-MATRIX.md](docs/ENVIRONMENT-MATRIX.md), [README.md](README.md) (root), [Collect-RX-main/README.md](Collect-RX-main/README.md), and [docs/DEPRECATION.md](docs/DEPRECATION.md) with [src/README.md](src/README.md) and [.github/ISSUE_TEMPLATE/non_canonical_stack.md](.github/ISSUE_TEMPLATE/non_canonical_stack.md).
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P1-01 | **Name the shipping product and MVP** | Doc (1–2 pages): target user, 3 must-have outcomes, explicit non-goals for v1. |
+| P1-02 | **Choose primary stack (or two products)** | ADR: either “Collect-RX-main only” or “root `src` only” or “two products with names X/Y”; list what happens to the other tree (archive, delete, or extract package). |
+| P1-03 | **Map screens → APIs → data** | Spreadsheet or doc: every major UI route, backing endpoint, and data store; mark **missing** or **mock**. |
+| P1-04 | **Environment matrix** | Table: `local` / `staging` / `prod` — URL, DB, feature flags, which integrations are live vs mock. |
+| P1-05 | **Update root README: remove stale POC claims** | README matches reality (auth, stacks, how to run); “POC only” only where true. |
+| P1-06 | **Update Collect-RX-main README** | Same as P1-05 for that package; link to ADR from P1-02. |
+| P1-07 | **Deprecate path for non-canonical code** | Issue template + `README` section: “We are not taking PRs for `X` until Y”; or delete/move folder per ADR. |
+
+---
+
+## Phase 2 — Foundation (repo, build, database, CI)
+
+*Goal: One way to run, one deploy story, professional database lifecycle.*
+
+**Status (2026-04-22):** P2-01–P2-12 are implemented: npm **workspace** with `npm run dev` → Collect-RX-main, **Vite 6** (no mandatory `--legacy-peer-deps`), **PostgreSQL** + `prisma/migrations`, **docker-compose** Postgres, [docs/DATABASE.md](docs/DATABASE.md), [`.github/workflows/ci-collectrx.yml`](.github/workflows/ci-collectrx.yml) (typecheck, lint, test, build + migrate against CI Postgres), [docs/RELEASING.md](docs/RELEASING.md) + [CHANGELOG.md](CHANGELOG.md), [docs/NPM-AUDIT.md](docs/NPM-AUDIT.md), expanded [Collect-RX-main/.env.example](Collect-RX-main/.env.example). Staging/prod `DATABASE_URL` is operator-specific — see [docs/ENVIRONMENT-MATRIX.md](docs/ENVIRONMENT-MATRIX.md).
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P2-01 | **Single `package.json` or documented monorepo** | Clear top-level `npm`/`pnpm` scripts; one command starts app + API for the canonical stack. |
+| P2-02 | **Resolve peer-deps / lockfile (Collect-RX)** | No mandatory `--legacy-peer-deps` for dev install; or document why and track upgrade ticket. |
+| P2-03 | **Typecheck in CI** | `tsc --noEmit` (and frontend build) on PR for canonical packages. |
+| P2-04 | **Lint in CI** | ESLint (or Biome) on PR; fix or grandfather with ticket IDs. |
+| P2-05 | **Target PostgreSQL for production** | Prisma `datasource` for prod; env `DATABASE_URL` documented. |
+| P2-06 | **Introduce Prisma `migrate` workflow** | Replace ad-hoc `db push` in deploy docs with `migrate deploy`; add first baseline migration. |
+| P2-07 | **Staging database** | Hosted Postgres + `DATABASE_URL` for staging; only anonymized or synthetic data. |
+| P2-08 | **Local dev with Postgres (optional path)** | `docker-compose` or docs for local Postgres matching prod. |
+| P2-09 | **CI: run unit tests** | Minimal Jest/Vitest job; at least 1 test that runs green. |
+| P2-10 | **Version tagging / changelog policy** | Semantic version tags or release notes process for user-visible changes. |
+| P2-11 | **Address root `npm audit` findings** | Triage: fix, bump, or documented exception per CVE. |
+| P2-12 | **Document required env vars** | `.env.example` (no secrets) for canonical app; list each var with one-line purpose. |
+
+---
+
+## Phase 3 — Core product journeys (end-to-end)
+
+*Goal: Login → see real data → take primary actions without mocks blocking.*
+
+**Status (2026-04-24) — Phase 3 (P3) is** **COMPLETE** for in-scope work: engineering deliverables, or items **deferred/closed in docs** (see [Appendix C](#appendix-c--phase-3-p3-01-to-p3-42-completion-review) for P3-01 through P3-42). **Follow-ups (non-blockers):** one real **Stripe test-mode e2e** on your host (P3-20) — covered in operator checklists; automated E2E + mock webhook is **P7** (see Phase 7 below). Optional **DataState** on `PreTreatmentEstimate` (P3-14).
+
+### 3A — Auth & tenant
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P3-01 | **Per-user model (or explicit v1 stay on practice login)** | Doc + optional schema: if per-user, add `User` and roles; if not, document that v1 is practice shared login only. |
+| P3-02 | **Password reset flow** (if user accounts) | Request reset → email link → new password; tokens expire. |
+| P3-03 | **Rate limit login endpoints** | 429 with backoff; metrics or logs on blocks (no PII in logs). |
+| P3-04 | **Session expiry UX** | Friendly message + redirect to login when 401/403; no infinite spinners. |
+| P3-05 | **Practice switcher (if multi-tenant in v1)** | User with access to N practices can switch; API enforces membership. |
+
+### 3B — UI routes vs backend
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P3-10 | **Audit: implement or remove `/api/benefits` calls** | All `PreTreatmentEstimate` fetches hit existing, secured routes; or feature-flag page off. |
+| P3-11 | **Audit: implement or remove `/api/patients/balances` calls** | Same for `PatientAR` page. |
+| P3-12 | **Replace “mocked” analytics widgets** | `Analytics.tsx` / `Dashboard.tsx` use real data or show “not configured” with no fake numbers. |
+| P3-13 | **Wire admin settings “Save” to API** | Persisted fields; success/error toasts. |
+| P3-14 | **Consistent error/empty/loading states** | Shared component or pattern; 3+ key pages updated. |
+
+### 3C — Money movement (minimal real path)
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P3-20 | **Stripe: dev keys + test Checkout path** | One end-to-end payment in test mode; webhook updates balance state. |
+| P3-21 | **Idempotent payment webhook handler** | Duplicate events don’t double-post. |
+| P3-22 | **Patient pay link: tokenized link or Checkout session** | Spec + implementation: link expires; no staff cookie required; audit logged. |
+| P3-23 | **Receipt / confirmation** | Email or on-screen confirmation for patient payment. |
+
+### 3D — PMS / data in
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P3-30 | **CSV import: upload + validate** | File upload, column mapping, row-level errors returned to user. |
+| P3-31 | **Import: idempotency** | Re-import same file doesn’t duplicate; key strategy documented. |
+| P3-32 | **Long-term: PMS integration plan** [L] | Epics: vendor, protocol, BAA, timeline (can be doc-only in this phase). |
+
+### 3E — Eligibility (if in scope)
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P3-40 | **Persist eligibility snapshots per `eligibility` TODOs** | DB tables + write path from engine; migrations included. |
+| P3-41 | **Unit tests for money-affecting rules** | Deductible, max, COB with edge cases. |
+| P3-42 | **Reconciliation persist + replay** | `reconcile` results stored; can re-run and compare. |
+
+---
+
+## Phase 4 — Integrations (production configurations)
+
+*Goal: Real providers, not mocks; production-safe keys and webhooks.*
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P4-01 | **SendGrid: production API key + sender domain** | SPF/DKIM/DMARC verified; bounces to monitoring or inbox. |
+| P4-02 | **Unsubscribe + preference compliance** | Footer links, honored in API; law checklist reviewed by compliance. |
+| P4-03 | **Twilio: prod numbers + opt-out keywords** | STOP/HELP; rate limits; logging without message body. |
+| P4-04 | **Stripe: Connect review** | Onboarding flow, dashboard links, fee disclosure; test + prod keys separated. |
+| P4-05 | **Vapi: webhook HMAC + replay table** | Signature verification; store event idempotency; rotate secrets procedure documented. |
+| P4-06 | **AWS SSM / secrets runbook** | How keys are loaded in staging/prod; who can rotate; break-glass. |
+| P4-07 | **Abeldent / Dentrix (if v1): connector spike** [L] | Time-boxed: prove read path or file drop; out-of-scope clearly marked if not. |
+| P4-08 | **Failover behavior** | If Twilio/SendGrid/Stripe down, user-visible status + retries in queue. |
+
+**Go-live (Phase 4 “done”):** The **product** is go-live ready when you complete the **operator** column in [docs/operations/PHASE4-GO-LIVE.md](docs/operations/PHASE4-GO-LIVE.md) (DNS, live keys, webhooks, counsel) and **Admin → Integrations** shows the expected config for your practice.
+
+**Code + runbooks (2026-04-22):** [PHASE4-INTEGRATIONS.md](docs/operations/PHASE4-INTEGRATIONS.md), [SECRETS-GO-LIVE.md](docs/operations/SECRETS-GO-LIVE.md). **P4-01** — Event Webhook `POST /api/webhooks/sendgrid` (Ed25519 if key set), bounce/drop/spam → `emailOptOutAt` (by `balance_id` custom arg or email). **P4-02** — `emailOptOutAt`, one-click `GET /api/public/email-unsubscribe`, `List-Unsubscribe` on reminders, footers. **P4-03** — unchanged Twilio path. **P4-04** — in app: `GET /api/admin/integrations` + Admin “Integrations” readout (keys present, Connect flags); **not** a substitute for the full table row (fee disclosure, Stripe Dashboard links, Connect *review* — see Phase 4 table and product/ops). **P4-05** — unchanged. **P4-06** — secrets runbook. **P4-07** — [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md); **scope and go-live inclusion are a program decision**, not fixed here. **P4-08** — 2-attempt email/SMS retry + Admin status; if both attempts fail, see [PHASE4-INTEGRATIONS](docs/operations/PHASE4-INTEGRATIONS.md#p4-08-retry--failures) (queue is Phase 6/8). Prisma: `emailOptOutAt` migration.
+
+---
+
+## Phase 5 — Security, privacy, compliance
+
+*Goal: Meet bar for PHI/payments; defensible in audit.*
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P5-01 | **Data classification doc** | What is PHI, where stored, retention defaults. |
+| P5-02 | **Encryption at rest** | DB encryption or disk-level; documented for prod. |
+| P5-03 | **Field-level encryption (if required)** | High-sensitivity fields encrypted in application layer; key in KMS. |
+| P5-04 | **Audit log: who read/changed what** | Append-only or tamper-evident; admin query path. |
+| P5-05 | **BAA / DPA with vendors** | SendGrid, Twilio, Stripe, Vapi, hosting, DB: signed or in progress. |
+| P5-06 | **HIPAA gap review** [L] | External or internal checklist; open issues tracked. |
+| P5-07 | **Canada: PIPEDA / provincial** | Jurisdiction, breach process, if applicable. |
+| P5-08 | **Collections law content review** | Message templates reviewed for timing, frequency, disclosure. |
+| P5-09 | **PCI scope document** | Hosted fields vs redirect; who touches PAN. |
+| P5-10 | **SAST in CI** | CodeQL, Semgrep, or equivalent on default branch. |
+| P5-11 | **Annual pen test (PHI)** | Report + remediation plan for “must fix” items. |
+| P5-12 | **CSRF policy for cookie auth** | Doc + tests if using cross-site frontends. |
+
+**Status (P5, in-repo + operator):** Master index: [docs/compliance/PHASE5-COMPLIANCE.md](docs/compliance/PHASE5-COMPLIANCE.md). **P5-01 / P5-02 / P5-03 / P5-07–09 / P5-12** — compliance docs in `docs/compliance/` (linked from that index). **P5-04** — `AuditLog` + `GET /api/admin/audit-log` + Admin “Audit log” + writes for admin, rules, import, synthetic data, patient A/R actions, public email unsubscribe. **P5-10** — Semgrep `p/ci` in [.github/workflows/ci-collectrx.yml](.github/workflows/ci-collectrx.yml) (with existing quality job). **P5-05 / P5-06 / P5-11** — templates and trackers; **executed** BAAs, completed HIPAA review, and pen test reports are **operator/legal** (not in git). **P5-08** — review template + code pointers; counsel sign-off is out of band.
+
+---
+
+## Phase 6 — Platform operations & reliability
+
+*Goal: On-call can sleep; customers see status.*
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P6-01 | **Structured logging** | JSON logs; PII/PHI redaction rules. |
+| P6-02 | **Error tracking (e.g. Sentry)** | Server + client DSN; sampling in prod. |
+| P6-03 | **Metrics: golden signals** | Latency, errors, traffic; dashboard link. |
+| P6-04 | **Uptime check + alert** | Health endpoint; alert if down > N min. |
+| P6-05 | **DB backups + tested restore** | Runbook: restore to staging; RPO/RTO written. |
+| P6-06 | **Runbook: deploy & rollback** | One-pager: commands, k8s/PM2, feature flags. |
+| P6-07 | **Runbook: failed webhook replay** | Steps to safely replay after fix. |
+| P6-08 | **Staging = prod parity** | Same env shape; smoke test after each prod deploy. |
+| P6-09 | **Status page (optional v1)** | Or clear in-app / email comms for incidents. |
+| P6-10 | **On-call rotation (if SLA)** | Schedule + escalation; or explicit “no 24/7” in terms. |
+
+**Status (P6, eng + operator):** [PHASE6-OPS.md](docs/operations/PHASE6-OPS.md). **P6-01** — JSON `logLine` + request access log (prod default); PII/phone [redact](Collect-RX-main/src/server/observability/logger.ts) + unit tests. **P6-02** — optional `@sentry/node` + `@sentry/react` when `SENTRY_DSN` / `VITE_SENTRY_DSN` set; `ErrorBoundary` reports if client active. **P6-03** — `GET /api/health/metrics` (in-process) + Sentry/APM in prod. **P6-04** — `GET /api/health` (liveness) + `GET /api/health/ready` (DB, **503** if down). **P6-05…P6-10** — runbooks and checklists in that doc; **backups, alerts, on-call, status page** are **host/ops** to execute; document “no 24/7” in your terms if applicable.
+
+---
+
+## Phase 7 — Quality assurance & load
+
+**Status (P7, 2026-04-22):** **P7-01 / P7-02 / P7-03 / P7-04 / P7-07 / P7-08** are implemented in-repo. **P7-05** — sample k6 script + how to use + tie-in to P6 metrics ([PHASE7-QA.md](docs/operations/PHASE7-QA.md)). **P7-06** — webhook **burst/scale** guidance documented there (load generator on vendor hooks is an operator/perf exercise). **E2E on CI:** [`.github/workflows/ci-collectrx.yml`](.github/workflows/ci-collectrx.yml) (seed → build → Playwright). **i18n:** [I18N-DECISION.md](docs/product/I18N-DECISION.md).
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P7-01 | **E2E: login + dashboard** | Playwright: happy path on CI. |
+| P7-02 | **E2E: payment webhook path** | Stripe CLI or mock server in CI. |
+| P7-03 | **API integration tests** | Key routes return expected codes; auth cases. |
+| P7-04 | **Reproducible test fixtures** | Seed or factory; not only manual `db:seed`. |
+| P7-05 | **Load test: read-heavy API** [L] | k6 or similar; report p95, errors under target RPS. |
+| P7-06 | **Load test: webhook burst** | Voice/SMS spike handling documented. |
+| P7-07 | **Accessibility pass: critical flows** | Fix WCAG 2.1 A issues on login, balances, pay. |
+| P7-08 | **i18n decision** | “English only v1” or add framework + one extra locale in pilot. |
+
+---
+
+## Phase 8 — Background processing & scale
+
+*Goal: Outgrow single Node process without rewriting.*
+
+**Status (2026-04-25):** **P8-01** — [ADR 0002](docs/adr/0002-background-jobs-bullmq-redis.md) (BullMQ + Redis). **P8-02** — `npm run worker` ([workerEntry](Collect-RX-main/src/server/workerEntry.ts)); API registers repeatables when `REDIS_URL` is set, else in-process [rules + reminder](Collect-RX-main/src/server/index.ts). **P8-03** — `GET /api/health/queue` (depth when Redis) + [PHASE8-BACKGROUND.md](docs/operations/PHASE8-BACKGROUND.md) (alerts). **P8-04** — `ReminderSendLedger` + idempotency in [reminderEngine](Collect-RX-main/src/server/patients/reminderEngine.ts). Run `prisma migrate deploy` for the new table.
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P8-01 | **Queue technology choice** | Redis + Bull (or cloud queue); ADR. |
+| P8-02 | **Move rules/reminder execution to worker** | Horizontally scaled workers; no duplicate sends (locks). |
+| P8-03 | **Job dashboard or metrics** | Queue depth visible; alert on age. |
+| P8-04 | **Idempotent send pipeline** | Same “send reminder” job can’t double-email on retry. |
+
+---
+
+## Phase 9 — Polish & GTM
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P9-01 | **In-app help / “What is this?” for key terms** | Tooltips or help drawer on 3+ screens. |
+| P9-02 | **Legal: Terms, Privacy, cookie banner** | Published; linked in app and signup. |
+| P9-03 | **Admin onboarding checklist** | New practice: import → verify → go live. |
+| P9-04 | **Sales/support one-pager** | What the product does / doesn’t do; handoff to CS. |
+| P9-05 | **Changelog for customers** | Public or email-friendly release notes process. |
+
+**Phase 9 status (done in app):** In-app help via `HelpTip` on Dashboard, Insurance AR, and Pre-Treatment Estimate (`HelpTip.tsx`). Terms and Privacy at `/legal/terms` and `/legal/privacy`; `CookieBanner` in `App.tsx` with consent key `crx_cookie_consent_v1`. Sign-in and sidebar link to Terms, Privacy, product one-pager (`/product`, `ProductOnePager.tsx`), and customer changelog (`/changelog`, `customerChangelog.ts` + `Changelog.tsx`). Admin shows `AdminOnboardingChecklist` for the current practice. Index for routes and changelog updates: [PHASE9-GTM.md](docs/product/PHASE9-GTM.md). Legal copy is a template — counsel review before production.
+
+---
+
+## Appendix A — Epics to split (too large for one ticket)
+
+- **[L] P1-02** may spawn: migrate data model, re-point CI, move env, and redirect docs.
+- **[L] P3-22** patient pay links: legal + Stripe + email + support workflow.
+- **[L] P3-32** full PMS integration: multi-quarter; keep spike separate.
+- **[L] P5-06** HIPAA: often many sub-tasks after assessment.
+- **[L] P5-11** pen test: scheduling + full remediation pass.
+
+---
+
+## Appendix B — Original theme mapping (for traceability)
+
+| Original theme (summary doc) | Phases above |
+|------------------------------|--------------|
+| Product & experience | P1, P3, P9 |
+| Engineering & architecture | P2, P8 |
+| Integrations | P3C–D, P4 |
+| Security & privacy (beyond current hardening) | P3A, P5, P3-21 |
+| Compliance & legal | P5, P3-22 content |
+| Operations & reliability | P6, P4-08 |
+| Quality assurance | P7 |
+| Documentation & handover | P1, P2-12, P1-05/06, P6 runbooks |
+
+---
+
+## Appendix C — Phase 3 (P3-01 to P3-42) completion review
+
+*Scope: only IDs that appear in Phase 3 subsections above (3A–3E). Numbers between these (e.g. P3-06) were not listed as deliverables in this roadmap.*
+
+| ID | Verdict | Evidence / notes |
+|----|---------|-------------------|
+| **P3-01** | **Complete (v1 doc)** | [AUTH-MODEL-V1.md](docs/compliance/AUTH-MODEL-V1.md): v1 = per-practice shared login; no `User` table. |
+| **P3-02** | **Deferred (N/A v1)** | No per-user accounts → password reset not implemented; same doc. |
+| **P3-03** | **Complete** | `POST /api/auth/login`: `express-rate-limit` — 30 attempts / 15 min (`Collect-RX-main/src/server/index.ts`); 429 + `standardHeaders`. Optional backlog: metrics on blocks (P6). |
+| **P3-04** | **Complete** | [apiFetch.ts](Collect-RX-main/src/lib/apiFetch.ts) dispatches `crx:session-expired` on 401. |
+| **P3-05** | **Deferred (N/A v1)** | [AUTH-MODEL-V1.md](docs/compliance/AUTH-MODEL-V1.md): single practice per env; no switcher. |
+| **P3-10** | **Complete** | `PreTreatmentEstimate` → `/api/benefits/...` via `createBenefitsApiRouter` on protected `/api`. |
+| **P3-11** | **Complete** | `PatientAR` → `/api/patients/balances` via `createPatientArApiRouter`. |
+| **P3-12** | **Complete** | Dashboard/Analytics: real data or honest empty/error via `DataState` + APIs (no mock KPIs). |
+| **P3-13** | **Complete** | Admin carrier settings: `GET`/``PUT` `/api/admin/settings` + UI save. |
+| **P3-14** | **Complete** | `DataState` on all six main data pages including **Pre-Treatment** ([PreTreatmentEstimate.tsx](Collect-RX-main/src/pages/PreTreatmentEstimate.tsx)): shared `loading` shell; `res.ok` / toasts; **benefits** errors inline in the right panel (not full-page) so the form stays usable. |
+| **P3-20** | **Complete (doc + ops sign-off)** | [README — Stripe test mode + P3-20 checklist](Collect-RX-main/README.md#stripe-test-mode-p3-20-webhooks). Implementation is in code; each environment is **complete** when an operator has run the checkbox e2e in test mode. |
+| **P3-21** | **Complete** | [connect.ts](Collect-RX-main/src/server/stripe/connect.ts): `ProcessedStripeEvent` + `checkout.session.completed` only; PI ignored; duplicate `event.id` safe. |
+| **P3-22** | **Complete** | `publicPayToken` + TTL, `GET /api/public/pay/:token`, `/pay/p/:token` UI. |
+| **P3-23** | **Complete** | [PaymentThankYou](Collect-RX-main/src/pages/PaymentThankYou.tsx); [sendPaymentReceiptEmail](Collect-RX-main/src/server/patients/messaging.ts) on webhook when SendGrid set. |
+| **P3-30** | **Complete** | CSV upload, [header aliases](Collect-RX-main/src/server/csv/parseSimple.ts), row `errors` + Admin panel; `400` empty file. |
+| **P3-31** | **Complete** | [upsertBalances](Collect-RX-main/src/server/patients/balances.ts) + [CSV-IMPORT-IDEMPOTENCY.md](docs/product/CSV-IMPORT-IDEMPOTENCY.md). |
+| **P3-32** | **Complete (doc epic)** | [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md). |
+| **P3-40** | **Complete** | `EligibilityEstimateLog` + [routes](Collect-RX-main/src/routes/eligibility.ts); status returns `lastEstimate`. |
+| **P3-41** | **Complete** | [eligibility.test.ts](Collect-RX-main/tests/eligibility.test.ts) (deductible, annual max, COB, reconciliation flags, + P3-41 edge cases); [vitest.config](Collect-RX-main/vitest.config.ts) includes `tests/`. |
+| **P3-42** | **Complete** | `EligibilityReconcileLog` + `POST/GET` reconcile history; [ELIGIBILITY-RECONCILE-LOG.md](docs/product/ELIGIBILITY-RECONCILE-LOG.md). |
+
+**Review summary:** 19/19 in-scope P3 rows are **done in code** or **intentionally deferred/operator-only** as above. Automated browser E2E and production Stripe dry-runs are tracked under **P7** / release ops, not a Phase 3 code gap.
+
+---
+
+*Last updated: Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*

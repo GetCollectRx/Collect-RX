@@ -1,0 +1,256 @@
+/**
+ * AbelDent Sync Service — Electron Utility Process
+ *
+ * Runs inside Electron via utilityProcess.fork().
+ * Queries the on-premise AbelDent SQL Server database (Windows Integrated Auth)
+ * and POSTs outstanding claims to the Railway backend for queue processing.
+ *
+ * IPC (via process.parentPort):
+ *   Receives: { type: 'trigger' }   — run a sync immediately
+ *   Sends:    { type: 'status', status: 'syncing'|'ok'|'error', message?, lastSync? }
+ *
+ * Required env vars:
+ *   ABELDENT_SERVER          SQL Server instance, e.g. "(local)\ABELDENT" or "192.168.1.10"
+ *   ABELDENT_DATABASE        Database name, default "AbelDent"
+ *   RAILWAY_API_URL          CollectRx backend root
+ *   RAILWAY_API_TOKEN        Long-lived JWT for the service account
+ */
+
+'use strict';
+
+const https = require('https');
+const { URL } = require('url');
+
+// Config
+const SERVER = process.env.ABELDENT_SERVER || String.raw`(local)\ABELDENT`;
+const DATABASE = process.env.ABELDENT_DATABASE || 'AbelDent';
+const RAILWAY_URL = (process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
+const API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
+const PRACTICE_ID = process.env.ABELDENT_PRACTICE_ID || null;
+const INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
+const MIN_DAYS = parseInt(process.env.ABELDENT_MIN_DAYS, 10) || 14;
+const PATIENT_LEDGER_TABLE = process.env.ABELDENT_PATIENT_LEDGER_TABLE || 'PatientLedger';
+const MIN_DAYS_BALANCE = parseInt(process.env.ABELDENT_MIN_DAYS_BALANCE, 10) || 7;
+
+// IPC helpers
+// Supports two transports:
+//   1. utilityProcess.fork() — uses process.parentPort (recommended for Electron)
+//   2. child_process.spawn() — uses stdin/stdout protocol (main.js current impl)
+//      stdout keywords: "SYNC_OK: ..." and "SYNC_ERROR: ..."
+//      stdin keyword:   "SYNC_NOW"
+
+function send(type, payload = {}) {
+  if (process.parentPort) {
+    process.parentPort.postMessage({ type, ...payload });
+  }
+}
+
+function sendStatus(status, message) {
+  const msg = message || null;
+  const lastSync = new Date().toISOString();
+
+  // Transport 1: utilityProcess parentPort
+  send('status', { status, message: msg, lastSync });
+
+  // Transport 2: stdout lines for child_process.spawn() in electron/main.js
+  if (status === 'ok' || status === 'syncing') {
+    process.stdout.write(`SYNC_OK: ${msg || lastSync}\n`);
+  } else if (status === 'error') {
+    process.stdout.write(`SYNC_ERROR: ${msg || 'unknown error'}\n`);
+  }
+}
+
+// Check if mssql is available
+let sql = null;
+try {
+  sql = require('mssql');
+} catch {
+  console.log('[Sync] mssql package not installed — sync disabled');
+}
+
+const sqlConfig = sql ? {
+  server: SERVER,
+  database: DATABASE,
+  driver: 'msnodesqlv8',
+  options: {
+    trustedConnection: true,
+    enableArithAbort: true,
+    trustServerCertificate: true,
+  },
+} : null;
+
+// AbelDent query for insurance claims
+const AGING_QUERY = `
+  SELECT
+    CAST(ic.ClaimID AS VARCHAR(20)) AS id,
+    p.FirstName AS patient_first_name,
+    p.LastName AS patient_last_name,
+    ic.InsurancePlanName AS carrier_name,
+    ic.GroupNumber AS policy_number,
+    CAST(ic.ProcedureCode AS VARCHAR(20)) AS procedure_code,
+    ic.ProcedureDescription AS procedure_description,
+    CONVERT(VARCHAR(10), ic.DateOfService, 23) AS treatment_date,
+    CONVERT(VARCHAR(10), ic.SubmissionDate, 23) AS submission_date,
+    ic.AmountBilled AS amount_billed,
+    ic.AmountOutstanding AS amount_outstanding,
+    DATEDIFF(day, ic.SubmissionDate, GETDATE()) AS days_outstanding
+  FROM Insurance_Claims ic
+  JOIN Patients p ON p.PatientID = ic.PatientID
+  WHERE ic.AmountOutstanding > 0
+    AND ic.ClaimStatus NOT IN ('Paid', 'Void', 'Rejected')
+    AND DATEDIFF(day, ic.SubmissionDate, GETDATE()) >= @minDays
+  ORDER BY ic.AmountOutstanding DESC
+`;
+
+async function fetchFromAbeldent() {
+  if (!sql) throw new Error('mssql not available');
+  const pool = await sql.connect(sqlConfig);
+  const request = pool.request();
+  request.input('minDays', sql.Int, MIN_DAYS);
+  const result = await request.query(AGING_QUERY);
+  await pool.close();
+  return result.recordset;
+}
+
+// Post to Railway
+function postToRailway(rows, endpoint) {
+  return new Promise((resolve, reject) => {
+    if (!RAILWAY_URL || !API_TOKEN) {
+      return reject(new Error('RAILWAY_API_URL or RAILWAY_API_TOKEN is not set'));
+    }
+
+    const url = `${RAILWAY_URL}${endpoint}${PRACTICE_ID ? `?practice_id=${PRACTICE_ID}` : ''}`;
+    const parsed = new URL(url);
+    const body = Buffer.from(JSON.stringify(rows));
+
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': body.length,
+        'Authorization': `Bearer ${API_TOKEN}`,
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(json);
+          } else {
+            reject(new Error(`API ${res.statusCode}: ${json.error || data}`));
+          }
+        } catch {
+          reject(new Error(`API parse error (HTTP ${res.statusCode})`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// Patient balance query
+function buildBalanceQuery() {
+  const table = PATIENT_LEDGER_TABLE.replace(/[^A-Za-z0-9_]/g, '');
+  return `
+    SELECT
+      CAST(p.PatientID AS VARCHAR(20)) AS abeldent_patient_id,
+      p.FirstName AS patient_first_name,
+      p.LastName AS patient_last_name,
+      p.Email AS patient_email,
+      COALESCE(p.CellPhone, p.HomePhone) AS patient_phone,
+      CAST(pl.ProcedureCode AS VARCHAR(20)) AS procedure_code,
+      pl.ProcedureDescription AS procedure_description,
+      CONVERT(VARCHAR(10), pl.TreatmentDate, 23) AS treatment_date,
+      CONVERT(VARCHAR(10), pl.AdjudicationDate, 23) AS adjudication_date,
+      pl.Fee AS amount_billed,
+      COALESCE(pl.InsurancePaid, 0) AS insurance_paid,
+      (pl.Fee - COALESCE(pl.InsurancePaid, 0) - COALESCE(pl.PatientPaid, 0)) AS patient_owes,
+      DATEDIFF(day, pl.AdjudicationDate, GETDATE()) AS days_since_adjudication
+    FROM ${table} pl
+    JOIN Patients p ON p.PatientID = pl.PatientID
+    WHERE pl.AdjudicationDate IS NOT NULL
+      AND (pl.Fee - COALESCE(pl.InsurancePaid, 0) - COALESCE(pl.PatientPaid, 0)) > 0
+      AND DATEDIFF(day, pl.AdjudicationDate, GETDATE()) >= @minDaysBalance
+    ORDER BY patient_owes DESC
+  `;
+}
+
+async function fetchPatientBalances() {
+  if (!sql) throw new Error('mssql not available');
+  const pool = await sql.connect(sqlConfig);
+  const request = pool.request();
+  request.input('minDaysBalance', sql.Int, MIN_DAYS_BALANCE);
+  const result = await request.query(buildBalanceQuery());
+  await pool.close();
+  return result.recordset;
+}
+
+// Sync cycles
+async function runClaimsSync() {
+  sendStatus('syncing');
+  try {
+    const rows = await fetchFromAbeldent();
+    const result = await postToRailway(rows, '/api/claims/import');
+    sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
+    return true;
+  } catch (err) {
+    sendStatus('error', err.message);
+    return false;
+  }
+}
+
+async function runPatientBalanceSync() {
+  try {
+    const rows = await fetchPatientBalances();
+    const result = await postToRailway(rows, '/api/patients/balances');
+    sendStatus('ok', `Patient balances: ${result.imported ?? 0} new, ${result.updated ?? 0} updated`);
+    return true;
+  } catch (err) {
+    sendStatus('error', `Patient balance sync failed: ${err.message}`);
+    return false;
+  }
+}
+
+async function runAllSyncs() {
+  if (!sql) {
+    sendStatus('offline', 'mssql driver not available');
+    return;
+  }
+  await runClaimsSync();
+  await runPatientBalanceSync();
+}
+
+// Listen for manual trigger
+// Transport 1: utilityProcess parentPort
+if (process.parentPort) {
+  process.parentPort.on('message', (msg) => {
+    if (msg?.data?.type === 'trigger') {
+      runAllSyncs().catch(() => {});
+    }
+  });
+}
+
+// Transport 2: stdin "SYNC_NOW" line (used by child_process.spawn() in electron/main.js)
+if (process.stdin && !process.stdin.destroyed) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    if (chunk.toString().trim() === 'SYNC_NOW') {
+      console.log('[Sync] Manual trigger received via stdin');
+      runAllSyncs().catch(() => {});
+    }
+  });
+}
+
+// Initial sync on start, then on interval
+runAllSyncs();
+setInterval(runAllSyncs, INTERVAL_MS);

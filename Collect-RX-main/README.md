@@ -1,0 +1,350 @@
+# CollectRx — Dental A/R execution
+
+Web application for dental practices to run **rules-based** patient A/R workflows: stages, messaging, and payment collection, with a full **audit trail** in the app database.
+
+**Architecture decision (which codebase is “the product”):** see [`docs/adr/0001-primary-application-stack.md`](../docs/adr/0001-primary-application-stack.md) in the repo root. This folder (`Collect-RX-main/`) is the **canonical** app; the repo root `src/api` + `src/frontend` stack is a separate **prototype** (in-memory API).
+
+**MVP and non-goals (v1):** [`docs/product/MVP-SCOPE.md`](../docs/product/MVP-SCOPE.md).
+
+## 🎯 Overview
+
+This system sits alongside Dentrix (which remains the system of record) and provides automated execution of A/R collection workflows:
+- **Rules Engine**: Automatically advances balances through collection stages based on time and amount thresholds
+- **Automated Messaging**: Sends progressive messages (friendly → firm) as balances age
+- **Payment Collection**: Provides payment links and tracks all payment events
+- **Complete Auditability**: Every stage transition, message, and payment is recorded
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+ and npm
+- Windows, Mac, or Linux
+
+### Setup (3 minutes)
+
+```bash
+# 0. From repository root: install workspaces (PostgreSQL must be running separately unless you use Docker)
+cd .. && npm install && cd Collect-RX-main
+
+# 1. Environment — `.env` is not in git (secrets). Copy the template to create it:
+cp .env.example .env
+# Set DATABASE_URL to your PostgreSQL (e.g. Railway) and JWT_SECRET
+# Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead
+
+# 2. Prisma client + migrations (PostgreSQL; do not use db:push in prod — use migrate deploy)
+npm run db:generate
+npm run db:migrate:dev
+
+# 3. Seed database with practice, patients, and initial balances
+npm run db:seed
+
+# 4. Start the application (runs both backend and frontend)
+npm run dev
+```
+
+Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACTICE_PASSWORD` / `src/server/seed.ts` for dev defaults). For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
+
+**Automated tests (P7):** `npm test` (Vitest: unit + API/Stripe mock integration). E2E: `npm run build` then `npm start` (port 3000), set `E2E_PRACTICE_ID` from `npm run e2e:print-id` after a seed, then `npm run e2e` (Playwright). Details, k6 load example, and i18n decision: [../docs/operations/PHASE7-QA.md](../docs/operations/PHASE7-QA.md), [../docs/product/I18N-DECISION.md](../docs/product/I18N-DECISION.md).
+
+**Background jobs (P8):** With **`REDIS_URL`**, the API registers BullMQ repeatables; run **`npm run worker`** in a second process (same `DATABASE_URL` + env). Without Redis, rules + patient reminders run in-process. See [../docs/operations/PHASE8-BACKGROUND.md](../docs/operations/PHASE8-BACKGROUND.md) and [../docs/adr/0002-background-jobs-bullmq-redis.md](../docs/adr/0002-background-jobs-bullmq-redis.md). Queue depth: `GET /api/health/queue` when Redis is enabled.
+
+### Stripe test mode (P3-20, webhooks)
+
+1. Set **`STRIPE_SECRET_KEY`** to a [test](https://docs.stripe.com/keys#test-live-modes) key (`sk_test_...`) and **`STRIPE_WEBHOOK_SECRET`** to a signing secret (`whsec_...`).
+
+2. **Local webhooks:** install the [Stripe CLI](https://stripe.com/docs/stripe-cli) and run:
+
+   ```bash
+   stripe listen --forward-to localhost:3000/api/stripe/webhook
+   ```
+
+   Use the `whsec_` value the CLI prints as **`STRIPE_WEBHOOK_SECRET`** while that process is running (or create a [fixed endpoint](https://docs.stripe.com/webhooks#test-webhook) in the Dashboard for a public tunnel URL in staging/prod).
+
+3. Complete [Stripe Connect](https://docs.stripe.com/connect) onboarding for the practice in the app so Payment Links are created on a **connected** account.
+
+4. From **Patient A/R**, generate a **Payment Link** for a row, open the link, and pay with a [test card](https://docs.stripe.com/testing) (e.g. `4242 4242 4242 4242`).
+
+5. The server records the payment on **`checkout.session.completed`** (updates `PatientBalance`; receipt email if SendGrid is configured). The handler **ignores** `payment_intent.succeeded` for this flow so the same charge is not posted twice, and it skips duplicate `event.id` values via `ProcessedStripeEvent` (**P3-21**).
+
+**P3-20 — operator e2e (test mode) checklist:** run this once on each environment before go-live; check every box for that environment.
+
+- [ ] `STRIPE_SECRET_KEY` is `sk_test_...` and `STRIPE_WEBHOOK_SECRET` matches the active listener (CLI `whsec_` or Dashboard endpoint).
+- [ ] `stripe listen --forward-to <host>:3000/api/stripe/webhook` (or equivalent) is running or the Dashboard endpoint is reachable.
+- [ ] Connect onboarding is **complete** for the practice in the app.
+- [ ] From **Patient A/R**, a **Payment Link** opens; pay with `4242 4242 4242 4242`.
+- [ ] The balance / payment state updates as expected; replaying the same `checkout.session.completed` (or Stripe test resend) does **not** double-post (**P3-21** idempotency).
+
+> **Note:** The legacy in-app `POST /api/pay/:balanceId` (staff session) simulates a payment on the older `Balance` model. Real card flow for patient A/R is **Connect Payment Links** + the webhook path above on **`PatientBalance`**.
+
+The application will be available at:
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3000
+
+## 📋 Demo Script (5 minutes)
+
+Follow these steps to see the system in action:
+
+### Step 1: View Dashboard (30 seconds)
+1. Open http://localhost:5173 in your browser
+2. You'll see the dashboard with:
+   - Total open A/R amount
+   - Aging buckets (0-30, 31-60, >60 days)
+   - Balance counts by stage
+
+### Step 2: Watch the Rules Engine (1 minute)
+1. Check your terminal where you ran `npm run dev`
+2. Watch for log messages like:
+   ```
+   📨 Balance xxx → NOTIFIED
+   📨 Balance xxx → REMINDER_1
+   ⚠️  Balance xxx → ESCALATED + STAFF_REVIEW
+   ```
+3. The rules engine runs every 60 seconds and automatically processes balances based on:
+   - **CREATED** → Immediately send NOTIFIED message
+   - **NOTIFIED** (5+ days old) → Send REMINDER_1
+   - **REMINDER_1** (10+ days old) → Send REMINDER_2
+   - **REMINDER_2** (20+ days old OR ≥$500) → ESCALATED
+
+### Step 3: View Message Outbox (1 minute)
+1. Click **"Message Outbox"** in the navigation
+2. You'll see all messages sent by the rules engine
+3. Messages show progressive tone ladder:
+   - **NOTIFIED**: Friendly reminder
+   - **REMINDER_1**: Neutral follow-up
+   - **REMINDER_2**: Firm notice
+   - **ESCALATED**: Policy-based final notice
+
+### Step 4: Simulate Patient Response (2 minutes)
+1. In the Message Outbox, find any message with response buttons
+2. Click **"💰 Pay Now"** to simulate a payment
+   - Balance immediately closes
+   - Payment event is recorded
+   - Stage advances to CLOSED
+3. Try **"⚠️ Dispute"** on another message
+   - Balance status changes to IN_DISPUTE
+   - Stage advances to STAFF_REVIEW
+
+### Step 5: View Balance Details (1 minute)
+1. Click **"Balances"** in navigation
+2. Click **"View Details"** on any balance
+3. See complete timeline showing:
+   - All stage transitions
+   - All messages sent with full text
+   - All payment events
+   - Full audit trail
+
+### Step 6: Generate More Balances (30 seconds)
+1. Click **"Admin"** in navigation
+2. Set number of balances (e.g., 20)
+3. Click **"🔄 Generate Synthetic Balances"**
+4. Return to Dashboard to see updated totals
+5. Watch terminal logs as rules engine processes new balances
+
+## 🏗️ Architecture
+
+### Tech Stack
+- **Backend**: Node.js, Express, TypeScript
+- **Database**: SQLite with Prisma ORM
+- **Frontend**: React, TypeScript, Vite
+- **Styling**: CSS (no frameworks for simplicity)
+
+### Project Structure
+```
+dental-ar-system/
+├── prisma/
+│   └── schema.prisma          # Database schema
+├── src/
+│   ├── server/
+│   │   ├── index.ts           # Express API server
+│   │   ├── rulesEngine.ts     # Rules evaluation logic
+│   │   ├── messageTemplates.ts # Message templates with tone ladder
+│   │   └── seed.ts            # Database seeding
+│   ├── pages/
+│   │   ├── Dashboard.tsx      # Main dashboard with stats
+│   │   ├── Balances.tsx       # Balance list with filters
+│   │   ├── BalanceDetail.tsx  # Balance timeline view
+│   │   ├── Outbox.tsx         # Message outbox with response simulation
+│   │   ├── Admin.tsx          # Admin tools
+│   │   └── PaymentPage.tsx    # Payment portal
+│   ├── App.tsx                # Main React app
+│   ├── App.css               # Styles
+│   └── main.tsx              # React entry point
+├── package.json
+└── README.md
+```
+
+### Database Schema
+
+**Core Entities:**
+- `Practice`: Dental practice information
+- `Patient`: Synthetic patient data (no PHI)
+- `Balance`: Patient balances from "Dentrix sync"
+- `BalanceState`: Stage history for each balance
+- `OutreachEvent`: All messages sent
+- `PaymentEvent`: All payments received
+- `RuleSet` / `Rule`: Configurable automation rules
+
+## 🔐 Security & Privacy
+
+- **Authentication:** Practice-scoped **login** (hashed password in DB; session via **httpOnly** cookie in normal configuration). See `src/server` auth routes and `LoginPage` for current behavior. Per-user accounts and password reset are tracked in the product backlog (e.g. P3-01, P3-02 in `OUTSTANDING-FIXES-PRODUCT-READY.md`).
+- **Dev / demo data:** Seeded patients are **synthetic** (e.g. A01, A02) in typical dev setups—treat as non-production.
+- **Communications & payments:** Many flows are still **simulated** or use **test** keys until real integrations and compliance work are complete.
+- **Local vs production:** Default README steps assume **localhost**; production requires TLS, strong secrets, and a managed database (see root `docs/ENVIRONMENT-MATRIX.md`).
+
+## 🎨 Key Features
+
+### 1. Rules Engine
+- Evaluates all open balances every 60 seconds
+- Deterministic stage progression
+- Configurable thresholds and timing
+- Automatic message sending
+
+### 2. Message Templates
+Implements tone ladder appropriate for medical collections:
+- **NOTIFIED**: "This is a friendly reminder..."
+- **REMINDER_1**: "We wanted to follow up..."
+- **REMINDER_2**: "Immediate payment is required..."
+- **ESCALATED**: "IMPORTANT NOTICE - Per our practice policy..."
+
+### 3. Dashboard
+- Real-time A/R totals
+- Aging analysis (0-30, 31-60, >60 days)
+- Stage distribution
+- Filterable balance list
+
+### 4. Complete Audit Trail
+Every action is recorded:
+- Stage transitions with timestamps
+- Messages sent with full text
+- Patient responses (simulated)
+- Payment events
+
+### 5. Dentrix Integration Simulator
+- CSV upload ready (not implemented in POC)
+- Button to generate synthetic balances
+- Simulates "balance created after visit" workflow
+
+## 🔧 Configuration
+
+### Default Rules
+The system includes a default rule set (see `src/server/seed.ts`):
+
+1. **Balance Created** → Send NOTIFIED immediately
+2. **5 days since NOTIFIED** → Send REMINDER_1
+3. **10 days since REMINDER_1** → Send REMINDER_2
+4. **20 days since REMINDER_2 OR ≥$500** → ESCALATED + STAFF_REVIEW
+
+### Modifying Rules
+Rules are stored in the database and can be edited via the API:
+```typescript
+PUT /api/rules/:id
+{
+  "conditions": { "days": 7 },
+  "actionParams": { "templateKey": "REMINDER_1" }
+}
+```
+
+## 📊 API Endpoints
+
+### Dashboard
+- `GET /api/dashboard/stats?practiceId=xxx` - Get dashboard statistics
+
+### Balances
+- `GET /api/balances?practiceId=xxx&stage=xxx&minAmount=xxx` - List balances with filters
+- `GET /api/balances/:id` - Get balance detail with timeline
+
+### Outreach
+- `GET /api/outreach?practiceId=xxx` - List all outreach events
+- `POST /api/outreach/:id/respond` - Simulate patient response
+
+### Payments
+- `POST /api/pay/:balanceId` - Process payment
+
+### Admin
+- `POST /api/admin/generate-balances` - Generate synthetic balances
+- `GET /api/practices` - List practices
+- `GET /api/rules?practiceId=xxx` - Get rule sets
+- `PUT /api/rules/:id` - Update rule
+
+## 🧪 Testing Scenarios
+
+### Scenario 1: New Balance
+1. Generate a balance through Admin
+2. Watch it immediately receive NOTIFIED message
+3. View message in Outbox
+
+### Scenario 2: Aging Balance
+1. Use seed data which includes balances 0-45 days old
+2. Watch older balances automatically progress through stages
+3. Observe tone ladder in messages
+
+### Scenario 3: High-Value Balance
+1. Seed includes some $500+ balances
+2. These escalate faster per the amount threshold rule
+3. See ESCALATED stage even if not 20 days old
+
+### Scenario 4: Payment Flow
+1. Click payment link in message
+2. Complete payment
+3. View updated balance status and timeline
+
+### Scenario 5: Dispute Handling
+1. Simulate dispute response in Outbox
+2. Balance moves to IN_DISPUTE
+3. Stage advances to STAFF_REVIEW
+
+## 💡 Current limitations (not yet “production complete”)
+
+Intentional or in-progress gaps:
+
+1. **Integrations:** Full **Dentrix** (or other PMS) sync, production **SMS/email**, and **payment processor** paths are not all wired for production; see `SCREENS-API-DATA-MAP` and Phase 3–4 in `OUTSTANDING-FIXES-PRODUCT-READY.md`.
+2. **Identity:** **Practice shared login** today; per-user accounts, RBAC, and password reset are backlog items unless explicitly in scope.
+3. **Single-practice focus:** Data model can represent more; **UI** often assumes one practice per deployment.
+4. **Dentrix import:** **CSV** path / UI not fully productized; Admin “generate” supports demos.
+5. **Rules engine:** Runs in the **Node** process (not a distributed queue yet).
+6. **UI/UX:** Functional; polish, accessibility, and design system hardening are ongoing.
+7. **Some UI routes** call APIs not yet on this server (e.g. certain benefits / patient-balance list routes)—see the screens map doc.
+
+## 🚀 Production Considerations
+
+For production deployment, you would need:
+
+1. **Real Integrations**:
+   - Dentrix API or HL7 integration
+   - Twilio for SMS
+   - SendGrid for email
+   - Stripe/Square for payments
+
+2. **Authentication & Authorization**:
+   - User accounts with roles
+   - Practice/office level permissions
+   - Audit log access controls
+
+3. **Scalability**:
+   - Move to PostgreSQL
+   - Distributed task queue (Bull/BullMQ)
+   - Multiple worker processes
+
+4. **Compliance**:
+   - HIPAA compliance measures
+   - Encrypted data at rest and in transit
+   - Comprehensive audit logs
+   - BAA agreements with all vendors
+
+5. **UX Improvements**:
+   - Real-time updates via WebSocket
+   - CSV upload UI
+   - Advanced rule builder
+   - Reporting and analytics
+
+## 📝 License
+
+MIT License - This is demonstration code for evaluation purposes.
+
+## 🤝 Support
+
+This POC demonstrates the core concept of an A/R execution engine. For questions or to discuss production implementation, please contact the development team.
+
+---
+
+**Built with ❤️ to improve dental practice A/R management**
