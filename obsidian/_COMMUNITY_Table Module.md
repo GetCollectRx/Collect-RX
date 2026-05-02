@@ -9,6 +9,12 @@ members: 3
 **Cohesion:** 0.50 - moderately connected
 **Members:** 3 nodes
 
+## Intentional links
+
+- **Upstream:** list-heavy pages → [[_COMMUNITY_Dashboard Module]], [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[Table.tsx]], [[handleSort()]], [[SortIcon()]].
+- **Lateral:** [[_COMMUNITY_Badge Module]], [[_COMMUNITY_Skeletonloader Module]], [[_COMMUNITY_Modal Module]].
+
 ## Members
 - [[SortIcon()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Table.tsx
 - [[Table.tsx]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Table.tsx

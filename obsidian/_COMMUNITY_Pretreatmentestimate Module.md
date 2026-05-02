@@ -9,6 +9,12 @@ members: 10
 **Cohesion:** 0.50 - moderately connected
 **Members:** 10 nodes
 
+## Intentional links
+
+- **Upstream:** estimate + carrier APIs → [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[PreTreatmentEstimate.tsx]] and page handlers in members.
+- **Lateral:** [[_COMMUNITY_Schema Module]], [[_COMMUNITY_Coveragebreakdown Module]], [[_COMMUNITY_Confirmmodal Module]], [[_COMMUNITY_Card Module]], [[_COMMUNITY_Label Module]], [[_COMMUNITY_Seedcdtcodes Module]].
+
 ## Members
 - [[PreTreatmentEstimate.tsx]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/pages/PreTreatmentEstimate.tsx
 - [[addProcedure()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/pages/PreTreatmentEstimate.tsx

@@ -34,7 +34,7 @@ If you **prefer** a container and have [Docker Desktop](https://www.docker.com/p
 docker compose up -d
 ```
 
-Then set `DATABASE_URL` to the compose defaults, e.g. `postgresql://collectrx:collectrx_local_dev_only@localhost:5432/collectrx` (see [docker-compose.yml](../docker-compose.yml)). The file lives at the repo root, not inside `Collect-RX-main/`.
+Then set `DATABASE_URL` to the compose defaults, e.g. `postgresql://collectrx:collectrx_local_dev_only@localhost:5433/collectrx` (host **5433** maps into the container’s 5432; see [docker-compose.yml](../docker-compose.yml)). The file lives at the repo root, not inside `Collect-RX-main/`.
 
 ## Railway PostgreSQL
 

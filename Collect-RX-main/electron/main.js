@@ -17,6 +17,7 @@ const {
   shell,
 } = require('electron');
 const path  = require('path');
+const fs    = require('fs');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
@@ -25,10 +26,47 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); process.exit(0); }
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const isDev         = !app.isPackaged;
-const DASHBOARD_URL = isDev
-  ? 'http://localhost:5173'
-  : (process.env.COLLECTRX_DASHBOARD_URL || 'https://collectrx.up.railway.app');
+const isDev = !app.isPackaged;
+
+/** Example host only — your real Railway URL is different unless you own this service. */
+const DEFAULT_PROD_DASHBOARD = 'https://collectrx.up.railway.app';
+
+function readDashboardUrlFromUserData() {
+  if (isDev) return null;
+  try {
+    const p = path.join(app.getPath('userData'), 'dashboard-url.txt');
+    const raw = fs.readFileSync(p, 'utf8');
+    const line = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#'));
+    if (line && /^https?:\/\//i.test(line)) return line;
+  } catch (_) {
+    /* missing file */
+  }
+  return null;
+}
+
+function resolveDashboardUrl() {
+  if (isDev) return { url: 'http://localhost:5173', source: 'dev' };
+  const envUrl = process.env.COLLECTRX_DASHBOARD_URL?.trim();
+  if (envUrl) return { url: envUrl, source: 'env' };
+  const fromFile = readDashboardUrlFromUserData();
+  if (fromFile) return { url: fromFile, source: 'file' };
+  return { url: DEFAULT_PROD_DASHBOARD, source: 'default' };
+}
+
+const _dash = resolveDashboardUrl();
+const DASHBOARD_URL = _dash.url;
+
+if (!isDev && _dash.source === 'default') {
+  const hintPath = path.join(app.getPath('userData'), 'dashboard-url.txt');
+  console.warn(
+    `[CollectRx] Dashboard URL not configured — using placeholder (Railway may show 404).\n` +
+      `  Set env COLLECTRX_DASHBOARD_URL when launching, or create this file with one line (your public app URL):\n` +
+      `  ${hintPath}`
+  );
+}
 
 // Dev: resolve directly to desktop/services/abeldent-sync.js
 // Packaged: electron-builder copies desktop/ into resources/app/desktop/
@@ -137,8 +175,6 @@ function createWindow() {
 }
 
 // ── Sync service ──────────────────────────────────────────────────────────────
-const fs = require('fs');
-
 function spawnSyncService() {
   if (!fs.existsSync(SYNC_SERVICE_PATH)) {
     console.log('[Sync] Service not found at', SYNC_SERVICE_PATH, '— skipping');

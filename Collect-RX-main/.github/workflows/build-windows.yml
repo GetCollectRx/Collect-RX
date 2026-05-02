@@ -1,3 +1,5 @@
+# If this repo is checked out as the monorepo root `collectrx-platform`, GitHub does not run
+# workflows from this path. Use the root workflow: `.github/workflows/collectrx-electron-installers.yml`.
 name: Build Windows Installer
 
 on:

@@ -9,6 +9,12 @@ members: 2
 **Cohesion:** 0.50 - moderately connected
 **Members:** 2 nodes
 
+## Intentional links
+
+- **Upstream:** design-system shell; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[Modal.stories.tsx]], [[Demo()]]; implementation → [[Modal.tsx]].
+- **Lateral:** [[_COMMUNITY_Bottomsheet Module]], [[_COMMUNITY_Confirmmodal Module]], [[_COMMUNITY_Card Module]].
+
 ## Members
 - [[Demo()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Modal.stories.tsx
 - [[Modal.stories.tsx]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Modal.stories.tsx

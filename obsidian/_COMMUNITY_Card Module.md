@@ -9,6 +9,12 @@ members: 5
 **Cohesion:** 0.50 - moderately connected
 **Members:** 5 nodes
 
+## Intentional links
+
+- **Upstream:** panels on dashboard / estimates → [[_COMMUNITY_Dashboard Module]], [[_COMMUNITY_Pretreatmentestimate Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[Card.tsx]], [[CardHeader()]], [[CardTitle()]], [[CardDivider()]], [[Card()]].
+- **Lateral:** [[_COMMUNITY_Label Module]], [[_COMMUNITY_Badge Module]], [[_COMMUNITY_Modal Module]].
+
 ## Members
 - [[Card()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Card.tsx
 - [[Card.tsx]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/Card.tsx

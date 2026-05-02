@@ -9,6 +9,12 @@ members: 7
 **Cohesion:** 0.50 - moderately connected
 **Members:** 7 nodes
 
+## Intentional links
+
+- **Upstream:** PHI / token handling on server → [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[encryption.ts]], [[encrypt()]], [[decrypt()]], [[hashPhi()]].
+- **Lateral:** [[_COMMUNITY_Connect Module]] (external secrets + Stripe).
+
 ## Members
 - [[decrypt()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/services/encryption.ts
 - [[decryptFromString()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/services/encryption.ts

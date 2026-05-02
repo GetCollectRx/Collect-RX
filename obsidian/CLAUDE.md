@@ -14,6 +14,7 @@
 | `docs/product/PHASE9-GTM.md` | Public routes (`/legal/*`, `/product`, `/changelog`), cookie key, changelog data file |
 | `docs/product/MVP-SCOPE.md` | MVP and non-goals |
 | `Collect-RX-main/README.md` | Run, seed, test, Stripe/reminders/worker notes |
+| [[_MOC_COMMUNITY_Modules]] | Map of content for `_COMMUNITY_* Module` notes (intentional cross-links) |
 
 *Obsidian tip:* This vault folder is `collectrx-platform/obsidian/`. To open the files above, use your editor or attach the **parent folder** as a second vault if you need wikilinks to the whole repo.
 
@@ -63,6 +64,7 @@ E2E: build + `npm start`, seed practice id, `npm run e2e` (see `Collect-RX-main/
 
 ## Knowledge graph / auto-generated notes in this vault
 
+- **Cursor:** This repo includes **`.cursor/rules/obsidian-vault-context.mdc`** (`alwaysApply: true`) so agents **consult this vault** with `OUTSTANDING` and `Collect-RX-main`. Full map: **`CURSOR-REFERENCE.md`**; alphabetical list: **`VAULT-FILE-INDEX.txt`**.
 - **`GRAPH_REPORT.md`** — graphify snapshot (dated in file header). **Nodes may reference old filenames or a prior corpus.**
 - **`_COMMUNITY_*.md`**, many `ComponentName.tsx.md` files — useful for **exploration**, not guaranteed aligned with `Collect-RX-main` line-for-line.
 - For implementation, **prefer** `Collect-RX-main/src` + **`OUTSTANDING-FIXES-PRODUCT-READY.md`**.

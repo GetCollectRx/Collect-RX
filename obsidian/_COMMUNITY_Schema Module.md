@@ -9,6 +9,12 @@ members: 16
 **Cohesion:** 0.50 - moderately connected
 **Members:** 16 nodes
 
+## Intentional links
+
+- **Upstream:** patient / estimate flows → [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[schema.ts]], [[calculator.ts]], benefit helpers listed in members.
+- **Lateral:** [[_COMMUNITY_Pretreatmentestimate Module]], [[_COMMUNITY_Coveragebreakdown Module]], [[_COMMUNITY_Seedcdtcodes Module]].
+
 ## Members
 - [[addUsedAmount()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/benefits/schema.ts
 - [[calculateEstimate()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/benefits/calculator.ts

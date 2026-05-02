@@ -9,6 +9,12 @@ members: 2
 **Cohesion:** 0.50 - moderately connected
 **Members:** 2 nodes
 
+## Intentional links
+
+- **Upstream:** mobile-style overlays on settings / AR-style flows (see [[_COMMUNITY_Server Module]] page members); map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[BottomSheet.tsx]], [[handle()]].
+- **Lateral:** [[_COMMUNITY_Modal Module]], [[_COMMUNITY_Confirmmodal Module]].
+
 ## Members
 - [[BottomSheet.tsx]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/BottomSheet.tsx
 - [[handle()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/components/base/BottomSheet.tsx

@@ -9,6 +9,12 @@ members: 2
 **Cohesion:** 0.50 - moderately connected
 **Members:** 2 nodes
 
+## Intentional links
+
+- **Upstream:** server bootstrap / ops jobs → [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[seedCdtCodes.ts]], [[seed()]].
+- **Lateral:** [[_COMMUNITY_Schema Module]], [[_COMMUNITY_Pretreatmentestimate Module]].
+
 ## Members
 - [[seed()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/seedCdtCodes.ts
 - [[seedCdtCodes.ts]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/seedCdtCodes.ts

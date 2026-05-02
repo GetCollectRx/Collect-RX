@@ -9,6 +9,12 @@ members: 8
 **Cohesion:** 0.50 - moderately connected
 **Members:** 8 nodes
 
+## Intentional links
+
+- **Upstream:** payment routes and webhooks → [[_COMMUNITY_Server Module]]; map → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** [[connect.ts]], [[getStripe()]], [[handleWebhook()]], other members in this note.
+- **Lateral:** [[_COMMUNITY_Encryption Module]], payment classes in Server cluster (`[[PaymentService]]`).
+
 ## Members
 - [[SERVER_URL()]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/stripe/connect.ts
 - [[connect.ts]] - code - /Users/khalidegeh/Desktop/Dentist/Click-main/src/server/stripe/connect.ts

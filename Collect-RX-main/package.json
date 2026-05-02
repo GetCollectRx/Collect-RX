@@ -8,12 +8,15 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "node scripts/ensure-electron-symlink.cjs",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "tsx watch src/server/index.ts",
     "dev:frontend": "vite",
     "dev:electron": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "prisma generate && tsc && vite build",
     "build:win": "npm run build && electron-builder --win",
+    "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
+    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "typecheck": "tsc --noEmit",
@@ -106,6 +109,8 @@
   "build": {
     "appId": "com.collectrx.app",
     "productName": "CollectRx",
+    "afterPack": "./electron/afterPack.cjs",
+    "afterAllArtifactBuild": "./electron/afterAllArtifactBuild.cjs",
     "directories": {
       "output": "dist-electron"
     },
@@ -115,6 +120,19 @@
       "dist/**/*",
       "package.json"
     ],
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "identity": null
+    },
     "win": {
       "target": [
         {
@@ -123,8 +141,7 @@
             "x64"
           ]
         }
-      ],
-      "icon": "electron/assets/icon.ico"
+      ]
     },
     "nsis": {
       "oneClick": false,

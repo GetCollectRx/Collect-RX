@@ -9,6 +9,13 @@ members: 183
 **Cohesion:** 0.50 - moderately connected
 **Members:** 183 nodes
 
+## Intentional links
+
+- **Upstream:** app hosts and product context → [[_MOC_COMMUNITY_Modules]].
+- **Downstream:** HTTP + schedulers + sanitization (see members: `[[server.js]]`, `[[auth.ts]]`, `[[balances.ts]]`, `[[EmailService]]`, `[[PaymentService]]`).
+- **Lateral:** [[_COMMUNITY_Schema Module]], [[_COMMUNITY_Encryption Module]], [[_COMMUNITY_Connect Module]], [[_COMMUNITY_Seedcdtcodes Module]], [[_COMMUNITY_Preload Module]], [[_COMMUNITY_Login Module]], [[_COMMUNITY_Dashboard Module]], [[_COMMUNITY_Pretreatmentestimate Module]].
+- **Representative leaves:** [[index.ts]], [[authenticate()]], [[PatientAR.tsx]], [[Settings.tsx]].
+
 ## Members
 - [[.constructor()_1]] - code - /Users/khalidegeh/Desktop/Dentist/collectrx-platform/server.js
 - [[.constructor()_5]] - code - /Users/khalidegeh/Desktop/Dentist/collectrx-platform/server-complete.js

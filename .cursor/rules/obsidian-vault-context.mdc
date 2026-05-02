@@ -1,0 +1,33 @@
+---
+description: Consult the Obsidian vault for product/module context and graph notes in collectrx-platform
+alwaysApply: true
+---
+
+# Obsidian vault — agent context
+
+The folder `obsidian/` is an **Obsidian vault** (flat markdown + wikilinks). Use it **together with** live code under `Collect-RX-main/` and repo docs.
+
+## Read first when scope is product, phases, or cross-cutting behavior
+
+1. `obsidian/CLAUDE.md` — vault entry: stack, phase summary (P1–P9), canonical app path, legacy vs **Collect-RX-main** warnings.
+2. `obsidian/_MOC_COMMUNITY_Modules.md` — map of `_COMMUNITY_*` modules and **intentional cross-links** (triangles).
+3. `OUTSTANDING-FIXES-PRODUCT-READY.md` (repo root) — **authoritative** phased backlog and status.
+
+## Module hub notes (`_COMMUNITY_* Module.md`)
+
+When work touches an area below, open the matching note under `obsidian/` — each has `## Intentional links` (upstream / downstream / lateral peers):
+
+- `_COMMUNITY_Server Module.md`, `_COMMUNITY_Schema Module.md`, `_COMMUNITY_Encryption Module.md`, `_COMMUNITY_Connect Module.md`, `_COMMUNITY_Seedcdtcodes Module.md`, `_COMMUNITY_Preload Module.md`
+- `_COMMUNITY_Login Module.md`, `_COMMUNITY_Dashboard Module.md`, `_COMMUNITY_Pretreatmentestimate Module.md`, `_COMMUNITY_Users Module.md`
+- `_COMMUNITY_Modal Module.md`, `_COMMUNITY_Bottomsheet Module.md`, `_COMMUNITY_Confirmmodal Module.md`, `_COMMUNITY_Table Module.md`, `_COMMUNITY_Card Module.md`, `_COMMUNITY_Badge Module.md`, `_COMMUNITY_Label Module.md`, `_COMMUNITY_Skeletonloader Module.md`, `_COMMUNITY_Coveragebreakdown Module.md`
+
+## Leaf notes (symbol / file extraction)
+
+Hundreds of notes name symbols or files (e.g. `Login.tsx.md`, `balances.ts.md`). **Resolve Obsidian wikilinks** by treating `[[Some Name]]` as the file `obsidian/Some Name.md` when present.
+
+**Truth ordering:** For implementation and APIs, prefer **`Collect-RX-main/src`** and **OUTSTANDING**. Many vault paths point at older or parallel trees (see `CLAUDE.md`); use vault for **relationships, exploration, and module intent**, not as the only source of file paths.
+
+## Full inventory
+
+- Narrative index: `obsidian/CURSOR-REFERENCE.md`
+- Alphabetical list: `obsidian/VAULT-FILE-INDEX.txt`
