@@ -37,6 +37,37 @@ The application will be available at:
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:3000
 
+## CollectRx desktop app (Electron)
+
+The packaged app runs the **built-in** dashboard: a local API plus the Vite production build from `dist/`. You do not need `npm run dev` on the machine where the app is installed.
+
+### Settings folder (always `CollectRx`)
+
+The main process calls `app.setName('CollectRx')`, so the user data directory is:
+
+- **macOS**: `~/Library/Application Support/CollectRx/`
+- **Windows**: `%APPDATA%\CollectRx\`
+
+On first run the app creates **`collectrx.env`** there with placeholders. Set a real **`DATABASE_URL`** (PostgreSQL) and **`JWT_SECRET`**, save, quit, and reopen.
+
+Use the tray menu **Open settings folder…** or the buttons on the setup screen to open this folder or reveal **`collectrx.env`** in Finder / File Explorer.
+
+If you previously ran an older build that did not set the app name, files might exist under **`Application Support/dental-ar-system`** — copy **`collectrx.env`** and **`config.json`** into **`CollectRx`** if you need that data.
+
+### Optional: hosted dashboard only
+
+To load a remote site instead of the embedded server, put a single line **`https://…`** in **`dashboard-url.txt`** in that same folder, or set environment variable **`COLLECTRX_DASHBOARD_URL`** (or **`COLLECTRX_REMOTE_DASHBOARD`**), or set **`remoteDashboardUrl`** in **`config.json`**. Remove or clear that override to use the built-in dashboard again.
+
+### Build installers (from this repo)
+
+```bash
+cd Click-main
+npm install
+npm run build:mac:arm64   # Apple Silicon
+npm run build:mac:x64    # Intel Mac
+npm run build:mac        # arm64 + x64 zips
+```
+
 ## 📋 Demo Script (5 minutes)
 
 Follow these steps to see the system in action:

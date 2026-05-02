@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('collectrx', {
   getSettings  : () => ipcRenderer.invoke('get-settings'),
   saveSettings : (settings) => ipcRenderer.invoke('save-settings', settings),
 
+  // ── Desktop setup (collectrx.env, dashboard-url.txt) ───────────────────────
+  openUserDataFolder : () => ipcRenderer.invoke('open-user-data-folder'),
+  revealCollectrxEnv : () => ipcRenderer.invoke('reveal-collectrx-env'),
+
   // ── Navigation (tray → renderer) ─────────────────────────────────────────
   onNavigate: (cb) => {
     const fn = (_e, route) => cb(route);

@@ -38,6 +38,21 @@ async function getSecret(parameterName: string): Promise<string> {
  * Falls back to environment variables if Parameter Store is unavailable
  */
 export async function loadSecretsFromParameterStore(): Promise<AppSecrets> {
+  /** Packaged CollectRx.app: local Node process, env from parent + ~/Library/.../collectrx.env */
+  if (process.env.COLLECTRX_DESKTOP === '1') {
+    console.log('🔐 CollectRx desktop: using process environment (see collectrx.env in app data folder)');
+    const db = (process.env.DATABASE_URL || '').trim();
+    if (!db) {
+      console.error('❌ DATABASE_URL is empty. Add it to collectrx.env next to this app’s data folder.');
+    }
+    return {
+      VAPI_API_KEY: process.env.VAPI_API_KEY || 'unset',
+      DATABASE_URL: db || 'postgresql://localhost:5432/collectrx',
+      VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET || 'desktop-webhook-secret',
+      PORT: process.env.PORT || '38421',
+    };
+  }
+
   const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
 
   // In production (Railway), use Parameter Store

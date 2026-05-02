@@ -809,8 +809,10 @@ app.get('/api/queue/priority', async (req, res) => {
   }
 });
 
-// Serve static frontend files in production
-const distPath = path.join(process.cwd(), 'dist');
+// Serve static frontend (Vite dist). Desktop sets COLLECTRX_DIST_DIR to the path inside the .app.
+const distPath = process.env.COLLECTRX_DIST_DIR
+  ? path.resolve(process.env.COLLECTRX_DIST_DIR)
+  : path.join(process.cwd(), 'dist');
 console.log('📁 Static files path:', distPath);
 
 app.use(express.static(distPath));

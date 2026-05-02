@@ -24,21 +24,110 @@ const {
   dialog,
   shell,
 } = require('electron');
+
+/** User data dir is ~/Library/Application Support/<name> (macOS) or %APPDATA%\<name> (Windows). Must run before any getPath('userData'). */
+app.setName('CollectRx');
+
 const path  = require('path');
 const fs    = require('fs');
 const https = require('https');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const net  = require('net');
+const http = require('http');
 
 // ── Single instance ──────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); process.exit(0); }
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const isDev         = !app.isPackaged;
-const DASHBOARD_URL = isDev
-  ? 'http://localhost:5173'
-  : (process.env.COLLECTRX_DASHBOARD_URL || 'https://collectrx.up.railway.app');
+const isDev = !app.isPackaged;
+
+/** Dev: Vite dev server. Packaged: embedded API + static UI, or optional remote HTTPS URL. */
+const DASHBOARD_URL_DEV = 'http://localhost:5173';
+
+let backendChild = null;
+
+function readDashboardUrlFromFile() {
+  if (isDev) return null;
+  try {
+    const p = path.join(app.getPath('userData'), 'dashboard-url.txt');
+    const raw = fs.readFileSync(p, 'utf8');
+    const line = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#'));
+    if (line && /^https?:\/\//i.test(line)) return line;
+  } catch (_) {
+    /* missing */
+  }
+  return null;
+}
+
+/** First launch: template for DATABASE_URL / JWT (embedded server). Same folder as config.json. */
+function ensureCollectrxEnvPlaceholder() {
+  const userData = app.getPath('userData');
+  try {
+    fs.mkdirSync(userData, { recursive: true });
+    const envFile = path.join(userData, 'collectrx.env');
+    if (!fs.existsSync(envFile)) {
+      fs.writeFileSync(
+        envFile,
+        [
+          '# CollectRx desktop — PostgreSQL (Railway, local Postgres, etc.)',
+          'DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE',
+          '',
+          '# Required for staff login tokens',
+          'JWT_SECRET=replace-with-a-long-random-string',
+          '',
+          '# Optional: use a hosted CollectRx URL instead of the built-in dashboard —',
+          '# one https:// line in dashboard-url.txt in this folder, or COLLECTRX_DASHBOARD_URL',
+          '# Tray menu: Open settings folder…',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      console.log('[CollectRx] Created', envFile);
+    }
+  } catch (e) {
+    console.error('[CollectRx] collectrx.env:', e.message);
+  }
+}
+
+function openCollectrxUserDataFolder() {
+  const dir = app.getPath('userData');
+  shell.openPath(dir).then((err) => {
+    if (err) console.error('[CollectRx] openPath userData:', err);
+  });
+}
+
+function revealCollectrxEnvInShell() {
+  ensureCollectrxEnvPlaceholder();
+  const envFile = path.join(app.getPath('userData'), 'collectrx.env');
+  if (fs.existsSync(envFile)) shell.showItemInFolder(envFile);
+  else openCollectrxUserDataFolder();
+}
+
+function mergeCollectrxEnvFile(envFilePath, env) {
+  try {
+    if (!fs.existsSync(envFilePath)) return;
+    const raw = fs.readFileSync(envFilePath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const eq = t.indexOf('=');
+      if (eq === -1) continue;
+      const k = t.slice(0, eq).trim();
+      let v = t.slice(eq + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      if (k) env[k] = v;
+    }
+  } catch (e) {
+    console.error('[CollectRx] env merge:', e.message);
+  }
+}
 
 const SYNC_SERVICE_PATH = app.isPackaged
   ? path.join(process.resourcesPath, 'sync-service', 'abeldent-sync.js')
@@ -68,6 +157,166 @@ function writeConfig(updates) {
     console.error('[Config] Failed to write config:', e.message);
     return null;
   }
+}
+
+/** Optional: load hosted CollectRx from HTTPS instead of embedded local server. */
+function getRemoteDashboardUrl() {
+  if (isDev) return null;
+  const envRemote =
+    process.env.COLLECTRX_REMOTE_DASHBOARD?.trim() ||
+    process.env.COLLECTRX_DASHBOARD_URL?.trim();
+  if (envRemote && /^https?:\/\//i.test(envRemote)) return envRemote;
+  const cfg = (readConfig().remoteDashboardUrl ?? '').trim();
+  if (cfg && /^https?:\/\//i.test(cfg)) return cfg;
+  return readDashboardUrlFromFile();
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer();
+    s.listen(0, '127.0.0.1', () => {
+      const addr = s.address();
+      const p = typeof addr === 'object' && addr ? addr.port : 0;
+      s.close(() => resolve(p));
+    });
+    s.on('error', reject);
+  });
+}
+
+function waitForHealth(port, maxAttempts = 80) {
+  return new Promise((resolve) => {
+    let n = 0;
+    const tryOnce = () => {
+      const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+        if (res.statusCode === 200) resolve(true);
+        else if (++n < maxAttempts) setTimeout(tryOnce, 300);
+        else resolve(false);
+      });
+      req.on('error', () => {
+        if (++n < maxAttempts) setTimeout(tryOnce, 300);
+        else resolve(false);
+      });
+      req.setTimeout(2_000, () => {
+        req.destroy();
+        if (++n < maxAttempts) setTimeout(tryOnce, 300);
+        else resolve(false);
+      });
+    };
+    tryOnce();
+  });
+}
+
+async function startEmbeddedBackend() {
+  const appPath = app.getAppPath();
+  const userData = app.getPath('userData');
+  const serverEntry = path.join(appPath, 'desktop-backend', 'server.cjs');
+  const envFile = path.join(userData, 'collectrx.env');
+
+  if (!fs.existsSync(serverEntry)) {
+    console.error('[CollectRx] Missing bundled server:', serverEntry);
+    return null;
+  }
+
+  const port = await getFreePort();
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    COLLECTRX_DESKTOP: '1',
+    NODE_ENV: isDev ? 'development' : 'production',
+    PORT: String(port),
+    COLLECTRX_DIST_DIR: path.join(appPath, 'dist'),
+  };
+  mergeCollectrxEnvFile(envFile, env);
+
+  backendChild = spawn(process.execPath, [serverEntry], {
+    env,
+    cwd: appPath,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  backendChild.stdout?.on('data', (d) => console.log('[backend]', d.toString().trimEnd()));
+  backendChild.stderr?.on('data', (d) => console.error('[backend]', d.toString().trimEnd()));
+  backendChild.on('exit', (code, sig) => {
+    console.log('[CollectRx backend] exit', code, sig || '');
+    backendChild = null;
+  });
+
+  const ok = await waitForHealth(port);
+  if (!ok) {
+    console.error('[CollectRx] Backend not healthy on port', port);
+    try {
+      backendChild.kill('SIGTERM');
+    } catch (_) { /* */ }
+    backendChild = null;
+    return null;
+  }
+  return port;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildRemoteSetupHtml() {
+  const userData = app.getPath('userData');
+  const dashFile = path.join(userData, 'dashboard-url.txt');
+  const envFile = path.join(userData, 'collectrx.env');
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>CollectRx — Remote URL</title>
+<style>body{font-family:system-ui;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.5}
+button{margin:0.25rem 0.5rem 0.25rem 0;padding:0.45rem 0.85rem;font:inherit;cursor:pointer;border-radius:8px;border:1px solid #ccc;background:#f8fafc}
+pre{background:#f4f4f5;padding:1rem;border-radius:8px;overflow:auto;font-size:0.85rem}</style>
+</head><body>
+<h1>Use a hosted CollectRx URL</h1>
+<p>Add one <code>https://</code> line to <strong>dashboard-url.txt</strong> (in your CollectRx settings folder), or set environment variable <code>COLLECTRX_DASHBOARD_URL</code>, then restart the app.</p>
+<pre>${escHtml(dashFile)}</pre>
+<p>Built-in dashboard instead: edit <code>collectrx.env</code> in the same folder (set <code>DATABASE_URL</code> and <code>JWT_SECRET</code>), and remove or empty the remote override.</p>
+<pre>${escHtml(envFile)}</pre>
+<p>
+<button type="button" id="reveal-env">Reveal collectrx.env</button>
+<button type="button" id="open-folder">Open settings folder</button>
+</p>
+<script>
+document.getElementById('reveal-env').onclick = () => window.collectrx?.revealCollectrxEnv?.();
+document.getElementById('open-folder').onclick = () => window.collectrx?.openUserDataFolder?.();
+</script>
+</body></html>`;
+}
+
+function buildEmbeddedSetupHtml() {
+  const userData = app.getPath('userData');
+  const envFile = path.join(userData, 'collectrx.env');
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>CollectRx — Setup</title>
+<style>body{font-family:system-ui;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.5}
+button{margin:0.25rem 0.5rem 0.25rem 0;padding:0.45rem 0.85rem;font:inherit;cursor:pointer;border-radius:8px;border:1px solid #52525b;background:#3f3f46;color:#fafafa}
+pre{background:#27272a;color:#fafafa;padding:1rem;border-radius:8px;overflow:auto;font-size:0.85rem}</style>
+</head><body>
+<h1>Built-in dashboard did not start</h1>
+<p>Edit <strong>collectrx.env</strong> and set a real <code>DATABASE_URL</code> (PostgreSQL). Set <code>JWT_SECRET</code> to a long random string. Save, then quit and reopen CollectRx.</p>
+<pre>${escHtml(envFile)}</pre>
+<p>
+<button type="button" id="reveal-env">Reveal collectrx.env</button>
+<button type="button" id="open-folder">Open settings folder</button>
+</p>
+<p class="muted">Or use a hosted site only: add one <code>https://</code> line to <strong>dashboard-url.txt</strong> in this folder (see tray menu → Open settings folder).</p>
+<p>If this keeps failing, launch CollectRx from Terminal to read <code>[backend]</code> logs.</p>
+<script>
+document.getElementById('reveal-env').onclick = () => window.collectrx?.revealCollectrxEnv?.();
+document.getElementById('open-folder').onclick = () => window.collectrx?.openUserDataFolder?.();
+</script>
+</body></html>`;
+}
+
+async function resolvePackagedLoadTarget() {
+  const remote = getRemoteDashboardUrl();
+  if (remote) return { kind: 'url', url: remote };
+  const port = await startEmbeddedBackend();
+  if (port) return { kind: 'url', url: `http://127.0.0.1:${port}` };
+  return { kind: 'setup', mode: 'embedded' };
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -157,6 +406,13 @@ function buildTrayMenu() {
     { label: 'Sync Now', click: () => triggerManualSync() },
     { type: 'separator' },
     { label: 'Settings…', click: () => { mainWindow?.show(); mainWindow?.webContents.send('navigate', '/settings'); } },
+    {
+      label: 'Open settings folder…',
+      click: () => {
+        ensureCollectrxEnvPlaceholder();
+        openCollectrxUserDataFolder();
+      },
+    },
     { type: 'separator' },
     { label: 'Quit CollectRx', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
@@ -211,7 +467,7 @@ function createTray() {
 }
 
 // ── BrowserWindow ─────────────────────────────────────────────────────────────
-function createWindow() {
+function createWindow(loadTarget) {
   mainWindow = new BrowserWindow({
     width    : 1280,
     height   : 820,
@@ -228,7 +484,13 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(DASHBOARD_URL);
+  if (loadTarget.kind === 'setup') {
+    const html =
+      loadTarget.mode === 'remote' ? buildRemoteSetupHtml() : buildEmbeddedSetupHtml();
+    mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  } else {
+    mainWindow.loadURL(loadTarget.url);
+  }
 
   mainWindow.once('ready-to-show', () => {
     // --hidden = Windows startup shortcut; stay minimized in tray
@@ -253,7 +515,9 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error(`[Window] Failed to load: ${code} ${desc}`);
-    if (isDev) setTimeout(() => mainWindow?.loadURL(DASHBOARD_URL), 2_000);
+    if (isDev) {
+      setTimeout(() => mainWindow?.loadURL(DASHBOARD_URL_DEV), 2_000);
+    }
   });
 }
 
@@ -476,11 +740,29 @@ ipcMain.handle('save-settings', (_event, rawSettings) => {
   return { ok: !!result };
 });
 
+ipcMain.handle('open-user-data-folder', async () => {
+  ensureCollectrxEnvPlaceholder();
+  const err = await shell.openPath(app.getPath('userData'));
+  return { ok: !err, error: err || null };
+});
+
+ipcMain.handle('reveal-collectrx-env', async () => {
+  revealCollectrxEnvInShell();
+  return { ok: true };
+});
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  ensureCollectrxEnvPlaceholder();
   setupStartupLaunch();
   createTray();
-  createWindow();
+  let loadTarget;
+  if (isDev) {
+    loadTarget = { kind: 'url', url: DASHBOARD_URL_DEV };
+  } else {
+    loadTarget = await resolvePackagedLoadTarget();
+  }
+  createWindow(loadTarget);
   spawnSyncService();
   setupAutoUpdater();
 });
@@ -494,4 +776,10 @@ app.on('window-all-closed', (e) => e.preventDefault()); // stay alive in tray
 app.on('before-quit', () => {
   app.isQuitting = true;
   syncProcess?.kill('SIGTERM');
+  if (backendChild && !backendChild.killed) {
+    try {
+      backendChild.kill('SIGTERM');
+    } catch (_) { /* */ }
+    backendChild = null;
+  }
 });
