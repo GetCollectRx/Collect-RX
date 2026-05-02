@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
 import {
@@ -252,6 +253,30 @@ export default function Admin() {
         ) : (
           <p className="text-sm text-red-600">Could not load integration status.</p>
         )}
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="What your team sees when something fails"
+          subtitle="Share this with the front desk — not engineering jargon."
+        />
+        <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-3 list-disc list-inside">
+          <li>
+            <strong className="text-gray-800 dark:text-gray-200">Stripe / payment links:</strong> Staff see missing links
+            or checkout errors. First check the Stripe rows above; if Connect is incomplete, only an administrator can
+            finish onboarding and webhooks.
+          </li>
+          <li>
+            <strong className="text-gray-800 dark:text-gray-200">Sync / stale balances:</strong> Tray icon shows error
+            or data does not match Abeldent — note the message and contact support; staff should not edit the database.
+          </li>
+          <li>
+            <strong className="text-gray-800 dark:text-gray-200">Carrier block:</strong> The{' '}
+            <Link to="/" className="text-crx-600 dark:text-crx-400 underline">Dashboard</Link> shows a banner naming
+            carriers on hold; calls to those insurers stop until support reviews. Full wording:{' '}
+            <Link to="/guide" className="text-crx-600 dark:text-crx-400 underline">How it works</Link>.
+          </li>
+        </ul>
       </Card>
 
       <Card>

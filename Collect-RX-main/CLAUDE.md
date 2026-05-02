@@ -56,7 +56,7 @@ CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
 ```
 Electron shell (thin wrapper — no business logic)
     ↓
-React/Vite/Tailwind frontend (Estimate, Balances, Claims tabs)
+React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Patient AR, Estimate, Analytics, Outbox, Admin). The old `Collect-RX-main/frontend/` app was removed; one surface only.
     ↓
 Express backend  src/server/index.ts  (Railway, port 3001)
     ↓

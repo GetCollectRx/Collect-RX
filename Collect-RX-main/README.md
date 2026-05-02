@@ -2,7 +2,7 @@
 
 Web application for dental practices to run **rules-based** patient A/R workflows: stages, messaging, and payment collection, with a full **audit trail** in the app database.
 
-**Architecture decision (which codebase is “the product”):** see [`docs/adr/0001-primary-application-stack.md`](../docs/adr/0001-primary-application-stack.md) in the repo root. This folder (`Collect-RX-main/`) is the **canonical** app; the repo root `src/api` + `src/frontend` stack is a separate **prototype** (in-memory API).
+**Architecture decision (which codebase is “the product”):** see [`docs/adr/0001-primary-application-stack.md`](../docs/adr/0001-primary-application-stack.md) in the repo root. This folder (`Collect-RX-main/`) is the **canonical** app. The UI is a **single** Vite + React app under `src/` (port 5173). A legacy second React app under `Collect-RX-main/frontend/` was **removed** — do not reintroduce a duplicate UI. The repo root `src/api` + `src/frontend` stack (if present) is a separate **prototype** (in-memory API).
 
 **MVP and non-goals (v1):** [`docs/product/MVP-SCOPE.md`](../docs/product/MVP-SCOPE.md).
 

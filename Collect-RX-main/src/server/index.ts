@@ -27,6 +27,16 @@ import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventW
 import { verifyUnsubscribeRequest, getPublicApiBase } from './email/unsubscribeUrl.js';
 import { appendAuditLog } from './audit/auditLog.js';
 
+/** Practice-facing carrier labels for dashboard alerts (align with Admin carrier settings keys). */
+const CARRIER_ALERT_LABELS: Record<string, string> = {
+  sun_life: 'Sun Life Financial',
+  canada_life: 'Canada Life',
+  manulife: 'Manulife',
+  green_shield: 'Green Shield Canada',
+  rbc_insurance: 'RBC Insurance',
+  telus_adjudicare: 'TELUS AdjudiCare',
+};
+
 initSentry();
 assertJwtConfigAtStartup();
 
@@ -290,7 +300,7 @@ protectedApi.get('/dashboard/stats', async (req, res) => {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const [paymentsToday, weekPayments, recentPaymentEvents] = await Promise.all([
+    const [paymentsToday, weekPayments, recentPaymentEvents, practiceRow, connectRow] = await Promise.all([
       prisma.paymentEvent.count({
         where: {
           balance: { practiceId: pid },
@@ -312,6 +322,8 @@ protectedApi.get('/dashboard/stats', async (req, res) => {
           balance: { include: { patient: { select: { displayName: true } } } },
         },
       }),
+      prisma.practice.findUnique({ where: { id: pid }, select: { settings: true } }),
+      prisma.stripeConnectAccount.findUnique({ where: { practiceId: pid } }),
     ]);
 
     const revenueThisWeekCents = weekPayments.reduce((s, p) => s + p.amountCents, 0);
@@ -324,6 +336,21 @@ protectedApi.get('/dashboard/stats', async (req, res) => {
         _sum: { amountCents: true },
       })
       .then((a) => a._sum.amountCents ?? 0);
+
+    const sk = process.env.STRIPE_SECRET_KEY;
+    const patientPaymentsReady = !!(sk && connectRow?.chargesEnabled);
+    const settings = practiceRow?.settings as { carriers?: Record<string, { block?: boolean }> } | null;
+    const blockedCarriers: { code: string; name: string }[] = [];
+    if (settings?.carriers && typeof settings.carriers === 'object') {
+      for (const [code, flags] of Object.entries(settings.carriers)) {
+        if (flags && typeof flags === 'object' && flags.block) {
+          blockedCarriers.push({
+            code,
+            name: CARRIER_ALERT_LABELS[code] ?? code.replace(/_/g, ' '),
+          });
+        }
+      }
+    }
 
     res.json({
       totalOpenAR: totalOpenAR / 100,
@@ -346,6 +373,11 @@ protectedApi.get('/dashboard/stats', async (req, res) => {
         paidAt: e.paidAt.toISOString(),
         patientLabel: e.balance.patient.displayName,
       })),
+      /** Office-manager visibility: carrier blocks + payment readiness (see Office Guide). */
+      operationalAlerts: {
+        blockedCarriers,
+        patientPaymentsReady,
+      },
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);

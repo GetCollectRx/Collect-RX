@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
 import {
@@ -24,6 +25,10 @@ interface DashboardStats {
     paidAt: string
     patientLabel: string
   }>
+  operationalAlerts?: {
+    blockedCarriers: { code: string; name: string }[]
+    patientPaymentsReady: boolean
+  }
 }
 
 function fmtCurrency(v: number) {
@@ -87,13 +92,13 @@ export default function Dashboard() {
       return (
     <div className="page-enter p-6 space-y-6 max-w-[1400px]">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-1.5">
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
             <HelpTip>
-              Open A/R, aging, recent payments, and call activity for the selected practice. Use Balances to drill into claims;
-              Admin for imports and settings.
+              Aging and payments for the selected practice. Insurance follow-up runs from your queue rules; see{' '}
+              <Link to="/guide" className="underline text-crx-600 dark:text-crx-400">How it works</Link> for the full flow.
             </HelpTip>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -105,6 +110,37 @@ export default function Dashboard() {
           <Button variant="primary" size="sm">Run Call Batch</Button>
         </div>
       </div>
+
+      {(() => {
+        const oa = s.operationalAlerts
+        if (!oa) return null
+        const blocked = oa.blockedCarriers ?? []
+        const payBlocked = oa.patientPaymentsReady === false
+        if (blocked.length === 0 && !payBlocked) return null
+        return (
+          <div
+            className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/90 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 space-y-2"
+            role="status"
+          >
+            <p className="font-semibold">Attention needed</p>
+            {blocked.length > 0 && (
+              <p>
+                <strong>Carrier hold:</strong> Automated calls to{' '}
+                {blocked.map((b) => b.name).join(', ')} are paused for this practice (carrier block). Finish those
+                claims manually if needed and contact your administrator — see{' '}
+                <Link to="/guide" className="underline font-medium">How it works → Carrier block</Link>.
+              </p>
+            )}
+            {payBlocked && (
+              <p>
+                <strong>Patient payments:</strong> Stripe Connect is not ready or the platform key is missing — payment
+                links may not work. Open <Link to="/admin" className="underline font-medium">Admin → Integrations</Link> or
+                ask your administrator to complete setup.
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Hero stat tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
