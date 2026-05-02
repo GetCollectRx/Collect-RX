@@ -11,6 +11,8 @@
     "dev:electron": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "prisma generate && tsc && vite build",
     "build:win": "npm run build && electron-builder --win",
+    "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
+    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
     "start": "tsx src/server/index.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -89,6 +91,16 @@
       "!*.md",
       "!.env*"
     ],
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.business",
+      "identity": null
+    },
     "win": {
       "target": [
         {
