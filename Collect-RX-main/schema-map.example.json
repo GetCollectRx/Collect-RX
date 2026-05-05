@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "description": "Column/table names for AbelDent → CollectRx sync. Copy to schema-map.json after running discover-schema.cjs and adjust to match the discovery file.",
+  "mappings": {
+    "claims": {
+      "table": "Insurance_Claims",
+      "alias": "ic",
+      "patientTable": "Patients",
+      "patientAlias": "p",
+      "joinOn": { "claims": "PatientID", "patient": "PatientID" },
+      "columns": {
+        "claimId": "ClaimID",
+        "patientFirstName": "FirstName",
+        "patientLastName": "LastName",
+        "carrierName": "InsurancePlanName",
+        "policyNumber": "GroupNumber",
+        "procedureCode": "ProcedureCode",
+        "procedureDescription": "ProcedureDescription",
+        "treatmentDate": "DateOfService",
+        "submissionDate": "SubmissionDate",
+        "amountBilled": "AmountBilled",
+        "amountOutstanding": "AmountOutstanding",
+        "claimStatus": "ClaimStatus"
+      }
+    },
+    "patientLedger": {
+      "table": "PatientLedger",
+      "alias": "pl",
+      "patientTable": "Patients",
+      "patientAlias": "p",
+      "joinOn": { "ledger": "PatientID", "patient": "PatientID" },
+      "columns": {
+        "patientId": "PatientID",
+        "patientFirstName": "FirstName",
+        "patientLastName": "LastName",
+        "patientEmail": "Email",
+        "cellPhone": "CellPhone",
+        "homePhone": "HomePhone",
+        "procedureCode": "ProcedureCode",
+        "procedureDescription": "ProcedureDescription",
+        "treatmentDate": "TreatmentDate",
+        "adjudicationDate": "AdjudicationDate",
+        "fee": "Fee",
+        "insurancePaid": "InsurancePaid",
+        "patientPaid": "PatientPaid"
+      }
+    }
+  }
+}

@@ -37,10 +37,10 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-crx-50/50 dark:from-gray-950 dark:via-gray-950 dark:to-crx-950/20 px-4">
       <main
         id="crx-login"
-        className="w-full max-w-sm space-y-6 p-8 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm"
+        className="w-full max-w-sm space-y-6 p-8 rounded-2xl border border-gray-200/90 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-card"
         aria-label="Sign in"
       >
         <div>

@@ -48,6 +48,8 @@ Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACT
 
 **Background jobs (P8):** With **`REDIS_URL`**, the API registers BullMQ repeatables; run **`npm run worker`** in a second process (same `DATABASE_URL` + env). Without Redis, rules + patient reminders run in-process. See [../docs/operations/PHASE8-BACKGROUND.md](../docs/operations/PHASE8-BACKGROUND.md) and [../docs/adr/0002-background-jobs-bullmq-redis.md](../docs/adr/0002-background-jobs-bullmq-redis.md). Queue depth: `GET /api/health/queue` when Redis is enabled.
 
+**AbelDent / Windows (Phase 4):** On the practice PC, `npm install mssql`, run **`npm run abeldent:discover -- --server "HOST\\INSTANCE" --database AbelDent --out schema-discovery.json`**, copy **`schema-map.example.json`** → **`schema-map.json`**, edit mismatches, then **`npm run abeldent:validate-queries`**. Set **`ABELDENT_SCHEMA_MAP`** for the packaged sync service (see `.env.example`). Windows `.exe` builds in CI: [../.github/workflows/collectrx-electron-installers.yml](../.github/workflows/collectrx-electron-installers.yml).
+
 ### Stripe test mode (P3-20, webhooks)
 
 1. Set **`STRIPE_SECRET_KEY`** to a [test](https://docs.stripe.com/keys#test-live-modes) key (`sk_test_...`) and **`STRIPE_WEBHOOK_SECRET`** to a signing secret (`whsec_...`).
@@ -302,7 +304,7 @@ Intentional or in-progress gaps:
 3. **Single-practice focus:** Data model can represent more; **UI** often assumes one practice per deployment.
 4. **Dentrix import:** **CSV** path / UI not fully productized; Admin “generate” supports demos.
 5. **Rules engine:** Runs in the **Node** process (not a distributed queue yet).
-6. **UI/UX:** Functional; polish, accessibility, and design system hardening are ongoing.
+6. **UI/UX:** Pilot-ready v1 shell (CollectRx green, Inter, dark mode, shared components); Lighthouse and stakeholder sign-off tracked in Phase 5 PRD.
 7. **Some UI routes** call APIs not yet on this server (e.g. certain benefits / patient-balance list routes)—see the screens map doc.
 
 ## 🚀 Production Considerations

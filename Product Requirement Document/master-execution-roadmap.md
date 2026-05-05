@@ -65,7 +65,7 @@
 
 ### Day 10
 - Execute schema discovery prep and session protocol with Dr. Hasan.
-- Run `discover-schema.js`, collect signed schema artifact.
+- Run `discover-schema.cjs`, collect signed schema artifact.
 - Deliverable: approved schema snapshot.
 
 ## Week 3 — Windows Packaging + UX Redesign

@@ -72,7 +72,7 @@ function Sidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 bottom-0 w-[220px] flex flex-col bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 z-30"
+      className="fixed left-0 top-0 bottom-0 w-[228px] flex flex-col bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-r border-gray-200/80 dark:border-gray-800 shadow-sidebar z-30"
       aria-label="Main navigation"
     >
       {/* Logo */}
@@ -166,10 +166,10 @@ function Sidebar() {
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-crx-50/40 dark:from-gray-950 dark:via-gray-950 dark:to-crx-950/15">
       <Sidebar />
       <main
-        className="flex-1 ml-[220px] min-h-screen flex flex-col"
+        className="flex-1 ml-[228px] min-h-screen flex flex-col"
         id="main-content"
       >
         <Routes>

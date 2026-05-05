@@ -186,6 +186,7 @@ async function processOutcome({ claimId, vapiCallId, transcript, vapiSummary, du
         attemptId,
         reason: "resubmit_required",
         details: "Carrier has no record of this claim. The claim needs to be resubmitted from AbelDent.",
+        urgent: true,
       });
       break;
 
@@ -264,7 +265,7 @@ async function processOutcome({ claimId, vapiCallId, transcript, vapiSummary, du
           attemptId,
           reason: "max_attempts",
           details: `Agent has attempted this claim ${attempts} times without resolution. Manual follow-up required.`,
-          urgent: false,
+          urgent: true,
         });
       } else {
         // Retry in 4 hours
@@ -294,7 +295,7 @@ async function processOutcome({ claimId, vapiCallId, transcript, vapiSummary, du
         attemptId,
         reason: "unknown_response",
         details: `Agent received an unexpected response from carrier. Transcript: ${transcript?.slice(0, 500)}`,
-        urgent: false,
+        urgent: true,
       });
       break;
   }

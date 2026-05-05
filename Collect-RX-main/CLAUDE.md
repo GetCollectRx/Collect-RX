@@ -37,12 +37,16 @@ npm run build:main
 # Package Windows .exe installer (requires Windows or CI)
 npx electron-builder --windows --x64 --config electron-builder.config.js
 
-# Abeldent schema discovery (run once on Dr. Hasan's Windows machine)
-node scripts/discover-schema.js --server "localhost\SQLEXPRESS" --database AbeldentDB
+# Abeldent schema discovery (run once on Dr. Hasan's Windows machine; requires `npm install mssql`)
+npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
 
-# Abeldent sync (after schema discovery)
-node scripts/sync-query-builder.js --schema ./schema-map.json --validate
-node scripts/sync-query-builder.js --schema ./schema-map.json --sync
+# After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
+npm run abeldent:validate-queries
+# (script uses: --discovery schema-discovery.json --map schema-map.json — adjust paths as needed)
+
+# Emit SQL the sync service will run (for review or docs):
+npm run abeldent:emit-queries
+# Point the desktop sync at a map file: ABELDENT_SCHEMA_MAP=./schema-map.json
 ```
 
 CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
@@ -104,8 +108,10 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 Abeldent Local Plus is the dental practice management software running on SQL Server on Dr. Hasan's Windows machine.
 
-1. `scripts/discover-schema.js` — runs once, maps every table/column, writes `schema-map.json`
-2. `scripts/sync-query-builder.js` — reads `schema-map.json`, builds SQL dynamically (never hardcodes column names), syncs patients/claims/insurance into Railway PostgreSQL via the backend API
+1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
+2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
+3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
+4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Railway API.
 
 ---
 

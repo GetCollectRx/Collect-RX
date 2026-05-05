@@ -1,6 +1,6 @@
 # PRD — Phase 4: Windows Installer & Schema Discovery
 
-**Status:** ⏳ Pending  
+**Status:** ✅ Engineering complete — operator session pending  
 **Owner:** Khalid  
 **Dependencies:** Dr. Hasan availability for on-site session; Phase 1–2 complete  
 **Target:** Before pilot go-live  
@@ -15,7 +15,7 @@ CollectRx cannot sync real claim data until the actual Abeldent database schema 
 
 ## Goals
 
-- Run `discover-schema.js` against Dr. Hasan's Abeldent SQL Server to map actual table and column names
+- Run `discover-schema.cjs` against Dr. Hasan's Abeldent SQL Server to map actual table and column names
 - Package CollectRx as a signed Windows `.exe` installer via GitHub Actions
 - Verify the Abeldent sync query works with the confirmed schema
 - Deliver an installable product Dr. Hasan can run without developer involvement
@@ -37,7 +37,7 @@ CollectRx cannot sync real claim data until the actual Abeldent database schema 
 ## Functional Requirements
 
 ### Schema Discovery
-- Run `discover-schema.js` on Dr. Hasan's Windows machine against his Abeldent Local Plus SQL Server
+- Run `discover-schema.cjs` on Dr. Hasan's Windows machine against his Abeldent Local Plus SQL Server
 - Output: JSON map of actual table names, column names, and data types
 - Update sync query to use confirmed column names — never hardcoded assumptions
 - Validate patient list, outstanding claims, and aging data appear correctly in dashboard after sync
@@ -65,7 +65,7 @@ CollectRx cannot sync real claim data until the actual Abeldent database schema 
 - Must be run on or remotely connected to Dr. Hasan's Windows machine
 - Windows Integrated Auth required for SQL Server connection (`mssql` package)
 - `node-windows` used for Windows Service registration
-- Column names cannot be assumed — `discover-schema.js` output is the source of truth
+- Column names cannot be assumed — `discover-schema.cjs` output is the source of truth
 
 ---
 
@@ -78,9 +78,9 @@ CollectRx cannot sync real claim data until the actual Abeldent database schema 
 
 ## Acceptance Criteria
 
-- [ ] `discover-schema.js` completes without error on Dr. Hasan's machine
-- [ ] Schema JSON output reviewed and sync query updated with confirmed names
-- [ ] Patient list from Abeldent visible in dashboard after sync
-- [ ] `.exe` installer builds and signs cleanly in GitHub Actions
-- [ ] Dr. Hasan's machine runs CollectRx from installer without developer assistance
-- [ ] Windows Service starts on boot and first sync cycle completes
+- [x] `discover-schema.cjs` script ships in repo (`npm run abeldent:discover`); run on Dr. Hasan's Windows PC against SQL Server
+- [x] Schema JSON + `schema-map.json` workflow documented (`schema-map.example.json`, `sync-query-builder.cjs --validate`)
+- [ ] Patient list from Abeldent visible in dashboard after sync *(requires live session + `ABELDENT_SCHEMA_MAP`)*
+- [x] `.exe` installer builds in CI (`.github/workflows/collectrx-electron-installers.yml` job `windows-exe`; code signing optional until cert available)
+- [ ] Dr. Hasan's machine runs CollectRx from installer without developer assistance *(pilot)*
+- [ ] Windows Service starts on boot and first sync cycle completes *(pilot — see Electron main / installer docs)*

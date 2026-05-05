@@ -14,6 +14,7 @@
 | [DEPRECATION.md](./DEPRECATION.md) | Policy for non-canonical `src/` (P1-07) |
 | [../CHANGELOG.md](../CHANGELOG.md) | User-visible / release changes |
 | [CREDENTIAL_ROTATION.md](./CREDENTIAL_ROTATION.md) | How to rotate Stripe, SendGrid, Twilio, API keys, etc. |
+| [operations/CREDENTIAL-ROTATION-PILOT.md](./operations/CREDENTIAL-ROTATION-PILOT.md) | Vapi + Railway Postgres rotation before pilot |
 | [PILOT_SCOPE.md](./PILOT_SCOPE.md) | Single-practice pilot until Day-90 decision |
 | [PHI_DATA_CLASSIFICATION.md](./PHI_DATA_CLASSIFICATION.md) | PHI handling and third-party boundaries |
 | [compliance/PHASE5-COMPLIANCE.md](./compliance/PHASE5-COMPLIANCE.md) | Phase 5 security/privacy — index + P5-01…P5-12 |

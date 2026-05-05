@@ -40,6 +40,7 @@ export default function Admin() {
   const [integrations, setIntegrations] = useState<{
     sendgrid: { apiKey: boolean; fromEmail: boolean; eventWebhookVerifyKey: boolean }
     twilio: { apiAndFrom: boolean; inboundUrlForSignature: boolean }
+    escalation: { staffPhone: boolean; immediateStaffNotify: boolean; voiceRing: string }
     stripe: { secretKey: boolean; testMode: boolean }
     stripeConnect: { account: boolean; onboardingComplete: boolean; chargesEnabled: boolean }
     vapi: { webhookSecret: boolean }
@@ -229,6 +230,22 @@ export default function Admin() {
               </ul>
             </div>
             <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
+              <p className="font-medium text-gray-800 dark:text-gray-200">Front-desk escalation (SMS + optional call)</p>
+              <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
+                <li className={integrations.escalation.immediateStaffNotify ? 'text-crx-700 dark:text-crx-400' : ''}>
+                  Instant notify (Twilio + ESCALATION_STAFF_PHONE):{' '}
+                  {integrations.escalation.immediateStaffNotify ? 'ready' : 'not configured'}
+                </li>
+                <li>
+                  Staff number(s) in env: {integrations.escalation.staffPhone ? 'set' : 'missing — add ESCALATION_STAFF_PHONE'}
+                </li>
+                <li>
+                  Voice ring mode: <code className="text-xs">{integrations.escalation.voiceRing}</code> (urgent | all |
+                  never). Rings the desk line on urgent escalations by default.
+                </li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
               <p className="font-medium text-gray-800 dark:text-gray-200">Stripe (P4-04)</p>
               <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
                 <li>Secret key: {integrations.stripe.secretKey ? 'set' : 'missing'}</li>
@@ -275,6 +292,11 @@ export default function Admin() {
             <Link to="/" className="text-crx-600 dark:text-crx-400 underline">Dashboard</Link> shows a banner naming
             carriers on hold; calls to those insurers stop until support reviews. Full wording:{' '}
             <Link to="/guide" className="text-crx-600 dark:text-crx-400 underline">How it works</Link>.
+          </li>
+          <li>
+            <strong className="text-gray-800 dark:text-gray-200">AI escalations:</strong> When the system needs the
+            office (blocked carrier, missing x-rays, stuck calls, etc.), configured staff numbers get an SMS immediately,
+            and urgent cases can also trigger a short voice call to the desk line so nothing waits on Slack alone.
           </li>
         </ul>
       </Card>
@@ -498,6 +520,14 @@ export default function Admin() {
               </li>
               <li className={integrations.twilio.apiAndFrom && integrations.twilio.inboundUrlForSignature ? 'text-crx-700 dark:text-crx-400' : ''}>
                 Twilio: credentials + TWILIO_SMS_INBOUND_URL matches public URL (signature)
+              </li>
+              <li
+                className={
+                  integrations.escalation.immediateStaffNotify ? 'text-crx-700 dark:text-crx-400' : ''
+                }
+              >
+                Escalations: set ESCALATION_STAFF_PHONE (front desk, E.164) so Twilio SMS + optional voice fire before
+                Slack; see .env.example
               </li>
               <li className={integrations.stripe.secretKey && !integrations.stripe.testMode && integrations.stripeConnect.chargesEnabled ? 'text-crx-700 dark:text-crx-400' : ''}>
                 Stripe live: sk_live_… + Connect charges enabled (use test mode until ready)

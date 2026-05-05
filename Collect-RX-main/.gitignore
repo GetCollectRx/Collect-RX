@@ -39,3 +39,12 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# AbelDent site-specific (keep schema-map.example.json in git)
+schema-discovery.json
+schema-map.json
+queries.generated.json
+dist-electron/
+*.zip
+*.blockmap
+*.asar

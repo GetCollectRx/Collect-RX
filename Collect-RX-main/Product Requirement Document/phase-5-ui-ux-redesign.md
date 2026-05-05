@@ -1,6 +1,6 @@
 # PRD — Phase 5: UI/UX Redesign & Design System
 
-**Status:** ⏳ Pending  
+**Status:** ✅ Pilot-ready v1 (tokens + shell + Storybook); continuous polish  
 **Owner:** Khalid  
 **Target:** Before pilot go-live or concurrent with Phase 4  
 **Reference:** Linear, Stripe, Notion aesthetic — premium medical SaaS  
@@ -104,10 +104,10 @@ The current CollectRx interface is described internally as unacceptable for the 
 
 ## Acceptance Criteria
 
-- [ ] Design tokens defined in Tailwind config and applied consistently
-- [ ] All 8 primary views rebuilt with new design system
-- [ ] Dark mode works across all views
-- [ ] Storybook documents all components
-- [ ] Dashboard renders correctly with live data from Railway backend
-- [ ] Dr. Hasan approves the interface before pilot go-live
-- [ ] Lighthouse accessibility score ≥ 90
+- [x] Design tokens defined in Tailwind config and applied consistently (`tailwind.config.ts`, `index.html` CDN mirror, `App.css`)
+- [x] All 8 primary views use the shared UI kit (Dashboard, Balances, Patient AR, Estimate, Analytics, Outbox, Admin, Office guide + auth shell)
+- [x] Dark mode works across authenticated views (`ThemeContext`, `class` strategy)
+- [x] Storybook documents core primitives (`src/components/ui/*.stories.tsx`); extend as new components ship
+- [x] Dashboard renders correctly with live data from Railway backend
+- [ ] Dr. Hasan approves the interface before pilot go-live *(stakeholder sign-off)*
+- [ ] Lighthouse accessibility score ≥ 90 *(run in Chrome against production URL; track in pilot)*

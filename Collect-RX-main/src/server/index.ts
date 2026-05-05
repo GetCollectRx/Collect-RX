@@ -903,6 +903,7 @@ protectedApi.get('/admin/integrations', async (req, res) => {
     const hasSendgrid = !!process.env.SENDGRID_API_KEY;
     const hasTwilio =
       !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN && !!process.env.TWILIO_FROM_NUMBER;
+    const hasEscalationStaffPhone = !!String(process.env.ESCALATION_STAFF_PHONE || '').trim();
     return res.json({
       sendgrid: {
         apiKey: hasSendgrid,
@@ -912,6 +913,11 @@ protectedApi.get('/admin/integrations', async (req, res) => {
       twilio: {
         apiAndFrom: hasTwilio,
         inboundUrlForSignature: !!process.env.TWILIO_SMS_INBOUND_URL,
+      },
+      escalation: {
+        staffPhone: hasEscalationStaffPhone,
+        immediateStaffNotify: hasTwilio && hasEscalationStaffPhone,
+        voiceRing: String(process.env.ESCALATION_STAFF_VOICE_RING || 'urgent').toLowerCase(),
       },
       stripe: {
         secretKey: !!sk,

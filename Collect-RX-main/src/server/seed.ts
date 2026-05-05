@@ -7,11 +7,11 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
-  const defaultPassword = process.env.SEED_PRACTICE_PASSWORD || 'changeme';
-  const passwordHash = await bcrypt.hash(defaultPassword, 12);
-  if (!process.env.SEED_PRACTICE_PASSWORD) {
-    console.log('   (Using default practice password "changeme"; set SEED_PRACTICE_PASSWORD to override.)');
+  const defaultPassword = (process.env.SEED_PRACTICE_PASSWORD || '').trim();
+  if (!defaultPassword) {
+    throw new Error('SEED_PRACTICE_PASSWORD is required (no default). Set it in .env before running db:seed.');
   }
+  const passwordHash = await bcrypt.hash(defaultPassword, 12);
 
   // Create practice
   const practice = await prisma.practice.create({

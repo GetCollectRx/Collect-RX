@@ -17,7 +17,12 @@ const { query }           = require("./db");
 const { buildQueue, getQueueStats, pauseClaim } = require("./queue/engine");
 const { processOutcome, suspendAllQueuedClaims }  = require("./outcome/processor");
 const { dispatchCall, parseWebhook } = require("./vapi/client");
-const { getOpenEscalations, acknowledgeEscalation, resolveEscalation } = require("./outcome/escalation");
+const {
+  getOpenEscalations,
+  acknowledgeEscalation,
+  resolveEscalation,
+  alertEscalationStaffImmediateRaw,
+} = require("./outcome/escalation");
 const { createPractice, getPractice, listPractices, updatePractice, deactivatePractice, getPracticeConfig, getPracticeStats } = require("./practices/manager");
 const { importClaims, parseCSV } = require("./claims/importer");
 const piiVault = require("./pii-vault");
@@ -339,6 +344,13 @@ router.post("/carriers/:code/block", strictLimiter, async (req, res) => {
       ]
     );
     const escalationId = escResult.rows[0]?.id;
+
+    await alertEscalationStaffImmediateRaw({
+      urgent: true,
+      escalationId,
+      title: `Carrier block: ${code}`,
+      detail: blockReason,
+    });
 
     // Suspend all queued/in-progress claims practice-wide
     const suspendResult = await query(

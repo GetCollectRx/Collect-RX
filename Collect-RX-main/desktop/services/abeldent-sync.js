@@ -14,12 +14,24 @@
  *   ABELDENT_DATABASE        Database name, default "AbelDent"
  *   RAILWAY_API_URL          CollectRx backend root
  *   RAILWAY_API_TOKEN        Long-lived JWT for the service account
+ *
+ * Optional:
+ *   ABELDENT_SCHEMA_MAP      Path to schema-map.json (see schema-map.example.json + discover-schema.cjs)
+ *   ABELDENT_PATIENT_LEDGER_TABLE  Override patient ledger table name only
  */
 
 'use strict';
 
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const { URL } = require('url');
+
+const {
+  mergeMap,
+  buildClaimsQuery,
+  buildPatientBalanceQuery,
+} = require('./abeldentQueryTemplates.cjs');
 
 // Config
 const SERVER = process.env.ABELDENT_SERVER || String.raw`(local)\ABELDENT`;
@@ -29,8 +41,24 @@ const API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
 const PRACTICE_ID = process.env.ABELDENT_PRACTICE_ID || null;
 const INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
 const MIN_DAYS = parseInt(process.env.ABELDENT_MIN_DAYS, 10) || 14;
-const PATIENT_LEDGER_TABLE = process.env.ABELDENT_PATIENT_LEDGER_TABLE || 'PatientLedger';
 const MIN_DAYS_BALANCE = parseInt(process.env.ABELDENT_MIN_DAYS_BALANCE, 10) || 7;
+
+/** Schema map path (JSON) — from `scripts/sync-query-builder.cjs` + discover-schema; optional. */
+function loadSchemaMapOverrides() {
+  const mapPath = process.env.ABELDENT_SCHEMA_MAP || process.env.SCHEMA_MAP_PATH;
+  if (!mapPath) return {};
+  const resolved = path.isAbsolute(mapPath) ? mapPath : path.join(process.cwd(), mapPath);
+  const raw = fs.readFileSync(resolved, 'utf8');
+  const parsed = JSON.parse(raw);
+  return parsed.mappings || parsed;
+}
+
+const _schemaMap = mergeMap(loadSchemaMapOverrides());
+if (process.env.ABELDENT_PATIENT_LEDGER_TABLE) {
+  _schemaMap.patientLedger.table = process.env.ABELDENT_PATIENT_LEDGER_TABLE.replace(/[^A-Za-z0-9_]/g, '');
+}
+
+const CLAIMS_SYNC_SQL = buildClaimsQuery(_schemaMap);
 
 // IPC helpers
 // Supports two transports:
@@ -79,35 +107,12 @@ const sqlConfig = sql ? {
   },
 } : null;
 
-// AbelDent query for insurance claims
-const AGING_QUERY = `
-  SELECT
-    CAST(ic.ClaimID AS VARCHAR(20)) AS id,
-    p.FirstName AS patient_first_name,
-    p.LastName AS patient_last_name,
-    ic.InsurancePlanName AS carrier_name,
-    ic.GroupNumber AS policy_number,
-    CAST(ic.ProcedureCode AS VARCHAR(20)) AS procedure_code,
-    ic.ProcedureDescription AS procedure_description,
-    CONVERT(VARCHAR(10), ic.DateOfService, 23) AS treatment_date,
-    CONVERT(VARCHAR(10), ic.SubmissionDate, 23) AS submission_date,
-    ic.AmountBilled AS amount_billed,
-    ic.AmountOutstanding AS amount_outstanding,
-    DATEDIFF(day, ic.SubmissionDate, GETDATE()) AS days_outstanding
-  FROM Insurance_Claims ic
-  JOIN Patients p ON p.PatientID = ic.PatientID
-  WHERE ic.AmountOutstanding > 0
-    AND ic.ClaimStatus NOT IN ('Paid', 'Void', 'Rejected')
-    AND DATEDIFF(day, ic.SubmissionDate, GETDATE()) >= @minDays
-  ORDER BY ic.AmountOutstanding DESC
-`;
-
 async function fetchFromAbeldent() {
   if (!sql) throw new Error('mssql not available');
   const pool = await sql.connect(sqlConfig);
   const request = pool.request();
   request.input('minDays', sql.Int, MIN_DAYS);
-  const result = await request.query(AGING_QUERY);
+  const result = await request.query(CLAIMS_SYNC_SQL);
   await pool.close();
   return result.recordset;
 }
@@ -158,39 +163,14 @@ function postToRailway(rows, endpoint) {
   });
 }
 
-// Patient balance query
-function buildBalanceQuery() {
-  const table = PATIENT_LEDGER_TABLE.replace(/[^A-Za-z0-9_]/g, '');
-  return `
-    SELECT
-      CAST(p.PatientID AS VARCHAR(20)) AS abeldent_patient_id,
-      p.FirstName AS patient_first_name,
-      p.LastName AS patient_last_name,
-      p.Email AS patient_email,
-      COALESCE(p.CellPhone, p.HomePhone) AS patient_phone,
-      CAST(pl.ProcedureCode AS VARCHAR(20)) AS procedure_code,
-      pl.ProcedureDescription AS procedure_description,
-      CONVERT(VARCHAR(10), pl.TreatmentDate, 23) AS treatment_date,
-      CONVERT(VARCHAR(10), pl.AdjudicationDate, 23) AS adjudication_date,
-      pl.Fee AS amount_billed,
-      COALESCE(pl.InsurancePaid, 0) AS insurance_paid,
-      (pl.Fee - COALESCE(pl.InsurancePaid, 0) - COALESCE(pl.PatientPaid, 0)) AS patient_owes,
-      DATEDIFF(day, pl.AdjudicationDate, GETDATE()) AS days_since_adjudication
-    FROM ${table} pl
-    JOIN Patients p ON p.PatientID = pl.PatientID
-    WHERE pl.AdjudicationDate IS NOT NULL
-      AND (pl.Fee - COALESCE(pl.InsurancePaid, 0) - COALESCE(pl.PatientPaid, 0)) > 0
-      AND DATEDIFF(day, pl.AdjudicationDate, GETDATE()) >= @minDaysBalance
-    ORDER BY patient_owes DESC
-  `;
-}
+const PATIENT_BALANCE_SQL = buildPatientBalanceQuery(_schemaMap);
 
 async function fetchPatientBalances() {
   if (!sql) throw new Error('mssql not available');
   const pool = await sql.connect(sqlConfig);
   const request = pool.request();
   request.input('minDaysBalance', sql.Int, MIN_DAYS_BALANCE);
-  const result = await request.query(buildBalanceQuery());
+  const result = await request.query(PATIENT_BALANCE_SQL);
   await pool.close();
   return result.recordset;
 }

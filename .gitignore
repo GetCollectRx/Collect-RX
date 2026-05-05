@@ -9,3 +9,9 @@ node_modules/
 # Local cache / editor noise
 cache/
 **/.~lock*
+dist-electron/
+*.zip
+*.blockmap
+*.asar
+*.app/
+node_modules/

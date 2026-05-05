@@ -2,6 +2,7 @@
   "name": "dental-ar-system",
   "version": "1.0.0",
   "description": "CollectRx — dental practice A/R execution (canonical app)",
+  "author": "CollectRx",
   "engines": {
     "node": ">=20.10.0"
   },
@@ -35,7 +36,10 @@
     "db:seed": "tsx src/server/seed.ts",
     "db:reset": "prisma migrate reset",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "abeldent:discover": "node scripts/discover-schema.cjs",
+    "abeldent:validate-queries": "node scripts/sync-query-builder.cjs --discovery schema-discovery.json --map schema-map.json --validate",
+    "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json"
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.1035.0",

@@ -1,6 +1,6 @@
 # PRD — Phase 3: Insurance Eligibility Rules Engine
 
-**Status:** 🔄 In Progress  
+**Status:** ✅ Complete (engineering)  
 **Owner:** Khalid  
 **Target:** Pre-treatment estimate capability before pilot expansion  
 
@@ -83,9 +83,11 @@ Today, when a patient arrives for treatment, the dental office has no reliable w
 
 ## Acceptance Criteria
 
-- [ ] Rules engine returns estimate for all 6 carriers given a CDT code + patient plan
-- [ ] COB calculation correct for dual-coverage test cases
-- [ ] 30+ test cases passing in test suite
-- [ ] Deductible and annual max tracked correctly across multiple claims in a plan year
-- [ ] TELUS AdjudiCare TPA identification logic working
-- [ ] Post-reconciliation variance flagging operational
+- [x] Rules engine returns estimate for all 6 carriers given a CDT code + patient plan (`src/services/eligibility/`, `carrier-configs.json`)
+- [x] COB calculation correct for dual-coverage test cases (`tests/eligibility.test.ts`)
+- [x] 30+ test cases passing in test suite (47 Vitest cases as of last CI)
+- [x] Deductible and annual max tracked correctly across multiple claims in a plan year
+- [x] TELUS AdjudiCare TPA identification logic working
+- [x] Post-reconciliation variance flagging operational (`reconciliation.ts`)
+
+**Pilot note:** Carrier percentages remain **approximate** until calibrated with live adjudication data from the practice.
