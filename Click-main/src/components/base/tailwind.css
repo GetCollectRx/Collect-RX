@@ -1,4 +1,0 @@
-/* Tailwind utilities — imported only by base components.
-   Preflight is disabled in tailwind.config.ts so existing App.css is unaffected. */
-@tailwind components;
-@tailwind utilities;
