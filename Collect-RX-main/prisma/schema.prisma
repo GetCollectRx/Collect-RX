@@ -306,3 +306,260 @@ model AuditLog {
   @@index([practiceId, createdAt])
   @@index([createdAt])
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 — Voice AI backend models (added by Phase 5 build)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CarrierId {
+  sun_life
+  canada_life
+  manulife
+  green_shield
+  rbc
+  telus_adjudicare
+
+  @@map("carrier_id")
+}
+
+enum ClaimStatus {
+  PENDING
+  IN_QUEUE
+  CALLING
+  RESOLVED
+  DENIED
+  ESCALATED
+  ON_HOLD
+  BLOCKED
+
+  @@map("claim_status")
+}
+
+enum ClaimPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("claim_priority")
+}
+
+enum CallOutcome {
+  RESOLVED
+  PENDING
+  DENIED
+  ESCALATED
+  BLOCK_DETECTED
+  FAILED
+  NO_ANSWER
+  HUNG_UP
+
+  @@map("call_outcome")
+}
+
+enum QueueStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  ESCALATED
+  BLOCKED
+
+  @@map("queue_status")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW TABLES — Phase 5 voice AI backend
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Core claim record. patientToken is a UUID pointing into PIIVault — never
+/// stores real patient names, DOBs, or health card numbers.
+model InsuranceClaim {
+  id                String        @id @default(uuid())
+  practiceId        String        @map("practice_id")
+  carrierId         CarrierId     @map("carrier_id")
+  claimNumber       String        @map("claim_number")
+  /// UUID issued by PIIVault — the only patient identifier stored here.
+  patientToken      String        @map("patient_token")
+  billedAmount      Decimal       @map("billed_amount") @db.Decimal(10, 2)
+  outstandingAmount Decimal       @map("outstanding_amount") @db.Decimal(10, 2)
+  daysOutstanding   Int           @map("days_outstanding")
+  status            ClaimStatus   @default(PENDING)
+  priority          ClaimPriority @default(NORMAL)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  callAttempts CallAttempt[]
+  queueEntry   CallQueue?
+
+  @@unique([practiceId, claimNumber])
+  @@index([practiceId, carrierId])
+  @@index([practiceId, status])
+  @@index([carrierId, daysOutstanding])
+  @@map("insurance_claims")
+}
+
+/// One row per Vapi call attempt. vapiCallId is unique — used for idempotency.
+model CallAttempt {
+  id                   String      @id @default(uuid())
+  claimId              String      @map("claim_id")
+  /// Unique Vapi call identifier — used for idempotent webhook processing.
+  vapiCallId           String      @unique @map("vapi_call_id")
+  initiatedAt          DateTime    @map("initiated_at")
+  completedAt          DateTime?   @map("completed_at")
+  durationSeconds      Int?        @map("duration_seconds")
+  outcome              CallOutcome?
+  outcomeDetail        String?     @map("outcome_detail")
+  repName              String?     @map("rep_name")
+  referenceNumber      String?     @map("reference_number")
+  transcriptUrl        String?     @map("transcript_url")
+  /// True if this call triggered the CARRIER_BLOCK protocol.
+  carrierBlockDetected Boolean     @default(false) @map("carrier_block_detected")
+  createdAt            DateTime    @default(now()) @map("created_at")
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id])
+
+  @@index([claimId])
+  @@index([vapiCallId])
+  @@index([outcome])
+  @@index([initiatedAt(sort: Desc)])
+  @@map("call_attempts")
+}
+
+/// Written when a carrier detects automation. Triggers practice-wide suspension
+/// of ALL calls to that carrier until resumedAt is set.
+/// This is the highest-risk operational event — must fire on every block signal.
+model CarrierBlockEvent {
+  id         String    @id @default(uuid())
+  practiceId String    @map("practice_id")
+  carrierId  CarrierId @map("carrier_id")
+  blockedAt  DateTime  @default(now()) @map("blocked_at")
+  resumedAt  DateTime? @map("resumed_at")
+  resumedBy  String?   @map("resumed_by")
+  notes      String?
+
+  @@index([practiceId, carrierId, blockedAt(sort: Desc)])
+  @@index([resumedAt]) // null = still active block
+  @@map("carrier_block_events")
+}
+
+/// One row per claim in the call queue. Tracks scheduling, retry count, state.
+model CallQueue {
+  id            String      @id @default(uuid())
+  practiceId    String      @map("practice_id")
+  claimId       String      @unique @map("claim_id")
+  scheduledFor  DateTime    @map("scheduled_for")
+  priority      ClaimPriority @default(NORMAL)
+  /// Number of attempts made so far. Hard cap: 3 (enforced before dispatch).
+  attempts      Int         @default(0)
+  lastAttemptAt DateTime?   @map("last_attempt_at")
+  status        QueueStatus @default(PENDING)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id])
+
+  @@index([practiceId, status])
+  @@index([scheduledFor])
+  @@index([practiceId, priority, scheduledFor])
+  @@map("call_queue")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXISTING TABLES — Phase 3 eligibility (kept for completeness; primary source
+// of truth is migrations/eligibility-schema.sql — these models let Prisma
+// Client query them type-safely without re-migrating).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum EligibilityStatus {
+  active
+  inactive
+  unknown
+
+  @@map("eligibility_status")
+}
+
+enum CoverageTier {
+  preventive
+  basic
+  major
+  ortho
+
+  @@map("coverage_tier")
+}
+
+enum ReconciliationFlag {
+  within_threshold
+  variance_high
+  variance_critical
+  needs_review
+
+  @@map("reconciliation_flag")
+}
+
+model InsurancePlan {
+  planId             String    @id @default(uuid()) @map("plan_id")
+  patientId          String    @map("patient_id")
+  carrier            CarrierId
+  planName           String    @map("plan_name")
+  groupNumber        String    @map("group_number")
+  memberId           String    @map("member_id")
+  effectiveDate      DateTime  @map("effective_date") @db.Date
+  terminationDate    DateTime? @map("termination_date") @db.Date
+  isPrimary          Boolean   @default(true) @map("is_primary")
+  telusUnderlyingTpa String?   @map("telus_underlying_tpa")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([patientId])
+  @@index([carrier])
+  @@map("insurance_plans")
+}
+
+model EligibilitySnapshot {
+  snapshotId                String            @id @default(uuid()) @map("snapshot_id")
+  patientId                 String            @map("patient_id")
+  carrier                   CarrierId
+  planId                    String?           @map("plan_id")
+  status                    EligibilityStatus @default(unknown)
+  verifiedAt                DateTime          @map("verified_at")
+  deductibleIndividualMet   Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
+  deductibleFamilyMet       Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
+  annualMaxUsedIndividual   Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
+  annualMaxUsedFamily       Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
+  planYearStart             DateTime          @map("plan_year_start") @db.Date
+  rawCarrierResponse        Json?             @map("raw_carrier_response")
+  createdAt                 DateTime          @default(now()) @map("created_at")
+
+  @@index([patientId, carrier, verifiedAt(sort: Desc)])
+  @@map("eligibility_snapshots")
+}
+
+model ReconciliationLog {
+  reconciliationId        String             @id @default(uuid()) @map("reconciliation_id")
+  claimId                 String             @map("claim_id")
+  patientId               String             @map("patient_id")
+  estimateId              String?            @map("estimate_id")
+  reconciledAt            DateTime           @default(now()) @map("reconciled_at")
+  estimatedPatientTotal   Decimal            @map("estimated_patient_total") @db.Decimal(10, 2)
+  actualPatientTotal      Decimal            @map("actual_patient_total") @db.Decimal(10, 2)
+  variance                Decimal            @db.Decimal(10, 2)
+  variancePercent         Decimal            @map("variance_percent") @db.Decimal(6, 2)
+  flag                    ReconciliationFlag
+  patientBalanceAdjustment Decimal           @map("patient_balance_adjustment") @db.Decimal(10, 2)
+  varianceReasons         String[]           @map("variance_reasons")
+  requiresHumanReview     Boolean            @default(false) @map("requires_human_review")
+  reviewedBy              String?            @map("reviewed_by")
+  reviewedAt              DateTime?          @map("reviewed_at")
+  reviewNotes             String?            @map("review_notes")
+  rawAdjudicationJson     Json               @map("raw_adjudication_json")
+  createdAt               DateTime           @default(now()) @map("created_at")
+
+  @@index([patientId, reconciledAt(sort: Desc)])
+  @@index([claimId])
+  @@map("reconciliation_logs")
+}

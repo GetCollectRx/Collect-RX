@@ -5,13 +5,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
+  Carrier,
   COBEstimate,
+  COBRole,
+  EligibilityEstimate,
   EligibilitySnapshot,
   InsurancePlan,
   Patient,
 } from '../types';
 import { CarrierConfig } from '../types';
-import { buildAnnualMaxState } from './annual-max';
+import { buildAnnualMaxState, applyAnnualMax } from './annual-max';
 
 // ---------------------------------------------------------------------------
 // Birthday Rule

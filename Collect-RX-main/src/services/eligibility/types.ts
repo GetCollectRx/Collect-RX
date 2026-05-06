@@ -276,7 +276,6 @@ export interface StatusRequest {
 
 export interface StatusResponse {
   success: boolean;
-  /** Latest saved estimate for this patient+carrier (from `EligibilityEstimateLog.resultJson.estimate`). */
-  lastEstimate?: EligibilityEstimate;
+  snapshot?: EligibilitySnapshot;
   error?: string;
 }
