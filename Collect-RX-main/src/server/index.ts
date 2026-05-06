@@ -15,6 +15,8 @@
 //   - All other routes use express.json()
 //   - Prisma client is singleton from lib/prisma.ts
 //   - piiVault.purgeExpired() runs on boot and hourly
+//   - Rate limiting applied globally (standardLimiter) and per-endpoint
+//     (webhookLimiter for Vapi) — see src/server/middleware/rateLimiter.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
@@ -23,6 +25,10 @@ import cors from 'cors';
 
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
+import {
+  standardLimiter,
+  webhookLimiter,
+} from './middleware/rateLimiter';
 
 // Routes
 import insuranceRouter   from '../routes/insurance';
@@ -49,9 +55,11 @@ app.use(cors({
 // ─────────────────────────────────────────────────────────────────────────────
 // Vapi webhook — RAW body MUST be mounted before express.json()
 // HMAC validation requires access to the raw request body bytes.
+// webhookLimiter allows 300 req/min to handle Vapi event bursts.
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(
   '/api/webhooks/vapi',
+  webhookLimiter,
   express.raw({ type: 'application/json' }),
   vapiWebhookRouter,
 );
@@ -63,7 +71,15 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Health check
+// Rate limiting — applied globally to all /api/* routes.
+// Individual routes that need stricter limits (e.g. queue triggers) can apply
+// strictLimiter directly in their router files on top of this baseline.
+// The /health endpoint is intentionally excluded (monitoring probes).
+// ─────────────────────────────────────────────────────────────────────────────
+app.use('/api', standardLimiter);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Health check — excluded from rate limiting (used by Railway health probes)
 // ─────────────────────────────────────────────────────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });

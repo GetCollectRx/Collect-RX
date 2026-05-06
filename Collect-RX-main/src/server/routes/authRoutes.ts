@@ -3,11 +3,14 @@ import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import { setAuthCookie, clearAuthCookie, signPracticeToken } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
+import { authLimiter } from '../middleware/rateLimiter';
 
 export function createAuthRouter(prisma: PrismaClient): Router {
   const r = Router();
 
-  r.post('/login', async (req: Request, res: Response) => {
+  // authLimiter: 5 attempts per 15 minutes per IP.
+  // Prevents brute-force and credential-stuffing attacks against the login endpoint.
+  r.post('/login', authLimiter, async (req: Request, res: Response) => {
     try {
       const { practiceId, password } = req.body as { practiceId?: string; password?: string };
       if (!practiceId || !password) {
