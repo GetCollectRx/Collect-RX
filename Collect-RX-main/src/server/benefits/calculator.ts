@@ -20,6 +20,7 @@ import {
   getPlanYear,
   getPendingClaimsTotal,
 } from './schema';
+import { requiresCdcpDesensitizationPreauth } from '../canadianExpansion/constants';
 
 interface Procedure {
   cdtCode: string;
@@ -101,6 +102,14 @@ export async function calculateEstimate(
 
   for (const proc of procedures) {
     const fee = Number(proc.fee) || 0;
+    if (
+      carrierCode === 'cdcp_sunlife' &&
+      requiresCdcpDesensitizationPreauth(proc.cdtCode)
+    ) {
+      warnings.push(
+        `CDCP: Procedure ${proc.cdtCode} requires pre-authorization (desensitization — April 1, 2026 CDCP guide).`
+      );
+    }
     const category = cdtToCategory(proc.cdtCode);
     const coverage = await getCoverageForCategory(patientToken, carrierCode, category);
 

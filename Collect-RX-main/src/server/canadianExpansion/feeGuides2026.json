@@ -1,0 +1,47 @@
+{
+  "effectiveDate": "2026-04-01",
+  "notes": "Illustrative subset for gap math — replace with ingested ODA/BCDA/ADA&C fee guide extracts in production.",
+  "cdcpScheduleFeesCad": {
+    "D0120": 38.5,
+    "D1110": 72.0,
+    "D2740": 892.0,
+    "D7140": 78.0,
+    "D41301": 48.0,
+    "D41302": 96.0
+  },
+  "provincialSuggestedFeesCad": {
+    "ON": {
+      "label": "Ontario (ODA-style illustrative)",
+      "fees": {
+        "D0120": 46.0,
+        "D1110": 88.0,
+        "D2740": 1180.0,
+        "D7140": 95.0,
+        "D41301": 58.0,
+        "D41302": 116.0
+      }
+    },
+    "BC": {
+      "label": "British Columbia (BCDA-style illustrative)",
+      "fees": {
+        "D0120": 44.0,
+        "D1110": 85.0,
+        "D2740": 1140.0,
+        "D7140": 92.0,
+        "D41301": 56.0,
+        "D41302": 112.0
+      }
+    },
+    "AB": {
+      "label": "Alberta (ADA&C suggested — illustrative; wider office variance)",
+      "fees": {
+        "D0120": 43.0,
+        "D1110": 82.0,
+        "D2740": 1100.0,
+        "D7140": 90.0,
+        "D41301": 54.0,
+        "D41302": 108.0
+      }
+    }
+  }
+}

@@ -306,3 +306,46 @@ model AuditLog {
   @@index([practiceId, createdAt])
   @@index([createdAt])
 }
+
+// ─── Phase 2 — CDCP reconsideration & PMS write-back (2026 roadmap) ─────────
+
+/// MOD-01 — CDCP pre-auth denial tracking; 60-day Sun Life reconsideration window from denial date.
+model CdcpReconsiderationCase {
+  id                     String   @id @default(uuid())
+  practiceId             String
+  patientToken           String
+  /// External claim / predetermination reference (PMS or carrier).
+  claimRef               String
+  carrierCode            String   @default("cdcp_sunlife")
+  procedureCode          String?
+  denialDate             DateTime
+  /// open | excluded | pending_evidence | submitted | won | lost | expired
+  status                 String   @default("open")
+  exclusionReason        String?
+  clinicalEvidenceSummary String?
+  /// Optional: route reconsideration away from original adjudicator when disclosed by carrier.
+  originalAdjudicatorHint String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([practiceId, claimRef])
+  @@index([practiceId, denialDate])
+  @@index([practiceId, status])
+  @@index([patientToken])
+}
+
+/// MOD-04 — audit trail when desktop / integration writes Resolution/Escalation outcomes back to PMS.
+model PmsWritebackLog {
+  id               String   @id @default(uuid())
+  practiceId       String
+  /// resolution_closer | escalation_closer
+  source           String
+  claimRef         String
+  abeldentPatientId String?
+  /// Non-PHI payload: status codes, denial reasons, payment refs.
+  payload          Json
+  createdAt        DateTime @default(now())
+
+  @@index([practiceId, createdAt])
+  @@index([claimRef])
+}

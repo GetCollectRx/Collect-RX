@@ -23,9 +23,14 @@ import { handleVapiWebhook } from './vapi/vapiWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
 import { createBenefitsApiRouter } from './routes/benefitsApi.js';
 import { createPatientArApiRouter } from './routes/patientArApi.js';
+import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { verifyUnsubscribeRequest, getPublicApiBase } from './email/unsubscribeUrl.js';
 import { appendAuditLog } from './audit/auditLog.js';
+import {
+  startProductImprovementAgent,
+  ingestNotebookLmResearch,
+} from './agents/productImprovementAgent.js';
 
 /** Practice-facing carrier labels for dashboard alerts (align with Admin carrier settings keys). */
 const CARRIER_ALERT_LABELS: Record<string, string> = {
@@ -128,6 +133,40 @@ app.post(
 );
 
 app.use(express.json({ limit: '1mb' }));
+
+/**
+ * NotebookLM -> CollectRx bridge.
+ * Intended caller: your external daily Claude/NotebookLM schedule.
+ */
+app.post('/api/internal/notebooklm/ingest', async (req, res) => {
+  const expected = String(process.env.PRODUCT_AGENT_INGEST_TOKEN || '');
+  if (!expected) {
+    return res.status(503).json({ error: 'ingest_not_configured' });
+  }
+  const token =
+    (typeof req.headers['x-collectrx-research-token'] === 'string' &&
+      req.headers['x-collectrx-research-token']) ||
+    '';
+  if (!token || token !== expected) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const result = await ingestNotebookLmResearch(prisma, req.body as {
+      title: string;
+      sourceUrl?: string;
+      findings: Array<{
+        theme: string;
+        finding: string;
+        recommendedAction: string;
+        urgency?: 'low' | 'medium' | 'high';
+      }>;
+      practiceId?: string;
+    });
+    return res.json({ ok: true, ...result });
+  } catch (e) {
+    return res.status(400).json({ error: (e as Error).message || 'invalid_payload' });
+  }
+});
 
 const uploadCsv = multer({
   storage: multer.memoryStorage(),
@@ -267,6 +306,7 @@ const protectedApi = express.Router();
 protectedApi.use(authenticate);
 protectedApi.use(createBenefitsApiRouter(prisma));
 protectedApi.use(createPatientArApiRouter(prisma));
+protectedApi.use(createCanadianExpansionRouter(prisma));
 
 // Dashboard stats
 protectedApi.get('/dashboard/stats', async (req, res) => {
@@ -615,6 +655,55 @@ protectedApi.get('/analytics/carrier-performance', async (req, res) => {
   } catch (error) {
     console.error('Carrier performance error:', error);
     res.status(500).json({ error: 'Failed to fetch carrier performance' });
+  }
+});
+
+/** Phase 2 — 8-dimension dashboard preview + CDCP / write-back counters */
+protectedApi.get('/analytics/canadian-phase2', async (req, res) => {
+  try {
+    const pid = practiceId(req);
+    const now = new Date();
+    const [reconsiderationTotal, pipelineOpen, expiringSoon, writeback7d] = await Promise.all([
+      prisma.cdcpReconsiderationCase.count({ where: { practiceId: pid } }),
+      prisma.cdcpReconsiderationCase.count({
+        where: {
+          practiceId: pid,
+          status: { in: ['open', 'pending_evidence', 'submitted'] },
+        },
+      }),
+      prisma.cdcpReconsiderationCase.count({
+        where: {
+          practiceId: pid,
+          status: { in: ['open', 'pending_evidence'] },
+          denialDate: { gte: new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+      prisma.pmsWritebackLog.count({
+        where: {
+          practiceId: pid,
+          createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+    ]);
+    res.json({
+      reconsiderationCasesTotal: reconsiderationTotal,
+      reconsiderationPipelineActive: pipelineOpen,
+      reconsiderationWindowAttention: expiringSoon,
+      pmsWritebacksLast7Days: writeback7d,
+      eightDimensionLabels: [
+        { id: 1, name: 'CDCP adjudication success (Schedule B preauth)' },
+        { id: 2, name: 'Provincial fee variance (AB spread)' },
+        { id: 3, name: 'Reconsideration recovery value' },
+        { id: 4, name: 'Claim age vs 12-month resubmission limit' },
+        { id: 5, name: '96-month complete-denture frequency' },
+        { id: 6, name: 'Lab fee margin (April 2026 schedule)' },
+        { id: 7, name: 'Sedation session count vs preauth threshold' },
+        { id: 8, name: 'COB / wraparound efficiency' },
+      ],
+    });
+  } catch (error) {
+    console.error('Canadian phase2 analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch Canadian phase-2 metrics' });
   }
 });
 
@@ -1221,6 +1310,7 @@ if (!process.env.VITEST) {
       } else {
         startRulesEngine(prisma);
         startReminderEngine();
+        startProductImprovementAgent(prisma);
         console.log('✅ Rules + reminder engines in-process (no REDIS_URL).');
       }
     })();
