@@ -24,6 +24,8 @@ import { handleTwilioInboundSms } from './twilio/inboundSms.js';
 import { createBenefitsApiRouter } from './routes/benefitsApi.js';
 import { createPatientArApiRouter } from './routes/patientArApi.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
+import { computeEightDimensions } from './canadianExpansion/eightDimensionMetrics.js';
+import { getItransStatus } from './canadianExpansion/itrans2.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { verifyUnsubscribeRequest, getPublicApiBase } from './email/unsubscribeUrl.js';
 import { appendAuditLog } from './audit/auditLog.js';
@@ -658,12 +660,19 @@ protectedApi.get('/analytics/carrier-performance', async (req, res) => {
   }
 });
 
-/** Phase 2 — 8-dimension dashboard preview + CDCP / write-back counters */
+/** Phase 2 — 8-dimension dashboard + CDCP / write-back counters + ITRANS 2 readiness */
 protectedApi.get('/analytics/canadian-phase2', async (req, res) => {
   try {
     const pid = practiceId(req);
     const now = new Date();
-    const [reconsiderationTotal, pipelineOpen, expiringSoon, writeback7d] = await Promise.all([
+    const [
+      reconsiderationTotal,
+      pipelineOpen,
+      expiringSoon,
+      writeback7d,
+      writebackPending,
+      eightDimensions,
+    ] = await Promise.all([
       prisma.cdcpReconsiderationCase.count({ where: { practiceId: pid } }),
       prisma.cdcpReconsiderationCase.count({
         where: {
@@ -684,22 +693,20 @@ protectedApi.get('/analytics/canadian-phase2', async (req, res) => {
           createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
         },
       }),
+      prisma.pmsWritebackLog.count({
+        where: { practiceId: pid, processedAt: null, processError: null },
+      }),
+      computeEightDimensions(prisma, pid),
     ]);
     res.json({
       reconsiderationCasesTotal: reconsiderationTotal,
       reconsiderationPipelineActive: pipelineOpen,
       reconsiderationWindowAttention: expiringSoon,
       pmsWritebacksLast7Days: writeback7d,
-      eightDimensionLabels: [
-        { id: 1, name: 'CDCP adjudication success (Schedule B preauth)' },
-        { id: 2, name: 'Provincial fee variance (AB spread)' },
-        { id: 3, name: 'Reconsideration recovery value' },
-        { id: 4, name: 'Claim age vs 12-month resubmission limit' },
-        { id: 5, name: '96-month complete-denture frequency' },
-        { id: 6, name: 'Lab fee margin (April 2026 schedule)' },
-        { id: 7, name: 'Sedation session count vs preauth threshold' },
-        { id: 8, name: 'COB / wraparound efficiency' },
-      ],
+      pmsWritebacksPending: writebackPending,
+      itrans2: getItransStatus(now),
+      eightDimensions,
+      eightDimensionLabels: eightDimensions.map((d) => ({ id: d.id, name: d.name })),
     });
   } catch (error) {
     console.error('Canadian phase2 analytics error:', error);

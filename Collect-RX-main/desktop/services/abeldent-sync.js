@@ -31,6 +31,7 @@ const {
   mergeMap,
   buildClaimsQuery,
   buildPatientBalanceQuery,
+  buildWritebackStatement,
 } = require('./abeldentQueryTemplates.cjs');
 
 // Config
@@ -117,6 +118,39 @@ async function fetchFromAbeldent() {
   return result.recordset;
 }
 
+// HTTP helpers (GET + POST) with shared auth headers
+function getFromRailway(endpoint) {
+  return new Promise((resolve, reject) => {
+    if (!RAILWAY_URL || !API_TOKEN) {
+      return reject(new Error('RAILWAY_API_URL or RAILWAY_API_TOKEN is not set'));
+    }
+    const url = `${RAILWAY_URL}${endpoint}`;
+    const parsed = new URL(url);
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers: { Authorization: `Bearer ${API_TOKEN}` },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
+          else reject(new Error(`API ${res.statusCode}: ${json.error || data}`));
+        } catch {
+          reject(new Error(`API parse error (HTTP ${res.statusCode})`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 // Post to Railway
 function postToRailway(rows, endpoint) {
   return new Promise((resolve, reject) => {
@@ -201,6 +235,83 @@ async function runPatientBalanceSync() {
   }
 }
 
+async function runWritebackPolling() {
+  if (!sql) return;
+  let pending;
+  try {
+    pending = await getFromRailway('/api/canadian/pms/writeback-pending?limit=25');
+  } catch (err) {
+    sendStatus('error', `Write-back poll failed: ${err.message}`);
+    return;
+  }
+  const entries = (pending && pending.entries) || [];
+  if (entries.length === 0) return;
+
+  let pool;
+  try {
+    pool = await sql.connect(sqlConfig);
+  } catch (err) {
+    sendStatus('error', `AbelDent connect failed: ${err.message}`);
+    return;
+  }
+
+  for (const entry of entries) {
+    const startedAt = Date.now();
+    try {
+      const stmt = buildWritebackStatement(_schemaMap, {
+        source: entry.source,
+        payload: entry.payload || {},
+      });
+      const request = pool.request();
+      for (const inp of stmt.inputs) {
+        request.input(inp.name, inp.value == null ? sql.NVarChar : sql.NVarChar, inp.value);
+      }
+      const result = await request.query(stmt.sql);
+      const rowsAffected =
+        Array.isArray(result.rowsAffected) && result.rowsAffected.length > 0
+          ? result.rowsAffected[0]
+          : 0;
+      if (rowsAffected === 0) {
+        await postToRailway(
+          {
+            id: entry.id,
+            ok: false,
+            error: 'no_matching_claim',
+            durationMs: Date.now() - startedAt,
+          },
+          '/api/canadian/pms/writeback-ack'
+        );
+      } else {
+        await postToRailway(
+          { id: entry.id, ok: true, durationMs: Date.now() - startedAt },
+          '/api/canadian/pms/writeback-ack'
+        );
+      }
+    } catch (err) {
+      try {
+        await postToRailway(
+          {
+            id: entry.id,
+            ok: false,
+            error: String(err.message || err).slice(0, 500),
+            durationMs: Date.now() - startedAt,
+          },
+          '/api/canadian/pms/writeback-ack'
+        );
+      } catch {
+        /* ignore secondary failure */
+      }
+    }
+  }
+
+  try {
+    await pool.close();
+  } catch {
+    /* ignore */
+  }
+  sendStatus('ok', `Write-back applied: ${entries.length} entries`);
+}
+
 async function runAllSyncs() {
   if (!sql) {
     sendStatus('offline', 'mssql driver not available');
@@ -208,6 +319,7 @@ async function runAllSyncs() {
   }
   await runClaimsSync();
   await runPatientBalanceSync();
+  await runWritebackPolling();
 }
 
 // Listen for manual trigger

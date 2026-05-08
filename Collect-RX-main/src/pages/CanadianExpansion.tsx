@@ -32,11 +32,34 @@ type ReconsiderationRow = {
   reconsiderationExpiresAt: string
 }
 
+type DimensionStatus = 'ok' | 'watch' | 'risk'
+type DimensionMetric = {
+  id: number
+  key: string
+  name: string
+  value: number | null
+  unit: 'pct' | 'count' | 'cad' | 'days'
+  status: DimensionStatus
+  detail: string
+}
+
+type ItransStatus = {
+  readiness: string
+  itrans2Live: boolean
+  daysUntilItrans1Retires: number
+  retirementDate: string
+  config: Record<string, boolean>
+  nextAction: string
+}
+
 type Phase2Analytics = {
   reconsiderationCasesTotal: number
   reconsiderationPipelineActive: number
   reconsiderationWindowAttention: number
   pmsWritebacksLast7Days: number
+  pmsWritebacksPending: number
+  itrans2: ItransStatus
+  eightDimensions: DimensionMetric[]
   eightDimensionLabels: Array<{ id: number; name: string }>
 }
 
@@ -46,7 +69,23 @@ type WritebackEntry = {
   claimRef: string
   abeldentPatientId: string | null
   payload: unknown
+  processedAt: string | null
+  processError: string | null
   createdAt: string
+}
+
+const STATUS_COLORS: Record<DimensionStatus, string> = {
+  ok: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300',
+  watch: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  risk: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300',
+}
+
+function formatDimensionValue(d: DimensionMetric): string {
+  if (d.value == null) return '—'
+  if (d.unit === 'pct') return `${d.value}%`
+  if (d.unit === 'cad') return `CA$${d.value.toLocaleString('en-CA')}`
+  if (d.unit === 'days') return `${d.value}d`
+  return String(d.value)
 }
 
 const PROVINCES = [
@@ -449,18 +488,29 @@ export default function CanadianExpansion() {
                       <Th>When</Th>
                       <Th>Source</Th>
                       <Th>Claim</Th>
+                      <Th>State</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {writebacks.map((w) => (
-                      <Tr key={w.id}>
-                        <Td className="text-xs whitespace-nowrap">
-                          {new Date(w.createdAt).toLocaleString('en-CA')}
-                        </Td>
-                        <Td>{w.source}</Td>
-                        <Td className="font-mono text-xs">{w.claimRef}</Td>
-                      </Tr>
-                    ))}
+                    {writebacks.map((w) => {
+                      const state = w.processError
+                        ? { label: `error: ${w.processError.slice(0, 40)}`, cls: 'text-red-600' }
+                        : w.processedAt
+                        ? { label: 'applied to AbelDent', cls: 'text-green-600' }
+                        : { label: 'pending desktop sync', cls: 'text-amber-600' }
+                      return (
+                        <Tr key={w.id}>
+                          <Td className="text-xs whitespace-nowrap">
+                            {new Date(w.createdAt).toLocaleString('en-CA')}
+                          </Td>
+                          <Td>{w.source}</Td>
+                          <Td className="font-mono text-xs">{w.claimRef}</Td>
+                          <Td>
+                            <span className={`text-xs ${state.cls}`}>{state.label}</span>
+                          </Td>
+                        </Tr>
+                      )
+                    })}
                   </Tbody>
                 </Table>
               </TableContainer>
@@ -468,20 +518,79 @@ export default function CanadianExpansion() {
           </Card>
         </div>
 
-        {metrics?.eightDimensionLabels && (
+        {metrics?.eightDimensions && metrics.eightDimensions.length > 0 && (
           <Card>
             <CardHeader
-              title="8-dimension dashboard (preview)"
-              subtitle="Executive metrics from the DSO deck — counters above hydrate automatically; dimension scores wire to telemetry next."
+              title="8-dimension dashboard"
+              subtitle="Live values from CDCP cases, write-backs, fee-guide imports, and patient-balance telemetry."
             />
-            <ul className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
-              {metrics.eightDimensionLabels.map((d) => (
-                <li key={d.id} className="flex gap-2">
-                  <span className="text-crx-500 font-mono text-xs">{d.id}</span>
-                  <span>{d.name}</span>
-                </li>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {metrics.eightDimensions.map((d) => (
+                <div
+                  key={d.id}
+                  className="rounded-xl border border-gray-100 dark:border-gray-700 p-3 bg-white dark:bg-gray-800"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-2xs uppercase tracking-wide text-gray-500">
+                      {d.id}. {d.name}
+                    </span>
+                    <span
+                      className={`text-2xs px-2 py-0.5 rounded ${STATUS_COLORS[d.status]}`}
+                    >
+                      {d.status}
+                    </span>
+                  </div>
+                  <div className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                    {formatDimensionValue(d)}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {d.detail}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
+          </Card>
+        )}
+
+        {metrics?.itrans2 && (
+          <Card>
+            <CardHeader
+              title="ITRANS 2.0 readiness"
+              subtitle="ITRANS 1 retires June 30, 2026 — CDAnet traffic must move to ITRANS 2 endpoints."
+            />
+            <div className="p-4 space-y-2">
+              <div className="flex flex-wrap gap-3 items-center">
+                <span
+                  className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                    metrics.itrans2.itrans2Live
+                      ? STATUS_COLORS.ok
+                      : metrics.itrans2.daysUntilItrans1Retires < 30
+                      ? STATUS_COLORS.risk
+                      : STATUS_COLORS.watch
+                  }`}
+                >
+                  {metrics.itrans2.readiness}
+                </span>
+                <span className="text-sm tabular-nums">
+                  {metrics.itrans2.daysUntilItrans1Retires > 0
+                    ? `${metrics.itrans2.daysUntilItrans1Retires} days until ITRANS 1 retirement`
+                    : 'ITRANS 1 retirement date passed — verify ITRANS 2 is fully live'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {metrics.itrans2.nextAction}
+              </p>
+              <ul className="text-xs grid grid-cols-2 gap-1 text-gray-500">
+                {Object.entries(metrics.itrans2.config).map(([k, v]) => (
+                  <li key={k}>
+                    <span className={v ? 'text-green-600' : 'text-gray-400'}>
+                      {v ? '✓' : '○'}
+                    </span>{' '}
+                    {k}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </Card>
         )}
       </div>

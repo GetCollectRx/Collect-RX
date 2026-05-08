@@ -334,6 +334,24 @@ model CdcpReconsiderationCase {
   @@index([patientToken])
 }
 
+/// MOD-03 — DB-backed fee guide rows (replaces bundled JSON when populated).
+/// scope = 'CDCP' for federal schedule, or province code 'ON'/'BC'/'AB'/etc.
+model FeeGuideEntry {
+  id            String   @id @default(uuid())
+  /// 'CDCP' or 2-letter province code
+  scope         String
+  /// e.g. '2026-04-01' fee guide effective date
+  effectiveDate DateTime
+  cdtCode       String
+  feeCad        Float
+  source        String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@unique([scope, effectiveDate, cdtCode])
+  @@index([scope, cdtCode])
+}
+
 /// MOD-04 — audit trail when desktop / integration writes Resolution/Escalation outcomes back to PMS.
 model PmsWritebackLog {
   id               String    @id @default(uuid())

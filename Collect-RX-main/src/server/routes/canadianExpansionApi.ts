@@ -4,10 +4,18 @@
 
 import { Router, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog';
 import { getComplianceDisclosures } from '../canadianExpansion/complianceDisclosures';
-import { estimatePrecisionGap } from '../canadianExpansion/gapEstimator';
+import { estimatePrecisionGapWithDb } from '../canadianExpansion/gapEstimator';
+import { getItransStatus } from '../canadianExpansion/itrans2';
+import {
+  importFeeGuide,
+  parseFeeRows,
+  type Scope,
+} from '../canadianExpansion/feeGuideRepo';
+import { parseSimpleCsv } from '../csv/parseSimple';
 import {
   deriveInitialStatus,
   enrichCase,
@@ -141,11 +149,12 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   });
 
-  /** MOD-03 — precision gap estimate (fee guide subset + CDCP schedule snapshot) */
+  /** MOD-03 — precision gap estimate (DB-backed fee guide → bundled fallback) */
   r.post('/canadian/gap-estimate', computeLimiter, async (req: Request, res: Response) => {
     try {
       const input = validateGapEstimate(req.body);
-      const summary = estimatePrecisionGap(
+      const summary = await estimatePrecisionGapWithDb(
+        prisma,
         input.province,
         input.procedures.map((p) => ({
           cdtCode: p.cdt_code,
@@ -158,9 +167,96 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   });
 
+  /** MOD-03 — list imported fee guide entries (for admin / verification) */
+  r.get('/canadian/fee-guide', async (req: Request, res: Response) => {
+    try {
+      const scope = String(req.query.scope || '').toUpperCase();
+      if (!['CDCP', 'ON', 'BC', 'AB'].includes(scope)) {
+        return res
+          .status(400)
+          .json({ error: 'scope must be CDCP, ON, BC, or AB' });
+      }
+      const entries = await prisma.feeGuideEntry.findMany({
+        where: { scope },
+        orderBy: [{ effectiveDate: 'desc' }, { cdtCode: 'asc' }],
+        take: 1000,
+      });
+      const summary = entries.reduce<Record<string, number>>((acc, row) => {
+        const key = row.effectiveDate.toISOString().split('T')[0]!;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      return res.json({ scope, summary, entries });
+    } catch (e) {
+      return handleError('fee-guide list', e, res);
+    }
+  });
+
+  /** MOD-03 — upload a fee guide CSV. Columns: cdt_code, fee_cad [, source, notes]. */
+  const csvUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 },
+  });
+  r.post(
+    '/canadian/fee-guide/import',
+    csvUpload.single('file'),
+    async (req: Request, res: Response) => {
+      try {
+        const pid = practiceId(req);
+        const scope = String(req.body?.scope || req.query?.scope || '').toUpperCase();
+        const effectiveRaw = String(
+          req.body?.effective_date || req.query?.effective_date || ''
+        ).trim();
+        if (!['CDCP', 'ON', 'BC', 'AB'].includes(scope)) {
+          return res.status(400).json({ error: 'scope must be CDCP, ON, BC, or AB' });
+        }
+        const effective = effectiveRaw ? new Date(effectiveRaw) : null;
+        if (!effective || Number.isNaN(effective.getTime())) {
+          return res.status(400).json({ error: 'effective_date (YYYY-MM-DD) is required' });
+        }
+        const file = (req as Request & { file?: { buffer?: Buffer } }).file;
+        if (!file?.buffer) {
+          return res.status(400).json({ error: 'CSV file required (field name: file)' });
+        }
+        const text = file.buffer.toString('utf8');
+        const parsed = parseSimpleCsv(text);
+        if (parsed.length === 0) {
+          return res.status(400).json({ error: 'CSV had no data rows' });
+        }
+        const { rows, errors } = parseFeeRows(parsed);
+        if (rows.length === 0) {
+          return res.status(400).json({ error: 'No valid rows', errors });
+        }
+        const result = await importFeeGuide(prisma, scope as Scope, effective, rows);
+        void appendAuditLog(prisma, {
+          practiceId: pid,
+          action: 'canadian.fee_guide.import',
+          subjectType: 'FeeGuideEntry',
+          subjectId: `${scope}:${effectiveRaw}`,
+          details: {
+            scope,
+            effectiveDate: effectiveRaw,
+            inserted: result.inserted,
+            updated: result.updated,
+            rejected: errors.length,
+          },
+          req,
+        });
+        return res.json({ ok: true, scope, effectiveDate: effectiveRaw, ...result, errors });
+      } catch (e) {
+        return handleError('fee-guide import', e, res);
+      }
+    }
+  );
+
   /** MOD-02 — disclosure blocks for carriers / Quebec readiness */
   r.get('/canadian/compliance/disclosures', (_req: Request, res: Response) => {
     return res.json(getComplianceDisclosures());
+  });
+
+  /** ITRANS 2.0 migration status — readiness + days until ITRANS 1 retires (June 30, 2026) */
+  r.get('/canadian/itrans2/status', (_req: Request, res: Response) => {
+    return res.json(getItransStatus());
   });
 
   /** MOD-04 — log PMS write-back intent (Abeldent UPDATE executed on-premise; this is cloud audit + coordination). */

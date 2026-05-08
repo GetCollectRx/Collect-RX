@@ -164,9 +164,85 @@ function buildPatientBalanceQuery(map) {
   `.trim();
 }
 
+/**
+ * MOD-04 — write-back UPDATE templates.
+ *
+ * The cloud `PmsWritebackLog.payload` provides claim_ref + outcome metadata.
+ * We translate `source` to a target column on Insurance_Claims:
+ *   - resolution_closer → set status = 'Paid', payment ref column.
+ *   - escalation_closer → set status = 'Denied', store denial reason.
+ * Practices that use different column names override via schema-map.json.
+ *
+ * @param {typeof DEFAULT_MAP} map
+ * @param {{ source: string; payload?: Record<string, unknown> }} entry
+ * @returns {{ sql: string; inputs: Array<{name: string; value: string | number | null }> }}
+ */
+function buildWritebackStatement(map, entry) {
+  const { claims } = map;
+  const tIc = ident(claims.table);
+  const c = claims.columns;
+  const claimIdCol = ident(c.claimId);
+  const statusCol = ident(c.claimStatus);
+
+  const payload = entry.payload || {};
+  const claimRef =
+    /** @type {string} */ (payload.claim_ref || payload.claimRef || '');
+
+  // Use schema-map column overrides where present, else fall back to common AbelDent names.
+  const paymentRefCol = ident(
+    /** @type {string} */ (
+      (claims.columns && claims.columns.paymentRef) || 'PaymentRef'
+    )
+  );
+  const denialReasonCol = ident(
+    /** @type {string} */ (
+      (claims.columns && claims.columns.denialReason) || 'DenialReason'
+    )
+  );
+  const resolvedAtCol = ident(
+    /** @type {string} */ (
+      (claims.columns && claims.columns.resolvedAt) || 'ResolvedAt'
+    )
+  );
+
+  const inputs = /** @type {Array<{name: string; value: string | number | null }>} */ ([
+    { name: 'claimRef', value: String(claimRef) },
+  ]);
+
+  if (entry.source === 'resolution_closer') {
+    const paymentRef =
+      payload.payment_ref || payload.paymentRef || payload.payment_reference || null;
+    inputs.push({ name: 'paymentRef', value: paymentRef ? String(paymentRef) : null });
+    return {
+      sql: `UPDATE ${tIc}
+              SET ${statusCol} = 'Paid',
+                  ${paymentRefCol} = COALESCE(@paymentRef, ${paymentRefCol}),
+                  ${resolvedAtCol} = GETDATE()
+              WHERE CAST(${claimIdCol} AS VARCHAR(40)) = @claimRef`,
+      inputs,
+    };
+  }
+
+  // Escalation closer: record denial reason; do not flip to 'Rejected' to preserve audit trail.
+  const reason =
+    payload.denial_reason ||
+    payload.reason_code ||
+    payload.escalation_reason ||
+    null;
+  inputs.push({ name: 'denialReason', value: reason ? String(reason).slice(0, 255) : null });
+  return {
+    sql: `UPDATE ${tIc}
+            SET ${denialReasonCol} = COALESCE(@denialReason, ${denialReasonCol}),
+                ${resolvedAtCol} = GETDATE()
+            WHERE CAST(${claimIdCol} AS VARCHAR(40)) = @claimRef`,
+    inputs,
+  };
+}
+
 module.exports = {
   DEFAULT_MAP,
   mergeMap,
   buildClaimsQuery,
   buildPatientBalanceQuery,
+  buildWritebackStatement,
 };
