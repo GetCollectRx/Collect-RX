@@ -9,6 +9,7 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
   reporter: isCI ? 'github' : 'list',
+  globalSetup: './e2e/globalSetup.ts',
   use: {
     ...devices['Desktop Chrome'],
     baseURL,
