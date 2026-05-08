@@ -336,7 +336,7 @@ model CdcpReconsiderationCase {
 
 /// MOD-04 — audit trail when desktop / integration writes Resolution/Escalation outcomes back to PMS.
 model PmsWritebackLog {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   practiceId       String
   /// resolution_closer | escalation_closer
   source           String
@@ -344,8 +344,13 @@ model PmsWritebackLog {
   abeldentPatientId String?
   /// Non-PHI payload: status codes, denial reasons, payment refs.
   payload          Json
-  createdAt        DateTime @default(now())
+  /// Set by desktop connector after AbelDent UPDATE succeeds.
+  processedAt      DateTime?
+  /// Truncated error message if connector reports failure (kept for retry triage).
+  processError     String?
+  createdAt        DateTime  @default(now())
 
   @@index([practiceId, createdAt])
+  @@index([practiceId, processedAt])
   @@index([claimRef])
 }

@@ -7,6 +7,7 @@
 import { createHash } from 'crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { maybeAutoCreateFromVapiBody } from '../canadianExpansion/autoReconsideration';
 
 function hashBody(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
@@ -80,6 +81,13 @@ export async function handleVapiWebhook(
   }
 
   const payload = req.body;
+
+  // MOD-01 auto: opportunistic CDCP reconsideration case creation on denials.
+  // Fire-and-forget; never blocks Vapi response or fails the request.
+  void maybeAutoCreateFromVapiBody(prisma, payload).catch((e) => {
+    console.error('[vapi] auto-reconsideration error', e);
+  });
+
   const out = responseForVapiMessage(payload);
   res.status(200).json(out);
 }

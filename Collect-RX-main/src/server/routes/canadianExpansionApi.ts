@@ -3,25 +3,54 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog';
 import { getComplianceDisclosures } from '../canadianExpansion/complianceDisclosures';
-import {
-  estimatePrecisionGap,
-  type ProvinceCode,
-} from '../canadianExpansion/gapEstimator';
+import { estimatePrecisionGap } from '../canadianExpansion/gapEstimator';
 import {
   deriveInitialStatus,
   enrichCase,
   reconsiderationExpiresAt,
 } from '../canadianExpansion/reconsideration';
+import {
+  ValidationError,
+  validateGapEstimate,
+  validateReconsiderationCreate,
+  validateReconsiderationStatus,
+  validateWriteback,
+} from '../canadianExpansion/validators';
 
 function practiceId(req: Request): string {
   return req.practiceAuth!.practiceId;
 }
 
+function handleError(label: string, e: unknown, res: Response): Response {
+  if (e instanceof ValidationError) {
+    return res.status(400).json({ error: e.message, field: e.field });
+  }
+  if (e && typeof e === 'object' && 'code' in e) {
+    const code = (e as { code?: string }).code;
+    if (code === 'P2002') {
+      return res.status(409).json({ error: 'A record with this identifier already exists' });
+    }
+  }
+  console.error(label, e);
+  return res.status(500).json({ error: `${label} failed` });
+}
+
 export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   const r = Router();
+
+  // Cap heavier compute endpoints. Auth-rate-limit upstream applies first;
+  // this is a per-route cushion against accidental tight loops.
+  const computeLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests on this endpoint' },
+  });
 
   /** MOD-01 — list CDCP reconsideration cases with 60-day countdown */
   r.get('/canadian/cdcp/reconsiderations', async (req: Request, res: Response) => {
@@ -32,12 +61,9 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
         orderBy: { denialDate: 'desc' },
         take: 200,
       });
-      return res.json({
-        cases: rows.map((row) => enrichCase(row)),
-      });
+      return res.json({ cases: rows.map((row) => enrichCase(row)) });
     } catch (e) {
-      console.error('GET reconsiderations', e);
-      return res.status(500).json({ error: 'Failed to load reconsiderations' });
+      return handleError('GET reconsiderations', e, res);
     }
   });
 
@@ -45,71 +71,44 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   r.post('/canadian/cdcp/reconsiderations', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
-      const body = req.body as {
-        patient_token?: string;
-        claim_ref?: string;
-        carrier_code?: string;
-        procedure_code?: string;
-        denial_date?: string;
-        clinical_evidence_summary?: string;
-        original_adjudicator_hint?: string;
-      };
-      const patientToken = String(body.patient_token || '').trim();
-      const claimRef = String(body.claim_ref || '').trim();
-      if (!patientToken || !claimRef) {
-        return res.status(400).json({ error: 'patient_token and claim_ref are required' });
-      }
+      const input = validateReconsiderationCreate(req.body);
       const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken },
+        where: { practiceId: pid, patientToken: input.patientToken },
         select: { id: true },
       });
       if (!belongs) {
         return res.status(404).json({ error: 'Patient not found for this practice' });
       }
-      let denialDate = body.denial_date ? new Date(body.denial_date) : new Date();
-      if (Number.isNaN(denialDate.getTime())) {
-        denialDate = new Date();
-      }
-      const carrierCode = String(body.carrier_code || 'cdcp_sunlife').trim() || 'cdcp_sunlife';
-      const proc = body.procedure_code?.trim() || null;
-      const init = deriveInitialStatus(proc || '');
-
+      const init = deriveInitialStatus(input.procedureCode || '');
       const row = await prisma.cdcpReconsiderationCase.create({
         data: {
           practiceId: pid,
-          patientToken,
-          claimRef,
-          carrierCode,
-          procedureCode: proc,
-          denialDate,
+          patientToken: input.patientToken,
+          claimRef: input.claimRef,
+          carrierCode: input.carrierCode,
+          procedureCode: input.procedureCode ?? null,
+          denialDate: input.denialDate,
           status: init.status,
           exclusionReason: init.exclusionReason,
-          clinicalEvidenceSummary: body.clinical_evidence_summary?.trim() || null,
-          originalAdjudicatorHint: body.original_adjudicator_hint?.trim() || null,
+          clinicalEvidenceSummary: input.clinicalEvidenceSummary ?? null,
+          originalAdjudicatorHint: input.originalAdjudicatorHint ?? null,
         },
       });
-
       void appendAuditLog(prisma, {
         practiceId: pid,
         action: 'canadian.cdcp.reconsideration.create',
         subjectType: 'CdcpReconsiderationCase',
         subjectId: row.id,
         details: {
-          claimRef,
+          claimRef: input.claimRef,
           status: row.status,
-          expiry: reconsiderationExpiresAt(denialDate).toISOString(),
+          expiry: reconsiderationExpiresAt(input.denialDate).toISOString(),
         },
-        req: req as Request,
+        req,
       });
-
       return res.status(201).json({ case: enrichCase(row) });
-    } catch (e: unknown) {
-      const msg = e && typeof e === 'object' && 'code' in e ? (e as { code?: string }).code : '';
-      if (msg === 'P2002') {
-        return res.status(409).json({ error: 'A case for this claim reference already exists' });
-      }
-      console.error('POST reconsiderations', e);
-      return res.status(500).json({ error: 'Failed to create reconsideration case' });
+    } catch (e) {
+      return handleError('POST reconsiderations', e, res);
     }
   });
 
@@ -117,20 +116,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     try {
       const pid = practiceId(req);
       const id = req.params.id;
-      const body = req.body as { status?: string };
-      const status = String(body.status || '').trim();
-      const allowed = new Set([
-        'open',
-        'pending_evidence',
-        'submitted',
-        'won',
-        'lost',
-        'expired',
-        'excluded',
-      ]);
-      if (!allowed.has(status)) {
-        return res.status(400).json({ error: 'invalid status' });
-      }
+      const status = validateReconsiderationStatus(req.body);
       const existing = await prisma.cdcpReconsiderationCase.findFirst({
         where: { id, practiceId: pid },
       });
@@ -141,39 +127,34 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
         where: { id },
         data: { status },
       });
+      void appendAuditLog(prisma, {
+        practiceId: pid,
+        action: 'canadian.cdcp.reconsideration.update',
+        subjectType: 'CdcpReconsiderationCase',
+        subjectId: row.id,
+        details: { from: existing.status, to: status, claimRef: row.claimRef },
+        req,
+      });
       return res.json({ case: enrichCase(row) });
     } catch (e) {
-      console.error('PATCH reconsiderations', e);
-      return res.status(500).json({ error: 'Failed to update case' });
+      return handleError('PATCH reconsiderations', e, res);
     }
   });
 
   /** MOD-03 — precision gap estimate (fee guide subset + CDCP schedule snapshot) */
-  r.post('/canadian/gap-estimate', async (req: Request, res: Response) => {
+  r.post('/canadian/gap-estimate', computeLimiter, async (req: Request, res: Response) => {
     try {
-      const body = req.body as {
-        province?: string;
-        procedures?: Array<{ cdt_code: string; office_fee_cad: number }>;
-      };
-      const prov = (body.province || 'ON').toUpperCase() as ProvinceCode;
-      if (!['ON', 'BC', 'AB'].includes(prov)) {
-        return res.status(400).json({ error: 'province must be ON, BC, or AB' });
-      }
-      const procs = Array.isArray(body.procedures) ? body.procedures : [];
-      if (procs.length === 0) {
-        return res.status(400).json({ error: 'procedures required' });
-      }
+      const input = validateGapEstimate(req.body);
       const summary = estimatePrecisionGap(
-        prov,
-        procs.map((p) => ({
+        input.province,
+        input.procedures.map((p) => ({
           cdtCode: p.cdt_code,
-          officeFeeCad: Number(p.office_fee_cad),
+          officeFeeCad: p.office_fee_cad,
         }))
       );
       return res.json(summary);
     } catch (e) {
-      console.error('gap-estimate', e);
-      return res.status(500).json({ error: 'Gap estimate failed' });
+      return handleError('gap-estimate', e, res);
     }
   });
 
@@ -186,30 +167,14 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   r.post('/canadian/pms/writeback', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
-      const body = req.body as {
-        source?: string;
-        claim_ref?: string;
-        abeldent_patient_id?: string;
-        payload?: Record<string, unknown>;
-      };
-      const source = String(body.source || '').trim();
-      if (source !== 'resolution_closer' && source !== 'escalation_closer') {
-        return res
-          .status(400)
-          .json({ error: 'source must be resolution_closer or escalation_closer' });
-      }
-      const claimRef = String(body.claim_ref || '').trim();
-      if (!claimRef) {
-        return res.status(400).json({ error: 'claim_ref required' });
-      }
-      const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+      const input = validateWriteback(req.body);
       const row = await prisma.pmsWritebackLog.create({
         data: {
           practiceId: pid,
-          source,
-          claimRef,
-          abeldentPatientId: body.abeldent_patient_id?.trim() || null,
-          payload: payload as object,
+          source: input.source,
+          claimRef: input.claimRef,
+          abeldentPatientId: input.abeldentPatientId ?? null,
+          payload: input.payload as object,
         },
       });
       void appendAuditLog(prisma, {
@@ -217,18 +182,18 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
         action: 'canadian.pms.writeback',
         subjectType: 'PmsWritebackLog',
         subjectId: row.id,
-        details: { source, claimRef },
-        req: req as Request,
+        details: { source: input.source, claimRef: input.claimRef },
+        req,
       });
       return res.status(201).json({
         ok: true,
         id: row.id,
+        status: 'pending',
         message:
-          'Write-back logged. Apply matching UPDATE in AbelDent via desktop connector using your schema-map.',
+          'Write-back logged. Desktop connector polls /api/canadian/pms/writeback-pending and applies AbelDent UPDATE via schema-map.',
       });
     } catch (e) {
-      console.error('pms writeback', e);
-      return res.status(500).json({ error: 'Write-back log failed' });
+      return handleError('pms writeback', e, res);
     }
   });
 
@@ -246,13 +211,73 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
           claimRef: true,
           abeldentPatientId: true,
           payload: true,
+          processedAt: true,
+          processError: true,
           createdAt: true,
         },
       });
       return res.json({ entries: rows });
     } catch (e) {
-      console.error('writeback-log', e);
-      return res.status(500).json({ error: 'Failed to load write-back log' });
+      return handleError('writeback-log', e, res);
+    }
+  });
+
+  /**
+   * Desktop connector poll — returns pending write-backs for execution on-prem.
+   * Authenticated via the existing practice JWT (long-lived service token).
+   */
+  r.get('/canadian/pms/writeback-pending', async (req: Request, res: Response) => {
+    try {
+      const pid = practiceId(req);
+      const take = Math.min(50, Math.max(1, Number(req.query.limit) || 25));
+      const rows = await prisma.pmsWritebackLog.findMany({
+        where: { practiceId: pid, processedAt: null, processError: null },
+        orderBy: { createdAt: 'asc' },
+        take,
+      });
+      return res.json({ entries: rows });
+    } catch (e) {
+      return handleError('writeback-pending', e, res);
+    }
+  });
+
+  /**
+   * Desktop connector ack — mark a write-back row as processed (or error).
+   * Body: { id, ok: boolean, error?: string, durationMs?: number }
+   */
+  r.post('/canadian/pms/writeback-ack', async (req: Request, res: Response) => {
+    try {
+      const pid = practiceId(req);
+      const b = (req.body || {}) as Record<string, unknown>;
+      const id = String(b.id || '').trim();
+      if (!id) {
+        return res.status(400).json({ error: 'id required' });
+      }
+      const ok = Boolean(b.ok);
+      const errMsg = typeof b.error === 'string' ? b.error.slice(0, 500) : null;
+      const existing = await prisma.pmsWritebackLog.findFirst({
+        where: { id, practiceId: pid },
+      });
+      if (!existing) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      await prisma.pmsWritebackLog.update({
+        where: { id },
+        data: ok
+          ? { processedAt: new Date(), processError: null }
+          : { processError: errMsg || 'unknown error' },
+      });
+      void appendAuditLog(prisma, {
+        practiceId: pid,
+        action: ok ? 'canadian.pms.writeback.ack' : 'canadian.pms.writeback.error',
+        subjectType: 'PmsWritebackLog',
+        subjectId: id,
+        details: { ok, error: errMsg, durationMs: Number(b.durationMs) || null },
+        req,
+      });
+      return res.json({ ok: true });
+    } catch (e) {
+      return handleError('writeback-ack', e, res);
     }
   });
 

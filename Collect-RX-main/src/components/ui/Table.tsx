@@ -1,4 +1,4 @@
-import { HTMLAttributes } from 'react'
+import { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react'
 
 // ── Container ─────────────────────────────────────────────────────────────
 export function TableContainer({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -30,7 +30,7 @@ export function Thead({ children }: { children: React.ReactNode }) {
 }
 
 // ── Th ────────────────────────────────────────────────────────────────────
-interface ThProps extends HTMLAttributes<HTMLTableCellElement> {
+interface ThProps extends ThHTMLAttributes<HTMLTableCellElement> {
   align?: 'left' | 'center' | 'right'
   sortable?: boolean
   sorted?: 'asc' | 'desc' | null
@@ -92,7 +92,7 @@ export function Tr({ children, highlight, className = '', ...props }: TrProps) {
 }
 
 // ── Td ────────────────────────────────────────────────────────────────────
-interface TdProps extends HTMLAttributes<HTMLTableCellElement> {
+interface TdProps extends TdHTMLAttributes<HTMLTableCellElement> {
   align?: 'left' | 'center' | 'right'
   muted?: boolean
   bold?: boolean
