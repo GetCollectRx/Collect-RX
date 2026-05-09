@@ -1,18 +1,27 @@
 FROM node:20-slim
 
 RUN apt-get update \
-  && apt-get install -y openssl ca-certificates \
+  && apt-get install -y openssl ca-certificates python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY Collect-RX-main/package*.json ./
-COPY Collect-RX-main/prisma ./prisma/
+# Workspace: root package.json declares Collect-RX-main as the only workspace.
+# We copy both manifests + the prisma schema first so Docker layer caching works.
+COPY package.json package-lock.json ./
+COPY Collect-RX-main/package.json ./Collect-RX-main/
+COPY Collect-RX-main/prisma ./Collect-RX-main/prisma/
 
-RUN npm ci
+# Install all workspace deps from the root lock file.
+# --ignore-scripts skips electron-builder and other GUI-only postinstalls
+# that fail in a slim container.
+RUN npm ci --ignore-scripts --workspaces --include-workspace-root
 
+# Generate the Prisma client inside the workspace package.
+WORKDIR /app/Collect-RX-main
 RUN npx prisma generate
 
+# Bring in the rest of the app source.
 COPY Collect-RX-main/ ./
 
 RUN npm run build
