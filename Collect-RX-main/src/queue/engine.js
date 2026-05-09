@@ -10,7 +10,7 @@
  *   - Escalation and pause states
  */
 
-const { query } = require("../db");
+const { query } = require("../db.cjs");
 const logger = require("../logger");
 
 // ─── Priority Scoring ────────────────────────────────────────────────────────

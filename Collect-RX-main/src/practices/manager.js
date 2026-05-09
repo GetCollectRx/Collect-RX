@@ -8,7 +8,7 @@
  * The queue engine and Vapi client load practice config from here instead of from .env.
  */
 
-const { query } = require('../db');
+const { query } = require('../db.cjs');
 const logger = require('../logger');
 
 // ─── Create ───────────────────────────────────────────────────────────────────

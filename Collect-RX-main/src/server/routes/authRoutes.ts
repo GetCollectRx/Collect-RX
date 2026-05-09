@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { setAuthCookie, clearAuthCookie, signPracticeToken } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authLimiter } from '../middleware/rateLimiter';
+import { getSubscriptionGateState } from '../stripe/billing';
 
 export function createAuthRouter(prisma: PrismaClient): Router {
   const r = Router();
@@ -25,9 +26,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       setAuthCookie(res, practice.id);
+      const subscription = await getSubscriptionGateState(prisma, practice.id);
       res.json({
         token: signPracticeToken(practice.id),
         practice: { id: practice.id, name: practice.name, timezone: practice.timezone },
+        subscription,
       });
     } catch (e) {
       console.error('Login error:', e);
@@ -50,7 +53,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (!practice) {
         return res.status(401).json({ error: 'Session invalid' });
       }
-      res.json({ practice });
+      const subscription = await getSubscriptionGateState(prisma, id);
+      res.json({ practice, subscription });
     } catch (e) {
       console.error('me error:', e);
       res.status(500).json({ error: 'Failed' });

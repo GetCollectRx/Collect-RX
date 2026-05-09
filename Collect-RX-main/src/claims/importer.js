@@ -24,7 +24,7 @@
  *   Body: multipart/form-data with field "csv" OR application/json array of claim objects
  */
 
-const { query } = require('../db');
+const { query } = require('../db.cjs');
 const logger = require('../logger');
 
 // ─── Carrier name → carrier_code mapping ──────────────────────────────────────

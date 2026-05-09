@@ -11,6 +11,7 @@
 import Stripe from 'stripe';
 import { PrismaClient } from '@prisma/client';
 import { sendPaymentReceiptEmail } from '../patients/messaging';
+import { handlePlatformBillingWebhook } from './billing';
 
 const prisma = new PrismaClient();
 
@@ -176,6 +177,11 @@ export async function handleWebhook(
     return { handled: true, duplicate: true, eventId: event.id };
   }
 
+  const billingResult = await handlePlatformBillingWebhook(event, db, stripe);
+  if (billingResult.handled) {
+    return { handled: true, platformBilling: true, eventId: event.id, reason: billingResult.reason };
+  }
+
   // Connect Payment Links emit both checkout.session.completed and payment_intent.succeeded
   // for the same charge. Credited only from checkout so we do not double-post the balance.
   if (event.type === 'payment_intent.succeeded') {
@@ -188,6 +194,9 @@ export async function handleWebhook(
   // Real patient pay path: Connect Payment Link → Checkout Session (metadata from link → session)
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
+    if (session.mode === 'subscription') {
+      return { handled: false, reason: 'subscription_checkout_not_handled_by_billing' };
+    }
     const balanceId = session.metadata?.balance_id;
     const amountCents = session.amount_total ?? 0;
     let paymentIntentId: string | null = null;

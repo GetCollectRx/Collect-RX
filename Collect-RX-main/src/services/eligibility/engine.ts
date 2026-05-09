@@ -20,7 +20,6 @@ import {
   EstimateRequest,
   Patient,
   ProcedureEstimate,
-  ProcedureInput,
   TELUSTPAIdentification,
 } from './types';
 
@@ -99,8 +98,6 @@ function isBlockedByFrequencyLimit(
 function computeConfidenceScore(
   snapshot: EligibilitySnapshot | undefined,
   blockedCount: number,
-  procedureCount: number,
-  notes: string[],
 ): { score: number; confidenceNotes: string[] } {
   const confidenceNotes: string[] = [];
   let score = 100;
@@ -220,10 +217,7 @@ export function generateEstimate(
     }
 
     const totalFee = proc.providerFee * proc.quantity;
-
-    // Gross insurance portion BEFORE deductible and annual max
     const grossInsurancePortion = (coveragePercent / 100) * totalFee;
-    const grossPatientPortionBeforeDeductible = totalFee - grossInsurancePortion;
 
     // Step 1: Apply deductible to patient's gross portion
     //         Deductible is paid by patient first; reduces insurance payout
@@ -299,8 +293,6 @@ export function generateEstimate(
   const { score: confidenceScore, confidenceNotes } = computeConfidenceScore(
     snapshot,
     blockedCount,
-    request.procedures.length,
-    [],
   );
 
   // COB calculation (if secondary plan present)

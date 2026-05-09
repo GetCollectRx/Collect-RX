@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, NavLink, Link, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, Navigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
 import PublicPatientPay from './pages/PublicPatientPay'
 import PaymentThankYou  from './pages/PaymentThankYou'
@@ -20,7 +20,7 @@ import OfficeGuide           from './pages/OfficeGuide'
 import PaymentPage           from './pages/PaymentPage'
 import { LoginPage }         from './pages/LoginPage'
 import LandingPage           from './pages/LandingPage'
-import CanadianExpansion from './pages/CanadianExpansion'
+import PracticeBillingPage   from './pages/PracticeBillingPage'
 import './App.css'
 
 // ── Icons (inline SVG — zero dependency) ─────────────────────────────────
@@ -192,7 +192,7 @@ function AppShell() {
 }
 
 function AuthGate() {
-  const { authState, loading } = usePractice()
+  const { authState, loading, subscription } = usePractice()
   if (authState === 'loading' || loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -205,6 +205,14 @@ function AuthGate() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="*"      element={<LandingPage />} />
+      </Routes>
+    )
+  }
+  if (subscription.enforce && !subscription.active) {
+    return (
+      <Routes>
+        <Route path="/billing" element={<PracticeBillingPage />} />
+        <Route path="*" element={<Navigate to="/billing" replace />} />
       </Routes>
     )
   }

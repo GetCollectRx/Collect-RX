@@ -22,12 +22,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
+import { pathToFileURL } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import path from 'path';
+import cookieParser from 'cookie-parser';
 
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
+import { assertJwtConfigAtStartup } from './authToken';
 import {
   standardLimiter,
   webhookLimiter,
@@ -41,9 +43,11 @@ import carriersRouter         from '../routes/carriers';
 import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import vapiWebhookRouter      from '../webhooks/vapi';
+import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
+import { createBillingRouter } from './routes/billingRoutes';
 
 const app = express();
-const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VAPI_WEBHOOK_SECRET guard
@@ -64,6 +68,13 @@ if (!process.env.VAPI_WEBHOOK_SECRET) {
   );
 }
 
+try {
+  assertJwtConfigAtStartup();
+} catch (e) {
+  console.error('[server] FATAL:', (e as Error).message);
+  process.exit(1);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CORS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,9 +82,20 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
     'http://localhost:5173',  // Vite dev server
     'http://localhost:3000',
+    'https://www.collectrx.ca',
   ],
   credentials: true,
 }));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stripe — webhook requires raw body (same signing secret as Connect + Billing)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post(
+  '/api/stripe/webhook',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  stripeWebhookHandler(prisma),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vapi webhook — RAW body MUST be mounted before express.json()
@@ -92,25 +114,40 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Rate limiting — baseline for all /api/* routes.
-// authLimiter (stricter) is applied inside authRoutes.ts on POST /login.
-// The /health endpoint is intentionally excluded (Railway health probes).
-// ─────────────────────────────────────────────────────────────────────────────
-app.use('/api', standardLimiter);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Health check — excluded from rate limiting
+// Health — excluded from /api rate limiting (tests + probes)
 // ─────────────────────────────────────────────────────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
 
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
+});
+
+app.get('/api/health/ready', async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ready' });
+  } catch {
+    res.status(503).json({ status: 'not_ready' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rate limiting — baseline for all /api/* routes.
+// authLimiter (stricter) is applied inside authRoutes.ts on POST /login.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use('/api', standardLimiter);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/billing',    createBillingRouter(prisma));
+app.use('/api/stripe',     createStripeConnectRouter(prisma));
 app.use('/api/insurance',  insuranceRouter);
 app.use('/api/calls',      callsRouter);
 app.use('/api/carriers',   carriersRouter);
@@ -149,8 +186,18 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Boot
+// Boot (only when this file is the process entry — not when imported by tests)
 // ─────────────────────────────────────────────────────────────────────────────
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(entry).href;
+  } catch {
+    return false;
+  }
+}
+
 async function boot() {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -171,16 +218,18 @@ async function boot() {
   });
 }
 
-boot().catch((err) => {
-  console.error('[server] Fatal boot error:', err);
-  process.exit(1);
-});
+if (isMainModule()) {
+  boot().catch((err) => {
+    console.error('[server] Fatal boot error:', err);
+    process.exit(1);
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('[server] SIGTERM received — shutting down gracefully');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+  process.on('SIGTERM', async () => {
+    console.log('[server] SIGTERM received — shutting down gracefully');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+}
 
+export { app, prisma };
 export default app;

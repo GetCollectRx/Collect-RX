@@ -18,7 +18,7 @@
  *   - unknown             → Response didn't match known patterns. Escalate.
  */
 
-const { query } = require("../db");
+const { query } = require("../db.cjs");
 const logger = require("../logger");
 const { scheduleNextAttempt, pauseClaim } = require("../queue/engine");
 const { sendEscalation } = require("./escalation");

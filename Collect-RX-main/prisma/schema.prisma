@@ -15,6 +15,12 @@ model Practice {
   passwordHash  String
   /// Optional JSON: admin UI prefs (e.g. carrier toggles) — see /api/admin/settings
   settings      Json?
+  /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
+  stripeCustomerId             String?   @unique
+  stripeSubscriptionId         String?   @unique
+  /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
+  subscriptionStatus           String?
+  subscriptionCurrentPeriodEnd DateTime?
   patients      Patient[]
   balances      Balance[]
   ruleSets      RuleSet[]

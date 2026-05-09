@@ -6,6 +6,24 @@ interface Practice {
   timezone: string
 }
 
+export type SubscriptionGate = {
+  enforce: boolean
+  active: boolean
+  status: string | null
+  currentPeriodEnd: string | null
+  priceConfigured: boolean
+  skipped: boolean
+}
+
+const defaultSubscription: SubscriptionGate = {
+  enforce: false,
+  active: true,
+  status: null,
+  currentPeriodEnd: null,
+  priceConfigured: false,
+  skipped: false,
+}
+
 export type AuthState = 'loading' | 'anon' | 'ready'
 
 interface PracticeContextValue {
@@ -15,8 +33,10 @@ interface PracticeContextValue {
   setPracticeId: (id: string) => void
   loading: boolean
   authState: AuthState
+  subscription: SubscriptionGate
   login: (practiceId: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
 const PracticeContext = createContext<PracticeContextValue | null>(null)
@@ -25,6 +45,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const [practices, setPractices] = useState<Practice[]>([])
   const [practiceId, setPracticeId] = useState('')
   const [authState, setAuthState] = useState<AuthState>('loading')
+  const [subscription, setSubscription] = useState<SubscriptionGate>(defaultSubscription)
 
   const loading = authState === 'loading'
 
@@ -32,6 +53,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
     setPractices([])
     setPracticeId('')
+    setSubscription(defaultSubscription)
     setAuthState('anon')
   }, [])
 
@@ -41,30 +63,32 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])
 
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then(r => {
-        if (r.status === 401) {
-          setAuthState('anon')
-          return null
-        }
-        return r.json() as Promise<{ practice: Practice }>
-      })
-      .then(data => {
-        if (!data) return
-        try {
-          localStorage.setItem('crx_last_practice_id', data.practice.id)
-        } catch {
-          /* ignore */
-        }
-        setPractices([data.practice])
-        setPracticeId(data.practice.id)
-        setAuthState('ready')
-      })
-      .catch(() => {
-        setAuthState('anon')
-      })
+  const refreshSession = useCallback(async () => {
+    const r = await fetch('/api/auth/me', { credentials: 'include' })
+    if (r.status === 401) {
+      setPractices([])
+      setPracticeId('')
+      setSubscription(defaultSubscription)
+      setAuthState('anon')
+      return
+    }
+    const data = (await r.json()) as { practice: Practice; subscription?: SubscriptionGate }
+    try {
+      localStorage.setItem('crx_last_practice_id', data.practice.id)
+    } catch {
+      /* ignore */
+    }
+    setPractices([data.practice])
+    setPracticeId(data.practice.id)
+    setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
+    setAuthState('ready')
   }, [])
+
+  useEffect(() => {
+    void refreshSession().catch(() => {
+      setAuthState('anon')
+    })
+  }, [refreshSession])
 
   async function login(id: string, password: string) {
     const r = await fetch('/api/auth/login', {
@@ -77,7 +101,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       const err = await r.json().catch(() => ({}))
       throw new Error((err as { error?: string }).error || 'Login failed')
     }
-    const data = (await r.json()) as { practice: Practice }
+    const data = (await r.json()) as { practice: Practice; subscription?: SubscriptionGate }
     try {
       localStorage.setItem('crx_last_practice_id', data.practice.id)
     } catch {
@@ -85,6 +109,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     }
     setPractices([data.practice])
     setPracticeId(data.practice.id)
+    setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
     setAuthState('ready')
   }
 
@@ -99,8 +124,10 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
         setPracticeId,
         loading,
         authState,
+        subscription,
         login,
         logout,
+        refreshSession,
       }}
     >
       {children}

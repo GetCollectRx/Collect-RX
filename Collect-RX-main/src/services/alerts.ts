@@ -17,7 +17,6 @@
 //   ALERT_EMAIL_FROM     — sender address
 // ─────────────────────────────────────────────────────────────────────────────
 
-import nodemailer from 'nodemailer';
 import type { CarrierId } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../carriers/adapter';
 
@@ -67,6 +66,7 @@ async function sendEmailAlert(subject: string, html: string): Promise<void> {
     return;
   }
 
+  const nodemailer = (await import('nodemailer')).default;
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: parseInt(SMTP_PORT ?? '587', 10),

@@ -14,7 +14,7 @@
  *   - practice config           → authentication fields
  */
 
-const CarrierKnowledgeBase = require('./knowledge-base');
+const CarrierKnowledgeBase = require('./knowledge-base.cjs');
 const logger = require('../logger');
 
 // Singleton KB instance — loaded once at startup

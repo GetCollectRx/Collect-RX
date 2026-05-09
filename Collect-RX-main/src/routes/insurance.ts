@@ -9,11 +9,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router, Request, Response } from 'express';
-import { CarrierId, ClaimStatus, QueueStatus } from '@prisma/client';
+import { CarrierId, ClaimStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
-import { piiVault } from '../services/pii-vault';
 
 const router = Router();
 

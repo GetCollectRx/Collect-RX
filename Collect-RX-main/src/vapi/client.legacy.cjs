@@ -25,10 +25,10 @@
  */
 
 const axios = require("axios");
-const { query } = require("../db");
+const { query } = require("../db.cjs");
 const logger = require("../logger");
 const squadTemplate = require("../../vapi-squad-config.json");
-const { buildCarrierVariables, recordOutcome } = require("../carriers/adapter");
+const { buildCarrierVariables, recordOutcome } = require("../carriers/adapter.legacy.cjs");
 const piiVault = require("../pii-vault");
 
 const VAPI_BASE_URL = "https://api.vapi.ai";

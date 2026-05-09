@@ -11,7 +11,7 @@
 
 const axios = require("axios");
 const twilioSdk = require("twilio");
-const { query } = require("../db");
+const { query } = require("../db.cjs");
 const logger = require("../logger");
 
 const REASON_LABELS = {

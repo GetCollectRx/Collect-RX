@@ -258,20 +258,32 @@ function fillDateGaps(
   bucket: 'day' | 'week',
 ): CallVolumePoint[] {
   const result: CallVolumePoint[] = [];
-  const cursor = new Date(dateRange.from);
-  cursor.setHours(0, 0, 0, 0);
+  // Use UTC calendar days so keys match `initiatedAt.toISOString().slice(0, 10)` in all timezones.
+  const cursor = new Date(
+    Date.UTC(
+      dateRange.from.getUTCFullYear(),
+      dateRange.from.getUTCMonth(),
+      dateRange.from.getUTCDate(),
+    ),
+  );
+  const endUtc = Date.UTC(
+    dateRange.to.getUTCFullYear(),
+    dateRange.to.getUTCMonth(),
+    dateRange.to.getUTCDate(),
+    23,
+    59,
+    59,
+    999,
+  );
 
-  const end = new Date(dateRange.to);
-  end.setHours(23, 59, 59, 999);
-
-  while (cursor <= end) {
+  while (cursor.getTime() <= endUtc) {
     const key = cursor.toISOString().slice(0, 10);
     result.push(buckets.get(key) ?? { date: key, calls: 0, resolved: 0, failed: 0 });
 
     if (bucket === 'week') {
-      cursor.setDate(cursor.getDate() + 7);
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
     } else {
-      cursor.setDate(cursor.getDate() + 1);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
   }
 

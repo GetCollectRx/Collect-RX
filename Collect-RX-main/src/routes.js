@@ -13,10 +13,10 @@
 
 const express = require("express");
 const router  = express.Router();
-const { query }           = require("./db");
+const { query }           = require("./db.cjs");
 const { buildQueue, getQueueStats, pauseClaim } = require("./queue/engine");
-const { processOutcome, suspendAllQueuedClaims }  = require("./outcome/processor");
-const { dispatchCall, parseWebhook } = require("./vapi/client");
+const { processOutcome, suspendAllQueuedClaims }  = require("./outcome/processor.legacy.cjs");
+const { dispatchCall, parseWebhook } = require("./vapi/client.legacy.cjs");
 const {
   getOpenEscalations,
   acknowledgeEscalation,
@@ -292,7 +292,7 @@ router.get("/reports/aging", standardLimiter, async (req, res) => {
 // GET /api/carriers/stats — knowledge base health by carrier
 router.get("/carriers/stats", standardLimiter, async (req, res) => {
   try {
-    const { getKBStats } = require("./carriers/adapter");
+    const { getKBStats } = require("./carriers/adapter.legacy.cjs");
     const stats = await getKBStats();
     res.json({ success: true, stats });
   } catch (err) {

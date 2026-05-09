@@ -22,7 +22,6 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
 import { classifyOutcome } from '../outcome/processor';
-import { CARRIER_CONFIGS } from '../carriers/adapter';
 import { sendCarrierBlockAlert } from '../services/alerts';
 import type { VapiWebhookPayload } from '../vapi/client';
 import type { CarrierId } from '@prisma/client';
