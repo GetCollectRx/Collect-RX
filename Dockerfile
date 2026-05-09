@@ -13,9 +13,11 @@ COPY Collect-RX-main/package.json ./Collect-RX-main/
 COPY Collect-RX-main/prisma ./Collect-RX-main/prisma/
 
 # Install all workspace deps from the root lock file.
-# --ignore-scripts skips electron-builder and other GUI-only postinstalls
+# Plain `npm ci` at a workspace root installs root + every workspace and
+# hoists shared deps into /app/node_modules, which is what tsc/vite expect.
+# --ignore-scripts skips electron-builder and similar GUI-only postinstalls
 # that fail in a slim container.
-RUN npm ci --ignore-scripts --workspaces --include-workspace-root
+RUN npm ci --ignore-scripts
 
 # Generate the Prisma client inside the workspace package.
 WORKDIR /app/Collect-RX-main
