@@ -24,6 +24,7 @@ import { handleTwilioInboundSms } from './twilio/inboundSms.js';
 import { createBenefitsApiRouter } from './routes/benefitsApi.js';
 import { createPatientArApiRouter } from './routes/patientArApi.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
+import { getComplianceDisclosures } from './canadianExpansion/complianceDisclosures.js';
 import { computeEightDimensions } from './canadianExpansion/eightDimensionMetrics.js';
 import { getItransStatus } from './canadianExpansion/itrans2.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
@@ -1257,6 +1258,17 @@ app.get('/api/health/queue', async (_req, res) => {
       timestamp: new Date().toISOString(),
     });
   }
+});
+
+/**
+ * Phase 2 — Law 25 / AIDA copy + ITRANS readiness are static / env-driven (no PHI).
+ * Must be public so smoke tests, load balancers, and curl checks work without a session.
+ */
+app.get('/api/canadian/compliance/disclosures', (_req, res) => {
+  res.json(getComplianceDisclosures());
+});
+app.get('/api/canadian/itrans2/status', (_req, res) => {
+  res.json(getItransStatus());
 });
 
 app.use('/api/auth', createAuthRouter(prisma));

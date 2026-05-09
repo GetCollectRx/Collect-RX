@@ -7,9 +7,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog';
-import { getComplianceDisclosures } from '../canadianExpansion/complianceDisclosures';
 import { estimatePrecisionGapWithDb } from '../canadianExpansion/gapEstimator';
-import { getItransStatus } from '../canadianExpansion/itrans2';
 import {
   importFeeGuide,
   parseFeeRows,
@@ -248,16 +246,6 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
       }
     }
   );
-
-  /** MOD-02 — disclosure blocks for carriers / Quebec readiness */
-  r.get('/canadian/compliance/disclosures', (_req: Request, res: Response) => {
-    return res.json(getComplianceDisclosures());
-  });
-
-  /** ITRANS 2.0 migration status — readiness + days until ITRANS 1 retires (June 30, 2026) */
-  r.get('/canadian/itrans2/status', (_req: Request, res: Response) => {
-    return res.json(getItransStatus());
-  });
 
   /** MOD-04 — log PMS write-back intent (Abeldent UPDATE executed on-premise; this is cloud audit + coordination). */
   r.post('/canadian/pms/writeback', async (req: Request, res: Response) => {
