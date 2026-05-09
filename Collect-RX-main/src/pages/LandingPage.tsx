@@ -1,578 +1,690 @@
-/**
- * CollectRx — Public Marketing Landing Page
- * Route: / (unauthenticated)
- *
- * Aesthetic: warm cream · muted forest green · generous space · clean
- */
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ── Design tokens ─────────────────────────────────────────────────────── */
-const C = {
-  bg:       '#FAFAF7',
-  bgWarm:   '#F5F2EB',
-  white:    '#FFFFFF',
-  cream:    '#F0EDE5',
-  border:   'rgba(0,0,0,0.08)',
-  borderMd: 'rgba(0,0,0,0.12)',
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  forest:   '#1A5E48',
-  forestLt: '#E8F2EE',
-  forestMd: '#2D7A60',
-  forestDim:'#5C9E88',
+  :root {
+    --bg:       #FAFAF7;
+    --bg2:      #F3F0E8;
+    --bg3:      #EDE9DF;
+    --border:   #E0DDD4;
+    --ink:      #1C1C1A;
+    --ink2:     #6B6760;
+    --forest:   #1A5E48;
+    --forest2:  #2D8F6A;
+    --sage:     #E8F2ED;
+    --amber:    #C4885A;
+    --font-serif: 'Fraunces', Georgia, serif;
+    --font-sans:  'DM Sans', sans-serif;
+    --font-mono:  'JetBrains Mono', monospace;
+  }
 
-  ink:      '#1C1C1A',
-  inkMd:    '#4A4A46',
-  inkLt:    '#8C8880',
+  .crx-root {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-weight: 300;
+    line-height: 1.6;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
 
-  display:  "'Fraunces', Georgia, serif",
-  body:     "'DM Sans', sans-serif",
-  mono:     "'DM Mono', monospace",
+  /* Nav */
+  .crx-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 48px;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .crx-nav.scrolled {
+    background: rgba(250,250,247,0.94);
+    box-shadow: 0 1px 0 var(--border);
+    backdrop-filter: blur(12px);
+  }
+  .crx-logo {
+    font-family: var(--font-serif);
+    font-size: 20px;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    font-weight: 400;
+  }
+  .crx-logo span { color: var(--forest); }
+  .crx-nav-cta {
+    background: var(--forest);
+    color: #fff;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 100px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .crx-nav-cta:hover { background: var(--forest2); transform: translateY(-1px); }
+
+  /* Hero */
+  .crx-hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 64px;
+    padding: 120px 48px 80px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .crx-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--forest);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--sage);
+    border: 1px solid rgba(45,143,106,0.2);
+    padding: 6px 14px;
+    border-radius: 100px;
+    margin-bottom: 28px;
+  }
+  .crx-eyebrow-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--forest2);
+    animation: crx-pulse 2s ease-in-out infinite;
+  }
+  @keyframes crx-pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.5; transform:scale(0.7); }
+  }
+  .crx-headline {
+    font-family: var(--font-serif);
+    font-size: clamp(40px, 4.5vw, 64px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 24px;
+    font-weight: 300;
+  }
+  .crx-headline em { font-style: italic; color: var(--forest); }
+  .crx-subhead {
+    font-size: 16px;
+    color: var(--ink2);
+    max-width: 420px;
+    margin-bottom: 44px;
+    line-height: 1.75;
+    font-weight: 300;
+  }
+  .crx-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .crx-btn-primary {
+    background: var(--forest);
+    color: #fff; border: none;
+    padding: 14px 28px; border-radius: 100px;
+    font-family: var(--font-sans); font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: background 0.2s, transform 0.15s;
+  }
+  .crx-btn-primary:hover { background: var(--forest2); transform: translateY(-1px); }
+  .crx-btn-ghost {
+    background: transparent; color: var(--ink2);
+    border: 1px solid var(--border);
+    padding: 14px 28px; border-radius: 100px;
+    font-family: var(--font-sans); font-size: 14px; font-weight: 300;
+    cursor: pointer; transition: border-color 0.2s, color 0.2s;
+  }
+  .crx-btn-ghost:hover { border-color: var(--ink2); color: var(--ink); }
+
+  /* Terminal */
+  .crx-terminal {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.04), 0 20px 60px rgba(26,94,72,0.08);
+  }
+  .crx-terminal-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .crx-terminal-dots { display: flex; gap: 6px; }
+  .crx-terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .crx-terminal-dots span:nth-child(1) { background: #FF5F57; }
+  .crx-terminal-dots span:nth-child(2) { background: #FFBD2E; }
+  .crx-terminal-dots span:nth-child(3) { background: #28CA41; }
+  .crx-terminal-title { font-size: 11px; color: var(--ink2); letter-spacing: 0.04em; }
+  .crx-terminal-live {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--forest);
+    background: var(--sage); border: 1px solid rgba(45,143,106,0.2);
+    padding: 4px 10px; border-radius: 100px;
+  }
+  .crx-live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--forest2);
+    animation: crx-pulse 1.5s ease-in-out infinite;
+  }
+  .crx-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: none;
+    background: var(--bg2);
+  }
+  .crx-tabs::-webkit-scrollbar { display: none; }
+  .crx-tab {
+    flex-shrink: 0; padding: 10px 16px;
+    font-size: 11px; color: var(--ink2);
+    cursor: pointer; border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    white-space: nowrap; background: none;
+    border-top: none; border-left: none; border-right: none;
+    font-family: var(--font-mono);
+  }
+  .crx-tab:hover { color: var(--ink); }
+  .crx-tab.active { color: var(--forest); border-bottom-color: var(--forest); }
+  .crx-terminal-body {
+    padding: 20px 20px 12px;
+    min-height: 240px; max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: #fff;
+  }
+  .crx-line {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 9px;
+    animation: crx-fadein 0.3s ease;
+  }
+  @keyframes crx-fadein {
+    from { opacity:0; transform:translateY(3px); }
+    to   { opacity:1; transform:none; }
+  }
+  .crx-prefix   { color: var(--border); user-select: none; flex-shrink: 0; }
+  .crx-t-sys    { color: var(--ink2); }
+  .crx-t-ivr    { color: #2563EB; }
+  .crx-t-action { color: var(--ink); }
+  .crx-t-ok     { color: var(--forest); font-weight: 500; }
+  .crx-t-done   { color: var(--amber); font-weight: 500; }
+  .crx-cursor {
+    display: inline-block; width: 7px; height: 13px;
+    background: var(--forest); vertical-align: middle; margin-left: 3px;
+    animation: crx-blink 1s step-end infinite;
+  }
+  @keyframes crx-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+  .crx-terminal-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 18px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    font-size: 11px; color: var(--ink2);
+  }
+  .crx-terminal-footer .saved { color: var(--forest); font-weight: 500; }
+
+  /* Stats */
+  .crx-stats {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(4,1fr);
+  }
+  .crx-stat {
+    padding: 40px 48px;
+    border-right: 1px solid var(--border);
+  }
+  .crx-stat:last-child { border-right: none; }
+  .crx-stat-num {
+    font-family: var(--font-serif);
+    font-size: 48px; color: var(--ink);
+    line-height: 1; letter-spacing: -0.03em; margin-bottom: 6px;
+    font-weight: 300;
+  }
+  .crx-stat-num span { color: var(--forest); }
+  .crx-stat-label { font-size: 13px; color: var(--ink2); }
+
+  /* Sections */
+  .crx-section { max-width: 1280px; margin: 0 auto; padding: 100px 48px; }
+  .crx-section-tag {
+    font-family: var(--font-mono); font-size: 11px; color: var(--forest);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .crx-section-tag::before { content:''; display:block; width:20px; height:1px; background:var(--forest2); }
+  .crx-section-title {
+    font-family: var(--font-serif);
+    font-size: clamp(30px,3.5vw,48px);
+    line-height: 1.1; letter-spacing: -0.02em;
+    color: var(--ink); margin-bottom: 60px; max-width: 540px; font-weight: 300;
+  }
+  .crx-section-title em { font-style: italic; color: var(--forest); }
+
+  /* Steps */
+  .crx-steps { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+  .crx-step {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 12px; padding: 32px 28px;
+    transition: box-shadow 0.25s, transform 0.25s;
+    position: relative; overflow: hidden;
+  }
+  .crx-step::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 3px; background: linear-gradient(90deg, var(--forest), var(--forest2));
+    transform: scaleX(0); transform-origin: left;
+    transition: transform 0.35s ease;
+  }
+  .crx-step:hover { box-shadow: 0 8px 32px rgba(26,94,72,0.1); transform: translateY(-2px); }
+  .crx-step:hover::after { transform: scaleX(1); }
+  .crx-step-num { font-family: var(--font-mono); font-size: 11px; color: var(--forest2); margin-bottom: 20px; }
+  .crx-step-icon { font-size: 28px; margin-bottom: 16px; display: block; }
+  .crx-step-title { font-family: var(--font-serif); font-size: 19px; color: var(--ink); margin-bottom: 10px; font-weight: 400; }
+  .crx-step-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.65; }
+
+  /* Carriers */
+  .crx-carriers-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 16px; }
+  .crx-carrier-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    padding: 22px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .crx-carrier-card:hover { box-shadow: 0 4px 16px rgba(26,94,72,0.08); transform: translateY(-1px); }
+  .crx-carrier-card.active { border-color: var(--forest2); background: var(--sage); box-shadow: 0 0 0 3px rgba(45,143,106,0.12); }
+  .crx-carrier-name { font-size: 14px; color: var(--ink); }
+  .crx-carrier-pct {
+    font-family: var(--font-mono); font-size: 11px;
+    padding: 4px 10px; border-radius: 100px;
+    background: var(--sage); color: var(--forest);
+    border: 1px solid rgba(45,143,106,0.2);
+  }
+  .crx-market-note { margin-top: 20px; font-size: 13px; color: var(--ink2); text-align: center; }
+
+  /* Compliance */
+  .crx-compliance {
+    background: var(--sage);
+    border-top: 1px solid rgba(45,143,106,0.15);
+    border-bottom: 1px solid rgba(45,143,106,0.15);
+    padding: 40px 48px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 48px; flex-wrap: wrap;
+  }
+  .crx-badge { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--forest); }
+  .crx-badge-icon {
+    width: 32px; height: 32px;
+    background: #fff; border: 1px solid rgba(45,143,106,0.2);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 1px 4px rgba(26,94,72,0.08);
+  }
+
+  /* CTA */
+  .crx-cta { max-width: 1280px; margin: 0 auto; padding: 100px 48px; text-align: center; }
+  .crx-cta-inner {
+    background: var(--forest);
+    border-radius: 20px; padding: 80px 64px;
+    position: relative; overflow: hidden;
+  }
+  .crx-cta-inner::before {
+    content: ''; position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px; border-radius: 50%;
+    background: rgba(255,255,255,0.04); pointer-events: none;
+  }
+  .crx-cta-inner::after {
+    content: ''; position: absolute;
+    bottom: -60px; left: -60px;
+    width: 240px; height: 240px; border-radius: 50%;
+    background: rgba(255,255,255,0.03); pointer-events: none;
+  }
+  .crx-cta-title {
+    font-family: var(--font-serif); font-weight: 300;
+    font-size: clamp(30px,3.5vw,50px);
+    letter-spacing: -0.02em; color: #fff; margin-bottom: 16px;
+  }
+  .crx-cta-title em { font-style: italic; color: rgba(255,255,255,0.75); }
+  .crx-cta-sub { font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 40px; }
+  .crx-btn-white {
+    background: #fff; color: var(--forest); border: none;
+    padding: 15px 32px; border-radius: 100px;
+    font-family: var(--font-sans); font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+  }
+  .crx-btn-white:hover { opacity: 0.92; transform: translateY(-1px); }
+  .crx-btn-outline-white {
+    background: transparent; color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 15px 32px; border-radius: 100px;
+    font-family: var(--font-sans); font-size: 14px; font-weight: 300;
+    cursor: pointer; transition: border-color 0.2s, color 0.2s;
+  }
+  .crx-btn-outline-white:hover { border-color: rgba(255,255,255,0.6); color: #fff; }
+
+  /* Footer */
+  .crx-footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; color: var(--ink2);
+  }
+
+  /* Reveal */
+  .crx-reveal {
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 0.55s ease, transform 0.55s ease;
+  }
+  .crx-reveal.visible { opacity: 1; transform: none; }
+
+  @media (max-width: 960px) {
+    .crx-hero { grid-template-columns: 1fr; padding: 100px 24px 60px; gap: 48px; }
+    .crx-stats { grid-template-columns: repeat(2,1fr); }
+    .crx-stat { padding: 28px 24px; }
+    .crx-steps { grid-template-columns: 1fr 1fr; }
+    .crx-carriers-grid { grid-template-columns: 1fr 1fr; }
+    .crx-section { padding: 64px 24px; }
+    .crx-nav { padding: 16px 24px; }
+    .crx-compliance { gap: 24px; padding: 32px 24px; }
+    .crx-footer { flex-direction: column; gap: 12px; text-align: center; padding: 28px 24px; }
+    .crx-cta { padding: 64px 24px; }
+    .crx-cta-inner { padding: 56px 32px; }
+  }
+  @media (max-width: 600px) {
+    .crx-steps { grid-template-columns: 1fr; }
+    .crx-carriers-grid { grid-template-columns: 1fr; }
+    .crx-stat-num { font-size: 38px; }
+  }
+`
+
+const CARRIERS = [
+  { name: 'Sun Life',         pct: '31%', lines: [
+    { text: 'Dialing Sun Life Financial...', kind: 'sys' },
+    { text: 'IVR connected — navigating menus', kind: 'sys' },
+    { text: '"For claim status, press 2"', kind: 'ivr' },
+    { text: 'Entering group #28941 + member ID', kind: 'action' },
+    { text: '"Please wait while I retrieve..."', kind: 'ivr' },
+    { text: 'Claim #SL-847291: APPROVED', kind: 'ok' },
+    { text: 'Insurer pays: $1,240.00', kind: 'ok' },
+    { text: 'EFT deposit in 3 business days', kind: 'ok' },
+    { text: 'Complete. 4m 12s saved.', kind: 'done' },
+  ]},
+  { name: 'Canada Life',      pct: '22%', lines: [
+    { text: 'Dialing Canada Life...', kind: 'sys' },
+    { text: 'IVR connected — navigating menus', kind: 'sys' },
+    { text: '"Enter plan number followed by #"', kind: 'ivr' },
+    { text: 'Entering plan #GFL-4920', kind: 'action' },
+    { text: '"One moment while I check..."', kind: 'ivr' },
+    { text: 'Claim #CL-1048231: APPROVED', kind: 'ok' },
+    { text: 'Insurer pays: $890.00', kind: 'ok' },
+    { text: 'Cheque mailed in 5 business days', kind: 'ok' },
+    { text: 'Complete. 6m 44s saved.', kind: 'done' },
+  ]},
+  { name: 'Manulife',         pct: '12%', lines: [
+    { text: 'Dialing Manulife Financial...', kind: 'sys' },
+    { text: 'IVR connected — holding for agent', kind: 'sys' },
+    { text: '"All agents are currently busy"', kind: 'ivr' },
+    { text: 'Holding — 9m 30s elapsed', kind: 'action' },
+    { text: 'Agent connected', kind: 'action' },
+    { text: 'Claim #MFC-39821: PROCESSING', kind: 'ok' },
+    { text: 'Adjudication in progress', kind: 'ok' },
+    { text: 'EFT expected in 7 business days', kind: 'ok' },
+    { text: 'Complete. 14m 03s saved.', kind: 'done' },
+  ]},
+  { name: 'Green Shield',     pct: '7%', lines: [
+    { text: 'Dialing Green Shield Canada...', kind: 'sys' },
+    { text: 'IVR connected — navigating menus', kind: 'sys' },
+    { text: '"Enter group certificate number"', kind: 'ivr' },
+    { text: 'Entering cert #GSC-77110', kind: 'action' },
+    { text: 'Claim #GS-20847: APPROVED', kind: 'ok' },
+    { text: 'Insurer pays: $540.00', kind: 'ok' },
+    { text: 'Direct deposit in 2 business days', kind: 'ok' },
+    { text: 'Complete. 3m 51s saved.', kind: 'done' },
+  ]},
+  { name: 'RBC Insurance',    pct: '4%', lines: [
+    { text: 'Dialing RBC Insurance...', kind: 'sys' },
+    { text: 'IVR connected — navigating menus', kind: 'sys' },
+    { text: '"For claims, say or press 3"', kind: 'ivr' },
+    { text: 'Entering plan ID #RBC-20210', kind: 'action' },
+    { text: 'Claim #RBC-58320: APPROVED', kind: 'ok' },
+    { text: 'Insurer pays: $720.00', kind: 'ok' },
+    { text: 'EFT deposit in 4 business days', kind: 'ok' },
+    { text: 'Complete. 5m 20s saved.', kind: 'done' },
+  ]},
+  { name: 'TELUS AdjudiCare', pct: '2%', lines: [
+    { text: 'Dialing TELUS AdjudiCare...', kind: 'sys' },
+    { text: 'IVR connected — identifying TPA', kind: 'sys' },
+    { text: 'Group prefix: Johnston Group plan', kind: 'action' },
+    { text: '"Enter member ID + date of birth"', kind: 'ivr' },
+    { text: 'Claim #TA-67021: APPROVED', kind: 'ok' },
+    { text: 'Insurer pays: $310.00', kind: 'ok' },
+    { text: 'Direct deposit in 2 business days', kind: 'ok' },
+    { text: 'Complete. 2m 58s saved.', kind: 'done' },
+  ]},
+]
+
+const STEPS = [
+  { icon: '🔗', num: '01', title: 'Sync',    desc: 'Connect your practice management software. CollectRx reads outstanding claims automatically.' },
+  { icon: '📞', num: '02', title: 'Call',    desc: 'AI voice agents dial carriers, navigate IVRs, hold on queue, and speak with reps — hands free.' },
+  { icon: '🔒', num: '03', title: 'Protect', desc: 'Patient data never leaves your server. Agents work on anonymous tokens only.' },
+  { icon: '✓',  num: '04', title: 'Resolve', desc: 'Approvals, denials, and status updates land in a clean report. Nothing falls through the cracks.' },
+]
+
+function useScrolled() {
+  const [s, setS] = useState(false)
+  useEffect(() => {
+    const fn = () => setS(window.scrollY > 40)
+    window.addEventListener('scroll', fn, { passive: true })
+    return () => window.removeEventListener('scroll', fn)
+  }, [])
+  return s
 }
 
-/* ── Intersection-reveal hook ──────────────────────────────────────────── */
-function useVisible(threshold = 0.1) {
+function useReveal() {
+  useEffect(() => {
+    const els = document.querySelectorAll('.crx-reveal')
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') })
+    }, { threshold: 0.1 })
+    els.forEach(el => obs.observe(el))
+    return () => obs.disconnect()
+  }, [])
+}
+
+function useCounter(target: number) {
+  const [val, setVal] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
   useEffect(() => {
     const el = ref.current; if (!el) return
     const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { setVisible(true); obs.unobserve(el) }
-    }, { threshold })
+      if (!e.isIntersecting) return
+      obs.disconnect()
+      const start = performance.now()
+      const dur = 1500
+      const tick = (now: number) => {
+        const p = Math.min((now - start) / dur, 1)
+        setVal(Math.round(p * p * target))
+        if (p < 1) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    }, { threshold: 0.5 })
     obs.observe(el)
     return () => obs.disconnect()
-  }, [threshold])
-  return { ref, visible }
+  }, [target])
+  return { val, ref }
 }
 
-/* ── Animated counter hook ─────────────────────────────────────────────── */
-function useCounter(target: number, decimals = 0, active = false) {
-  const [val, setVal] = useState(0)
-  useEffect(() => {
-    if (!active) return
-    const dur = 1600; const start = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - start) / dur, 1)
-      const eased = 1 - Math.pow(1 - p, 3)
-      setVal(parseFloat((target * eased).toFixed(decimals)))
-      if (p < 1) requestAnimationFrame(tick); else setVal(target)
-    }
-    requestAnimationFrame(tick)
-  }, [active, target, decimals])
-  return val
-}
+function Terminal({ activeIdx, onSelect }: { activeIdx: number; onSelect: (i: number) => void }) {
+  const [lines, setLines] = useState<typeof CARRIERS[0]['lines']>([])
+  const [done, setDone] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
-/* ── Fade-in wrapper ───────────────────────────────────────────────────── */
-function Fade({ children, delay = 0, style = {} }: {
-  children: React.ReactNode; delay?: number; style?: React.CSSProperties
-}) {
-  const { ref, visible } = useVisible(0.08)
+  const run = useCallback((idx: number) => {
+    timers.current.forEach(clearTimeout); timers.current = []
+    setLines([]); setDone(false)
+    CARRIERS[idx].lines.forEach((line, i) => {
+      const t = setTimeout(() => {
+        setLines(prev => [...prev, line])
+        if (i === CARRIERS[idx].lines.length - 1) setDone(true)
+        if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight
+      }, i * 680)
+      timers.current.push(t)
+    })
+  }, [])
+
+  useEffect(() => { run(activeIdx); return () => timers.current.forEach(clearTimeout) }, [activeIdx, run])
+
+  const saved = done ? CARRIERS[activeIdx].lines.find(l => l.kind === 'done')?.text.match(/\d+m \d+s/)?.[0] : null
+
   return (
-    <div ref={ref} style={{
-      opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(18px)',
-      transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`,
-      ...style,
-    }}>
-      {children}
+    <div className="crx-terminal">
+      <div className="crx-terminal-bar">
+        <div className="crx-terminal-dots"><span /><span /><span /></div>
+        <span className="crx-terminal-title">collectrx — agent-call</span>
+        <div className="crx-terminal-live"><div className="crx-live-dot" />LIVE</div>
+      </div>
+      <div className="crx-tabs">
+        {CARRIERS.map((c, i) => (
+          <button key={c.name} className={`crx-tab${i === activeIdx ? ' active' : ''}`} onClick={() => onSelect(i)}>
+            {c.name}
+          </button>
+        ))}
+      </div>
+      <div className="crx-terminal-body" ref={bodyRef}>
+        {lines.map((l, i) => (
+          <div className="crx-line" key={i}>
+            <span className="crx-prefix">›</span>
+            <span className={`crx-t-${l.kind}`}>{l.text}</span>
+          </div>
+        ))}
+        {!done && <span className="crx-cursor" />}
+      </div>
+      <div className="crx-terminal-footer">
+        <span>{CARRIERS[activeIdx].name.toLowerCase()}</span>
+        {saved ? <span className="saved">saved {saved}</span> : <span>processing...</span>}
+      </div>
     </div>
   )
 }
 
-/* ── Main component ────────────────────────────────────────────────────── */
+function Stat({ target, suffix, label }: { target: number; suffix: string; label: string }) {
+  const { val, ref } = useCounter(target)
+  return (
+    <div className="crx-stat" ref={ref}>
+      <div className="crx-stat-num">{val.toLocaleString()}<span>{suffix}</span></div>
+      <div className="crx-stat-label">{label}</div>
+    </div>
+  )
+}
+
 export default function LandingPage() {
-  const { ref: statsRef, visible: statsOn } = useVisible(0.4)
-  const n1 = useCounter(94,  0, statsOn)
-  const n2 = useCounter(2.4, 1, statsOn)
-  const n3 = useCounter(12,  0, statsOn)
+  const scrolled = useScrolled()
+  const [active, setActive] = useState(0)
+  useReveal()
 
-  const carriers = [
-    'Sun Life', 'Canada Life', 'Manulife',
-    'Green Shield', 'RBC Insurance', 'TELUS AdjudiCare',
-  ]
-
-  const steps = [
-    { label: '01', title: 'IVR Navigator',       body: 'Dials the carrier and navigates automated phone trees. No hold music for your staff.' },
-    { label: '02', title: 'Claims Agent',         body: 'Speaks with a live rep, captures claim status, reason codes, and payment timelines.' },
-    { label: '03', title: 'Escalation Closer',    body: 'Disputes denied claims, requests reconsideration, and logs every exchange.' },
-    { label: '04', title: 'Resolution Closer',    body: 'Confirms payment, updates the balance, and marks the claim resolved.' },
-  ]
-
-  const features = [
-    {
-      title: 'Eligibility & Estimates',
-      body: 'Generate pre-treatment cost estimates with carrier-specific coverage percentages, deductibles, and annual maximums across all 6 supported carriers.',
-    },
-    {
-      title: 'Smart Queue Rules',
-      body: 'Claims under 30 days wait. Claims over 90 days escalate to a human. Max 3 attempts per claim, Mon–Fri 8am–5pm Eastern only.',
-    },
-    {
-      title: 'Patient Balance Reminders',
-      body: 'After insurance settles, outstanding balances trigger polite email and SMS reminders with a Stripe payment link. Opt-out is always included.',
-    },
-    {
-      title: 'Abeldent Connector',
-      body: 'Syncs directly with Abeldent Local Plus. Patients, claims, and insurance data flow in via SQL Server. No CSV exports needed.',
-    },
-    {
-      title: 'Built for Canada',
-      body: 'CDCP 2026 ready. Provincial fee guides, TELUS TPA identification by group number prefix, and iTrans 2 protocol support.',
-    },
-    {
-      title: 'Full Audit Trail',
-      body: 'Every call outcome, agent action, and claim state change is timestamped and logged, ready for compliance review or dispute resolution.',
-    },
-  ]
+  const to = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
+      <style>{STYLES}</style>
+      <div className="crx-root">
 
-        .crx *, .crx *::before, .crx *::after { box-sizing: border-box; }
-        .crx { font-family: 'DM Sans', sans-serif; background: #FAFAF7; color: #1C1C1A; line-height: 1.6; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
-        .crx a { text-decoration: none; color: inherit; }
-
-        /* Nav */
-        .crx-nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          background: rgba(250,250,247,0.92);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border-bottom: 1px solid rgba(0,0,0,0.07);
-        }
-        .crx-nav-inner {
-          max-width: 1100px; margin: 0 auto; padding: 0 32px;
-          height: 62px; display: flex; align-items: center; justify-content: space-between;
-        }
-        .crx-logo-text {
-          font-family: 'Fraunces', Georgia, serif;
-          font-size: 19px; font-weight: 600; color: #1C1C1A; letter-spacing: -0.02em;
-        }
-        .crx-logo-text em { font-style: normal; color: #1A5E48; }
-
-        .crx-nav-links { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; }
-        .crx-nav-links a {
-          font-size: 14px; font-weight: 500; color: #6B6B67;
-          padding: 6px 12px; border-radius: 8px; transition: color 0.15s, background 0.15s;
-        }
-        .crx-nav-links a:hover { color: #1C1C1A; background: rgba(0,0,0,0.04); }
-
-        /* Buttons */
-        .crx-btn {
-          display: inline-flex; align-items: center; gap: 7px;
-          font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
-          padding: 10px 20px; border-radius: 10px; border: none; cursor: pointer;
-          transition: all 0.15s; white-space: nowrap;
-        }
-        .crx-btn-ghost { color: #6B6B67; background: transparent; }
-        .crx-btn-ghost:hover { color: #1C1C1A; background: rgba(0,0,0,0.05); }
-        .crx-btn-primary {
-          background: #1A5E48; color: #FFFFFF;
-          box-shadow: 0 1px 3px rgba(26,94,72,0.25);
-        }
-        .crx-btn-primary:hover { background: #2D7A60; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,94,72,0.2); }
-        .crx-btn-outline {
-          background: transparent; color: #1A5E48;
-          border: 1.5px solid rgba(26,94,72,0.3);
-        }
-        .crx-btn-outline:hover { background: #E8F2EE; border-color: #1A5E48; }
-        .crx-btn-lg { font-size: 15px; padding: 13px 28px; border-radius: 12px; }
-
-        /* Layout */
-        .crx-wrap { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
-
-        /* Step cards */
-        .crx-step {
-          background: #FFFFFF; border: 1px solid rgba(0,0,0,0.08);
-          border-radius: 16px; padding: 28px 24px;
-          transition: box-shadow 0.2s, transform 0.2s;
-        }
-        .crx-step:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.07); transform: translateY(-2px); }
-
-        /* Feature cards */
-        .crx-feat {
-          background: #FFFFFF; border: 1px solid rgba(0,0,0,0.08);
-          border-radius: 16px; padding: 28px 24px;
-          transition: box-shadow 0.2s, transform 0.2s;
-        }
-        .crx-feat:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.07); transform: translateY(-2px); }
-
-        /* Carrier pills */
-        .crx-pill {
-          display: inline-flex; align-items: center;
-          background: #FFFFFF; border: 1px solid rgba(0,0,0,0.09);
-          border-radius: 100px; padding: 7px 16px;
-          font-size: 13px; font-weight: 500; color: #4A4A46;
-          transition: border-color 0.15s, background 0.15s;
-        }
-        .crx-pill:hover { border-color: rgba(26,94,72,0.3); background: #F0EDE5; }
-
-        /* Divider */
-        .crx-hr { border: none; border-top: 1px solid rgba(0,0,0,0.07); margin: 0; }
-
-        /* CTA box */
-        .crx-cta-inner {
-          background: #1A5E48; border-radius: 24px; padding: 72px 48px; text-align: center;
-          position: relative; overflow: hidden;
-        }
-        .crx-cta-inner::before {
-          content: ''; position: absolute; top: -80px; right: -80px;
-          width: 300px; height: 300px; border-radius: 50%;
-          background: rgba(255,255,255,0.04); pointer-events: none;
-        }
-        .crx-cta-inner::after {
-          content: ''; position: absolute; bottom: -60px; left: -60px;
-          width: 240px; height: 240px; border-radius: 50%;
-          background: rgba(255,255,255,0.03); pointer-events: none;
-        }
-
-        @media (max-width: 860px) {
-          .crx-nav-links { display: none; }
-          .crx-hero-grid { grid-template-columns: 1fr !important; }
-          .crx-steps-grid { grid-template-columns: repeat(2, 1fr) !important; }
-          .crx-feat-grid  { grid-template-columns: repeat(2, 1fr) !important; }
-          .crx-stats-row  { grid-template-columns: 1fr !important; gap: 1px !important; }
-          .crx-wrap { padding: 0 20px; }
-          .crx-cta-inner { padding: 48px 24px; }
-          .crx-cta-btns { flex-direction: column; align-items: center !important; }
-        }
-        @media (max-width: 580px) {
-          .crx-steps-grid { grid-template-columns: 1fr !important; }
-          .crx-feat-grid  { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-
-      <div className="crx" style={{ minHeight: '100vh', background: C.bg }}>
-
-        {/* ── NAV ── */}
-        <nav className="crx-nav">
-          <div className="crx-nav-inner">
-            <a href="/" className="crx-logo-text">Collect<em>Rx</em></a>
-
-            <ul className="crx-nav-links">
-              <li><a href="#how-it-works">How it works</a></li>
-              <li><a href="#features">Features</a></li>
-              <li><a href="#carriers">Carriers</a></li>
-            </ul>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Link to="/login" className="crx-btn crx-btn-ghost">Sign in</Link>
-              <a href="#cta" className="crx-btn crx-btn-primary">Book a demo</a>
-            </div>
-          </div>
+        <nav className={`crx-nav${scrolled ? ' scrolled' : ''}`}>
+          <div className="crx-logo">Collect<span>Rx</span></div>
+          <button className="crx-nav-cta" onClick={() => to('crx-cta')}>Book a Demo</button>
         </nav>
 
-        {/* ── HERO ── */}
-        <section style={{ paddingTop: 128, paddingBottom: 100 }}>
-          <div className="crx-wrap">
+        <section className="crx-hero">
+          <div>
+            <div className="crx-eyebrow"><div className="crx-eyebrow-dot" />AI Insurance AR for Canadian Dental</div>
+            <h1 className="crx-headline">Your claims.<br /><em>Called.</em><br />Done.</h1>
+            <p className="crx-subhead">
+              AI voice agents call Canadian carriers, navigate IVRs, chase denials,
+              and report back — so your front desk never waits on hold again.
+            </p>
+            <div className="crx-actions">
+              <button className="crx-btn-primary" onClick={() => to('crx-cta')}>Book a Demo</button>
+              <button className="crx-btn-ghost" onClick={() => to('crx-how')}>How it works</button>
+            </div>
+          </div>
+          <Terminal activeIdx={active} onSelect={setActive} />
+        </section>
 
-            <Fade>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: C.forestLt, borderRadius: 100, padding: '5px 14px', marginBottom: 32 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.forest, display: 'block' }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: C.forest, fontFamily: C.mono }}>
-                  Live with 6 Canadian carriers · 78% market coverage
-                </span>
+        <div className="crx-stats crx-reveal">
+          <Stat target={6}  suffix=" carriers" label="Canadian carriers supported" />
+          <Stat target={78} suffix="%"         label="of the private dental market" />
+          <Stat target={12} suffix="h"         label="saved per office per week" />
+          <Stat target={3}  suffix=" max"      label="AI call attempts per claim" />
+        </div>
+
+        <section className="crx-section" id="crx-how">
+          <div className="crx-reveal">
+            <div className="crx-section-tag">How it works</div>
+            <h2 className="crx-section-title">Four steps.<br /><em>Zero hold music.</em></h2>
+          </div>
+          <div className="crx-steps">
+            {STEPS.map((s, i) => (
+              <div className="crx-step crx-reveal" key={s.num} style={{ transitionDelay: `${i * 80}ms` }}>
+                <div className="crx-step-num">{s.num}</div>
+                <span className="crx-step-icon">{s.icon}</span>
+                <div className="crx-step-title">{s.title}</div>
+                <div className="crx-step-desc">{s.desc}</div>
               </div>
-            </Fade>
+            ))}
+          </div>
+        </section>
 
-            <Fade delay={80}>
-              <h1 style={{
-                fontFamily: C.display,
-                fontSize: 'clamp(42px, 5.5vw, 72px)',
-                fontWeight: 600,
-                letterSpacing: '-0.025em',
-                lineHeight: 1.1,
-                color: C.ink,
-                maxWidth: 780,
-                marginBottom: 28,
-              }}>
-                Your front desk shouldn't<br />
-                spend the day on hold<span style={{ color: C.forest }}>.</span>
-              </h1>
-            </Fade>
-
-            <Fade delay={160}>
-              <p style={{ fontSize: 18, color: C.inkMd, maxWidth: 520, lineHeight: 1.75, marginBottom: 40, fontWeight: 400 }}>
-                CollectRx sends AI voice agents to chase your dental insurance claims: checking status, resolving denials, and closing balances. Automatically.
-              </p>
-            </Fade>
-
-            <Fade delay={240}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 72 }}>
-                <a href="#cta" className="crx-btn crx-btn-primary crx-btn-lg">Book a demo</a>
-                <a href="#how-it-works" className="crx-btn crx-btn-outline crx-btn-lg">See how it works</a>
-              </div>
-            </Fade>
-
-            {/* Stats */}
-            <Fade delay={80}>
+        <section className="crx-section" style={{ paddingTop: 0 }}>
+          <div className="crx-reveal">
+            <div className="crx-section-tag">Carriers</div>
+            <h2 className="crx-section-title">Every major<br /><em>Canadian carrier.</em></h2>
+          </div>
+          <div className="crx-carriers-grid crx-reveal">
+            {CARRIERS.map((c, i) => (
               <div
-                ref={statsRef}
-                className="crx-stats-row"
-                style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-                  border: `1px solid ${C.border}`, borderRadius: 20,
-                  overflow: 'hidden', background: C.white,
-                  boxShadow: '0 2px 16px rgba(0,0,0,0.05)',
-                }}
+                key={c.name}
+                className={`crx-carrier-card${i === active ? ' active' : ''}`}
+                onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
               >
-                {[
-                  { val: `${n1}%`,    label: 'Claims resolved without human follow-up' },
-                  { val: `$${n2}M+`,  label: 'Insurance A/R recovered per practice / year' },
-                  { val: `${n3}h`,    label: 'Front desk hours saved each week' },
-                ].map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '28px 32px',
-                      borderRight: i < 2 ? `1px solid ${C.border}` : 'none',
-                    }}
-                  >
-                    <div style={{
-                      fontFamily: C.display,
-                      fontSize: 44,
-                      fontWeight: 600,
-                      letterSpacing: '-0.03em',
-                      color: C.forest,
-                      lineHeight: 1,
-                      marginBottom: 8,
-                    }}>
-                      {s.val}
-                    </div>
-                    <div style={{ fontSize: 13, color: C.inkLt, lineHeight: 1.5, fontWeight: 400 }}>{s.label}</div>
-                  </div>
-                ))}
+                <span className="crx-carrier-name">{c.name}</span>
+                <span className="crx-carrier-pct">{c.pct} market</span>
               </div>
-            </Fade>
+            ))}
           </div>
+          <p className="crx-market-note crx-reveal">Click any carrier to watch the AI call simulate live above</p>
         </section>
 
-        <hr className="crx-hr" />
-
-        {/* ── HOW IT WORKS ── */}
-        <section id="how-it-works" style={{ padding: '88px 0' }}>
-          <div className="crx-wrap">
-
-            <Fade style={{ marginBottom: 52 }}>
-              <p style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.forestDim, marginBottom: 14 }}>
-                How it works
-              </p>
-              <h2 style={{ fontFamily: C.display, fontSize: 'clamp(28px, 3.5vw, 46px)', fontWeight: 600, letterSpacing: '-0.025em', color: C.ink, maxWidth: 560, lineHeight: 1.15 }}>
-                Four agents. One call.<br />No hold music.
-              </h2>
-              <p style={{ fontSize: 16, color: C.inkMd, marginTop: 16, maxWidth: 460, lineHeight: 1.75 }}>
-                A coordinated AI squad handles the entire insurance follow-up call, from IVR navigation to payment confirmation.
-              </p>
-            </Fade>
-
-            <div className="crx-steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-              {steps.map((s, i) => (
-                <Fade key={s.label} delay={i * 70}>
-                  <div className="crx-step" style={{ height: '100%' }}>
-                    <div style={{
-                      fontFamily: C.mono, fontSize: 11, fontWeight: 500,
-                      color: C.forestDim, marginBottom: 18, letterSpacing: '0.05em',
-                    }}>
-                      {s.label}
-                    </div>
-                    <h3 style={{ fontFamily: C.display, fontSize: 17, fontWeight: 600, color: C.ink, marginBottom: 10, letterSpacing: '-0.01em' }}>
-                      {s.title}
-                    </h3>
-                    <p style={{ fontSize: 14, color: C.inkMd, lineHeight: 1.7 }}>{s.body}</p>
-                  </div>
-                </Fade>
-              ))}
+        <div className="crx-compliance crx-reveal">
+          {[
+            { icon: '🔒', label: 'PHIPA Compliant' },
+            { icon: '🇨🇦', label: 'PIPEDA Compliant' },
+            { icon: '🛡️', label: 'PHI never sent to AI' },
+            { icon: '📞', label: 'Mon–Fri 8am–5pm EST' },
+            { icon: '⚡', label: 'Real-time reporting' },
+          ].map(b => (
+            <div className="crx-badge" key={b.label}>
+              <div className="crx-badge-icon">{b.icon}</div>
+              {b.label}
             </div>
+          ))}
+        </div>
 
-            {/* PHI note */}
-            <Fade delay={120} style={{ marginTop: 20 }}>
-              <div style={{
-                display: 'flex', gap: 14, alignItems: 'flex-start',
-                background: C.forestLt, borderRadius: 12, padding: '18px 22px',
-                border: `1px solid rgba(26,94,72,0.12)`,
-              }}>
-                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔒</span>
-                <p style={{ fontSize: 13, color: C.inkMd, lineHeight: 1.6 }}>
-                  <strong style={{ color: C.ink, fontWeight: 600 }}>Patient data never reaches the AI.</strong>{' '}
-                  All identifiers are tokenized before any call. The agents operate on UUID tokens only. PHIPA &amp; PIPEDA compliant.
-                </p>
-              </div>
-            </Fade>
-          </div>
-        </section>
-
-        {/* ── CARRIERS ── */}
-        <section id="carriers" style={{ background: C.bgWarm, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: '72px 0' }}>
-          <div className="crx-wrap">
-            <Fade>
-              <p style={{ textAlign: 'center', fontFamily: C.mono, fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.inkLt, marginBottom: 28 }}>
-                Supported carriers
-              </p>
-            </Fade>
-            <Fade delay={80}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginBottom: 36 }}>
-                {carriers.map(name => (
-                  <span key={name} className="crx-pill">{name}</span>
-                ))}
-              </div>
-            </Fade>
-            <Fade delay={160}>
-              <p style={{ textAlign: 'center', fontSize: 15, color: C.inkMd }}>
-                Together covering{' '}
-                <strong style={{ fontFamily: C.display, fontSize: 22, fontWeight: 600, color: C.forest }}>78%</strong>
-                {' '}of the Canadian private dental insurance market.
-              </p>
-            </Fade>
-          </div>
-        </section>
-
-        {/* ── FEATURES ── */}
-        <section id="features" style={{ padding: '88px 0' }}>
-          <div className="crx-wrap">
-            <Fade style={{ marginBottom: 52 }}>
-              <p style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.forestDim, marginBottom: 14 }}>
-                Features
-              </p>
-              <h2 style={{ fontFamily: C.display, fontSize: 'clamp(28px, 3.5vw, 46px)', fontWeight: 600, letterSpacing: '-0.025em', color: C.ink, lineHeight: 1.15 }}>
-                Everything your A/R<br />process actually needs.
-              </h2>
-            </Fade>
-
-            <div className="crx-feat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-              {features.map((f, i) => (
-                <Fade key={f.title} delay={i * 60}>
-                  <div className="crx-feat" style={{ height: '100%' }}>
-                    <h3 style={{ fontFamily: C.display, fontSize: 17, fontWeight: 600, color: C.ink, marginBottom: 10, letterSpacing: '-0.01em' }}>
-                      {f.title}
-                    </h3>
-                    <p style={{ fontSize: 14, color: C.inkMd, lineHeight: 1.7 }}>{f.body}</p>
-                  </div>
-                </Fade>
-              ))}
+        <div className="crx-cta" id="crx-cta">
+          <div className="crx-cta-inner crx-reveal">
+            <h2 className="crx-cta-title">Stop holding.<br /><em>Start collecting.</em></h2>
+            <p className="crx-cta-sub">Pilot launching with select Canadian dental practices.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="crx-btn-white">Request Early Access</button>
+              <button className="crx-btn-outline-white">Watch Full Demo</button>
             </div>
           </div>
-        </section>
+        </div>
 
-        <hr className="crx-hr" />
-
-        {/* ── COMPLIANCE ── */}
-        <section style={{ padding: '56px 0', background: C.bgWarm, borderBottom: `1px solid ${C.border}` }}>
-          <div className="crx-wrap">
-            <Fade>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 40, justifyContent: 'center', alignItems: 'center' }}>
-                {[
-                  { icon: '🔐', label: 'PHIPA Compliant' },
-                  { icon: '🍁', label: 'PIPEDA Compliant' },
-                  { icon: '💳', label: 'Stripe Payments' },
-                  { icon: '🛡️', label: 'PHI Tokenized' },
-                  { icon: '🚫', label: 'Auto Carrier Block' },
-                ].map(c => (
-                  <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                    <span style={{ fontSize: 17 }}>{c.icon}</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: C.inkMd }}>{c.label}</span>
-                  </div>
-                ))}
-              </div>
-            </Fade>
-          </div>
-        </section>
-
-        {/* ── CTA ── */}
-        <section id="cta" style={{ padding: '88px 0' }}>
-          <div className="crx-wrap">
-            <Fade>
-              <div className="crx-cta-inner">
-                <p style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>
-                  Get started
-                </p>
-                <h2 style={{ fontFamily: C.display, fontSize: 'clamp(28px, 4vw, 48px)', fontWeight: 600, letterSpacing: '-0.025em', color: '#FFFFFF', marginBottom: 18, lineHeight: 1.15, position: 'relative', zIndex: 1 }}>
-                  Ready to stop chasing<br />insurance claims?
-                </h2>
-                <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', maxWidth: 400, margin: '0 auto 36px', lineHeight: 1.75, position: 'relative', zIndex: 1 }}>
-                  We're onboarding Canadian dental practices in a pilot program. Book a 20-minute call to see a live demo.
-                </p>
-                <div className="crx-cta-btns" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
-                  <a
-                    href="mailto:hello@collectrx.ca?subject=Demo Request"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      background: '#FFFFFF', color: C.forest,
-                      fontFamily: C.body, fontSize: 15, fontWeight: 600,
-                      padding: '13px 28px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                      transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}
-                  >
-                    Book a demo
-                  </a>
-                  <Link
-                    to="/login"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      background: 'transparent', color: 'rgba(255,255,255,0.85)',
-                      fontFamily: C.body, fontSize: 15, fontWeight: 500,
-                      padding: '13px 28px', borderRadius: 12,
-                      border: '1.5px solid rgba(255,255,255,0.25)', cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.6)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.25)' }}
-                  >
-                    Sign in to your practice
-                  </Link>
-                </div>
-                <p style={{ marginTop: 20, fontSize: 12, color: 'rgba(255,255,255,0.4)', position: 'relative', zIndex: 1 }}>
-                  No commitment required · Canadian practices only
-                </p>
-              </div>
-            </Fade>
-          </div>
-        </section>
-
-        {/* ── FOOTER ── */}
-        <footer style={{ borderTop: `1px solid ${C.border}`, padding: '48px 0 40px', background: C.white }}>
-          <div className="crx-wrap">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 40 }}>
-              <div>
-                <a href="/" className="crx-logo-text" style={{ display: 'block', marginBottom: 10 }}>Collect<em style={{ fontStyle: 'normal', color: C.forest }}>Rx</em></a>
-                <p style={{ fontSize: 13, color: C.inkLt, maxWidth: 220, lineHeight: 1.65 }}>
-                  AI-powered dental insurance A/R for Canadian practices.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: 56, flexWrap: 'wrap' }}>
-                {[
-                  { title: 'Product',  links: [['#how-it-works','How it works'],['#features','Features'],['#carriers','Carriers'],['/changelog','Changelog']] },
-                  { title: 'Company',  links: [['#cta','Book a demo'],['mailto:hello@collectrx.ca','Contact'],['/legal/privacy','Privacy'],['/legal/terms','Terms']] },
-                  { title: 'Platform', links: [['/login','Sign in'],['/product','Product overview'],['/guide','Office guide']] },
-                ].map(col => (
-                  <div key={col.title}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: C.ink, marginBottom: 14, letterSpacing: '0.01em', textTransform: 'uppercase', fontFamily: C.mono }}>{col.title}</p>
-                    <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
-                      {col.links.map(([href, label]) => (
-                        <li key={label}>
-                          <a href={href} style={{ fontSize: 13, color: C.inkLt, transition: 'color 0.15s' }}
-                            onMouseEnter={e => (e.currentTarget.style.color = C.ink)}
-                            onMouseLeave={e => (e.currentTarget.style.color = C.inkLt)}>
-                            {label}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 48, paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-              <p style={{ fontSize: 12, color: C.inkLt }}>© 2026 CollectRx Inc. All rights reserved.</p>
-              <p style={{ fontSize: 12, color: C.inkLt }}>Built for Canadian dental practices</p>
-            </div>
-          </div>
+        <footer className="crx-footer">
+          <div className="crx-logo" style={{ fontSize: '16px' }}>Collect<span style={{ color: 'var(--forest)' }}>Rx</span></div>
+          <span>© 2026 CollectRx Inc. Built for Canadian dental.</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--ink2)' }}>v1.0 — pilot</span>
         </footer>
 
       </div>
