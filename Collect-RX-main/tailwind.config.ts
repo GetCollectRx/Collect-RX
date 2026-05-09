@@ -1,12 +1,7 @@
 /**
  * CollectRx — Tailwind CSS Design System
  *
- * Source of truth for all design tokens.
- * The inline config in index.html MUST mirror this file exactly.
- *
- * Usage:
- *   npm install -D tailwindcss @tailwindcss/vite autoprefixer
- *   Then update vite.config.ts to import tailwindcss from '@tailwindcss/vite'
+ * Source of truth for all design tokens (compiled via PostCSS — no CDN).
  */
 
 import type { Config } from 'tailwindcss'

@@ -1,18 +1,12 @@
 /*
  * CollectRx — Global Styles
- * Tailwind utility classes handle 95% of styling.
- * This file only adds what Tailwind CDN can't express inline.
+ * Tailwind is compiled at build time (tailwind.config.ts + PostCSS).
+ * Below: Tailwind layers plus app-specific CSS Tailwind doesn't replace.
  */
 
-/* ── Custom utilities ─────────────────────────────────────────────────────── */
-/* text-2xs: CDN Tailwind doesn't generate custom fontSize extensions */
-.text-2xs { font-size: 0.625rem; line-height: 0.875rem; }
-
-/* shadow-card / shadow-card-hover / shadow-modal / shadow-sidebar */
-.shadow-card       { box-shadow: 0 1px 3px 0 rgb(0 0 0/0.07),0 1px 2px -1px rgb(0 0 0/0.07); }
-.shadow-card-hover { box-shadow: 0 4px 6px -1px rgb(0 0 0/0.08),0 2px 4px -2px rgb(0 0 0/0.08); }
-.shadow-modal      { box-shadow: 0 20px 25px -5px rgb(0 0 0/0.12),0 8px 10px -6px rgb(0 0 0/0.08); }
-.shadow-sidebar    { box-shadow: 1px 0 0 0 rgb(0 0 0/0.06); }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 :root {
