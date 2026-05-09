@@ -24,6 +24,7 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import path from 'path';
 
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
@@ -117,7 +118,19 @@ app.use('/api/analytics',  analyticsRouter);
 app.use('/api/eligibility', eligibilityRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 404 handler
+// Serve React frontend (SPA catch-all)
+// Vite builds to dist/ at the package root. Any non-API request gets the React
+// app so client-side routing works correctly in production.
+// ─────────────────────────────────────────────────────────────────────────────
+const distPath = new URL('../../dist', import.meta.url).pathname;
+
+app.use(express.static(distPath));
+app.get('*', (_req: Request, res: Response) => {
+  res.sendFile(new URL('../../dist/index.html', import.meta.url).pathname);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 404 fallback (only reached if dist/ is missing)
 // ─────────────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ success: false, error: 'Not found' });
