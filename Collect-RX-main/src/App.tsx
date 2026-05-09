@@ -19,6 +19,7 @@ import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
 import PaymentPage           from './pages/PaymentPage'
 import { LoginPage }         from './pages/LoginPage'
+import LandingPage           from './pages/LandingPage'
 import CanadianExpansion from './pages/CanadianExpansion'
 import './App.css'
 
@@ -203,7 +204,12 @@ function AuthGate() {
     )
   }
   if (authState === 'anon') {
-    return <LoginPage />
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*"      element={<LandingPage />} />
+      </Routes>
+    )
   }
   return <AppShell />
 }
