@@ -1,491 +1,534 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #FAFAF7;
-    --bg2:      #F3F0E8;
-    --bg3:      #EDE9DF;
-    --border:   #E0DDD4;
-    --ink:      #1C1C1A;
-    --ink2:     #6B6760;
-    --forest:   #1A5E48;
-    --forest2:  #2D8F6A;
-    --sage:     #E8F2ED;
-    --amber:    #C4885A;
-    --font-serif: 'Fraunces', Georgia, serif;
-    --font-sans:  'DM Sans', sans-serif;
-    --font-mono:  'JetBrains Mono', monospace;
+    --bg:      #FFFFFF;
+    --bg-off:  #F8F9FB;
+    --bg-teal: #F0F7F4;
+    --border:  #E5E9F0;
+    --ink:     #0F1C2E;
+    --ink2:    #5A6478;
+    --ink3:    #8892A0;
+    --teal:    #0A6B4F;
+    --teal2:   #128060;
+    --teal-lt: #E6F4EE;
+    --amber:   #B86C2A;
+    --red:     #DC3545;
+    --gold:    #F59E0B;
+    --font:    'Plus Jakarta Sans', system-ui, sans-serif;
+    --serif:   'Fraunces', Georgia, serif;
   }
 
-  .crx-root {
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--font-sans);
-    font-weight: 300;
-    line-height: 1.6;
-    overflow-x: hidden;
-    min-height: 100vh;
-  }
+  .lp { background: var(--bg); color: var(--ink); font-family: var(--font); font-weight: 400; line-height: 1.6; overflow-x: hidden; }
 
-  /* Nav */
-  .crx-nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 48px;
-    transition: background 0.3s, box-shadow 0.3s;
-  }
-  .crx-nav.scrolled {
-    background: rgba(250,250,247,0.94);
-    box-shadow: 0 1px 0 var(--border);
+  /* ── Nav ── */
+  .lp-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: rgba(255,255,255,0.96);
+    border-bottom: 1px solid var(--border);
     backdrop-filter: blur(12px);
   }
-  .crx-logo {
-    font-family: var(--font-serif);
-    font-size: 20px;
-    color: var(--ink);
-    letter-spacing: -0.02em;
-    font-weight: 400;
+  .lp-nav-inner {
+    max-width: 1180px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; height: 64px;
   }
-  .crx-logo span { color: var(--forest); }
-  .crx-nav-cta {
-    background: var(--forest);
-    color: #fff;
-    border: none;
-    padding: 10px 22px;
-    border-radius: 100px;
-    font-family: var(--font-sans);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.15s;
+  .lp-wordmark { display: flex; align-items: center; gap: 10px; }
+  .lp-wordmark-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--teal);
+    display: flex; align-items: center; justify-content: center;
   }
-  .crx-nav-cta:hover { background: var(--forest2); transform: translateY(-1px); }
+  .lp-wordmark-icon svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2; }
+  .lp-wordmark-text { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+  .lp-wordmark-text span { color: var(--teal); }
+  .lp-nav-links { display: flex; align-items: center; gap: 32px; }
+  .lp-nav-link { font-size: 14px; color: var(--ink2); text-decoration: none; cursor: pointer; transition: color 0.2s; }
+  .lp-nav-link:hover { color: var(--ink); }
+  .lp-nav-demo {
+    background: var(--teal); color: #fff; border: none;
+    padding: 9px 20px; border-radius: 8px;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .lp-nav-demo:hover { background: var(--teal2); }
 
-  /* Hero */
-  .crx-hero {
-    min-height: 100vh;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: center;
-    gap: 64px;
-    padding: 120px 48px 80px;
-    max-width: 1280px;
-    margin: 0 auto;
+  /* ── Hero ── */
+  .lp-hero {
+    padding: 100px 32px 80px;
+    max-width: 1180px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 80px; align-items: center;
   }
-  .crx-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--forest);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    background: var(--sage);
-    border: 1px solid rgba(45,143,106,0.2);
-    padding: 6px 14px;
-    border-radius: 100px;
-    margin-bottom: 28px;
-  }
-  .crx-eyebrow-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--forest2);
-    animation: crx-pulse 2s ease-in-out infinite;
-  }
-  @keyframes crx-pulse {
-    0%,100% { opacity:1; transform:scale(1); }
-    50%      { opacity:0.5; transform:scale(0.7); }
-  }
-  .crx-headline {
-    font-family: var(--font-serif);
-    font-size: clamp(40px, 4.5vw, 64px);
-    line-height: 1.08;
-    letter-spacing: -0.02em;
-    color: var(--ink);
+  .lp-hero-tag {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--teal-lt); color: var(--teal);
+    border: 1px solid rgba(10,107,79,0.18);
+    padding: 5px 13px; border-radius: 100px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
     margin-bottom: 24px;
-    font-weight: 300;
   }
-  .crx-headline em { font-style: italic; color: var(--forest); }
-  .crx-subhead {
-    font-size: 16px;
-    color: var(--ink2);
-    max-width: 420px;
-    margin-bottom: 44px;
-    line-height: 1.75;
-    font-weight: 300;
+  .lp-hero-tag-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--teal);
+    animation: lp-pulse 2s ease-in-out infinite;
   }
-  .crx-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .crx-btn-primary {
-    background: var(--forest);
-    color: #fff; border: none;
-    padding: 14px 28px; border-radius: 100px;
-    font-family: var(--font-sans); font-size: 14px; font-weight: 500;
+  @keyframes lp-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .lp-h1 {
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700; line-height: 1.08;
+    letter-spacing: -0.035em; color: var(--ink);
+    margin-bottom: 22px;
+  }
+  .lp-h1 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--teal); }
+  .lp-hero-sub {
+    font-size: 17px; color: var(--ink2); line-height: 1.75;
+    max-width: 480px; margin-bottom: 36px; font-weight: 400;
+  }
+  .lp-hero-btns { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 36px; }
+  .lp-btn-primary {
+    background: var(--teal); color: #fff; border: none;
+    padding: 13px 26px; border-radius: 9px;
+    font-family: var(--font); font-size: 15px; font-weight: 600;
     cursor: pointer; transition: background 0.2s, transform 0.15s;
   }
-  .crx-btn-primary:hover { background: var(--forest2); transform: translateY(-1px); }
-  .crx-btn-ghost {
-    background: transparent; color: var(--ink2);
-    border: 1px solid var(--border);
-    padding: 14px 28px; border-radius: 100px;
-    font-family: var(--font-sans); font-size: 14px; font-weight: 300;
-    cursor: pointer; transition: border-color 0.2s, color 0.2s;
+  .lp-btn-primary:hover { background: var(--teal2); transform: translateY(-1px); }
+  .lp-btn-secondary {
+    background: #fff; color: var(--ink); border: 1.5px solid var(--border);
+    padding: 13px 26px; border-radius: 9px;
+    font-family: var(--font); font-size: 15px; font-weight: 500;
+    cursor: pointer; transition: border-color 0.2s;
   }
-  .crx-btn-ghost:hover { border-color: var(--ink2); color: var(--ink); }
+  .lp-btn-secondary:hover { border-color: var(--ink3); }
+  .lp-trust-checks { display: flex; gap: 20px; flex-wrap: wrap; }
+  .lp-trust-item { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink2); }
+  .lp-trust-item svg { flex-shrink: 0; }
 
-  /* Terminal */
-  .crx-terminal {
-    background: #fff;
+  /* ── Claim preview panel ── */
+  .lp-panel {
+    background: var(--bg-off);
     border: 1px solid var(--border);
     border-radius: 16px;
     overflow: hidden;
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.04), 0 20px 60px rgba(26,94,72,0.08);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.04), 0 24px 64px rgba(15,28,46,0.1);
   }
-  .crx-terminal-bar {
+  .lp-panel-topbar {
+    background: #fff; border-bottom: 1px solid var(--border);
+    padding: 13px 20px;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px;
+  }
+  .lp-panel-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .lp-panel-badge {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--teal-lt); color: var(--teal);
+    border: 1px solid rgba(10,107,79,0.15);
+    padding: 3px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600;
+  }
+  .lp-badge-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--teal);
+    animation: lp-pulse 1.5s ease-in-out infinite;
+  }
+  .lp-carrier-select {
+    display: flex; gap: 1px;
     border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-  }
-  .crx-terminal-dots { display: flex; gap: 6px; }
-  .crx-terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
-  .crx-terminal-dots span:nth-child(1) { background: #FF5F57; }
-  .crx-terminal-dots span:nth-child(2) { background: #FFBD2E; }
-  .crx-terminal-dots span:nth-child(3) { background: #28CA41; }
-  .crx-terminal-title { font-size: 11px; color: var(--ink2); letter-spacing: 0.04em; }
-  .crx-terminal-live {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--forest);
-    background: var(--sage); border: 1px solid rgba(45,143,106,0.2);
-    padding: 4px 10px; border-radius: 100px;
-  }
-  .crx-live-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--forest2);
-    animation: crx-pulse 1.5s ease-in-out infinite;
-  }
-  .crx-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
+    background: var(--border);
     overflow-x: auto; scrollbar-width: none;
-    background: var(--bg2);
   }
-  .crx-tabs::-webkit-scrollbar { display: none; }
-  .crx-tab {
-    flex-shrink: 0; padding: 10px 16px;
-    font-size: 11px; color: var(--ink2);
-    cursor: pointer; border-bottom: 2px solid transparent;
-    transition: color 0.2s, border-color 0.2s;
-    white-space: nowrap; background: none;
-    border-top: none; border-left: none; border-right: none;
-    font-family: var(--font-mono);
+  .lp-carrier-select::-webkit-scrollbar { display: none; }
+  .lp-ctab {
+    flex-shrink: 0; padding: 9px 16px;
+    font-size: 12px; font-weight: 500; color: var(--ink2);
+    cursor: pointer; background: var(--bg-off);
+    border: none; font-family: var(--font);
+    white-space: nowrap; transition: background 0.15s, color 0.15s;
   }
-  .crx-tab:hover { color: var(--ink); }
-  .crx-tab.active { color: var(--forest); border-bottom-color: var(--forest); }
-  .crx-terminal-body {
-    padding: 20px 20px 12px;
-    min-height: 240px; max-height: 300px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-    background: #fff;
+  .lp-ctab:hover { background: #fff; color: var(--ink); }
+  .lp-ctab.active { background: #fff; color: var(--teal); font-weight: 600; }
+  .lp-claim-body { padding: 20px; background: #fff; }
+  .lp-claim-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 8px;
+    animation: lp-slidein 0.3s ease;
   }
-  .crx-line {
-    display: flex; align-items: flex-start; gap: 10px;
-    margin-bottom: 9px;
-    animation: crx-fadein 0.3s ease;
-  }
-  @keyframes crx-fadein {
-    from { opacity:0; transform:translateY(3px); }
+  @keyframes lp-slidein {
+    from { opacity:0; transform:translateX(-6px); }
     to   { opacity:1; transform:none; }
   }
-  .crx-prefix   { color: var(--border); user-select: none; flex-shrink: 0; }
-  .crx-t-sys    { color: var(--ink2); }
-  .crx-t-ivr    { color: #2563EB; }
-  .crx-t-action { color: var(--ink); }
-  .crx-t-ok     { color: var(--forest); font-weight: 500; }
-  .crx-t-done   { color: var(--amber); font-weight: 500; }
-  .crx-cursor {
-    display: inline-block; width: 7px; height: 13px;
-    background: var(--forest); vertical-align: middle; margin-left: 3px;
-    animation: crx-blink 1s step-end infinite;
+  .lp-claim-info { display: flex; flex-direction: column; gap: 2px; }
+  .lp-claim-id { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .lp-claim-desc { font-size: 11.5px; color: var(--ink3); }
+  .lp-claim-right { display: flex; align-items: center; gap: 10px; }
+  .lp-claim-amt { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .lp-status {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600;
   }
-  @keyframes crx-blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
-  .crx-terminal-footer {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 11px 18px;
+  .lp-status.approved { background: #ECFDF5; color: #065F46; }
+  .lp-status.pending  { background: #FFFBEB; color: #92400E; }
+  .lp-status.calling  { background: var(--teal-lt); color: var(--teal); }
+  .lp-status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .lp-status.calling .lp-status-dot { animation: lp-pulse 1s ease-in-out infinite; }
+  .lp-panel-footer {
+    background: var(--bg-off);
     border-top: 1px solid var(--border);
-    background: var(--bg2);
-    font-size: 11px; color: var(--ink2);
-  }
-  .crx-terminal-footer .saved { color: var(--forest); font-weight: 500; }
-
-  /* Stats */
-  .crx-stats {
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    display: grid; grid-template-columns: repeat(4,1fr);
-  }
-  .crx-stat {
-    padding: 40px 48px;
-    border-right: 1px solid var(--border);
-  }
-  .crx-stat:last-child { border-right: none; }
-  .crx-stat-num {
-    font-family: var(--font-serif);
-    font-size: 48px; color: var(--ink);
-    line-height: 1; letter-spacing: -0.03em; margin-bottom: 6px;
-    font-weight: 300;
-  }
-  .crx-stat-num span { color: var(--forest); }
-  .crx-stat-label { font-size: 13px; color: var(--ink2); }
-
-  /* Sections */
-  .crx-section { max-width: 1280px; margin: 0 auto; padding: 100px 48px; }
-  .crx-section-tag {
-    font-family: var(--font-mono); font-size: 11px; color: var(--forest);
-    letter-spacing: 0.1em; text-transform: uppercase;
-    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-  }
-  .crx-section-tag::before { content:''; display:block; width:20px; height:1px; background:var(--forest2); }
-  .crx-section-title {
-    font-family: var(--font-serif);
-    font-size: clamp(30px,3.5vw,48px);
-    line-height: 1.1; letter-spacing: -0.02em;
-    color: var(--ink); margin-bottom: 60px; max-width: 540px; font-weight: 300;
-  }
-  .crx-section-title em { font-style: italic; color: var(--forest); }
-
-  /* Steps */
-  .crx-steps { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
-  .crx-step {
-    background: #fff; border: 1px solid var(--border);
-    border-radius: 12px; padding: 32px 28px;
-    transition: box-shadow 0.25s, transform 0.25s;
-    position: relative; overflow: hidden;
-  }
-  .crx-step::after {
-    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-    height: 3px; background: linear-gradient(90deg, var(--forest), var(--forest2));
-    transform: scaleX(0); transform-origin: left;
-    transition: transform 0.35s ease;
-  }
-  .crx-step:hover { box-shadow: 0 8px 32px rgba(26,94,72,0.1); transform: translateY(-2px); }
-  .crx-step:hover::after { transform: scaleX(1); }
-  .crx-step-num { font-family: var(--font-mono); font-size: 11px; color: var(--forest2); margin-bottom: 20px; }
-  .crx-step-icon { font-size: 28px; margin-bottom: 16px; display: block; }
-  .crx-step-title { font-family: var(--font-serif); font-size: 19px; color: var(--ink); margin-bottom: 10px; font-weight: 400; }
-  .crx-step-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.65; }
-
-  /* Carriers */
-  .crx-carriers-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 16px; }
-  .crx-carrier-card {
-    background: #fff; border: 1px solid var(--border); border-radius: 10px;
-    padding: 22px 24px;
+    padding: 12px 20px;
     display: flex; align-items: center; justify-content: space-between;
-    cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
   }
-  .crx-carrier-card:hover { box-shadow: 0 4px 16px rgba(26,94,72,0.08); transform: translateY(-1px); }
-  .crx-carrier-card.active { border-color: var(--forest2); background: var(--sage); box-shadow: 0 0 0 3px rgba(45,143,106,0.12); }
-  .crx-carrier-name { font-size: 14px; color: var(--ink); }
-  .crx-carrier-pct {
-    font-family: var(--font-mono); font-size: 11px;
-    padding: 4px 10px; border-radius: 100px;
-    background: var(--sage); color: var(--forest);
-    border: 1px solid rgba(45,143,106,0.2);
+  .lp-panel-summary { font-size: 12px; color: var(--ink2); }
+  .lp-panel-summary strong { color: var(--teal); font-weight: 600; }
+  .lp-live-indicator {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--teal); font-weight: 500;
   }
-  .crx-market-note { margin-top: 20px; font-size: 13px; color: var(--ink2); text-align: center; }
+  .lp-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); animation: lp-pulse 1.5s ease-in-out infinite; }
 
-  /* Compliance */
-  .crx-compliance {
-    background: var(--sage);
-    border-top: 1px solid rgba(45,143,106,0.15);
-    border-bottom: 1px solid rgba(45,143,106,0.15);
-    padding: 40px 48px;
+  /* ── Stats band ── */
+  .lp-stats { background: var(--bg-off); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .lp-stats-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(4,1fr); }
+  .lp-stat { padding: 36px 32px; border-right: 1px solid var(--border); }
+  .lp-stat:last-child { border-right: none; }
+  .lp-stat-num { font-size: 40px; font-weight: 700; color: var(--ink); letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+  .lp-stat-num span { color: var(--teal); }
+  .lp-stat-lbl { font-size: 13px; color: var(--ink2); line-height: 1.45; }
+
+  /* ── How it Works ── */
+  .lp-pipeline { max-width: 1180px; margin: 0 auto; padding: 88px 32px; }
+  .lp-pipeline-steps {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; margin-top: 48px; position: relative;
+  }
+  .lp-pipeline-steps::before {
+    content: ''; position: absolute;
+    top: 28px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
+    height: 1px; background: var(--border);
+    z-index: 0;
+  }
+  .lp-step { padding: 0 20px; text-align: center; position: relative; z-index: 1; }
+  .lp-step-num {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #fff; border: 1.5px solid var(--border);
     display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+    box-shadow: 0 2px 8px rgba(15,28,46,0.06);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .lp-step-num svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
+  .lp-step:hover .lp-step-num { border-color: var(--teal); box-shadow: 0 4px 16px rgba(10,107,79,0.12); }
+  .lp-step-label { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+  .lp-step-desc { font-size: 12.5px; color: var(--ink2); line-height: 1.6; }
+  .lp-step-index {
+    font-size: 10px; font-weight: 700; color: var(--teal);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    margin-bottom: 8px; display: block;
+  }
+
+  /* ── Features ── */
+  .lp-features { max-width: 1180px; margin: 0 auto; padding: 0 32px 96px; }
+  .lp-section-eyebrow {
+    font-size: 12px; font-weight: 700; color: var(--teal);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .lp-section-h2 {
+    font-size: clamp(26px, 3vw, 40px);
+    font-weight: 700; letter-spacing: -0.03em; color: var(--ink);
+    margin-bottom: 56px; line-height: 1.15; max-width: 600px;
+  }
+  .lp-section-h2 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--teal); }
+  .lp-section-sub { font-size: 15px; color: var(--ink2); max-width: 560px; margin-bottom: 56px; line-height: 1.7; margin-top: -40px; }
+  .lp-feat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .lp-feat {
+    background: var(--bg-off);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 24px;
+    transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+  }
+  .lp-feat:hover { box-shadow: 0 6px 24px rgba(15,28,46,0.08); transform: translateY(-2px); border-color: rgba(10,107,79,0.18); }
+  .lp-feat-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: var(--teal-lt); display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .lp-feat-icon svg { width: 20px; height: 20px; stroke: var(--teal); fill: none; stroke-width: 2; }
+  .lp-feat-h { font-size: 14.5px; font-weight: 700; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
+  .lp-feat-p { font-size: 13px; color: var(--ink2); line-height: 1.7; }
+
+  /* ── Carriers ── */
+  .lp-carriers { background: var(--bg-off); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 80px 32px; }
+  .lp-carriers-inner { max-width: 1180px; margin: 0 auto; }
+  .lp-carrier-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 16px; }
+  .lp-carrier-pill {
+    background: #fff; border: 1.5px solid var(--border); border-radius: 10px;
+    padding: 18px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .lp-carrier-pill:hover { border-color: var(--teal); box-shadow: 0 2px 12px rgba(10,107,79,0.1); }
+  .lp-carrier-pill.active { border-color: var(--teal); background: var(--teal-lt); }
+  .lp-carrier-nm { font-size: 14px; font-weight: 500; color: var(--ink); }
+  .lp-carrier-share {
+    font-size: 11px; font-weight: 600; color: var(--teal);
+    background: var(--teal-lt); border: 1px solid rgba(10,107,79,0.15);
+    padding: 3px 9px; border-radius: 100px;
+  }
+  .lp-carrier-note { margin-top: 20px; font-size: 13px; color: var(--ink3); text-align: center; }
+
+  /* ── Compliance ── */
+  .lp-trust { max-width: 1180px; margin: 0 auto; padding: 88px 32px; }
+  .lp-trust-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-top: 16px; }
+  .lp-trust-card {
+    background: var(--bg-off); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 20px;
+    transition: border-color 0.2s;
+  }
+  .lp-trust-card:hover { border-color: rgba(10,107,79,0.25); }
+  .lp-trust-card-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: var(--teal-lt);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .lp-trust-card-icon svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
+  .lp-trust-card-h { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 6px; letter-spacing: -0.01em; }
+  .lp-trust-card-p { font-size: 12.5px; color: var(--ink2); line-height: 1.65; }
+
+  /* ── CTA ── */
+  .lp-cta { padding: 80px 32px; }
+  .lp-cta-inner {
+    max-width: 1180px; margin: 0 auto;
+    background: var(--teal); border-radius: 20px; padding: 72px 64px;
+    display: flex; align-items: center; justify-content: space-between;
     gap: 48px; flex-wrap: wrap;
   }
-  .crx-badge { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--forest); }
-  .crx-badge-icon {
-    width: 32px; height: 32px;
-    background: #fff; border: 1px solid rgba(45,143,106,0.2);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    box-shadow: 0 1px 4px rgba(26,94,72,0.08);
+  .lp-cta-left { max-width: 560px; }
+  .lp-cta-tag { font-size: 11.5px; font-weight: 700; color: rgba(255,255,255,0.6); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+  .lp-cta-h { font-size: clamp(26px,3vw,40px); font-weight: 700; letter-spacing: -0.03em; color: #fff; line-height: 1.15; margin-bottom: 14px; }
+  .lp-cta-h em { font-family: var(--serif); font-style: italic; font-weight: 300; color: rgba(255,255,255,0.82); }
+  .lp-cta-sub { font-size: 15px; color: rgba(255,255,255,0.72); line-height: 1.65; }
+  .lp-cta-right { display: flex; flex-direction: column; gap: 12px; }
+  .lp-cta-btn-white {
+    background: #fff; color: var(--teal); border: none;
+    padding: 14px 28px; border-radius: 9px;
+    font-family: var(--font); font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: opacity 0.2s, transform 0.15s; white-space: nowrap;
   }
+  .lp-cta-btn-white:hover { opacity: 0.92; transform: translateY(-1px); }
+  .lp-cta-btn-ghost {
+    background: rgba(255,255,255,0.1); color: #fff;
+    border: 1.5px solid rgba(255,255,255,0.28);
+    padding: 14px 28px; border-radius: 9px;
+    font-family: var(--font); font-size: 15px; font-weight: 500;
+    cursor: pointer; transition: background 0.2s; white-space: nowrap;
+  }
+  .lp-cta-btn-ghost:hover { background: rgba(255,255,255,0.18); }
 
-  /* CTA */
-  .crx-cta { max-width: 1280px; margin: 0 auto; padding: 100px 48px; text-align: center; }
-  .crx-cta-inner {
-    background: var(--forest);
-    border-radius: 20px; padding: 80px 64px;
-    position: relative; overflow: hidden;
-  }
-  .crx-cta-inner::before {
-    content: ''; position: absolute;
-    top: -80px; right: -80px;
-    width: 320px; height: 320px; border-radius: 50%;
-    background: rgba(255,255,255,0.04); pointer-events: none;
-  }
-  .crx-cta-inner::after {
-    content: ''; position: absolute;
-    bottom: -60px; left: -60px;
-    width: 240px; height: 240px; border-radius: 50%;
-    background: rgba(255,255,255,0.03); pointer-events: none;
-  }
-  .crx-cta-title {
-    font-family: var(--font-serif); font-weight: 300;
-    font-size: clamp(30px,3.5vw,50px);
-    letter-spacing: -0.02em; color: #fff; margin-bottom: 16px;
-  }
-  .crx-cta-title em { font-style: italic; color: rgba(255,255,255,0.75); }
-  .crx-cta-sub { font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 40px; }
-  .crx-btn-white {
-    background: #fff; color: var(--forest); border: none;
-    padding: 15px 32px; border-radius: 100px;
-    font-family: var(--font-sans); font-size: 14px; font-weight: 500;
-    cursor: pointer; transition: opacity 0.2s, transform 0.15s;
-  }
-  .crx-btn-white:hover { opacity: 0.92; transform: translateY(-1px); }
-  .crx-btn-outline-white {
-    background: transparent; color: rgba(255,255,255,0.85);
-    border: 1px solid rgba(255,255,255,0.3);
-    padding: 15px 32px; border-radius: 100px;
-    font-family: var(--font-sans); font-size: 14px; font-weight: 300;
-    cursor: pointer; transition: border-color 0.2s, color 0.2s;
-  }
-  .crx-btn-outline-white:hover { border-color: rgba(255,255,255,0.6); color: #fff; }
+  /* ── Footer ── */
+  .lp-footer { background: var(--ink); padding: 48px 32px 32px; }
+  .lp-footer-inner { max-width: 1180px; margin: 0 auto; }
+  .lp-footer-top { display: flex; justify-content: space-between; gap: 32px; flex-wrap: wrap; margin-bottom: 40px; }
+  .lp-footer-brand p { font-size: 13px; color: rgba(255,255,255,0.42); margin-top: 10px; max-width: 240px; line-height: 1.65; }
+  .lp-footer-links { display: flex; gap: 48px; }
+  .lp-footer-col h4 { font-size: 11.5px; font-weight: 700; color: rgba(255,255,255,0.45); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+  .lp-footer-col a { display: block; font-size: 13px; color: rgba(255,255,255,0.52); text-decoration: none; margin-bottom: 9px; cursor: pointer; transition: color 0.2s; }
+  .lp-footer-col a:hover { color: rgba(255,255,255,0.9); }
+  .lp-footer-bottom { border-top: 1px solid rgba(255,255,255,0.07); padding-top: 24px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .lp-footer-bottom span { font-size: 12px; color: rgba(255,255,255,0.28); }
 
-  /* Footer */
-  .crx-footer {
-    border-top: 1px solid var(--border);
-    padding: 32px 48px;
-    display: flex; align-items: center; justify-content: space-between;
-    font-size: 13px; color: var(--ink2);
-  }
-
-  /* Reveal */
-  .crx-reveal {
-    opacity: 0; transform: translateY(20px);
-    transition: opacity 0.55s ease, transform 0.55s ease;
-  }
-  .crx-reveal.visible { opacity: 1; transform: none; }
+  /* ── Reveal ── */
+  .lp-reveal { opacity:0; transform:translateY(16px); transition:opacity 0.55s ease, transform 0.55s ease; }
+  .lp-reveal.visible { opacity:1; transform:none; }
 
   @media (max-width: 960px) {
-    .crx-hero { grid-template-columns: 1fr; padding: 100px 24px 60px; gap: 48px; }
-    .crx-stats { grid-template-columns: repeat(2,1fr); }
-    .crx-stat { padding: 28px 24px; }
-    .crx-steps { grid-template-columns: 1fr 1fr; }
-    .crx-carriers-grid { grid-template-columns: 1fr 1fr; }
-    .crx-section { padding: 64px 24px; }
-    .crx-nav { padding: 16px 24px; }
-    .crx-compliance { gap: 24px; padding: 32px 24px; }
-    .crx-footer { flex-direction: column; gap: 12px; text-align: center; padding: 28px 24px; }
-    .crx-cta { padding: 64px 24px; }
-    .crx-cta-inner { padding: 56px 32px; }
+    .lp-hero { grid-template-columns:1fr; padding:88px 24px 60px; gap:48px; }
+    .lp-stats-inner { grid-template-columns:1fr 1fr; }
+    .lp-stat { padding:28px 20px; }
+    .lp-feat-grid { grid-template-columns:1fr 1fr; }
+    .lp-carrier-grid { grid-template-columns:1fr 1fr; }
+    .lp-trust-grid { grid-template-columns:1fr 1fr; }
+    .lp-pipeline-steps { grid-template-columns:1fr 1fr; gap:32px; }
+    .lp-pipeline-steps::before { display:none; }
+    .lp-features, .lp-trust, .lp-pipeline { padding:64px 24px; }
+    .lp-carriers { padding:64px 24px; }
+    .lp-cta { padding:48px 24px; }
+    .lp-cta-inner { padding:48px 32px; }
+    .lp-nav-links { display:none; }
   }
   @media (max-width: 600px) {
-    .crx-steps { grid-template-columns: 1fr; }
-    .crx-carriers-grid { grid-template-columns: 1fr; }
-    .crx-stat-num { font-size: 38px; }
+    .lp-feat-grid { grid-template-columns:1fr; }
+    .lp-carrier-grid { grid-template-columns:1fr; }
+    .lp-trust-grid { grid-template-columns:1fr 1fr; }
+    .lp-pipeline-steps { grid-template-columns:1fr 1fr; }
+    .lp-stat-num { font-size:32px; }
   }
 `
 
+// ─── Data ─────────────────────────────────────────────────────────────────────
+
 const CARRIERS = [
-  { name: 'Sun Life',         pct: '31%', lines: [
-    { text: 'Dialing Sun Life Financial...', kind: 'sys' },
-    { text: 'IVR connected — navigating menus', kind: 'sys' },
-    { text: '"For claim status, press 2"', kind: 'ivr' },
-    { text: 'Entering group #28941 + member ID', kind: 'action' },
-    { text: '"Please wait while I retrieve..."', kind: 'ivr' },
-    { text: 'Claim #SL-847291: APPROVED', kind: 'ok' },
-    { text: 'Insurer pays: $1,240.00', kind: 'ok' },
-    { text: 'EFT deposit in 3 business days', kind: 'ok' },
-    { text: 'Complete. 4m 12s saved.', kind: 'done' },
-  ]},
-  { name: 'Canada Life',      pct: '22%', lines: [
-    { text: 'Dialing Canada Life...', kind: 'sys' },
-    { text: 'IVR connected — navigating menus', kind: 'sys' },
-    { text: '"Enter plan number followed by #"', kind: 'ivr' },
-    { text: 'Entering plan #GFL-4920', kind: 'action' },
-    { text: '"One moment while I check..."', kind: 'ivr' },
-    { text: 'Claim #CL-1048231: APPROVED', kind: 'ok' },
-    { text: 'Insurer pays: $890.00', kind: 'ok' },
-    { text: 'Cheque mailed in 5 business days', kind: 'ok' },
-    { text: 'Complete. 6m 44s saved.', kind: 'done' },
-  ]},
-  { name: 'Manulife',         pct: '12%', lines: [
-    { text: 'Dialing Manulife Financial...', kind: 'sys' },
-    { text: 'IVR connected — holding for agent', kind: 'sys' },
-    { text: '"All agents are currently busy"', kind: 'ivr' },
-    { text: 'Holding — 9m 30s elapsed', kind: 'action' },
-    { text: 'Agent connected', kind: 'action' },
-    { text: 'Claim #MFC-39821: PROCESSING', kind: 'ok' },
-    { text: 'Adjudication in progress', kind: 'ok' },
-    { text: 'EFT expected in 7 business days', kind: 'ok' },
-    { text: 'Complete. 14m 03s saved.', kind: 'done' },
-  ]},
-  { name: 'Green Shield',     pct: '7%', lines: [
-    { text: 'Dialing Green Shield Canada...', kind: 'sys' },
-    { text: 'IVR connected — navigating menus', kind: 'sys' },
-    { text: '"Enter group certificate number"', kind: 'ivr' },
-    { text: 'Entering cert #GSC-77110', kind: 'action' },
-    { text: 'Claim #GS-20847: APPROVED', kind: 'ok' },
-    { text: 'Insurer pays: $540.00', kind: 'ok' },
-    { text: 'Direct deposit in 2 business days', kind: 'ok' },
-    { text: 'Complete. 3m 51s saved.', kind: 'done' },
-  ]},
-  { name: 'RBC Insurance',    pct: '4%', lines: [
-    { text: 'Dialing RBC Insurance...', kind: 'sys' },
-    { text: 'IVR connected — navigating menus', kind: 'sys' },
-    { text: '"For claims, say or press 3"', kind: 'ivr' },
-    { text: 'Entering plan ID #RBC-20210', kind: 'action' },
-    { text: 'Claim #RBC-58320: APPROVED', kind: 'ok' },
-    { text: 'Insurer pays: $720.00', kind: 'ok' },
-    { text: 'EFT deposit in 4 business days', kind: 'ok' },
-    { text: 'Complete. 5m 20s saved.', kind: 'done' },
-  ]},
-  { name: 'TELUS AdjudiCare', pct: '2%', lines: [
-    { text: 'Dialing TELUS AdjudiCare...', kind: 'sys' },
-    { text: 'IVR connected — identifying TPA', kind: 'sys' },
-    { text: 'Group prefix: Johnston Group plan', kind: 'action' },
-    { text: '"Enter member ID + date of birth"', kind: 'ivr' },
-    { text: 'Claim #TA-67021: APPROVED', kind: 'ok' },
-    { text: 'Insurer pays: $310.00', kind: 'ok' },
-    { text: 'Direct deposit in 2 business days', kind: 'ok' },
-    { text: 'Complete. 2m 58s saved.', kind: 'done' },
-  ]},
+  { name: 'Sun Life',         share: '31%' },
+  { name: 'Canada Life',      share: '22%' },
+  { name: 'Manulife',         share: '12%' },
+  { name: 'Green Shield',     share: '7%' },
+  { name: 'RBC Insurance',    share: '4%' },
+  { name: 'TELUS AdjudiCare', share: '2%' },
 ]
 
-const STEPS = [
-  { icon: '🔗', num: '01', title: 'Sync',    desc: 'Connect your practice management software. CollectRx reads outstanding claims automatically.' },
-  { icon: '📞', num: '02', title: 'Call',    desc: 'AI voice agents dial carriers, navigate IVRs, hold on queue, and speak with reps — hands free.' },
-  { icon: '🔒', num: '03', title: 'Protect', desc: 'Patient data never leaves your server. Agents work on anonymous tokens only.' },
-  { icon: '✓',  num: '04', title: 'Resolve', desc: 'Approvals, denials, and status updates land in a clean report. Nothing falls through the cracks.' },
-]
-
-function useScrolled() {
-  const [s, setS] = useState(false)
-  useEffect(() => {
-    const fn = () => setS(window.scrollY > 40)
-    window.addEventListener('scroll', fn, { passive: true })
-    return () => window.removeEventListener('scroll', fn)
-  }, [])
-  return s
+const CLAIM_DATA: Record<string, { id: string; desc: string; amt: string; status: 'approved' | 'calling' | 'pending' }[]> = {
+  'Sun Life': [
+    { id: '#SL-847291', desc: 'Crown — Unit 14, D2710', amt: '$1,240.00', status: 'approved' },
+    { id: '#SL-847180', desc: 'Root Canal — Unit 26, D3330', amt: '$890.00', status: 'calling' },
+    { id: '#SL-847055', desc: 'Scaling & Root Planing', amt: '$420.00', status: 'approved' },
+    { id: '#SL-846990', desc: 'Composite Restoration', amt: '$280.00', status: 'pending' },
+  ],
+  'Canada Life': [
+    { id: '#CL-1048231', desc: 'Full Gold Crown — D2710', amt: '$1,480.00', status: 'approved' },
+    { id: '#CL-1048189', desc: 'Periodontal Maintenance', amt: '$310.00', status: 'calling' },
+    { id: '#CL-1048102', desc: 'Bitewing X-rays x4', amt: '$96.00', status: 'approved' },
+  ],
+  'Manulife': [
+    { id: '#MFC-39821', desc: 'Implant Crown — D6065', amt: '$2,100.00', status: 'calling' },
+    { id: '#MFC-39799', desc: 'Extraction, Surgical', amt: '$380.00', status: 'approved' },
+    { id: '#MFC-39744', desc: 'Night Guard — D9940', amt: '$560.00', status: 'pending' },
+  ],
+  'Green Shield': [
+    { id: '#GS-20847', desc: 'Bridge Pontic — D6240', amt: '$940.00', status: 'approved' },
+    { id: '#GS-20831', desc: 'Composite — Class II', amt: '$245.00', status: 'approved' },
+    { id: '#GS-20810', desc: 'Recall Exam + Prophylaxis', amt: '$182.00', status: 'calling' },
+  ],
+  'RBC Insurance': [
+    { id: '#RBC-58320', desc: 'Porcelain Crown — D2712', amt: '$1,320.00', status: 'approved' },
+    { id: '#RBC-58291', desc: 'Emergency Exam + PA', amt: '$130.00', status: 'approved' },
+  ],
+  'TELUS AdjudiCare': [
+    { id: '#TA-67021', desc: 'Scaling, per unit x4', amt: '$310.00', status: 'approved' },
+    { id: '#TA-66998', desc: 'Inlay, Ceramic — D2410', amt: '$780.00', status: 'calling' },
+  ],
 }
+
+const FEATURES = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    h: 'Carrier-Specific IVR Navigation',
+    p: 'Each of the six carriers runs a different IVR structure. CollectRx maintains dedicated navigation paths per carrier — updated whenever systems change — so every call reaches the right queue without guesswork.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>,
+    h: 'Live Claim Status Propagation',
+    p: 'As each call resolves, claim state is written back to your records in real time. Pending to adjudicated to paid — your team sees current status on every outstanding claim without touching a phone.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+    h: 'PHI Tokenization at the Boundary',
+    p: 'Patient identifiers are replaced with UUID tokens before any data reaches the AI layer. Names, dates of birth, and health card numbers never leave your server. This is architectural — not a policy document.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+    h: 'Structured Denial Escalation',
+    p: 'Denied claims trigger immediate capture of the reason code. Claims are categorized, re-submission requirements are flagged, and persistent denials route to human review. Nothing falls through.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" /></svg>,
+    h: 'Direct PMS Integration',
+    p: 'CollectRx pulls outstanding claims directly from Abeldent and other leading dental practice management platforms. The follow-up queue stays in sync automatically — no manual entry, no duplicate data.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+    h: 'AR Intelligence Reporting',
+    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates over time, and claims requiring human attention. Understand your AR position precisely — not just in aggregate.',
+  },
+]
+
+const TRUST = [
+  {
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+    h: 'PHIPA Architecture',
+    p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally — independent of policy or configuration.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+      </svg>
+    ),
+    h: 'PIPEDA Compliant',
+    p: 'Built to Canadian federal privacy standards. Data residency, consent handling, and subject access rights are part of the platform — not bolt-ons.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+        <path d="M3 12v7" />
+        <path d="M21 12v7" />
+        <path d="M12 8v2M12 14v2" />
+      </svg>
+    ),
+    h: 'PHI On Your Infrastructure',
+    p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries — always.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+        <path d="M12 14v3M10.5 14h3" />
+      </svg>
+    ),
+    h: 'Business Hours Enforcement',
+    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are system-enforced — not a configuration option.',
+  },
+]
+
+const PIPELINE_STEPS = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>,
+    label: 'Claim Detected',
+    desc: 'Outstanding claims pulled from your PMS automatically. No manual entry.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
+    label: 'PHI Removed',
+    desc: 'Patient identifiers replaced with secure UUID tokens before any AI processing.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    label: 'Carrier Called',
+    desc: 'AI navigates the carrier\'s IVR, speaks with reps, and captures adjudication status.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>,
+    label: 'Status Written Back',
+    desc: 'Result recorded — approved, denied with reason code, or escalated for human review.',
+  },
+]
+
+// ─── Hooks ─────────────────────────────────────────────────────────────────────
 
 function useReveal() {
   useEffect(() => {
-    const els = document.querySelectorAll('.crx-reveal')
-    const obs = new IntersectionObserver(entries => {
-      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') })
-    }, { threshold: 0.1 })
+    const els = document.querySelectorAll('.lp-reveal')
+    const obs = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') }),
+      { threshold: 0.1 }
+    )
     els.forEach(el => obs.observe(el))
     return () => obs.disconnect()
   }, [])
@@ -500,7 +543,7 @@ function useCounter(target: number) {
       if (!e.isIntersecting) return
       obs.disconnect()
       const start = performance.now()
-      const dur = 1500
+      const dur = 1400
       const tick = (now: number) => {
         const p = Math.min((now - start) / dur, 1)
         setVal(Math.round(p * p * target))
@@ -514,72 +557,69 @@ function useCounter(target: number) {
   return { val, ref }
 }
 
-function Terminal({ activeIdx, onSelect }: { activeIdx: number; onSelect: (i: number) => void }) {
-  const [lines, setLines] = useState<typeof CARRIERS[0]['lines']>([])
-  const [done, setDone] = useState(false)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+// ─── Claim Panel ───────────────────────────────────────────────────────────────
 
-  const run = useCallback((idx: number) => {
-    timers.current.forEach(clearTimeout); timers.current = []
-    setLines([]); setDone(false)
-    CARRIERS[idx].lines.forEach((line, i) => {
-      const t = setTimeout(() => {
-        setLines(prev => [...prev, line])
-        if (i === CARRIERS[idx].lines.length - 1) setDone(true)
-        if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight
-      }, i * 680)
-      timers.current.push(t)
-    })
-  }, [])
-
-  useEffect(() => { run(activeIdx); return () => timers.current.forEach(clearTimeout) }, [activeIdx, run])
-
-  const saved = done ? CARRIERS[activeIdx].lines.find(l => l.kind === 'done')?.text.match(/\d+m \d+s/)?.[0] : null
+function ClaimPanel({ active, onSelect }: { active: number; onSelect: (i: number) => void }) {
+  const carrier = CARRIERS[active]
+  const claims = CLAIM_DATA[carrier.name] ?? []
+  const approved = claims.filter(c => c.status === 'approved').length
+  const total = claims.reduce((s, c) => s + parseFloat(c.amt.replace(/[$,]/g, '')), 0)
 
   return (
-    <div className="crx-terminal">
-      <div className="crx-terminal-bar">
-        <div className="crx-terminal-dots"><span /><span /><span /></div>
-        <span className="crx-terminal-title">collectrx — agent-call</span>
-        <div className="crx-terminal-live"><div className="crx-live-dot" />LIVE</div>
+    <div className="lp-panel">
+      <div className="lp-panel-topbar">
+        <span className="lp-panel-title">Outstanding Claims</span>
+        <div className="lp-panel-badge"><div className="lp-badge-dot" />AI Running</div>
       </div>
-      <div className="crx-tabs">
+      <div className="lp-carrier-select">
         {CARRIERS.map((c, i) => (
-          <button key={c.name} className={`crx-tab${i === activeIdx ? ' active' : ''}`} onClick={() => onSelect(i)}>
+          <button key={c.name} className={`lp-ctab${i === active ? ' active' : ''}`} onClick={() => onSelect(i)}>
             {c.name}
           </button>
         ))}
       </div>
-      <div className="crx-terminal-body" ref={bodyRef}>
-        {lines.map((l, i) => (
-          <div className="crx-line" key={i}>
-            <span className="crx-prefix">›</span>
-            <span className={`crx-t-${l.kind}`}>{l.text}</span>
+      <div className="lp-claim-body">
+        {claims.map((c, i) => (
+          <div className="lp-claim-row" key={c.id} style={{ animationDelay: `${i * 60}ms` }}>
+            <div className="lp-claim-info">
+              <span className="lp-claim-id">{c.id}</span>
+              <span className="lp-claim-desc">{c.desc}</span>
+            </div>
+            <div className="lp-claim-right">
+              <span className="lp-claim-amt">{c.amt}</span>
+              <span className={`lp-status ${c.status}`}>
+                <span className="lp-status-dot" />
+                {c.status === 'approved' ? 'Approved' : c.status === 'calling' ? 'Calling' : 'Pending'}
+              </span>
+            </div>
           </div>
         ))}
-        {!done && <span className="crx-cursor" />}
       </div>
-      <div className="crx-terminal-footer">
-        <span>{CARRIERS[activeIdx].name.toLowerCase()}</span>
-        {saved ? <span className="saved">saved {saved}</span> : <span>processing...</span>}
+      <div className="lp-panel-footer">
+        <span className="lp-panel-summary">
+          <strong>{approved} of {claims.length}</strong> resolved &middot; <strong>${total.toLocaleString('en-CA', { minimumFractionDigits: 2 })}</strong> total
+        </span>
+        <div className="lp-live-indicator"><div className="lp-live-dot" />Live</div>
       </div>
     </div>
   )
 }
 
-function Stat({ target, suffix, label }: { target: number; suffix: string; label: string }) {
+// ─── Stat Counter ─────────────────────────────────────────────────────────────
+
+function StatNum({ target, suffix, label }: { target: number; suffix: string; label: string }) {
   const { val, ref } = useCounter(target)
   return (
-    <div className="crx-stat" ref={ref}>
-      <div className="crx-stat-num">{val.toLocaleString()}<span>{suffix}</span></div>
-      <div className="crx-stat-label">{label}</div>
+    <div className="lp-stat" ref={ref}>
+      <div className="lp-stat-num">{val.toLocaleString()}<span>{suffix}</span></div>
+      <div className="lp-stat-lbl">{label}</div>
     </div>
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function LandingPage() {
-  const scrolled = useScrolled()
   const [active, setActive] = useState(0)
   useReveal()
 
@@ -588,103 +628,191 @@ export default function LandingPage() {
   return (
     <>
       <style>{STYLES}</style>
-      <div className="crx-root">
+      <div className="lp">
 
-        <nav className={`crx-nav${scrolled ? ' scrolled' : ''}`}>
-          <div className="crx-logo">Collect<span>Rx</span></div>
-          <button className="crx-nav-cta" onClick={() => to('crx-cta')}>Book a Demo</button>
+        {/* Nav */}
+        <nav className="lp-nav">
+          <div className="lp-nav-inner">
+            <div className="lp-wordmark">
+              <div className="lp-wordmark-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+              </div>
+              <span className="lp-wordmark-text">Collect<span>Rx</span></span>
+            </div>
+            <div className="lp-nav-links">
+              <span className="lp-nav-link" onClick={() => to('lp-pipeline')}>How it Works</span>
+              <span className="lp-nav-link" onClick={() => to('lp-features')}>Features</span>
+              <span className="lp-nav-link" onClick={() => to('lp-carriers')}>Carriers</span>
+              <span className="lp-nav-link" onClick={() => to('lp-trust')}>Compliance</span>
+            </div>
+            <button className="lp-nav-demo" onClick={() => to('lp-cta')}>Request Access</button>
+          </div>
         </nav>
 
-        <section className="crx-hero">
+        {/* Hero */}
+        <section className="lp-hero">
           <div>
-            <div className="crx-eyebrow"><div className="crx-eyebrow-dot" />AI Insurance AR for Canadian Dental</div>
-            <h1 className="crx-headline">Your claims.<br /><em>Called.</em><br />Done.</h1>
-            <p className="crx-subhead">
-              AI voice agents call Canadian carriers, navigate IVRs, chase denials,
-              and report back — so your front desk never waits on hold again.
+            <div className="lp-hero-tag"><div className="lp-hero-tag-dot" />Canadian Dental AR Automation</div>
+            <h1 className="lp-h1">Your insurance AR,<br /><em>fully automated.</em></h1>
+            <p className="lp-hero-sub">
+              CollectRx runs outstanding claims through a complete follow-up pipeline —
+              carrier-specific IVR navigation, live adjudication tracking, and denial escalation —
+              without your staff on hold.
             </p>
-            <div className="crx-actions">
-              <button className="crx-btn-primary" onClick={() => to('crx-cta')}>Book a Demo</button>
-              <button className="crx-btn-ghost" onClick={() => to('crx-how')}>How it works</button>
+            <div className="lp-hero-btns">
+              <button className="lp-btn-primary" onClick={() => to('lp-cta')}>Request Early Access</button>
+              <button className="lp-btn-secondary" onClick={() => to('lp-pipeline')}>How it Works</button>
+            </div>
+            <div className="lp-trust-checks">
+              {['PHIPA compliant by design', 'Six major Canadian carriers', 'No IT setup required'].map(t => (
+                <div className="lp-trust-item" key={t}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2.5"><path d="M5 13l4 4L19 7" /></svg>
+                  {t}
+                </div>
+              ))}
             </div>
           </div>
-          <Terminal activeIdx={active} onSelect={setActive} />
+          <ClaimPanel active={active} onSelect={setActive} />
         </section>
 
-        <div className="crx-stats crx-reveal">
-          <Stat target={6}  suffix=" carriers" label="Canadian carriers supported" />
-          <Stat target={78} suffix="%"         label="of the private dental market" />
-          <Stat target={12} suffix="h"         label="saved per office per week" />
-          <Stat target={3}  suffix=" max"      label="AI call attempts per claim" />
+        {/* Stats */}
+        <div className="lp-stats lp-reveal">
+          <div className="lp-stats-inner">
+            <StatNum target={6}  suffix=" carriers"  label="Major Canadian carriers integrated" />
+            <StatNum target={78} suffix="%"           label="Private dental market covered" />
+            <StatNum target={12} suffix="h"           label="Front-desk hours recovered per week" />
+            <StatNum target={3}  suffix=" attempts"   label="Maximum per claim before escalation" />
+          </div>
         </div>
 
-        <section className="crx-section" id="crx-how">
-          <div className="crx-reveal">
-            <div className="crx-section-tag">How it works</div>
-            <h2 className="crx-section-title">Four steps.<br /><em>Zero hold music.</em></h2>
-          </div>
-          <div className="crx-steps">
-            {STEPS.map((s, i) => (
-              <div className="crx-step crx-reveal" key={s.num} style={{ transitionDelay: `${i * 80}ms` }}>
-                <div className="crx-step-num">{s.num}</div>
-                <span className="crx-step-icon">{s.icon}</span>
-                <div className="crx-step-title">{s.title}</div>
-                <div className="crx-step-desc">{s.desc}</div>
+        {/* How it Works */}
+        <section className="lp-pipeline lp-reveal" id="lp-pipeline">
+          <div className="lp-section-eyebrow">How it Works</div>
+          <h2 className="lp-section-h2">Four steps.<br /><em>Zero staff time.</em></h2>
+          <div className="lp-pipeline-steps">
+            {PIPELINE_STEPS.map((s, i) => (
+              <div className="lp-step" key={s.label}>
+                <span className="lp-step-index">Step {i + 1}</span>
+                <div className="lp-step-num">{s.icon}</div>
+                <div className="lp-step-label">{s.label}</div>
+                <div className="lp-step-desc">{s.desc}</div>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="crx-section" style={{ paddingTop: 0 }}>
-          <div className="crx-reveal">
-            <div className="crx-section-tag">Carriers</div>
-            <h2 className="crx-section-title">Every major<br /><em>Canadian carrier.</em></h2>
+        {/* Features */}
+        <section className="lp-features" id="lp-features">
+          <div className="lp-reveal">
+            <div className="lp-section-eyebrow">Platform</div>
+            <h2 className="lp-section-h2">Built for the specific realities<br />of <em>Canadian dental AR.</em></h2>
           </div>
-          <div className="crx-carriers-grid crx-reveal">
-            {CARRIERS.map((c, i) => (
-              <div
-                key={c.name}
-                className={`crx-carrier-card${i === active ? ' active' : ''}`}
-                onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-              >
-                <span className="crx-carrier-name">{c.name}</span>
-                <span className="crx-carrier-pct">{c.pct} market</span>
+          <div className="lp-feat-grid">
+            {FEATURES.map((f, i) => (
+              <div className="lp-feat lp-reveal" key={f.h} style={{ transitionDelay: `${i * 60}ms` }}>
+                <div className="lp-feat-icon">{f.icon}</div>
+                <div className="lp-feat-h">{f.h}</div>
+                <div className="lp-feat-p">{f.p}</div>
               </div>
             ))}
           </div>
-          <p className="crx-market-note crx-reveal">Click any carrier to watch the AI call simulate live above</p>
         </section>
 
-        <div className="crx-compliance crx-reveal">
-          {[
-            { icon: '🔒', label: 'PHIPA Compliant' },
-            { icon: '🇨🇦', label: 'PIPEDA Compliant' },
-            { icon: '🛡️', label: 'PHI never sent to AI' },
-            { icon: '📞', label: 'Mon–Fri 8am–5pm EST' },
-            { icon: '⚡', label: 'Real-time reporting' },
-          ].map(b => (
-            <div className="crx-badge" key={b.label}>
-              <div className="crx-badge-icon">{b.icon}</div>
-              {b.label}
+        {/* Carriers */}
+        <div className="lp-carriers" id="lp-carriers">
+          <div className="lp-carriers-inner">
+            <div className="lp-reveal">
+              <div className="lp-section-eyebrow">Carrier Coverage</div>
+              <h2 className="lp-section-h2" style={{ marginBottom: 8 }}>Six carriers.<br /><em>78% of the market.</em></h2>
+              <p style={{ fontSize: 14, color: 'var(--ink2)', marginBottom: 32, lineHeight: 1.7 }}>
+                Each integration handles the full call workflow for that carrier — IVR navigation, hold patterns, rep protocols, and status formats.
+                Select a carrier to preview how CollectRx processes its claims.
+              </p>
             </div>
-          ))}
+            <div className="lp-carrier-grid lp-reveal">
+              {CARRIERS.map((c, i) => (
+                <div
+                  key={c.name}
+                  className={`lp-carrier-pill${i === active ? ' active' : ''}`}
+                  onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                >
+                  <span className="lp-carrier-nm">{c.name}</span>
+                  <span className="lp-carrier-share">{c.share} market share</span>
+                </div>
+              ))}
+            </div>
+            <p className="lp-carrier-note lp-reveal">Together these carriers represent approximately 78% of Canadian private dental insurance.</p>
+          </div>
         </div>
 
-        <div className="crx-cta" id="crx-cta">
-          <div className="crx-cta-inner crx-reveal">
-            <h2 className="crx-cta-title">Stop holding.<br /><em>Start collecting.</em></h2>
-            <p className="crx-cta-sub">Pilot launching with select Canadian dental practices.</p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="crx-btn-white">Request Early Access</button>
-              <button className="crx-btn-outline-white">Watch Full Demo</button>
+        {/* Compliance */}
+        <section className="lp-trust" id="lp-trust">
+          <div className="lp-reveal">
+            <div className="lp-section-eyebrow">Compliance</div>
+            <h2 className="lp-section-h2" style={{ marginBottom: 8 }}>Compliance is architecture,<br /><em>not policy.</em></h2>
+            <p style={{ fontSize: 15, color: 'var(--ink2)', marginBottom: 40, lineHeight: 1.75, maxWidth: 520 }}>
+              In healthcare, privacy cannot be an add-on. Every design decision in CollectRx — from how claims are ingested to how calls are scheduled — treats PHI protection as a structural requirement.
+            </p>
+          </div>
+          <div className="lp-trust-grid lp-reveal">
+            {TRUST.map(t => (
+              <div className="lp-trust-card" key={t.h}>
+                <div className="lp-trust-card-icon">{t.icon}</div>
+                <div className="lp-trust-card-h">{t.h}</div>
+                <div className="lp-trust-card-p">{t.p}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* CTA */}
+        <div className="lp-cta" id="lp-cta">
+          <div className="lp-cta-inner lp-reveal">
+            <div className="lp-cta-left">
+              <div className="lp-cta-tag">Early Access</div>
+              <h2 className="lp-cta-h">The AR work is already<br /><em>getting done.</em></h2>
+              <p className="lp-cta-sub">
+                Pilot launching with select Canadian dental practices. No setup fees. No long-term contract.
+                If CollectRx doesn't recover revenue you were already leaving behind, you pay nothing.
+              </p>
+            </div>
+            <div className="lp-cta-right">
+              <button className="lp-cta-btn-white">Request Early Access</button>
+              <button className="lp-cta-btn-ghost">Book a Demo</button>
             </div>
           </div>
         </div>
 
-        <footer className="crx-footer">
-          <div className="crx-logo" style={{ fontSize: '16px' }}>Collect<span style={{ color: 'var(--forest)' }}>Rx</span></div>
-          <span>© 2026 CollectRx Inc. Built for Canadian dental.</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--ink2)' }}>v1.0 — pilot</span>
+        {/* Footer */}
+        <footer className="lp-footer">
+          <div className="lp-footer-inner">
+            <div className="lp-footer-top">
+              <div className="lp-footer-brand">
+                <span className="lp-wordmark-text" style={{ fontSize: 16 }}>Collect<span style={{ color: 'rgba(255,255,255,0.55)' }}>Rx</span></span>
+                <p>Dental insurance AR automation for Canadian practices.</p>
+              </div>
+              <div className="lp-footer-links">
+                <div className="lp-footer-col">
+                  <h4>Platform</h4>
+                  <a onClick={() => to('lp-pipeline')}>How it Works</a>
+                  <a onClick={() => to('lp-features')}>Features</a>
+                  <a onClick={() => to('lp-carriers')}>Carriers</a>
+                  <a onClick={() => to('lp-trust')}>Compliance</a>
+                </div>
+                <div className="lp-footer-col">
+                  <h4>Company</h4>
+                  <a>About</a>
+                  <a onClick={() => to('lp-cta')}>Contact</a>
+                  <a href="/legal/terms">Terms</a>
+                  <a href="/legal/privacy">Privacy</a>
+                </div>
+              </div>
+            </div>
+            <div className="lp-footer-bottom">
+              <span>© 2026 CollectRx Inc. All rights reserved.</span>
+              <span>Built for Canadian dental</span>
+            </div>
+          </div>
         </footer>
 
       </div>
