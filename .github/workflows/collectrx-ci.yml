@@ -2,10 +2,15 @@
 name: CollectRx CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
@@ -16,9 +21,7 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Collect-RX-main
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -29,14 +32,16 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies (workspace root)
-        working-directory: .
         run: npm ci
 
       - name: Prisma generate
+        working-directory: Collect-RX-main
         run: npx prisma generate
 
       - name: Typecheck
+        working-directory: Collect-RX-main
         run: npm run typecheck
 
       - name: Unit & integration tests
+        working-directory: Collect-RX-main
         run: npm test

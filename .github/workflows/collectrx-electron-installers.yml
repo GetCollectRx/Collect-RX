@@ -12,12 +12,18 @@ on:
       - 'v*'
     paths:
       - 'Collect-RX-main/**'
+      - 'package-lock.json'
       - '.github/workflows/collectrx-electron-installers.yml'
   pull_request:
     branches: [main]
     paths:
       - 'Collect-RX-main/**'
+      - 'package-lock.json'
       - '.github/workflows/collectrx-electron-installers.yml'
+
+concurrency:
+  group: collectrx-electron-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Prisma datasource is PostgreSQL — CI must not use sqlite/file URLs.
 # Server boot guards (JWT / Vapi) read NODE_ENV=production during some tooling paths; set safe placeholders.
