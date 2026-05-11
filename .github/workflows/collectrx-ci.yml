@@ -34,9 +34,10 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
         working-directory: Collect-RX-main
-        run: npx prisma generate
+        run: npm run db:generate
 
       - name: Typecheck
         working-directory: Collect-RX-main
