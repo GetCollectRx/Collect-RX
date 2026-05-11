@@ -1,0 +1,109 @@
+# Builds CollectRx desktop installers from the workspace package `Collect-RX-main`.
+# Artifacts: GitHub Actions → run summary → Artifacts (retention 30 days).
+# Tagged pushes (v*): also attach installers to a GitHub Release.
+
+name: CollectRx Electron installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths:
+      - 'Collect-RX-main/**'
+      - '.github/workflows/collectrx-electron-installers.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Collect-RX-main/**'
+      - '.github/workflows/collectrx-electron-installers.yml'
+
+jobs:
+  mac-zip:
+    name: macOS (ZIP — contains .app; avoids DMG gettext tooling)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Prisma, TypeScript, Vite build
+        working-directory: Collect-RX-main
+        env:
+          DATABASE_URL: file:./dev.db
+          NODE_ENV: production
+        run: npx prisma generate && npx tsc && npx vite build
+
+      - name: Package macOS installers
+        working-directory: Collect-RX-main
+        run: npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CollectRx-mac-zip
+          path: Collect-RX-main/dist-electron/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Collect-RX-main/dist-electron/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows-exe:
+    name: Windows (NSIS)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Prisma, TypeScript, Vite build
+        working-directory: Collect-RX-main
+        env:
+          DATABASE_URL: file:./dev.db
+          NODE_ENV: production
+        run: npx prisma generate && npx tsc && npx vite build
+
+      - name: Package Windows installer
+        working-directory: Collect-RX-main
+        run: npx electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CollectRx-windows-installer
+          path: Collect-RX-main/dist-electron/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Collect-RX-main/dist-electron/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

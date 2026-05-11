@@ -14,4 +14,18 @@ dist-electron/
 *.blockmap
 *.asar
 *.app/
-node_modules/
+
+# Legacy duplicate app tree (canonical app: Collect-RX-main)
+Click-main/
+
+# Local Claude / Obsidian working copies
+Claude/
+
+# Ad-hoc notes at repo root
+/CLAUDE 2.md
+
+# Graphify / generated outputs
+graphify-out/
+
+# macOS Finder clippings
+*.textClipping
