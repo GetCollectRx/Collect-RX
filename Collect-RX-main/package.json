@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "CollectRx — dental practice A/R execution (canonical app)",
   "author": "CollectRx",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khalidegeh/Collect-RX.git"
+  },
   "engines": {
     "node": ">=20.10.0"
   },
