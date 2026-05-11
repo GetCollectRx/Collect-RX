@@ -5,6 +5,8 @@
 // GET  /api/insurance/claims/:id       — claim detail + call history
 // POST /api/insurance/claims/import    — CSV import
 // POST /api/insurance/queue/trigger/:claimId — manual call trigger
+// PATCH /api/insurance/claims/:id      — e.g. servicedAt for appeal deadlines
+// POST /api/insurance/claims/:id/confirm-payment — practice AR: record payment, resolve when paid
 // GET  /api/insurance/queue            — queue snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -13,8 +15,16 @@ import { CarrierId, ClaimStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
+import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
+import { authenticate } from '../server/middleware/authenticate';
+import { strictLimiter } from '../server/middleware/rateLimiter';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+} from '../server/middleware/requirePracticeSession';
 
 const router = Router();
+router.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // GET /api/insurance/claims
@@ -24,7 +34,7 @@ const router = Router();
 //   carrier    — CarrierId enum value
 //   status     — ClaimStatus enum value
 //   aging      — "30-60" | "60-90" | "90+"
-//   practiceId — filter by practice
+//   practiceId — ignored for scope; must match session if sent (legacy UIs)
 //   page       — default 1
 //   limit      — default 25, max 100
 // ---------------------------------------------------------------------------
@@ -34,11 +44,13 @@ router.get('/claims', async (req: Request, res: Response) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 25));
     const skip  = (page - 1) * limit;
 
-    const { carrier, status, aging, practiceId } = req.query as Record<string, string>;
+    const { carrier, status, aging, practiceId: qPractice } = req.query as Record<string, string>;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
 
-    // Build where clause
-    const where: Record<string, unknown> = {};
-    if (practiceId) where.practiceId = practiceId;
+    // Build where clause — always scoped to authenticated practice
+    const where: Record<string, unknown> = { practiceId: practiceIdFromSession(req) };
     if (carrier && Object.values(CarrierId).includes(carrier as CarrierId)) {
       where.carrierId = carrier as CarrierId;
     }
@@ -81,9 +93,97 @@ router.get('/claims', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/insurance/claims/:id
-// Claim detail with full call history.
+// PATCH /api/insurance/claims/:id
+// Body: { servicedAt?: ISO8601 string, practiceId?: string } — practiceId must match claim when sent.
 // ---------------------------------------------------------------------------
+router.patch('/claims/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { servicedAt?: string; practiceId?: string };
+    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+    if (body.practiceId && body.practiceId !== claim.practiceId) {
+      return res.status(403).json({ success: false, error: 'practiceId mismatch' });
+    }
+    const data: { servicedAt?: Date } = {};
+    if (body.servicedAt !== undefined) {
+      const d = new Date(body.servicedAt);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ success: false, error: 'Invalid servicedAt' });
+      }
+      data.servicedAt = d;
+    }
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ success: false, error: 'No supported fields to update (send servicedAt)' });
+    }
+    const updated = await prisma.insuranceClaim.update({ where: { id }, data });
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[PATCH /insurance/claims/:id]', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/insurance/claims/:id/confirm-payment
+// Body: { practiceId?: string, paymentAmountCents?: number, notes?: string }
+// If paymentAmountCents omitted, treats as full payment (outstanding → 0). Emits EMR outbox on RESOLVED.
+// ---------------------------------------------------------------------------
+router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { practiceId?: string; paymentAmountCents?: number; notes?: string };
+    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+    if (body.practiceId && body.practiceId !== claim.practiceId) {
+      return res.status(403).json({ success: false, error: 'practiceId mismatch' });
+    }
+
+    let remaining = Number(claim.outstandingAmount);
+    if (typeof body.paymentAmountCents === 'number' && body.paymentAmountCents > 0) {
+      remaining = Math.max(0, Math.round((remaining - body.paymentAmountCents / 100) * 100) / 100);
+    } else {
+      remaining = 0;
+    }
+
+    const newStatus: ClaimStatus = remaining <= 0.009 ? 'RESOLVED' : claim.status;
+
+    const updated = await prisma.insuranceClaim.update({
+      where: { id },
+      data: {
+        outstandingAmount: remaining,
+        status: newStatus,
+      },
+    });
+
+    if (newStatus === 'RESOLVED') {
+      try {
+        await enqueueEmrClaimEvent(prisma, {
+          practiceId: claim.practiceId,
+          claimId: id,
+          eventType: 'PAYMENT_CONFIRMED',
+          payload: {
+            notes: body.notes ?? null,
+            at: new Date().toISOString(),
+            outstandingAfter: remaining,
+          },
+        });
+      } catch (emrErr) {
+        console.error('[confirm-payment] EMR outbox:', emrErr);
+      }
+    }
+
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[POST /insurance/claims/:id/confirm-payment]', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
 router.get('/claims/:id', async (req: Request, res: Response) => {
   try {
     const claim = await prisma.insuranceClaim.findUnique({
@@ -94,7 +194,7 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
       },
     });
 
-    if (!claim) {
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
@@ -110,12 +210,20 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
 // CSV import — delegates to src/claims/importer.js (existing module).
 // Expects multipart/form-data with a `file` field, or JSON body with `records`.
 // ---------------------------------------------------------------------------
-router.post('/claims/import', async (req: Request, res: Response) => {
+router.post('/claims/import', strictLimiter, async (req: Request, res: Response) => {
   try {
     // Dynamic require so the JS importer doesn't need TypeScript declarations
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { importClaims } = require('../claims/importer');
-    const result = await importClaims(req.body, prisma);
+    const raw = req.body;
+    const rows = Array.isArray(raw) ? raw : raw?.records;
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Expected a JSON array of rows or { records: array }',
+      });
+    }
+    const result = await importClaims(rows, practiceIdFromSession(req));
     return res.json({ success: true, ...result });
   } catch (err) {
     console.error('[POST /insurance/claims/import]', err);
@@ -137,7 +245,7 @@ router.post('/claims/import', async (req: Request, res: Response) => {
 //   - Max 3 attempts
 //   - Business hours (Mon–Fri 08:00–17:00 Eastern)
 // ---------------------------------------------------------------------------
-router.post('/queue/trigger/:claimId', async (req: Request, res: Response) => {
+router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: Response) => {
   try {
     const { claimId } = req.params;
 
@@ -149,7 +257,7 @@ router.post('/queue/trigger/:claimId', async (req: Request, res: Response) => {
       },
     });
 
-    if (!claim) {
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
@@ -162,6 +270,8 @@ router.post('/queue/trigger/:claimId', async (req: Request, res: Response) => {
       carrierId: claim.carrierId,
       daysOutstanding: claim.daysOutstanding,
       attemptsSoFar,
+      claimStatus: claim.status,
+      scheduledFor: new Date(),
     });
 
     if (!guard.allowed) {
@@ -236,8 +346,11 @@ router.post('/queue/trigger/:claimId', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.get('/queue', async (req: Request, res: Response) => {
   try {
-    const practiceId = req.query.practiceId as string | undefined;
-    const where = practiceId ? { practiceId } : {};
+    const qP = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qP)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const where = { practiceId: practiceIdFromSession(req) };
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);

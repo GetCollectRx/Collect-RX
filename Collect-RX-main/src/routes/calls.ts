@@ -8,8 +8,14 @@
 import { Router, Request, Response } from 'express';
 import { CallOutcome, CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { authenticate } from '../server/middleware/authenticate';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+} from '../server/middleware/requirePracticeSession';
 
 const router = Router();
+router.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // GET /api/calls
@@ -20,7 +26,7 @@ const router = Router();
 //   outcome    — CallOutcome value
 //   from       — ISO date string (start of date range)
 //   to         — ISO date string (end of date range)
-//   practiceId — filter by practice
+//   practiceId — must match session if provided
 //   page       — default 1
 //   limit      — default 25, max 100
 // ---------------------------------------------------------------------------
@@ -30,11 +36,13 @@ router.get('/', async (req: Request, res: Response) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 25));
     const skip  = (page - 1) * limit;
 
-    const { carrier, outcome, from, to, practiceId } = req.query as Record<string, string>;
+    const { carrier, outcome, from, to, practiceId: qPractice } = req.query as Record<string, string>;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
 
-    // Build where using a join via claim
-    const claimFilter: Record<string, unknown> = {};
-    if (practiceId) claimFilter.practiceId = practiceId;
+    // Build where using a join via claim — tenant-scoped
+    const claimFilter: Record<string, unknown> = { practiceId: practiceIdFromSession(req) };
     if (carrier && Object.values(CarrierId).includes(carrier as CarrierId)) {
       claimFilter.carrierId = carrier as CarrierId;
     }
@@ -52,7 +60,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     const where = {
       ...attemptFilter,
-      ...(Object.keys(claimFilter).length > 0 ? { claim: claimFilter } : {}),
+      claim: claimFilter,
     };
 
     const [attempts, total] = await Promise.all([
@@ -112,7 +120,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    if (!attempt) {
+    if (!attempt || attempt.claim.practiceId !== practiceIdFromSession(req)) {
       return res.status(404).json({ success: false, error: 'Call attempt not found' });
     }
 

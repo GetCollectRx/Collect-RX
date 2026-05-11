@@ -9,16 +9,24 @@
 //   /api/carriers/*        carriers.ts
 //   /api/analytics/*       analytics.ts
 //   /api/eligibility/*     eligibility.ts
+//   /api/queue/*          queue.ts (priority scores)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
+//   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (raw JSON body)
+//   /api/twilio/sms        twilio/inboundSms.ts (urlencoded — after body parsers)
 //
 // Safety:
 //   - Webhook route uses raw body parser (HMAC validation requires raw bytes)
 //   - All other routes use express.json()
 //   - Prisma client is singleton from lib/prisma.ts
 //   - piiVault.purgeExpired() runs on boot and hourly
-//   - Rate limiting: standardLimiter on all /api/*, webhookLimiter on Vapi,
-//     authLimiter (5/15min) on POST /api/auth/login
+//   - Rate limiting: standardLimiter on all /api/*, webhookLimiter on webhooks,
+//     healthLimiter on /health + /api/health/*, authLimiter (5/15min) on POST /api/auth/login
+//     (when REDIS_URL is set, limiters use Redis so counts are shared across API replicas)
+//   - trust proxy: enabled in production (or TRUST_PROXY=1) so req.ip + limits are client-accurate
+//   - Insurance, calls, analytics, carriers, queue, eligibility: require practice JWT (cookie or Bearer)
 //   - VAPI_WEBHOOK_SECRET required in production — server refuses to start without it
+//   - SendGrid: SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY required in production (401 otherwise)
+//   - Stripe Connect onboard refresh/complete: ?v= HMAC (or same-practice JWT); see STRIPE_ONBOARD_RETURN_SECRET
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
@@ -33,6 +41,7 @@ import { assertJwtConfigAtStartup } from './authToken';
 import {
   standardLimiter,
   webhookLimiter,
+  healthLimiter,
 } from './middleware/rateLimiter';
 
 // Routes
@@ -42,12 +51,26 @@ import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
 import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
+import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
+import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { getMetrics } from './observability/metrics.js';
+import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
+import { handleTwilioInboundSms } from './twilio/inboundSms.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
+
+// Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
+if (
+  process.env.TRUST_PROXY === '1' ||
+  process.env.TRUST_PROXY === 'true' ||
+  process.env.NODE_ENV === 'production'
+) {
+  app.set('trust proxy', 1);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VAPI_WEBHOOK_SECRET guard
@@ -78,12 +101,21 @@ try {
 // ─────────────────────────────────────────────────────────────────────────────
 // CORS
 // ─────────────────────────────────────────────────────────────────────────────
+const corsOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
-    'http://localhost:5173',  // Vite dev server
-    'http://localhost:3000',
-    'https://www.collectrx.ca',
-  ],
+  origin:
+    corsOrigins.length > 0
+      ? corsOrigins
+      : [
+          'http://localhost:5173',
+          'http://localhost:3000',
+          'http://127.0.0.1:5173',
+          'http://127.0.0.1:3000',
+          'https://www.collectrx.ca',
+        ],
   credentials: true,
 }));
 
@@ -109,6 +141,13 @@ app.use(
   vapiWebhookRouter,
 );
 
+app.post(
+  '/api/webhooks/sendgrid',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  makeSendgridEventWebhookHandler(prisma),
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,24 +155,32 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+app.post('/api/twilio/sms', webhookLimiter, (req, res, next) => {
+  handleTwilioInboundSms(req, res, prisma).catch(next);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — excluded from /api rate limiting (tests + probes)
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/health', (_req: Request, res: Response) => {
+app.get('/health', healthLimiter, (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
 
-app.get('/api/health', (_req: Request, res: Response) => {
+app.get('/api/health', healthLimiter, (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
 
-app.get('/api/health/ready', async (_req: Request, res: Response) => {
+app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'not_ready' });
   }
+});
+
+app.get('/api/health/metrics', healthLimiter, (_req: Request, res: Response) => {
+  res.json({ success: true, metrics: getMetrics() });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +200,7 @@ app.use('/api/calls',      callsRouter);
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/eligibility', eligibilityRouter);
+app.use('/api/queue',       queueRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)
@@ -212,6 +260,12 @@ async function boot() {
     const purged = piiVault.purgeExpired();
     if (purged > 0) console.log(`[piiVault] Purged ${purged} expired tokens`);
   }, 60 * 60 * 1000);
+
+  if (process.env.REDIS_URL) {
+    registerArJobSchedulers().catch((err) => {
+      console.error('[server] registerArJobSchedulers failed:', (err as Error).message);
+    });
+  }
 
   app.listen(PORT, () => {
     console.log(`[server] CollectRx API listening on port ${PORT}`);

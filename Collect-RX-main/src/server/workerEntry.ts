@@ -22,6 +22,7 @@ const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
     if (job.name === 'RULES_TICK') {
+      // Insurance call_queue priority sync runs inside runRulesEngineTick (same path as in-process setInterval).
       await runRulesEngineTick(prisma);
     } else if (job.name === 'REMINDER_CYCLE') {
       await runReminderCycle();

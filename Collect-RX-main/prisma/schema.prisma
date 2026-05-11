@@ -21,9 +21,10 @@ model Practice {
   /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
   subscriptionStatus           String?
   subscriptionCurrentPeriodEnd DateTime?
-  patients      Patient[]
-  balances      Balance[]
-  ruleSets      RuleSet[]
+  patients              Patient[]
+  balances              Balance[]
+  ruleSets              RuleSet[]
+  eligibilitySnapshots  EligibilitySnapshot[]
 }
 
 model Patient {
@@ -167,6 +168,7 @@ model PatientBalance {
   @@index([reminderStatus])
   @@index([practiceId])
   @@index([emailOptOutAt])
+  @@index([patientPhone])
 }
 
 model StripeConnectAccount {
@@ -337,6 +339,8 @@ enum ClaimStatus {
   PENDING
   IN_QUEUE
   CALLING
+  /// Carrier approved / adjudicated in favour but payment not yet received — queue follow-up.
+  APPROVED_PENDING_PAYMENT
   RESOLVED
   DENIED
   ESCALATED
@@ -394,6 +398,8 @@ model InsuranceClaim {
   billedAmount      Decimal       @map("billed_amount") @db.Decimal(10, 2)
   outstandingAmount Decimal       @map("outstanding_amount") @db.Decimal(10, 2)
   daysOutstanding   Int           @map("days_outstanding")
+  /// Date of service — canonical anchor for carrier appeal deadlines. Prefer PMS backfill over inferred dates.
+  servicedAt        DateTime?     @map("serviced_at")
   status            ClaimStatus   @default(PENDING)
   priority          ClaimPriority @default(NORMAL)
   createdAt         DateTime      @default(now()) @map("created_at")
@@ -475,6 +481,22 @@ model CallQueue {
   @@map("call_queue")
 }
 
+/// Outbound events for practice EMR / PMS connectors (AbelDent, etc.). Worker drains `processedAt IS NULL`.
+model EmrSyncOutbox {
+  id           String    @id @default(uuid())
+  createdAt    DateTime  @default(now()) @map("created_at")
+  practiceId   String    @map("practice_id")
+  claimId      String    @map("claim_id")
+  eventType    String    @map("event_type")
+  payloadJson  Json      @map("payload_json")
+  processedAt  DateTime? @map("processed_at")
+
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([claimId])
+  @@index([processedAt])
+  @@map("emr_sync_outbox")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // EXISTING TABLES — Phase 3 eligibility (kept for completeness; primary source
 // of truth is migrations/eligibility-schema.sql — these models let Prisma
@@ -528,6 +550,7 @@ model InsurancePlan {
 
 model EligibilitySnapshot {
   snapshotId                String            @id @default(uuid()) @map("snapshot_id")
+  practiceId                String            @map("practice_id")
   patientId                 String            @map("patient_id")
   carrier                   CarrierId
   planId                    String?           @map("plan_id")
@@ -541,7 +564,9 @@ model EligibilitySnapshot {
   rawCarrierResponse        Json?             @map("raw_carrier_response")
   createdAt                 DateTime          @default(now()) @map("created_at")
 
-  @@index([patientId, carrier, verifiedAt(sort: Desc)])
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, patientId, carrier, verifiedAt(sort: Desc)])
   @@map("eligibility_snapshots")
 }
 

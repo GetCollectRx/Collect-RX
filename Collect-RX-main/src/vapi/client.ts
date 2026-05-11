@@ -69,7 +69,18 @@ export interface VapiWebhookPayload {
   analysis?: {
     summary?: string;
     successEvaluation?: string;
+    /** Same shape as `metadata.collectrx` — post-call tools may write here */
+    collectrx?: CollectrxWebhookStructured;
   };
+}
+
+/** Optional structured end-of-call signal (preferred over transcript regex). */
+export interface CollectrxWebhookStructured {
+  schemaVersion: 1;
+  callOutcome?: string;
+  outcomeDetail?: string;
+  claimStatus?: string;
+  carrierBlockDetected?: boolean;
 }
 
 export interface VapiCallMetadata {
@@ -77,6 +88,7 @@ export interface VapiCallMetadata {
   carrierId: string;
   patientToken: string;
   practiceId: string;
+  collectrx?: CollectrxWebhookStructured;
 }
 
 // ---------------------------------------------------------------------------

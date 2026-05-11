@@ -8,12 +8,46 @@
  * PHI constraint: no patient name, DOB, or health data is sent to Stripe.
  */
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
 import { PrismaClient } from '@prisma/client';
 import { sendPaymentReceiptEmail } from '../patients/messaging';
 import { handlePlatformBillingWebhook } from './billing';
 
 const prisma = new PrismaClient();
+
+/** Prefer STRIPE_ONBOARD_RETURN_SECRET in prod if JWT rotation should not invalidate old Stripe return links. */
+function onboardHmacSecret(): string {
+  const dedicated = process.env.STRIPE_ONBOARD_RETURN_SECRET?.trim();
+  if (dedicated) return dedicated;
+  if (process.env.NODE_ENV === 'production') {
+    const s = process.env.JWT_SECRET;
+    if (!s) throw new Error('JWT_SECRET is required in production');
+    return s;
+  }
+  return process.env.JWT_SECRET || 'dev-collectrx-jwt-not-for-production';
+}
+
+/**
+ * HMAC for Stripe AccountLink refresh_url / return_url — proves the request came from a link we issued,
+ * so onboarding redirects work without a browser cookie while blocking arbitrary practice_id guessing.
+ */
+export function signOnboardReturn(practiceId: string): string {
+  return createHmac('sha256', onboardHmacSecret())
+    .update(`stripe-onboard-return:${practiceId}`)
+    .digest('hex');
+}
+
+export function verifyOnboardReturn(practiceId: string, token: string | undefined): boolean {
+  if (!practiceId || !token || typeof token !== 'string') return false;
+  const expected = signOnboardReturn(practiceId);
+  if (expected.length !== token.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(token, 'utf8'));
+  } catch {
+    return false;
+  }
+}
 
 function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -68,11 +102,13 @@ export async function createOnboardingLink(practiceId: string, practiceEmail?: s
     });
   }
 
+  const v = encodeURIComponent(signOnboardReturn(practiceId));
+  const q = `practice_id=${encodeURIComponent(practiceId)}&v=${v}`;
   // Generate a fresh onboarding link
   const link = await stripe.accountLinks.create({
     account: stripeAccountId,
-    refresh_url: `${SERVER_URL()}/api/stripe/connect/onboard/refresh?practice_id=${practiceId}`,
-    return_url: `${SERVER_URL()}/api/stripe/connect/onboard/complete?practice_id=${practiceId}`,
+    refresh_url: `${SERVER_URL()}/api/stripe/connect/onboard/refresh?${q}`,
+    return_url: `${SERVER_URL()}/api/stripe/connect/onboard/complete?${q}`,
     type: 'account_onboarding',
   });
 

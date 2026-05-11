@@ -51,8 +51,13 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
         return res.status(401).type('text/plain').send('invalid signature');
       }
     } else if (process.env.NODE_ENV === 'production') {
+      console.error(
+        '[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY is required in production',
+      );
+      return res.status(401).type('text/plain').send('verification required');
+    } else {
       console.warn(
-        '[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY unset — set key from SendGrid Event Webhook settings for go-live'
+        '[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY unset — webhook is not verified (dev only)',
       );
     }
 

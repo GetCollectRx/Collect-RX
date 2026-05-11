@@ -13,32 +13,38 @@ import {
   getResolutionRateByCarrier,
   getCallVolumeOverTime,
 } from '../services/insurance-analytics';
+import { authenticate } from '../server/middleware/authenticate';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+} from '../server/middleware/requirePracticeSession';
 
 const router = Router();
+router.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // GET /api/analytics/insurance
 // Aggregate metrics for the practice dashboard.
 //
 // Query params:
-//   practiceId — required
+//   practiceId — optional; must match session when sent (metrics always scoped to session)
 //   from       — ISO date (default: 30 days ago)
 //   to         — ISO date (default: now)
 //   bucket     — "day" | "week" (for call volume chart, default "day")
 // ---------------------------------------------------------------------------
 router.get('/insurance', async (req: Request, res: Response) => {
   try {
-    const practiceId = req.query.practiceId as string | undefined;
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
     const bucket = (req.query.bucket as 'day' | 'week') ?? 'day';
 
     const to   = req.query.to   ? new Date(req.query.to as string)   : new Date();
     const from = req.query.from
       ? new Date(req.query.from as string)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-    if (!practiceId) {
-      return res.status(400).json({ success: false, error: 'practiceId is required' });
-    }
 
     const dateRange = { from, to };
 

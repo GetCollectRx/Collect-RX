@@ -26,7 +26,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 DO $$ BEGIN
   CREATE TYPE claim_status AS ENUM (
-    'PENDING', 'IN_QUEUE', 'CALLING', 'RESOLVED',
+    'PENDING', 'IN_QUEUE', 'CALLING', 'APPROVED_PENDING_PAYMENT', 'RESOLVED',
     'DENIED', 'ESCALATED', 'ON_HOLD', 'BLOCKED'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS insurance_claims (
   billed_amount      NUMERIC(10,2) NOT NULL CHECK (billed_amount >= 0),
   outstanding_amount NUMERIC(10,2) NOT NULL CHECK (outstanding_amount >= 0),
   days_outstanding   INTEGER      NOT NULL CHECK (days_outstanding >= 0),
+  serviced_at        TIMESTAMPTZ  NULL,
   status             claim_status NOT NULL DEFAULT 'PENDING',
   priority           claim_priority NOT NULL DEFAULT 'NORMAL',
   created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -260,3 +261,16 @@ GROUP BY practice_id, carrier_id;
 
 COMMENT ON VIEW v_carrier_block_status IS
   'Current block status per practice+carrier. is_blocked=true means calls are suspended.';
+
+-- ─── Idempotent upgrades (older DBs) — same as prisma/migrations/20260511120000_* ─────────
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid
+    WHERE t.typname = 'claim_status' AND e.enumlabel = 'APPROVED_PENDING_PAYMENT'
+  ) THEN
+    ALTER TYPE claim_status ADD VALUE 'APPROVED_PENDING_PAYMENT';
+  END IF;
+END $$;
+
+ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS serviced_at TIMESTAMPTZ NULL;

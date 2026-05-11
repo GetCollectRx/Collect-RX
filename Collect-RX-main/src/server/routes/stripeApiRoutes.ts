@@ -1,7 +1,36 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { createOnboardingLink, refreshAccountStatus, handleWebhook } from '../stripe/connect';
+import {
+  createOnboardingLink,
+  refreshAccountStatus,
+  handleWebhook,
+  verifyOnboardReturn,
+} from '../stripe/connect';
 import { frontendBaseUrl } from '../stripe/billing';
+import { COOKIE_NAME, verifyPracticeToken, type PracticeJwtPayload } from '../authToken';
+
+function practicePayloadFromRequest(req: Request): PracticeJwtPayload | null {
+  try {
+    const fromCookie = req.cookies?.[COOKIE_NAME] as string | undefined;
+    const header = req.headers.authorization;
+    const fromBearer = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const raw = fromBearer || fromCookie;
+    if (!raw) return null;
+    const payload = verifyPracticeToken(raw);
+    if (payload.role !== 'practice' || !payload.practiceId) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/** Signed Stripe return URL (v=) or same-practice JWT — blocks IDOR on practice_id. */
+function allowStripeOnboardReturn(req: Request, practiceId: string): boolean {
+  const v = typeof req.query.v === 'string' ? req.query.v : '';
+  if (verifyOnboardReturn(practiceId, v)) return true;
+  const session = practicePayloadFromRequest(req);
+  return Boolean(session?.practiceId === practiceId);
+}
 
 export function stripeWebhookHandler(prisma: PrismaClient) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -34,6 +63,10 @@ export function createStripeConnectRouter(prisma: PrismaClient): Router {
       res.status(400).send('practice_id required');
       return;
     }
+    if (!allowStripeOnboardReturn(req, practiceId)) {
+      res.status(403).send('Forbidden');
+      return;
+    }
     try {
       const p = await prisma.practice.findUnique({ where: { id: practiceId } });
       const { url } = await createOnboardingLink(practiceId, undefined, p?.name ?? undefined);
@@ -48,6 +81,10 @@ export function createStripeConnectRouter(prisma: PrismaClient): Router {
     const practiceId = typeof req.query.practice_id === 'string' ? req.query.practice_id : '';
     if (!practiceId) {
       res.status(400).send('practice_id required');
+      return;
+    }
+    if (!allowStripeOnboardReturn(req, practiceId)) {
+      res.status(403).send('Forbidden');
       return;
     }
     try {

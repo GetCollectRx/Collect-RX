@@ -46,14 +46,24 @@ export async function handleTwilioInboundSms(
   const from = String((req.body as { From?: string }).From || '');
   const body = String((req.body as { Body?: string }).Body || '').trim();
   const normalizedFrom = normalizePhone(from);
+  const phoneCandidates = [...new Set([from, normalizedFrom].filter(Boolean))];
 
-  const all = await prisma.patientBalance.findMany({
-    where: { patientPhone: { not: null } },
-    select: { id: true, patientPhone: true },
-  });
+  let rows: { id: string; patientPhone: string | null }[] = [];
+  if (STOP_RE.test(body) || START_RE.test(body)) {
+    rows = await prisma.patientBalance.findMany({
+      where: { patientPhone: { in: phoneCandidates } },
+      select: { id: true, patientPhone: true },
+    });
+    if (rows.length === 0) {
+      rows = await prisma.patientBalance.findMany({
+        where: { patientPhone: { not: null } },
+        select: { id: true, patientPhone: true },
+      });
+    }
+  }
 
   if (STOP_RE.test(body)) {
-    for (const row of all) {
+    for (const row of rows) {
       if (row.patientPhone && normalizePhone(row.patientPhone) === normalizedFrom) {
         await prisma.patientBalance.update({
           where: { id: row.id },
@@ -63,7 +73,7 @@ export async function handleTwilioInboundSms(
       }
     }
   } else if (START_RE.test(body)) {
-    for (const row of all) {
+    for (const row of rows) {
       if (row.patientPhone && normalizePhone(row.patientPhone) === normalizedFrom) {
         await prisma.patientBalance.update({
           where: { id: row.id },

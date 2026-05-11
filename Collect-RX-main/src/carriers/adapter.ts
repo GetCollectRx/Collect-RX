@@ -12,7 +12,7 @@
 // The underlying TPA determines IVR navigation — TELUS is a clearinghouse.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { CarrierId, PrismaClient } from '@prisma/client';
+import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 
@@ -145,9 +145,11 @@ export async function checkCarrierBlock(
 /**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
- *   2. Days outstanding (< 30 → reject, > 90 → escalate)
- *   3. Max attempts (>= 3 → reject)
- *   4. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
+ *   3. Days outstanding (< 30 → reject, > 90 → escalate)
+ *   4. TELUS-specific minimum days (when applicable)
+ *   5. Max attempts (>= 3 → reject)
+ *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -157,36 +159,47 @@ export async function validateDispatch(
     daysOutstanding: number;
     attemptsSoFar: number;
     scheduledFor?: Date;
+    /** Required: workflow rules (e.g. no carrier dial for `APPROVED_PENDING_PAYMENT`). */
+    claimStatus: ClaimStatus;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor } = params;
+  const { practiceId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
   if (!blockGuard.allowed) return blockGuard;
 
-  // 2. Claims under 30 days old — do not queue
+  // 2. Carrier approved but payment not received — follow up in practice AR, not another carrier dial
+  if (claimStatus === 'APPROVED_PENDING_PAYMENT') {
+    return {
+      allowed: false,
+      reason:
+        'Claim is APPROVED_PENDING_PAYMENT — payment follow-up belongs in practice AR, not another carrier call.',
+    };
+  }
+
+  // 3. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
     return { allowed: false, reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 3. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
+  // 4. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
     return { allowed: false, reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
-  // 4. Claims over 90 days — escalate to human, skip AI
+  // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 5. Max 3 attempts
+  // 6. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 6. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   const easternHour = getEasternHour(callTime);
   const dayOfWeek = getEasternDayOfWeek(callTime);

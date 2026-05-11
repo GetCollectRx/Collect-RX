@@ -3,7 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
-import { isWithinCallWindow, CARRIER_CONFIGS } from '../../src/carriers/adapter';
+import type { PrismaClient } from '@prisma/client';
+import { isWithinCallWindow, CARRIER_CONFIGS, validateDispatch } from '../../src/carriers/adapter';
+
+const prismaNoBlock = {
+  carrierBlockEvent: { findFirst: async () => null },
+} as unknown as PrismaClient;
 
 describe('CarrierAdapter', () => {
   describe('CARRIER_CONFIGS', () => {
@@ -71,6 +76,33 @@ describe('CarrierAdapter', () => {
       // Monday 2024-04-08 10:00 Eastern = 14:00 UTC
       const mid = new Date('2024-04-08T14:00:00Z');
       expect(isWithinCallWindow(mid)).toBe(true);
+    });
+  });
+
+  describe('validateDispatch', () => {
+    it('rejects carrier dispatch when claim is APPROVED_PENDING_PAYMENT', async () => {
+      const r = await validateDispatch(prismaNoBlock, {
+        practiceId: 'practice-1',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'APPROVED_PENDING_PAYMENT',
+      });
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/APPROVED_PENDING_PAYMENT/i);
+    });
+
+    it('allows PENDING claims during the carrier call window', async () => {
+      const r = await validateDispatch(prismaNoBlock, {
+        practiceId: 'practice-1',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+      expect(r.allowed).toBe(true);
     });
   });
 });

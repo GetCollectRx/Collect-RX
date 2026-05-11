@@ -10,8 +10,14 @@ import { Router, Request, Response } from 'express';
 import { CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CARRIER_CONFIGS } from '../carriers/adapter';
+import { authenticate } from '../server/middleware/authenticate';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+} from '../server/middleware/requirePracticeSession';
 
 const router = Router();
+router.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // GET /api/carriers/health
@@ -19,20 +25,23 @@ const router = Router();
 // current block status.
 //
 // Query params:
-//   practiceId — scope metrics to a specific practice (optional)
+//   practiceId — must match session if sent
 //   from       — ISO date (default: 30 days ago)
 //   to         — ISO date (default: now)
 // ---------------------------------------------------------------------------
 router.get('/health', async (req: Request, res: Response) => {
   try {
-    const practiceId = req.query.practiceId as string | undefined;
+    const qP = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qP)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
     const to   = req.query.to   ? new Date(req.query.to as string)   : new Date();
     const from = req.query.from
       ? new Date(req.query.from as string)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const claimWhere: Record<string, unknown> = {};
-    if (practiceId) claimWhere.practiceId = practiceId;
+    const claimWhere: Record<string, unknown> = { practiceId };
 
     // Fetch all call attempts in window with carrier info via claim join
     const attempts = await prisma.callAttempt.findMany({
@@ -49,8 +58,7 @@ router.get('/health', async (req: Request, res: Response) => {
     });
 
     // Active block status per carrier (and practice if filtered)
-    const blockQuery: Record<string, unknown> = { resumedAt: null };
-    if (practiceId) blockQuery.practiceId = practiceId;
+    const blockQuery: Record<string, unknown> = { resumedAt: null, practiceId };
 
     const activeBlocks = await prisma.carrierBlockEvent.findMany({
       where: blockQuery,
@@ -146,7 +154,7 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: `Unknown carrier: ${carrierId}` });
     }
 
-    const { resumedBy, notes, practiceId } = req.body as {
+    const { resumedBy, notes, practiceId: bodyPracticeId } = req.body as {
       resumedBy?: string;
       notes?: string;
       practiceId?: string;
@@ -156,11 +164,16 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'resumedBy is required' });
     }
 
+    const sessionPid = practiceIdFromSession(req);
+    if (queryPracticeConflictsSession(req, bodyPracticeId)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+
     const blockWhere: Record<string, unknown> = {
       carrierId,
       resumedAt: null,
+      practiceId: sessionPid,
     };
-    if (practiceId) blockWhere.practiceId = practiceId;
 
     // Resolve all active blocks for this carrier
     const updateResult = await prisma.carrierBlockEvent.updateMany({
@@ -175,13 +188,12 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
     if (updateResult.count === 0) {
       return res.status(404).json({
         success: false,
-        error: `No active block found for carrier ${carrierId}${practiceId ? ` / practice ${practiceId}` : ''}`,
+        error: `No active block found for carrier ${carrierId} / practice ${sessionPid}`,
       });
     }
 
     // Reactivate BLOCKED queue entries for this carrier (set back to PENDING)
-    const claimWhere: Record<string, unknown> = { carrierId };
-    if (practiceId) claimWhere.practiceId = practiceId;
+    const claimWhere: Record<string, unknown> = { carrierId, practiceId: sessionPid };
 
     await prisma.callQueue.updateMany({
       where: {

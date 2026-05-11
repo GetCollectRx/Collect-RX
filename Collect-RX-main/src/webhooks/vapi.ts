@@ -21,10 +21,13 @@ import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
-import { classifyOutcome } from '../outcome/processor';
 import { sendCarrierBlockAlert } from '../services/alerts';
+import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../outcome/webhookOutcomeResolver.js';
+import { recordVapiWebhook } from '../server/observability/metrics.js';
+import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
 import type { VapiWebhookPayload } from '../vapi/client';
 import type { CarrierId } from '@prisma/client';
+import { claimStatusFromCallOutcome } from '../server/claimStatusFromCallOutcome.js';
 
 const router = Router();
 
@@ -107,6 +110,7 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   if (existing) {
+    recordVapiWebhook('duplicate');
     console.log(`[vapi-webhook] Duplicate event for vapiCallId=${vapiCallId} — ignoring`);
     return;
   }
@@ -126,6 +130,7 @@ router.post('/', async (req: Request, res: Response) => {
       carrierId: true,
       patientToken: true,
       status: true,
+      outstandingAmount: true,
     },
   });
 
@@ -134,8 +139,11 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  // ── 6. Classify outcome ──────────────────────────────────────────────────
-  const processed = classifyOutcome(payload);
+  recordVapiWebhook('call_ended');
+
+  // ── 6. Classify outcome (structured `collectrx` preferred over transcript regex)
+  const processed = resolveOutcomeFromWebhookPayload(payload);
+  const structuredClaimStatus = extractStructuredClaimStatus(payload);
 
   // ── 7. Persist CallAttempt (idempotent — unique on vapiCallId) ───────────
   try {
@@ -174,6 +182,8 @@ router.post('/', async (req: Request, res: Response) => {
     console.error(
       `[vapi-webhook] CARRIER_BLOCK DETECTED — carrierId=${claim.carrierId} practiceId=${claim.practiceId}`,
     );
+
+    recordVapiWebhook('carrier_block');
 
     await prisma.$transaction(async (tx) => {
       // a. Write CarrierBlockEvent
@@ -219,12 +229,25 @@ router.post('/', async (req: Request, res: Response) => {
     return;  // Do not update claim status further — it's BLOCKED
   }
 
-  // ── 9. Update CallQueue status ───────────────────────────────────────────
-  const newQueueStatus = processed.outcome === 'RESOLVED' || processed.outcome === 'DENIED'
-    ? 'COMPLETED'
-    : processed.outcome === 'ESCALATED'
-    ? 'ESCALATED'
-    : 'PENDING';
+  // ── 9–10. Persist claim + queue status
+  // APPROVED_PENDING_PAYMENT: close the *carrier automation* queue row (COMPLETED) — payment
+  // tracking is practice AR, not repeat carrier dials. Claim row stays open for dashboards / AR.
+  const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
+  const newClaimStatus = claimStatusFromCallOutcome(
+    processed.outcome,
+    processed.outcomeDetail,
+    outstandingCents,
+    structuredClaimStatus,
+  );
+
+  const newQueueStatus =
+    newClaimStatus === 'RESOLVED' ||
+    newClaimStatus === 'DENIED' ||
+    newClaimStatus === 'APPROVED_PENDING_PAYMENT'
+      ? 'COMPLETED'
+      : newClaimStatus === 'ESCALATED' || processed.outcome === 'ESCALATED'
+        ? 'ESCALATED'
+        : 'PENDING';
 
   await prisma.callQueue.updateMany({
     where: { claimId: claim.id },
@@ -234,17 +257,34 @@ router.post('/', async (req: Request, res: Response) => {
     },
   });
 
-  // ── 10. Update InsuranceClaim status ────────────────────────────────────
-  const newClaimStatus = outcomeToClaimStatus(processed.outcome);
   await prisma.insuranceClaim.update({
     where: { id: claim.id },
     data:  { status: newClaimStatus },
   });
 
+  recordVapiWebhook('claim_updated');
+
+  if (newClaimStatus === 'RESOLVED') {
+    try {
+      await enqueueEmrClaimEvent(prisma, {
+        practiceId: claim.practiceId,
+        claimId: claim.id,
+        eventType: 'CLAIM_RESOLVED',
+        payload: {
+          vapiCallId,
+          resolvedAt: new Date().toISOString(),
+          outcomeDetail: processed.outcomeDetail,
+        },
+      });
+    } catch (emrErr) {
+      console.error('[vapi-webhook] EMR outbox enqueue failed:', emrErr);
+    }
+  }
+
   // ── 11. Detokenize for practice record updates (if needed) ───────────────
   // Only called if downstream practice systems need the real patientId.
   // The resolved patientId is NEVER stored back into any call-related table.
-  if (processed.outcome === 'RESOLVED' && metadata.patientToken) {
+  if (newClaimStatus === 'RESOLVED' && metadata.patientToken) {
     try {
       const realPatientId = piiVault.detokenize(metadata.patientToken);
       // TODO: wire to practice EMR sync when Abeldent connector is ready
@@ -260,22 +300,5 @@ router.post('/', async (req: Request, res: Response) => {
     `[vapi-webhook] Processed call ${vapiCallId} — outcome: ${processed.outcome} — claim: ${claim.id}`,
   );
 });
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-import type { CallOutcome, ClaimStatus } from '@prisma/client';
-
-function outcomeToClaimStatus(outcome: CallOutcome): ClaimStatus {
-  switch (outcome) {
-    case 'RESOLVED':       return 'RESOLVED';
-    case 'DENIED':         return 'DENIED';
-    case 'ESCALATED':      return 'ESCALATED';
-    case 'BLOCK_DETECTED': return 'BLOCKED';
-    case 'PENDING':        return 'IN_QUEUE';
-    default:               return 'IN_QUEUE';
-  }
-}
 
 export default router;

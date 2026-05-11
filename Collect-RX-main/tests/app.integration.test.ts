@@ -8,7 +8,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import Stripe from 'stripe';
-import { handleWebhook } from '../src/server/stripe/connect.js';
+import { handleWebhook, signOnboardReturn } from '../src/server/stripe/connect.js';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeForTests, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
 
@@ -37,6 +37,82 @@ describe('API (integration) — liveness (no DB required for /api/health)', () =
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
+  });
+
+  it('GET /api/health/metrics includes deployment flags (no secrets)', async () => {
+    const res = await request(app).get('/api/health/metrics');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const m = res.body.metrics;
+    expect(m.deployment).toMatchObject({
+      nodeEnv: expect.any(String),
+      redisUrlSet: expect.any(Boolean),
+      schedulerDisabled: expect.any(Boolean),
+      vapiWebhookSecretSet: expect.any(Boolean),
+    });
+    expect(m).not.toHaveProperty('databaseUrl');
+  });
+});
+
+describe('Practice-scoped APIs — require authentication', () => {
+  it('GET /api/insurance/claims returns 401 without session', async () => {
+    const res = await request(app).get('/api/insurance/claims');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/queue/priority-scores returns 401 without session', async () => {
+    const res = await request(app).get('/api/queue/priority-scores');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('Stripe Connect — onboard return URL must be signed or session', () => {
+  const pid = '00000000-0000-4000-8000-00000000dead';
+
+  it('GET /api/stripe/connect/onboard/complete rejects practice_id without v or session', async () => {
+    const res = await request(app).get('/api/stripe/connect/onboard/complete').query({ practice_id: pid });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/stripe/connect/onboard/complete redirects when v matches practice_id', async () => {
+    const v = signOnboardReturn(pid);
+    const res = await request(app)
+      .get('/api/stripe/connect/onboard/complete')
+      .query({ practice_id: pid, v })
+      .redirects(0);
+    expect(res.status).toBe(303);
+  });
+
+  it('GET /api/stripe/connect/onboard/refresh rejects without v or session', async () => {
+    const res = await request(app).get('/api/stripe/connect/onboard/refresh').query({ practice_id: pid });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('Webhooks — SendGrid (raw JSON, no DB)', () => {
+  it('POST /api/webhooks/sendgrid returns 400 when body is not a JSON array', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/sendgrid')
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from('{}'));
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/webhooks/sendgrid returns 400 for invalid JSON', async () => {
+    const res = await request(app)
+      .post('/api/webhooks/sendgrid')
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from('not-json'));
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/webhooks/sendgrid returns 200 for events that do not trigger opt-out', async () => {
+    const payload = JSON.stringify([{ event: 'open', email: 'noop@example.com' }]);
+    const res = await request(app)
+      .post('/api/webhooks/sendgrid')
+      .set('Content-Type', 'application/json; charset=utf-8')
+      .send(payload);
+    expect(res.status).toBe(200);
   });
 });
 

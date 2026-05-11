@@ -11,6 +11,10 @@ export async function registerArJobSchedulers(): Promise<void> {
   if (!process.env.REDIS_URL) {
     return;
   }
+  if (process.env.DISABLE_SCHEDULER === '1' || process.env.DISABLE_SCHEDULER === 'true') {
+    console.warn('[registerSchedulers] DISABLE_SCHEDULER is set — skipping Bull repeatables');
+    return;
+  }
 
   const q = getArQueue();
   const existing = await q.getRepeatableJobs();

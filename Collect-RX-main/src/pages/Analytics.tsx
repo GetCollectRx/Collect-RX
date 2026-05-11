@@ -11,6 +11,23 @@ import {
 // Types — Insurance AI analytics
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface PriorityRankRow {
+  claimId: string
+  patientName: string
+  carrier: string
+  amountCents: number
+  daysOutstanding: number
+  deadlineDaysRemaining: number
+  scores: {
+    total: number
+    age: number
+    amount: number
+    deadline: number
+    attempts: number
+    status: number
+  }
+}
+
 interface InsuranceAnalytics {
   timeSaved: {
     completedCalls: number
@@ -65,6 +82,80 @@ const RANGE_OPTIONS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // Insurance AI section
 // ─────────────────────────────────────────────────────────────────────────────
+
+function CallQueuePriorityTable({ practiceId }: { practiceId: string }) {
+  const [rows, setRows] = useState<PriorityRankRow[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    apiFetch(`/api/queue/priority-scores?practiceId=${encodeURIComponent(practiceId)}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const b = await r.json().catch(() => ({}))
+          throw new Error((b as { error?: string }).error ?? 'Priority scores failed')
+        }
+        return r.json() as Promise<{ success?: boolean; data?: PriorityRankRow[] }>
+      })
+      .then((j) => {
+        if (!cancelled) setRows(Array.isArray(j.data) ? j.data.slice(0, 15) : [])
+      })
+      .catch((e) => { if (!cancelled) setError((e as Error).message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [practiceId])
+
+  return (
+    <Card>
+      <CardHeader
+        title="Call queue — priority engine"
+        subtitle="Top open claims by composite score (age, amount, appeal window, attempts, status). Carrier deadline = days until appeal window from date of service."
+      />
+      {loading && <p className="text-sm text-gray-500 dark:text-gray-400 py-4 px-1">Loading priority scores…</p>}
+      {error && (
+        <p className="text-sm text-red-600 dark:text-red-400 py-3 px-1">{error}</p>
+      )}
+      {!loading && !error && rows && rows.length === 0 && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 py-4 px-1">No open claims for this practice.</p>
+      )}
+      {!loading && !error && rows && rows.length > 0 && (
+        <TableContainer>
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Patient</Th>
+                <Th>Carrier</Th>
+                <Th align="right">Outstanding</Th>
+                <Th align="right">Days AR</Th>
+                <Th align="right">Appeal days</Th>
+                <Th align="right">Score</Th>
+                <Th align="right">Parts (age / $ / dl / att / st)</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {rows.map((r) => (
+                <Tr key={r.claimId}>
+                  <Td bold className="max-w-[140px] truncate">{r.patientName}</Td>
+                  <Td muted className="max-w-[120px] truncate">{r.carrier}</Td>
+                  <Td align="right">${(r.amountCents / 100).toLocaleString('en-CA', { minimumFractionDigits: 2 })}</Td>
+                  <Td align="right">{r.daysOutstanding}</Td>
+                  <Td align="right">{r.deadlineDaysRemaining}</Td>
+                  <Td align="right"><Badge color="blue">{Math.round(r.scores.total)}</Badge></Td>
+                  <Td align="right" muted className="text-xs whitespace-nowrap">
+                    {Math.round(r.scores.age)} / {Math.round(r.scores.amount)} / {Math.round(r.scores.deadline)} / {r.scores.attempts} / {r.scores.status}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      )}
+    </Card>
+  )
+}
 
 function InsuranceSection({ practiceId }: { practiceId: string }) {
   const [rangeDays, setRangeDays] = useState<30 | 90 | 365>(30)
@@ -293,6 +384,9 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
           </Card>
         </>
       )}
+
+      <div className="h-6" />
+      <CallQueuePriorityTable practiceId={practiceId} />
 
       <div className="my-8 border-t border-gray-100 dark:border-gray-800" />
     </section>

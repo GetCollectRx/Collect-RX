@@ -1,10 +1,36 @@
 import { PrismaClient } from '@prisma/client';
 import { generateMessageBody } from './messageTemplates.js';
+import { syncCallQueueSchedulingFromPriority } from './services/priorityEngine.js';
+import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
 
 /**
  * One evaluation pass (legacy `Balance` / `BalanceState` model). Safe to call from a worker on a schedule.
+ * Also refreshes insurance `call_queue` ordering via the priority engine (no Redis required — same code path
+ * whether jobs run in BullMQ worker or in-process `startRulesEngine`).
  */
 export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
+  try {
+    const sync = await syncCallQueueSchedulingFromPriority(prisma);
+    if (sync.rowsUpdated > 0) {
+      console.log(
+        `[rulesEngine] priority queue sync: ${sync.rowsUpdated} call_queue row(s), ${sync.practices} practice(s)`,
+      );
+    }
+  } catch (err) {
+    console.error('[rulesEngine] priority queue sync failed:', (err as Error).message);
+  }
+
+  try {
+    const emr = await processEmrSyncOutboxBatch(prisma);
+    if (emr.markedProcessed > 0 || emr.deliveryFailed > 0) {
+      console.log(
+        `[rulesEngine] EMR outbox: pulled ${emr.pulled}, processed ${emr.markedProcessed}, failed ${emr.deliveryFailed}`,
+      );
+    }
+  } catch (err) {
+    console.error('[rulesEngine] EMR outbox batch failed:', (err as Error).message);
+  }
+
   const openBalances = await prisma.balance.findMany({
     where: { status: 'OPEN' },
     include: {

@@ -13,19 +13,48 @@ import {
   Carrier,
   EstimateRequest,
   EstimateResponse,
+  EligibilityEstimate,
+  EligibilitySnapshot,
+  EligibilityStatus,
   ReconcileRequest,
   ReconcileResponse,
   StatusResponse,
 } from '../services/eligibility/types';
+import { prisma } from '../lib/prisma';
+import type { CarrierId } from '@prisma/client';
+import { authenticate } from '../server/middleware/authenticate';
+import { practiceIdFromSession } from '../server/middleware/requirePracticeSession';
 
 // ---------------------------------------------------------------------------
-// In this implementation the route layer delegates all heavy logic to the
-// engine and reconciliation services.  Database persistence (snapshots,
-// estimates, reconciliation logs) is assumed to be handled by the calling
-// application or a repository layer injected at startup.
+// Engine + reconciliation; snapshots and reconcile results persist via Prisma.
+// All routes require a practice session (JWT cookie or Bearer token).
+// EligibilitySnapshot is scoped by practiceId (see prisma migration eligibility_snapshot_practice_id).
 // ---------------------------------------------------------------------------
 
 const router = Router();
+router.use(authenticate);
+
+type EligibilitySnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.eligibilitySnapshot.findFirst>>>;
+
+function mapEligibilitySnapshotFromDb(row: EligibilitySnapshotRow): EligibilitySnapshot {
+  const raw = row.rawCarrierResponse;
+  const rawCarrierResponse =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
+
+  return {
+    snapshotId: row.snapshotId,
+    patientId: row.patientId,
+    carrier: row.carrier as Carrier,
+    status: row.status as EligibilityStatus,
+    verifiedAt: row.verifiedAt.toISOString(),
+    deductibleIndividualMet: Number(row.deductibleIndividualMet),
+    deductibleFamilyMet: Number(row.deductibleFamilyMet),
+    annualMaxUsedIndividual: Number(row.annualMaxUsedIndividual),
+    annualMaxUsedFamily: row.annualMaxUsedFamily != null ? Number(row.annualMaxUsedFamily) : null,
+    planYearStart: row.planYearStart.toISOString().slice(0, 10),
+    rawCarrierResponse,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/eligibility/estimate
@@ -109,16 +138,20 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
       });
     }
 
-    // TODO: replace with actual DB query when repository layer is wired in
-    // Example: const snapshot = await EligibilitySnapshotRepo.findLatest(patientId, carrier);
-    const snapshot = (req as any).db
-      ? await (req as any).db.query(
-          `SELECT * FROM eligibility_snapshots WHERE patient_id = $1 AND carrier = $2 ORDER BY verified_at DESC LIMIT 1`,
-          [patientId, carrier],
-        ).then((r: any) => r.rows[0] ?? null)
-      : null;
+    const practiceId = practiceIdFromSession(req);
+    const snapshot = await prisma.eligibilitySnapshot.findFirst({
+      where: {
+        practiceId,
+        patientId,
+        carrier: carrier as CarrierId,
+      },
+      orderBy: { verifiedAt: 'desc' },
+    });
 
-    const response: StatusResponse = { success: true, snapshot: snapshot ?? undefined };
+    const response: StatusResponse = {
+      success: true,
+      snapshot: snapshot ? mapEligibilitySnapshotFromDb(snapshot) : undefined,
+    };
     return res.status(200).json(response);
   } catch (err) {
     console.error('[eligibility/status]', err);
@@ -144,10 +177,20 @@ router.post('/reconcile', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'estimate object is required (pass the original estimate returned by /estimate)' });
     }
 
-    const result = reconcile(body.estimate as any, body.adjudication);
+    const estimate = body.estimate as EligibilityEstimate;
+    const result = reconcile(estimate, body.adjudication);
 
-    // TODO: persist reconciliation result to DB
-    // await ReconciliationRepo.save(result);
+    const extra = body as ReconcileRequest & { practiceId?: string; claimId?: string };
+    await prisma.eligibilityReconcileLog.create({
+      data: {
+        patientId: estimate.patientId,
+        estimateId: body.estimateId,
+        claimId: extra.claimId ?? null,
+        practiceId: practiceIdFromSession(req),
+        adjudicationJson: body.adjudication as object,
+        resultJson: result as unknown as object,
+      },
+    });
 
     const response: ReconcileResponse = { success: true, result };
     return res.status(200).json(response);

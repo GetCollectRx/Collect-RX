@@ -7,11 +7,28 @@
 //   standardLimiter — 120 req / 1 min  per IP  (standard API reads/writes)
 //   webhookLimiter  — 300 req / 1 min  per IP  (Vapi can fire bursts)
 //
+// When REDIS_URL is set, all limiters use a Redis-backed store so counts are shared
+// across multiple API processes (Railway horizontal scaling).
+//
 // All tiers return JSON 429 with Retry-After so clients can back off cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import rateLimit, { type Options, type RateLimitRequestHandler } from 'express-rate-limit';
+import IORedis from 'ioredis';
+import { RedisStore, type RedisReply } from 'rate-limit-redis';
+import rateLimit, { ipKeyGenerator, type Options, type RateLimitRequestHandler } from 'express-rate-limit';
 import type { Request, Response } from 'express';
+
+let rateLimitRedis: IORedis | null = null;
+let loggedRedisStore = false;
+
+function getOptionalRateLimitRedis(): IORedis | null {
+  const url = (process.env.REDIS_URL || '').trim();
+  if (!url) return null;
+  if (!rateLimitRedis) {
+    rateLimitRedis = new IORedis(url, { maxRetriesPerRequest: null });
+  }
+  return rateLimitRedis;
+}
 
 // Shared JSON 429 handler
 function makeHandler(message: string) {
@@ -25,10 +42,27 @@ function makeHandler(message: string) {
 }
 
 function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
+  const redis = getOptionalRateLimitRedis();
+  const storeOpts: Partial<Options> = redis
+    ? {
+        store: new RedisStore({
+          sendCommand: (command: string, ...args: string[]) =>
+            redis.call(command, ...args) as Promise<RedisReply>,
+          prefix: 'collectrx:rl:',
+        }),
+      }
+    : {};
+
+  if (redis && !loggedRedisStore) {
+    loggedRedisStore = true;
+    console.log('[rate-limit] Redis store enabled (REDIS_URL) — limits shared across replicas.');
+  }
+
   return rateLimit({
     standardHeaders: true,   // Return RateLimit-* headers (RFC 6585)
     legacyHeaders:   false,  // Suppress deprecated X-RateLimit-*
-    keyGenerator:    (req) => req.ip ?? 'unknown',
+    keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+    ...storeOpts,
     ...opts,
   });
 }
@@ -79,5 +113,17 @@ export const webhookLimiter: RateLimitRequestHandler = makeLimiter({
   max: 300,
   handler: makeHandler(
     'Too many webhook requests — please slow down and try again shortly.',
+  ),
+});
+
+/**
+ * healthLimiter — cheap endpoints still need a ceiling (metrics + DB ping abuse).
+ * Applied to /health and /api/health/* only.
+ */
+export const healthLimiter: RateLimitRequestHandler = makeLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  handler: makeHandler(
+    'Too many health or metrics requests — please slow down and try again shortly.',
   ),
 });
