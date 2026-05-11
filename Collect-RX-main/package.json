@@ -35,6 +35,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx src/server/seed.ts",
     "db:reset": "prisma migrate reset",
+    "check:env": "node scripts/check-deploy-env.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "abeldent:discover": "node scripts/discover-schema.cjs",
