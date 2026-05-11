@@ -53,7 +53,7 @@ jobs:
 
       - name: Prisma, TypeScript, Vite build
         working-directory: Collect-RX-main
-        run: npm run db:generate && npm run typecheck && npx vite build
+        run: npm run db:generate && npm run typecheck && npx --no-install vite build
 
       - name: Package macOS installers
         working-directory: Collect-RX-main
@@ -106,7 +106,7 @@ jobs:
 
       - name: Prisma, TypeScript, Vite build
         working-directory: Collect-RX-main
-        run: npm run db:generate && npm run typecheck && npx vite build
+        run: npm run db:generate && npm run typecheck && npx --no-install vite build
 
       - name: Package Windows installer
         working-directory: Collect-RX-main
