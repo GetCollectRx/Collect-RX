@@ -26,12 +26,13 @@ concurrency:
   cancel-in-progress: true
 
 # Prisma datasource is PostgreSQL — CI must not use sqlite/file URLs.
-# Server boot guards (JWT / Vapi) read NODE_ENV=production during some tooling paths; set safe placeholders.
+# Do NOT set NODE_ENV=production for the whole workflow: npm ci would omit devDependencies
+# (TypeScript, Vite, Prisma CLI, electron-builder), breaking install ~30s in. Set NODE_ENV
+# only on build/package steps. JWT/Vapi placeholders remain for tooling that reads them.
 env:
   DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
   JWT_SECRET: github-actions-ci-placeholder-not-for-production
   VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
-  NODE_ENV: production
   CSC_IDENTITY_AUTO_DISCOVERY: 'false'
   NODE_OPTIONS: --max-old-space-size=6144
 
@@ -53,13 +54,17 @@ jobs:
 
       - name: Prisma, TypeScript, Vite build
         working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
         run: npm run db:generate && npm run typecheck && npx --no-install -p vite vite build
 
       - name: Package macOS installers
         working-directory: Collect-RX-main
-        run: npx electron-builder --mac
         env:
+          NODE_ENV: production
+          COPYFILE_DISABLE: '1'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --no-install -p electron-builder electron-builder --mac
 
       - name: List dist-electron (debug)
         if: failure() || cancelled()
@@ -106,13 +111,16 @@ jobs:
 
       - name: Prisma, TypeScript, Vite build
         working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
         run: npm run db:generate && npm run typecheck && npx --no-install -p vite vite build
 
       - name: Package Windows installer
         working-directory: Collect-RX-main
-        run: npx electron-builder --win --x64
         env:
+          NODE_ENV: production
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --no-install -p electron-builder electron-builder --win --x64
 
       - name: List dist-electron (debug)
         if: failure() || cancelled()
