@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
-import { apiFetch } from '../lib/apiFetch'
+import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import {
   Card, Badge, Button, InlineToast, useToast, DataState,
 } from '../components/ui'
@@ -41,8 +42,7 @@ export default function Outbox() {
     if (!practiceId) return
     setLoading(true)
     setError(null)
-    apiFetch(`/api/outreach?practiceId=${practiceId}`)
-      .then(r => { if (!r.ok) throw new Error('Failed to load'); return r.json() })
+    apiFetchJson<OutreachEvent[]>(`/api/outreach?practiceId=${practiceId}`)
       .then(data => setEvents(Array.isArray(data) ? data : []))
       .catch((e) => { setError((e as Error).message) })
       .finally(() => setLoading(false))
@@ -57,7 +57,8 @@ export default function Outbox() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ responseType: type }),
       })
-      if (!res.ok) throw new Error('API error')
+      const body = await parseApiJson<Record<string, unknown>>(res)
+      if (!res.ok) throw new Error((body as { error?: string }).error || 'API error')
       showToast('ok', `Patient response simulated: ${type}`)
       fetchEvents()
     } catch (err) {

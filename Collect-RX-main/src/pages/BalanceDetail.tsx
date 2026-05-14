@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import { Card, CardHeader, StageBadge, Badge, Button, DataState } from '../components/ui'
 
 function fmtCurrency(v: number) {
@@ -51,7 +52,11 @@ export default function BalanceDetail() {
     if (!id) return
     setError(null)
     apiFetch(`/api/balances/${id}`)
-      .then(r => { if (r.status === 404) { setBalance(null); return null }; if (!r.ok) throw new Error('Failed to load'); return r.json() })
+      .then(async (r) => {
+        if (r.status === 404) { setBalance(null); return null }
+        if (!r.ok) throw new Error('Failed to load')
+        return parseApiJson(r)
+      })
       .then(data => { if (data) setBalance(data) })
       .catch((e) => { setError((e as Error).message) })
       .finally(() => setLoading(false))

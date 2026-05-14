@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import {
   Card, CardHeader, Button, Input, Select, Badge, InlineToast, useToast,
 } from '../components/ui'
@@ -23,6 +24,26 @@ const defaultFlags = (): Record<string, CarrierFlags> => {
   return o
 }
 
+type IntegrationsPayload = {
+  sendgrid: { apiKey: boolean; fromEmail: boolean; eventWebhookVerifyKey: boolean }
+  twilio: { apiAndFrom: boolean; inboundUrlForSignature: boolean }
+  escalation: { staffPhone: boolean; immediateStaffNotify: boolean; voiceRing: string }
+  stripe: { secretKey: boolean; testMode: boolean }
+  stripeConnect: { account: boolean; onboardingComplete: boolean; chargesEnabled: boolean }
+  vapi: { webhookSecret: boolean }
+  email: { unsubscribeHmac: boolean; publicApiBase: string }
+}
+
+type AuditEntry = {
+  id: string
+  createdAt: string
+  action: string
+  subjectType: string | null
+  subjectId: string | null
+  details: unknown
+  requestIp: string | null
+}
+
 export default function Admin() {
   const { practices, practiceId, setPracticeId } = usePractice()
   const [balanceCount, setBalanceCount] = useState('50')
@@ -37,27 +58,9 @@ export default function Admin() {
     errors: { patient: string; error: string }[]
   } | null>(null)
   const [carriers, setCarriers] = useState<Record<string, CarrierFlags>>(defaultFlags)
-  const [integrations, setIntegrations] = useState<{
-    sendgrid: { apiKey: boolean; fromEmail: boolean; eventWebhookVerifyKey: boolean }
-    twilio: { apiAndFrom: boolean; inboundUrlForSignature: boolean }
-    escalation: { staffPhone: boolean; immediateStaffNotify: boolean; voiceRing: string }
-    stripe: { secretKey: boolean; testMode: boolean }
-    stripeConnect: { account: boolean; onboardingComplete: boolean; chargesEnabled: boolean }
-    vapi: { webhookSecret: boolean }
-    email: { unsubscribeHmac: boolean; publicApiBase: string }
-  } | null>(null)
+  const [integrations, setIntegrations] = useState<IntegrationsPayload | null>(null)
   const [integrationsLoading, setIntegrationsLoading] = useState(true)
-  const [auditEntries, setAuditEntries] = useState<
-    {
-      id: string
-      createdAt: string
-      action: string
-      subjectType: string | null
-      subjectId: string | null
-      details: unknown
-      requestIp: string | null
-    }[]
-  >([])
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditTick, setAuditTick] = useState(0)
   const { toast, showToast }            = useToast()
@@ -66,8 +69,10 @@ export default function Admin() {
     if (!practiceId) { setSettingsLoading(false); return }
     setSettingsLoading(true)
     apiFetch('/api/admin/settings')
-      .then((r) => (r.ok ? r.json() : { settings: null }))
-      .then((d: { settings?: { carriers?: Record<string, CarrierFlags> } | null }) => {
+      .then(async (r) =>
+        r.ok ? parseApiJson<{ settings?: { carriers?: Record<string, CarrierFlags> } | null }>(r) : { settings: null },
+      )
+      .then((d) => {
         if (d.settings?.carriers) {
           setCarriers((prev) => {
             const next = { ...prev }
@@ -93,7 +98,7 @@ export default function Admin() {
     }
     setIntegrationsLoading(true)
     apiFetch('/api/admin/integrations')
-      .then((r) => (r.ok ? r.json() : null))
+      .then(async (r) => (r.ok ? parseApiJson<IntegrationsPayload>(r) : null))
       .then((d) => setIntegrations(d))
       .catch(() => setIntegrations(null))
       .finally(() => setIntegrationsLoading(false))
@@ -106,8 +111,8 @@ export default function Admin() {
     }
     setAuditLoading(true)
     apiFetch('/api/admin/audit-log?limit=30')
-      .then((r) => (r.ok ? r.json() : { entries: [] }))
-      .then((d: { entries?: typeof auditEntries }) => setAuditEntries(d.entries ?? []))
+      .then(async (r) => (r.ok ? parseApiJson<{ entries?: AuditEntry[] }>(r) : { entries: [] }))
+      .then((d) => setAuditEntries(d.entries ?? []))
       .catch(() => setAuditEntries([]))
       .finally(() => setAuditLoading(false))
   }, [practiceId, auditTick])
@@ -123,7 +128,7 @@ export default function Admin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ settings: { carriers } }),
       })
-      const data = await res.json()
+      const data = await parseApiJson(res)
       if (res.ok) showToast('ok', 'Carrier preferences saved for this practice.')
       else         showToast('err', (data as { error?: string }).error || 'Save failed')
     } catch {
@@ -142,9 +147,9 @@ export default function Admin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: parseInt(balanceCount) }),
       })
-      const data = await res.json()
-      if (res.ok) showToast('ok', data.message)
-      else        showToast('err', data.error)
+      const data = await parseApiJson<{ message?: string; error?: string }>(res)
+      if (res.ok) showToast('ok', data.message ?? 'Balances generated')
+      else showToast('err', data.error ?? 'Generate failed')
     } catch {
       showToast('err', 'Failed to generate balances')
     } finally {
@@ -160,13 +165,13 @@ export default function Admin() {
     fd.append('file', file)
     try {
       const res  = await apiFetch('/api/admin/import-patient-csv', { method: 'POST', body: fd })
-      const data = await res.json() as {
+      const data = await parseApiJson<{
         imported?: number
         updated?: number
         skipped?: number
         errors?: { patient: string; error: string }[]
         error?: string
-      }
+      }>(res)
       if (res.ok) {
         setCsvResult({
           imported: data.imported ?? 0,

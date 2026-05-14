@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
-import { apiFetch } from '../lib/apiFetch'
+import { apiFetchJson } from '../lib/apiFetch'
 import {
   Button, StageBadge, Select, Input, DataState,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty,
@@ -42,8 +42,7 @@ export default function Balances() {
     if (filters.minAmount) params.append('minAmount', filters.minAmount)
     if (filters.maxAmount) params.append('maxAmount', filters.maxAmount)
 
-    apiFetch(`/api/balances?${params}`)
-      .then(r => { if (!r.ok) throw new Error(r.status === 401 ? 'Not signed in' : 'Request failed'); return r.json() })
+    apiFetchJson<Balance[]>(`/api/balances?${params}`)
       .then(data => {
         const sorted = Array.isArray(data)
           ? [...data].sort((a, b) => b.daysOutstanding - a.daysOutstanding)

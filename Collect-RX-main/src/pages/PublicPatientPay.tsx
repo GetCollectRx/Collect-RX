@@ -1,30 +1,46 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, LoadingSpinner } from '../components/ui'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
+import { parseApiJson } from '../lib/parseApiJson'
 
 /**
  * P3-22 — staff shares /pay/p/:token; no practice login required.
  * Token is issued when a Stripe Payment Link is created (see setPaymentLink).
  */
+type PublicPayData = {
+  paid: boolean
+  amountDue: number
+  currency: string
+  stripeUrl: string | null
+  firstName: string
+}
+
 export default function PublicPatientPay() {
   const { publicToken } = useParams()
-  const [data, setData] = useState<{
-    paid: boolean; amountDue: number; currency: string; stripeUrl: string | null; firstName: string
-  } | null>(null)
+  const [data, setData] = useState<PublicPayData | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!publicToken) { setErr('Invalid link'); setLoading(false); return }
-    fetch(`/api/public/pay/${encodeURIComponent(publicToken)}`)
+    fetch(resolveApiUrl(`/api/public/pay/${encodeURIComponent(publicToken)}`))
       .then(async (r) => {
-        const j = await r.json()
+        const j = await parseApiJson<{
+          paid?: boolean
+          amountDue?: number
+          currency?: string
+          stripeUrl?: string | null
+          firstName?: string
+          message?: string
+          error?: string
+        }>(r)
         if (r.status === 410) { setExpired(true); setErr(j.message || 'Link expired'); return }
         if (!r.ok) { setErr(j.error || 'Not found'); return }
-        setData(j)
+        setData(j as PublicPayData)
       })
-      .catch(() => setErr('Network error'))
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'Network error'))
       .finally(() => setLoading(false))
   }, [publicToken])
 

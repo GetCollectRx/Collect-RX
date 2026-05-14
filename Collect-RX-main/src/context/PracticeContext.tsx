@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
+import { parseApiJson } from '../lib/parseApiJson'
 
 interface Practice {
   id: string
@@ -50,7 +52,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const loading = authState === 'loading'
 
   const logout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+    await fetch(resolveApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' })
     setPractices([])
     setPracticeId('')
     setSubscription(defaultSubscription)
@@ -64,7 +66,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   }, [logout])
 
   const refreshSession = useCallback(async () => {
-    const r = await fetch('/api/auth/me', { credentials: 'include' })
+    const r = await fetch(resolveApiUrl('/api/auth/me'), { credentials: 'include' })
     if (r.status === 401) {
       setPractices([])
       setPracticeId('')
@@ -72,7 +74,23 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       setAuthState('anon')
       return
     }
-    const data = (await r.json()) as { practice: Practice; subscription?: SubscriptionGate }
+    let data: { practice: Practice; subscription?: SubscriptionGate }
+    try {
+      data = await parseApiJson<{ practice: Practice; subscription?: SubscriptionGate }>(r)
+    } catch {
+      setPractices([])
+      setPracticeId('')
+      setSubscription(defaultSubscription)
+      setAuthState('anon')
+      return
+    }
+    if (!r.ok || !data?.practice?.id) {
+      setPractices([])
+      setPracticeId('')
+      setSubscription(defaultSubscription)
+      setAuthState('anon')
+      return
+    }
     try {
       localStorage.setItem('crx_last_practice_id', data.practice.id)
     } catch {
@@ -91,17 +109,34 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   }, [refreshSession])
 
   async function login(id: string, password: string) {
-    const r = await fetch('/api/auth/login', {
+    const r = await fetch(resolveApiUrl('/api/auth/login'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ practiceId: id, password }),
     })
     if (!r.ok) {
-      const err = await r.json().catch(() => ({}))
-      throw new Error((err as { error?: string }).error || 'Login failed')
+      let message = 'Login failed'
+      try {
+        const errBody = await parseApiJson<{ error?: string }>(r)
+        if (typeof errBody === 'object' && errBody !== null && typeof errBody.error === 'string') {
+          message = errBody.error
+        }
+      } catch {
+        message =
+          'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
+      }
+      throw new Error(message)
     }
-    const data = (await r.json()) as { practice: Practice; subscription?: SubscriptionGate }
+    let data: { practice: Practice; subscription?: SubscriptionGate }
+    try {
+      data = await parseApiJson<{ practice: Practice; subscription?: SubscriptionGate }>(r)
+    } catch {
+      throw new Error('Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.')
+    }
+    if (!data?.practice?.id) {
+      throw new Error('Invalid login response')
+    }
     try {
       localStorage.setItem('crx_last_practice_id', data.practice.id)
     } catch {

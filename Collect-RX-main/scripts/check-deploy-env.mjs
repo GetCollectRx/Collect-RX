@@ -51,7 +51,18 @@ ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').tr
 
 ok('TRUST_PROXY', process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || prod, prod ? 'auto-enabled in production on API' : 'set TRUST_PROXY=1 behind Railway/nginx if needed');
 
-ok('ALLOWED_ORIGINS', Boolean((process.env.ALLOWED_ORIGINS || '').trim()), 'comma list for browser CORS; localhost defaults in dev');
+ok(
+  'ALLOWED_ORIGINS',
+  Boolean(
+    (process.env.ALLOWED_ORIGINS ||
+      process.env['Allowed Origins'] ||
+      process.env.ALLOWED_ORIGIN ||
+      process.env.allowed_origins ||
+      ''
+    ).trim(),
+  ),
+  'comma list for browser CORS; use variable name ALLOWED_ORIGINS on Railway when possible',
+);
 
 ok('REDIS_URL', Boolean((process.env.REDIS_URL || '').trim()), 'optional — enables shared rate limits + worker');
 

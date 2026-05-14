@@ -30,7 +30,27 @@ const { URL } = require('url');
 const isDev = !app.isPackaged;
 const FRONTEND_URL = isDev
   ? 'http://localhost:5173'
-  : (process.env.COLLECTRX_FRONTEND_URL || 'https://collectrx.up.railway.app');
+  : (process.env.COLLECTRX_FRONTEND_URL || 'https://www.collectrx.ca');
+
+function electronWindowEntryUrl(baseUrl) {
+  const override = process.env.COLLECTRX_DASHBOARD_START_PATH?.trim();
+  try {
+    const u = new URL(baseUrl);
+    if (override) {
+      u.pathname = override.startsWith('/') ? override : `/${override}`;
+      return u.toString();
+    }
+    const pathOnly = (u.pathname || '/').replace(/\/+$/, '') || '/';
+    if (pathOnly === '/') {
+      u.pathname = '/login';
+    }
+    return u.toString();
+  } catch {
+    return baseUrl;
+  }
+}
+
+const WINDOW_ENTRY_URL = electronWindowEntryUrl(FRONTEND_URL);
 const RAILWAY_URL = (process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
 
 // State
@@ -235,13 +255,13 @@ function createWindow() {
     mainWindow.webContents.send('sync-status', { status: syncStatus, message: null });
   });
 
-  mainWindow.loadURL(FRONTEND_URL);
+  mainWindow.loadURL(WINDOW_ENTRY_URL);
 
   // Retry in dev mode if Vite not ready
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     console.error(`[Window] Failed to load: ${code} ${desc}`);
     if (isDev) {
-      setTimeout(() => mainWindow?.loadURL(FRONTEND_URL), 2000);
+      setTimeout(() => mainWindow?.loadURL(WINDOW_ENTRY_URL), 2000);
     }
   });
 

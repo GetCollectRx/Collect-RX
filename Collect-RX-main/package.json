@@ -143,7 +143,11 @@
         }
       ],
       "category": "public.app-category.business",
-      "identity": null
+      "hardenedRuntime": false,
+      "identity": "-",
+      "timestamp": "none",
+      "strictVerify": false,
+      "additionalArguments": ["--strip-disallowed-xattrs"]
     },
     "win": {
       "target": [

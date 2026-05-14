@@ -3,8 +3,8 @@
 /**
  * CollectRx — Electron main process
  *
- * Dev mode:  loads http://localhost:5173  (Vite dev server)
- * Prod mode: loads COLLECTRX_DASHBOARD_URL env var (Railway)
+ * Dev mode:  loads http://localhost:5173/login (Vite)
+ * Prod mode: COLLECTRX_DASHBOARD_URL (or dashboard-url.txt), defaulting path / → /login
  */
 
 const {
@@ -21,15 +21,39 @@ const fs    = require('fs');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
-// ── Single instance ──────────────────────────────────────────────────────────
+// Load repo-root .env in development so COLLECTRX_* applies when launching `electron .` from the repo.
+if (!app.isPackaged) {
+  try {
+    require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+  } catch (_) {
+    /* optional */
+  }
+}
+
+function readApiOriginFromUserData() {
+  if (app.isPackaged !== true) return '';
+  try {
+    const p = path.join(app.getPath('userData'), 'api-origin.txt');
+    const raw = fs.readFileSync(p, 'utf8');
+    const line = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#'));
+    if (line && /^https?:\/\//i.test(line)) return line.replace(/\/$/, '');
+  } catch (_) {
+    /* missing file */
+  }
+  return '';
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); process.exit(0); }
 
 // ── Config ───────────────────────────────────────────────────────────────────
 const isDev = !app.isPackaged;
 
-/** Example host only — your real Railway URL is different unless you own this service. */
-const DEFAULT_PROD_DASHBOARD = 'https://collectrx.up.railway.app';
+/** Public dashboard when COLLECTRX_DASHBOARD_URL / dashboard-url.txt are unset. */
+const DEFAULT_PROD_DASHBOARD = 'https://www.collectrx.ca';
 
 function readDashboardUrlFromUserData() {
   if (isDev) return null;
@@ -58,6 +82,68 @@ function resolveDashboardUrl() {
 
 const _dash = resolveDashboardUrl();
 const DASHBOARD_URL = _dash.url;
+
+function dashboardIsRemoteHttps() {
+  try {
+    const dash = new URL(DASHBOARD_URL);
+    return (
+      dash.protocol === 'https:' &&
+      dash.hostname !== 'localhost' &&
+      dash.hostname !== '127.0.0.1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * When the window loads https://www.collectrx.ca but api-origin is still http://127.0.0.1:3000
+ * (dev .env or leftover api-origin.txt), Chromium blocks mixed content and API calls fail.
+ * Drop loopback origins in that case so the renderer uses resolveApiUrl fallbacks (Railway API).
+ */
+function sanitizeApiOriginForDashboard(apiOrigin) {
+  const o = (apiOrigin || '').trim().replace(/\/$/, '');
+  if (!o || !dashboardIsRemoteHttps()) return o;
+  try {
+    const u = new URL(o);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return '';
+  } catch {
+    return o;
+  }
+  return o;
+}
+
+// Renderer resolves /api against this origin when set (overrides Vite-inlined VITE_API_ORIGIN).
+ipcMain.on('crx-get-api-origin', (event) => {
+  const fromEnv = sanitizeApiOriginForDashboard(process.env.COLLECTRX_API_ORIGIN || '');
+  const fromFile = sanitizeApiOriginForDashboard(readApiOriginFromUserData());
+  event.returnValue = fromEnv || fromFile || '';
+});
+
+/**
+ * Logged-out `/` is the marketing landing; the practice UI + login are at `/login`.
+ * Open `/login` in Electron so the desktop app is not mistaken for mirroring the public site.
+ * Override with COLLECTRX_DASHBOARD_START_PATH=/custom if your deploy uses a different entry.
+ */
+function electronWindowEntryUrl(baseUrl) {
+  const override = process.env.COLLECTRX_DASHBOARD_START_PATH?.trim();
+  try {
+    const u = new URL(baseUrl);
+    if (override) {
+      u.pathname = override.startsWith('/') ? override : `/${override}`;
+      return u.toString();
+    }
+    const pathOnly = (u.pathname || '/').replace(/\/+$/, '') || '/';
+    if (pathOnly === '/') {
+      u.pathname = '/login';
+    }
+    return u.toString();
+  } catch {
+    return baseUrl;
+  }
+}
+
+const WINDOW_ENTRY_URL = electronWindowEntryUrl(DASHBOARD_URL);
 
 if (!isDev && _dash.source === 'default') {
   const hintPath = path.join(app.getPath('userData'), 'dashboard-url.txt');
@@ -151,7 +237,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(DASHBOARD_URL);
+  mainWindow.loadURL(WINDOW_ENTRY_URL);
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
   // Minimise to tray on close
@@ -169,7 +255,7 @@ function createWindow() {
     console.error(`[Window] Failed to load: ${code} ${desc}`);
     if (isDev) {
       // Retry after 2s — Vite dev server may still be starting
-      setTimeout(() => mainWindow?.loadURL(DASHBOARD_URL), 2000);
+      setTimeout(() => mainWindow?.loadURL(WINDOW_ENTRY_URL), 2000);
     }
   });
 }

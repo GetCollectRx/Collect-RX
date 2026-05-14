@@ -10,7 +10,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { apiFetch } from '../lib/apiFetch'
+import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 
 const CARRIER_LABELS: Record<string, string> = {
   sun_life         : 'Sun Life',
@@ -45,8 +46,7 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
   // ── Load persisted order on mount ─────────────────────────────────────────
   useEffect(() => {
     if (!practiceId) return
-    apiFetch(`/api/queue/carrier-order?practiceId=${practiceId}`)
-      .then(r => r.json())
+    apiFetchJson<{ order?: string[] }>(`/api/queue/carrier-order?practiceId=${practiceId}`)
       .then(data => {
         if (Array.isArray(data.order) && data.order.length > 0) {
           setOrder(data.order)
@@ -66,9 +66,9 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
         headers : { 'Content-Type': 'application/json' },
         body    : JSON.stringify({ order: newOrder }),
       })
+      const body = await parseApiJson<Record<string, unknown>>(res)
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error((body as any).error || `HTTP ${res.status}`)
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`)
       }
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2500)

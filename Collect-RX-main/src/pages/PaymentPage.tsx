@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, Button, LoadingSpinner } from '../components/ui'
+import { apiFetchJson } from '../lib/apiFetch'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -20,8 +22,7 @@ export default function PaymentPage() {
 
   useEffect(() => {
     if (!balanceId) return
-    fetch(`/api/balances/${balanceId}`, { credentials: 'include' })
-      .then(r => r.json())
+    apiFetchJson(`/api/balances/${balanceId}`)
       .then(setBalance)
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -30,7 +31,7 @@ export default function PaymentPage() {
   const handlePayment = async () => {
     setPaying(true)
     try {
-      const res = await fetch(`/api/pay/${balanceId}`, { method: 'POST', credentials: 'include' })
+      const res = await fetch(resolveApiUrl(`/api/pay/${balanceId}`), { method: 'POST', credentials: 'include' })
       if (res.ok) setSuccess(true)
     } catch (err) { console.error('Payment error:', err) }
     finally { setPaying(false) }

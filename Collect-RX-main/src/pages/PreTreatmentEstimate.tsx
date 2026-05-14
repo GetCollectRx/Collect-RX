@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { apiFetch } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import {
   Card, CardHeader, Button, Input, InlineToast, useToast, Divider, DataState,
 } from '../components/ui'
@@ -76,7 +77,7 @@ export default function PreTreatmentEstimate() {
     setBenefits(null); setCoverage([]); setEstimate(null)
     try {
       const res  = await apiFetch(`/api/benefits/${patientToken.trim()}?carrier_code=${carrierCode.trim()}`)
-      const data = await res.json() as { benefits?: unknown; coverage?: CoverageItem[]; error?: string }
+      const data = await parseApiJson<{ benefits?: unknown; coverage?: CoverageItem[]; error?: string }>(res)
       if (!res.ok) throw new Error(data.error || 'Failed to load benefits')
       if (data.benefits) { setBenefits(data.benefits); setCoverage(data.coverage ?? []) }
       else {
@@ -108,7 +109,7 @@ export default function PreTreatmentEstimate() {
           procedures: valid.map(p => ({ cdtCode: p.code.trim().toUpperCase(), fee: parseFloat(p.fee) })),
         }),
       })
-      const data = await res.json() as { error?: string }
+      const data = await parseApiJson<Estimate & { error?: string }>(res)
       if (!res.ok) throw new Error(data.error || 'Estimate failed')
       setEstimate(data as Estimate)
     } catch (err) {

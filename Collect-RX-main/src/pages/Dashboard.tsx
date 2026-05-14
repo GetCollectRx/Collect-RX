@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
-import { apiFetch } from '../lib/apiFetch'
+import { apiFetchJson } from '../lib/apiFetch'
 import {
   StatTile, Card, CardHeader, Button, StageBadge,
   ProgressBar, BarChart, DataState,
@@ -64,8 +64,7 @@ export default function Dashboard() {
     if (!practiceId) return
     setLoading(true)
     setError(null)
-    apiFetch(`/api/dashboard/stats?practiceId=${practiceId}`)
-      .then(r => { if (!r.ok) throw new Error('Could not load dashboard stats'); return r.json() })
+    apiFetchJson<DashboardStats>(`/api/dashboard/stats?practiceId=${practiceId}`)
       .then(data => setStats(data))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))

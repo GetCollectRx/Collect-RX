@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import {
   StatTile, Card, CardHeader, StageBadge, Badge,
   BarChart, LineChart, DataState,
@@ -27,6 +28,8 @@ interface PriorityRankRow {
     status: number
   }
 }
+
+type CarrierPerfRow = { carrier: string; rate: number; resolved: number; total: number }
 
 interface InsuranceAnalytics {
   timeSaved: {
@@ -94,11 +97,9 @@ function CallQueuePriorityTable({ practiceId }: { practiceId: string }) {
     setError(null)
     apiFetch(`/api/queue/priority-scores?practiceId=${encodeURIComponent(practiceId)}`)
       .then(async (r) => {
-        if (!r.ok) {
-          const b = await r.json().catch(() => ({}))
-          throw new Error((b as { error?: string }).error ?? 'Priority scores failed')
-        }
-        return r.json() as Promise<{ success?: boolean; data?: PriorityRankRow[] }>
+        const j = await parseApiJson<{ success?: boolean; data?: PriorityRankRow[]; error?: string }>(r)
+        if (!r.ok) throw new Error(j.error ?? 'Priority scores failed')
+        return j
       })
       .then((j) => {
         if (!cancelled) setRows(Array.isArray(j.data) ? j.data.slice(0, 15) : [])
@@ -169,11 +170,9 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
     const { from, to } = dateRange(rangeDays)
     apiFetch(`/api/analytics/insurance?practiceId=${practiceId}&from=${from}&to=${to}`)
       .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => ({}))
-          throw new Error((body as { error?: string }).error ?? 'Failed to load insurance analytics')
-        }
-        return r.json() as Promise<InsuranceAnalytics>
+        const body = await parseApiJson<InsuranceAnalytics & { error?: string }>(r)
+        if (!r.ok) throw new Error(body.error ?? 'Failed to load insurance analytics')
+        return body
       })
       .then(setData)
       .catch((e) => setError((e as Error).message))
@@ -405,7 +404,7 @@ export default function Analytics() {
   const [priorityBal,    setPriorityBal]   = useState<any[]>([])
   const [msgEffect,      setMsgEffect]     = useState<any[]>([])
   const [paymentTrends,  setPaymentTrends] = useState<any[]>([])
-  const [carrierPerf,    setCarrierPerf]   = useState<Array<{ carrier: string; rate: number; resolved: number; total: number }>>([])
+  const [carrierPerf,    setCarrierPerf]   = useState<CarrierPerfRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -421,15 +420,26 @@ export default function Analytics() {
       apiFetch(`/api/analytics/carrier-performance?practiceId=${practiceId}`),
     ])
       .then(async (rs) => {
-        for (const r of rs) {
-          if (!r.ok) {
-            const errBody = await r.json().catch(() => ({}))
-            throw new Error((errBody as { error?: string }).error || 'Analytics request failed')
-          }
-        }
-        return Promise.all(rs.map((r) => r.json()))
+        const parsed = await Promise.all(
+          rs.map(async (r) => {
+            const data = await parseApiJson(r)
+            if (!r.ok) {
+              throw new Error((data as { error?: string }).error || 'Analytics request failed')
+            }
+            return data
+          }),
+        )
+        return parsed
       })
-      .then(([col, fun, pri, eff, trends, car]) => {
+      .then((results) => {
+        const [col, fun, pri, eff, trends, car] = results as [
+          Record<string, unknown>,
+          { funnel?: unknown[] },
+          { priorityBalances?: unknown[] },
+          { effectiveness?: unknown[] },
+          { trends?: unknown[] },
+          { performance?: CarrierPerfRow[] },
+        ]
         setCollectionRate(col)
         setFunnel(fun.funnel ?? [])
         setPriorityBal(pri.priorityBalances ?? [])

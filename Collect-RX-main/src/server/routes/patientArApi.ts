@@ -9,6 +9,8 @@ import { sendEmailWithRetry, sendSMSWithRetry } from '../patients/messaging';
 import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
 
+import { authenticate } from '../middleware/authenticate';
+
 function practiceId(req: Request): string {
   return req.practiceAuth!.practiceId;
 }
@@ -20,6 +22,7 @@ function nextReminderStatus(current: string): string {
 
 export function createPatientArApiRouter(prisma: PrismaClient): Router {
   const r = Router();
+  r.use(authenticate);
 
   r.get('/patients/balances', async (req: Request, res: Response) => {
     try {

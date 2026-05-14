@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../lib/apiFetch'
+import { parseApiJson } from '../lib/parseApiJson'
 import {
   StatTile, Badge, Button, Select, InlineToast, useToast,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty,
@@ -62,8 +63,8 @@ export default function PatientAR() {
     try {
       const params = new URLSearchParams()
       if (paymentFilter) params.set('payment_status', paymentFilter)
-      const res  = await apiFetch(`/api/patients/balances?${params}`)
-      const data = (await res.json()) as { balances?: PatientBalance[]; error?: string }
+      const res = await apiFetch(`/api/patients/balances?${params}`)
+      const data = await parseApiJson<{ balances?: PatientBalance[]; error?: string }>(res)
       if (!res.ok) throw new Error(data.error || 'Failed to load patient AR')
       setBalances(data.balances ?? [])
     } catch (err) {
@@ -80,8 +81,8 @@ export default function PatientAR() {
     setSendingId(id)
     try {
       const res  = await apiFetch(`/api/patients/balances/${id}/send-reminder`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      const data = await parseApiJson<{ error?: string; emailSent?: boolean; smsSent?: boolean }>(res)
+      if (!res.ok) throw new Error(data.error || 'Request failed')
       showToast('ok', `Reminder sent — email: ${data.emailSent ? 'yes' : 'no'}, SMS: ${data.smsSent ? 'yes' : 'no'}`)
       await load()
     } catch (err) { showToast('err', (err as Error).message) }
@@ -93,7 +94,8 @@ export default function PatientAR() {
     setWriteOff(id)
     try {
       const res = await apiFetch(`/api/patients/balances/${id}/write-off`, { method: 'POST' })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      const d = await parseApiJson<{ error?: string }>(res)
+      if (!res.ok) throw new Error(d.error || 'Write-off failed')
       showToast('ok', 'Balance written off')
       await load()
     } catch (err) { showToast('err', (err as Error).message) }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300&display=swap');
@@ -56,6 +57,11 @@ const STYLES = `
     cursor: pointer; transition: background 0.2s;
   }
   .lp-nav-demo:hover { background: var(--teal2); }
+  .lp-nav-signin {
+    font-size: 14px; font-weight: 600; color: var(--teal); text-decoration: none;
+    padding: 8px 4px; margin-right: 8px;
+  }
+  .lp-nav-signin:hover { text-decoration: underline; }
 
   /* ── Hero ── */
   .lp-hero {
@@ -645,7 +651,10 @@ export default function LandingPage() {
               <span className="lp-nav-link" onClick={() => to('lp-carriers')}>Carriers</span>
               <span className="lp-nav-link" onClick={() => to('lp-trust')}>Compliance</span>
             </div>
-            <button className="lp-nav-demo" onClick={() => to('lp-cta')}>Request Access</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
+              <button type="button" className="lp-nav-demo" onClick={() => to('lp-cta')}>Request Access</button>
+            </div>
           </div>
         </nav>
 

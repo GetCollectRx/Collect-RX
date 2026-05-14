@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
+import { parseApiJson } from '../lib/parseApiJson'
 
 export default function PracticeBillingPage() {
   const { practice, logout, refreshSession } = usePractice()
@@ -21,8 +23,8 @@ export default function PracticeBillingPage() {
     setError(null)
     setBusy(true)
     try {
-      const r = await fetch('/api/billing/checkout', { method: 'POST', credentials: 'include' })
-      const data = (await r.json()) as { url?: string; error?: string }
+      const r = await fetch(resolveApiUrl('/api/billing/checkout'), { method: 'POST', credentials: 'include' })
+      const data = await parseApiJson<{ url?: string; error?: string }>(r)
       if (!r.ok) {
         throw new Error(data.error || 'Could not start checkout')
       }
@@ -42,8 +44,8 @@ export default function PracticeBillingPage() {
     setError(null)
     setBusy(true)
     try {
-      const r = await fetch('/api/billing/portal', { method: 'POST', credentials: 'include' })
-      const data = (await r.json()) as { url?: string; error?: string }
+      const r = await fetch(resolveApiUrl('/api/billing/portal'), { method: 'POST', credentials: 'include' })
+      const data = await parseApiJson<{ url?: string; error?: string }>(r)
       if (!r.ok) {
         throw new Error(data.error || 'Could not open billing portal')
       }

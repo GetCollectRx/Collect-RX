@@ -7,7 +7,10 @@
 //   /api/insurance/*       insurance.ts  (claims, queue)
 //   /api/calls/*           calls.ts
 //   /api/carriers/*        carriers.ts
-//   /api/analytics/*       analytics.ts
+//   /api/analytics/*       analytics.ts (insurance + patient AR KPIs)
+//   /api/patients/*        patientArApi.ts (balances, reminders, pay links)
+//   /api/dashboard/*       dashboardRoutes.ts (ops stats)
+//   /api/admin/*           adminRoutes.ts (settings, integrations, audit, CSV)
 //   /api/eligibility/*     eligibility.ts
 //   /api/queue/*          queue.ts (priority scores)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
@@ -30,11 +33,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
+import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
+import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
@@ -53,6 +58,9 @@ import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
+import { createPatientArApiRouter } from './routes/patientArApi';
+import dashboardRouter from './routes/dashboardRoutes';
+import adminRouter from './routes/adminRoutes';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
@@ -99,23 +107,10 @@ try {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CORS
+// CORS — see corsAllowedOrigins.ts (collectrx.ca apex ↔ www mirrored when one is set)
 // ─────────────────────────────────────────────────────────────────────────────
-const corsOrigins = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
 app.use(cors({
-  origin:
-    corsOrigins.length > 0
-      ? corsOrigins
-      : [
-          'http://localhost:5173',
-          'http://localhost:3000',
-          'http://127.0.0.1:5173',
-          'http://127.0.0.1:3000',
-          'https://www.collectrx.ca',
-        ],
+  origin: resolveCorsAllowedOrigins(),
   credentials: true,
 }));
 
@@ -201,6 +196,9 @@ app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
+app.use('/api',            createPatientArApiRouter(prisma));
+app.use('/api/dashboard',  dashboardRouter);
+app.use('/api/admin',      adminRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)
@@ -208,10 +206,37 @@ app.use('/api/queue',       queueRouter);
 // app so client-side routing works correctly in production.
 // ─────────────────────────────────────────────────────────────────────────────
 const distPath = new URL('../../dist', import.meta.url).pathname;
+const indexHtmlPath = new URL('../../dist/index.html', import.meta.url).pathname;
+
+let cachedSpaIndexHtml: string | null = null;
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** SPA shell HTML with optional `<meta name="crx-public-api-origin">` for split static/API deployments. */
+function getSpaIndexHtml(): string {
+  if (cachedSpaIndexHtml !== null) return cachedSpaIndexHtml;
+  const raw = fs.readFileSync(indexHtmlPath, 'utf8');
+  const api = (process.env.PUBLIC_API_BASE_URL || '').trim().replace(/\/$/, '');
+  if (api) {
+    const meta = `<meta name="crx-public-api-origin" content="${escapeHtmlAttr(api)}" />`;
+    cachedSpaIndexHtml = /name="crx-public-api-origin"/i.test(raw)
+      ? raw.replace(/<meta\s+name="crx-public-api-origin"[^>]*>/i, meta)
+      : raw.replace('</head>', `${meta}\n</head>`);
+  } else {
+    cachedSpaIndexHtml = raw;
+  }
+  return cachedSpaIndexHtml;
+}
 
 app.use(express.static(distPath));
-app.get('*', (_req: Request, res: Response) => {
-  res.sendFile(new URL('../../dist/index.html', import.meta.url).pathname);
+app.get('*', (req: Request, res: Response) => {
+  if (req.path.startsWith('/api')) {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  res.type('html').send(getSpaIndexHtml());
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

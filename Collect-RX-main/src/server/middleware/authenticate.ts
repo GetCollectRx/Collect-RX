@@ -2,6 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyPracticeToken } from '../authToken';
 import type { PracticeJwtPayload } from '../authToken';
+import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 
 declare global {
   namespace Express {
@@ -38,11 +39,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 }
 
 function parseAllowedOrigins(): string[] {
-  const fromEnv = (process.env.ALLOWED_ORIGINS || '')
+  const fromEnv = readAllowedOriginsRaw()
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (fromEnv.length) return fromEnv;
+  if (fromEnv.length) return expandMirroredCollectRxOrigins(fromEnv);
   return [
     'http://localhost:3000',
     'http://localhost:5173',

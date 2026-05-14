@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
 import PublicPatientPay from './pages/PublicPatientPay'
 import PaymentThankYou  from './pages/PaymentThankYou'
@@ -21,7 +21,7 @@ import PaymentPage           from './pages/PaymentPage'
 import { LoginPage }         from './pages/LoginPage'
 import LandingPage           from './pages/LandingPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
-import './App.css'
+import { useEffect } from 'react'
 
 // ── Icons (inline SVG — zero dependency) ─────────────────────────────────
 const ICONS = {
@@ -193,6 +193,16 @@ function AppShell() {
 
 function AuthGate() {
   const { authState, loading, subscription } = usePractice()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (loading || authState !== 'anon') return
+    if (!navigator.userAgent?.includes('Electron')) return
+    if (location.pathname !== '/' && location.pathname !== '') return
+    navigate('/login', { replace: true })
+  }, [loading, authState, location.pathname, navigate])
+
   if (authState === 'loading' || loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">

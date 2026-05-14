@@ -1,7 +1,9 @@
+import { resolveApiUrl } from '../lib/resolveApiUrl'
+
 /**
- * Central API helper — always uses the Vite proxy path (/api/...)
- * In dev: Vite proxies /api → http://localhost:3000
- * In prod: Electron loads the Railway URL directly, same /api path
+ * Central API helper — `/api/...` (same origin or VITE_API_ORIGIN in dev).
+ * In dev: Vite proxies /api → API_PORT or PORT (default 3000).
+ * In prod: same host as the SPA unless VITE_API_ORIGIN is set at build time.
  *
  * All requests use `credentials: 'include'` for httpOnly session cookies.
  */
@@ -11,7 +13,8 @@ export async function apiFetch<T = unknown>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = path.startsWith('/') ? path : `/${path}`
+  const rel = path.startsWith('/') ? path : `/${path}`
+  const url = resolveApiUrl(rel)
   const res = await fetch(url, { credentials: apiCredentials, ...options })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))

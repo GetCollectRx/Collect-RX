@@ -1,6 +1,20 @@
 /// <reference types="vite/client" />
 
+declare global {
+  interface Window {
+    collectrx?: {
+      apiOrigin?: string
+      getSyncStatus: () => Promise<unknown>
+      onSyncStatusChange: (cb: (data: unknown) => void) => () => void
+      triggerManualSync: () => Promise<unknown>
+      getAppVersion: () => Promise<unknown>
+    }
+  }
+}
+
 interface ImportMetaEnv {
+  /** Optional absolute origin for /api (no trailing slash); dev desktop → remote API */
+  readonly VITE_API_ORIGIN?: string
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string
 }
