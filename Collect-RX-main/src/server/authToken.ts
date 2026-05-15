@@ -28,7 +28,21 @@ export function assertJwtConfigAtStartup(): void {
   }
 }
 
+function crossSiteAuthCookie(): boolean {
+  const v = (process.env.AUTH_COOKIE_CROSS_SITE || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 function cookieOptions(): CookieOptions {
+  if (crossSiteAuthCookie()) {
+    return {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+      maxAge: 8 * 60 * 60 * 1000, // 8h
+    };
+  }
   return {
     httpOnly: true,
     sameSite: 'lax',
@@ -52,6 +66,10 @@ export function setAuthCookie(res: Response, practiceId: string): void {
 }
 
 export function clearAuthCookie(res: Response): void {
+  if (crossSiteAuthCookie()) {
+    res.clearCookie(COOKIE_NAME, { path: '/', sameSite: 'none', secure: true });
+    return;
+  }
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 

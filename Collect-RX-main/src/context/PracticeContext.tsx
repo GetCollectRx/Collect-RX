@@ -60,7 +60,9 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const onExpired = () => { void logout() }
+    const onExpired = () => {
+      void logout()
+    }
     window.addEventListener('crx:session-expired', onExpired)
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])

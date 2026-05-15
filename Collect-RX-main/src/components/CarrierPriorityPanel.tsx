@@ -46,14 +46,24 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
   // ── Load persisted order on mount ─────────────────────────────────────────
   useEffect(() => {
     if (!practiceId) return
-    apiFetchJson<{ order?: string[] }>(`/api/queue/carrier-order?practiceId=${practiceId}`)
+    let cancelled = false
+    apiFetchJson<{ order?: string[] }>(`/api/queue/carrier-order?practiceId=${encodeURIComponent(practiceId)}`)
       .then(data => {
+        if (cancelled) return
         if (Array.isArray(data.order) && data.order.length > 0) {
           setOrder(data.order)
         }
         setLoaded(true)
       })
-      .catch(() => setLoaded(true))
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const msg = err instanceof Error ? err.message : 'Could not load carrier order'
+        setErrorMsg(msg)
+        setLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [practiceId])
 
   // ── Persist to backend ────────────────────────────────────────────────────

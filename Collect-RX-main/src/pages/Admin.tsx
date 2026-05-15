@@ -538,7 +538,7 @@ export default function Admin() {
                 Stripe live: sk_live_… + Connect charges enabled (use test mode until ready)
               </li>
               <li className={integrations.vapi.webhookSecret ? 'text-crx-700 dark:text-crx-400' : ''}>
-                Vapi: webhook secret + URL /api/vapi/webhook
+                Vapi: webhook secret + URL /api/webhooks/vapi
               </li>
               <li>DNS: SPF/DKIM/DMARC for your from-domain (SendGrid)</li>
               <li>Secrets: host variables only; rotation runbook in docs/operations/SECRETS-GO-LIVE.md</li>

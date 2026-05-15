@@ -64,6 +64,20 @@ describe('Practice-scoped APIs — require authentication', () => {
     const res = await request(app).get('/api/queue/priority-scores');
     expect(res.status).toBe(401);
   });
+
+  it('GET /api/queue/carrier-order returns 401 without session', async () => {
+    const res = await request(app).get('/api/queue/carrier-order');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('Public patient pay — no auth', () => {
+  it('GET /api/public/pay/:token returns 404 JSON for unknown token', async () => {
+    const res = await request(app).get('/api/public/pay/nonexistent-token-for-tests');
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/json/i);
+    expect(res.body).toMatchObject({ error: expect.any(String) });
+  });
 });
 
 describe('Stripe Connect — onboard return URL must be signed or session', () => {

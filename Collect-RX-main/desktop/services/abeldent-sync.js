@@ -180,7 +180,7 @@ async function runClaimsSync() {
   sendStatus('syncing');
   try {
     const rows = await fetchFromAbeldent();
-    const result = await postToRailway(rows, '/api/claims/import');
+    const result = await postToRailway(rows, '/api/insurance/claims/import');
     sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
     return true;
   } catch (err) {

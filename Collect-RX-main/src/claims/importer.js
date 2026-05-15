@@ -20,7 +20,7 @@
  *   Days Outstanding      → days_outstanding  (or computed from submission_date)
  *
  * Usage:
- *   POST /api/claims/import
+ *   POST /api/insurance/claims/import
  *   Body: multipart/form-data with field "csv" OR application/json array of claim objects
  */
 

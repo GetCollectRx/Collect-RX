@@ -4,7 +4,14 @@
 
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { listBalances, getBalance, writeOffBalance, recordReminderSent, setPaymentLink } from '../patients/balances';
+import {
+  listBalances,
+  getBalance,
+  writeOffBalance,
+  recordReminderSent,
+  setPaymentLink,
+  upsertBalances,
+} from '../patients/balances';
 import { sendEmailWithRetry, sendSMSWithRetry } from '../patients/messaging';
 import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
@@ -53,6 +60,33 @@ export function createPatientArApiRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('GET /patients/balances error', e);
       return res.status(500).json({ error: 'Failed to list balances' });
+    }
+  });
+
+  /** AbelDent / service sync — JSON array or `{ records: [] }` (same shape as admin CSV pipeline). */
+  r.post('/patients/balances', async (req: Request, res: Response) => {
+    const pid = practiceId(req);
+    try {
+      const raw = req.body as unknown;
+      const rows = Array.isArray(raw) ? raw : (raw as { records?: unknown })?.records;
+      if (!Array.isArray(rows)) {
+        return res.status(400).json({
+          error: 'Expected a JSON array of rows or { records: array }',
+        });
+      }
+      const result = await upsertBalances(rows as never, pid);
+      void appendAuditLog(prisma, {
+        practiceId: pid,
+        action: 'patient_ar.bulk_upsert',
+        subjectType: 'PatientBalance',
+        subjectId: 'bulk',
+        details: { imported: result.imported, updated: result.updated, skipped: result.skipped },
+        req,
+      });
+      return res.json({ success: true, ...result });
+    } catch (e) {
+      console.error('POST /patients/balances error', e);
+      return res.status(500).json({ error: 'Failed to import balances' });
     }
   });
 

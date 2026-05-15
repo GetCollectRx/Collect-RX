@@ -8,11 +8,14 @@
 //   /api/calls/*           calls.ts
 //   /api/carriers/*        carriers.ts
 //   /api/analytics/*       analytics.ts (insurance + patient AR KPIs)
-//   /api/patients/*        patientArApi.ts (balances, reminders, pay links)
+//   /api/balances*        balancesOutreachRoutes.ts (insurance Balance + outreach + POST /pay sim)
+//   /api/benefits/*       benefitsApi.ts (pre-treatment benefits + estimate)
+//   /api/patients/*        patientArApi.ts (patient balances, reminders, pay links)
 //   /api/dashboard/*       dashboardRoutes.ts (ops stats)
 //   /api/admin/*           adminRoutes.ts (settings, integrations, audit, CSV)
 //   /api/eligibility/*     eligibility.ts
-//   /api/queue/*          queue.ts (priority scores)
+//   /api/queue/*          queue.ts (priority scores + carrier-order persistence)
+//   /api/public/*        publicPatientPayRoutes.ts (public pay token, email unsubscribe — no auth)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
 //   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (raw JSON body)
 //   /api/twilio/sms        twilio/inboundSms.ts (urlencoded — after body parsers)
@@ -59,6 +62,9 @@ import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import { createPatientArApiRouter } from './routes/patientArApi';
+import { createBalancesOutreachRouter } from './routes/balancesOutreachRoutes';
+import { createPublicPatientPayRouter } from './routes/publicPatientPayRoutes';
+import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
@@ -67,7 +73,6 @@ import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { getMetrics } from './observability/metrics.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
-
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -196,6 +201,9 @@ app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
+app.use('/api',            createPublicPatientPayRouter(prisma));
+app.use('/api',            createBalancesOutreachRouter(prisma));
+app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      adminRouter);
@@ -292,8 +300,19 @@ async function boot() {
     });
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`[server] CollectRx API listening on port ${PORT}`);
+  });
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(
+        `[server] Port ${PORT} is already in use. Stop the other process:\n` +
+          `  lsof -nP -iTCP:${PORT} -sTCP:LISTEN\n` +
+          `Or set PORT (and API_PORT for Vite proxy) in Collect-RX-main/.env`,
+      );
+      process.exit(1);
+    }
+    throw err;
   });
 }
 

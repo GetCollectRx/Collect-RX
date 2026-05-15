@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import type { ClaimStatus } from '@prisma/client';
+import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { authenticate } from '../middleware/authenticate';
 import {
@@ -107,7 +107,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       id: p.id,
       amount: p.amountCents / 100,
       paidAt: p.paidAt.toISOString(),
-      patientLabel: p.balance.patient.displayName,
+      patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
     }));
 
     return res.json({
@@ -127,6 +127,12 @@ router.get('/stats', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /dashboard/stats]', err);
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021') {
+      return res.status(503).json({
+        error:
+          'Database schema is missing CollectRx tables. On this machine run: npx prisma migrate deploy (from Collect-RX-main with DATABASE_URL set).',
+      });
+    }
     return res.status(500).json({ error: (err as Error).message });
   }
 });

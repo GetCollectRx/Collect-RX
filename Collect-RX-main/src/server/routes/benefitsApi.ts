@@ -4,6 +4,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
+import { authenticate } from '../middleware/authenticate';
 import {
   getCurrentBenefits,
   getCoverage,
@@ -18,6 +19,7 @@ function practiceId(req: Request): string {
 
 export function createBenefitsApiRouter(prisma: PrismaClient): Router {
   const r = Router();
+  r.use(authenticate);
 
   r.get('/benefits/:patientToken', async (req: Request, res: Response) => {
     try {

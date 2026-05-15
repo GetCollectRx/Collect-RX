@@ -5,6 +5,7 @@ node_modules/
 .DS_Store
 *.log
 *.bak
+debug-2a2bff.ndjson
 
 # Local cache / editor noise
 cache/
