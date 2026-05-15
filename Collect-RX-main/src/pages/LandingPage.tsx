@@ -424,32 +424,32 @@ const FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
     h: 'Carrier-Specific IVR Navigation',
-    p: 'Each of the six carriers runs a different IVR structure. CollectRx maintains dedicated navigation paths per carrier — updated whenever systems change — so every call reaches the right queue without guesswork.',
+    p: 'Each of the six carriers runs a different IVR structure. CollectRx maintains dedicated navigation paths per carrier, updated whenever systems change, so every call reaches the right queue.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>,
     h: 'Live Claim Status Propagation',
-    p: 'As each call resolves, claim state is written back to your records in real time. Pending to adjudicated to paid — your team sees current status on every outstanding claim without touching a phone.',
+    p: 'As each call resolves, claim state is written back to your records in real time. Pending to adjudicated to paid. Your team sees current status on every outstanding claim without touching a phone.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
     h: 'PHI Tokenization at the Boundary',
-    p: 'Patient identifiers are replaced with UUID tokens before any data reaches the AI layer. Names, dates of birth, and health card numbers never leave your server. This is architectural — not a policy document.',
+    p: 'Patient identifiers are replaced with UUID tokens before any data reaches the AI layer. Names, dates of birth, and health card numbers never leave your server.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
     h: 'Structured Denial Escalation',
-    p: 'Denied claims trigger immediate capture of the reason code. Claims are categorized, re-submission requirements are flagged, and persistent denials route to human review. Nothing falls through.',
+    p: 'Denied claims trigger immediate capture of the reason code. Claims are categorized, re-submission requirements are flagged, and persistent denials route to human review.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" /></svg>,
     h: 'Direct PMS Integration',
-    p: 'CollectRx pulls outstanding claims directly from Abeldent and other leading dental practice management platforms. The follow-up queue stays in sync automatically — no manual entry, no duplicate data.',
+    p: 'CollectRx works with any practice management software. A weekly export of your outstanding insurance balances is all it takes. No API integration, no IT setup, no changes to how your practice operates.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     h: 'AR Intelligence Reporting',
-    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates over time, and claims requiring human attention. Understand your AR position precisely — not just in aggregate.',
+    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates over time, and claims requiring human attention. Understand your AR position by carrier, claim type, and aging bucket.',
   },
 ]
 
@@ -462,7 +462,7 @@ const TRUST = [
       </svg>
     ),
     h: 'PHIPA Architecture',
-    p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally — independent of policy or configuration.',
+    p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally, independent of policy or configuration.',
   },
   {
     icon: (
@@ -472,7 +472,7 @@ const TRUST = [
       </svg>
     ),
     h: 'PIPEDA Compliant',
-    p: 'Built to Canadian federal privacy standards. Data residency, consent handling, and subject access rights are part of the platform — not bolt-ons.',
+    p: 'Built to Canadian federal privacy standards. Data residency, consent handling, and subject access rights are built into the platform.',
   },
   {
     icon: (
@@ -486,7 +486,7 @@ const TRUST = [
       </svg>
     ),
     h: 'PHI On Your Infrastructure',
-    p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries — always.',
+    p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries.',
   },
   {
     icon: (
@@ -499,7 +499,7 @@ const TRUST = [
       </svg>
     ),
     h: 'Business Hours Enforcement',
-    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are system-enforced — not a configuration option.',
+    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are set at the system level.',
   },
 ]
 
@@ -522,7 +522,7 @@ const PIPELINE_STEPS = [
   {
     icon: <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>,
     label: 'Status Written Back',
-    desc: 'Result recorded — approved, denied with reason code, or escalated for human review.',
+    desc: 'Result recorded: approved, denied with reason code, or escalated for human review.',
   },
 ]
 
@@ -664,9 +664,7 @@ export default function LandingPage() {
             <div className="lp-hero-tag"><div className="lp-hero-tag-dot" />Canadian Dental AR Automation</div>
             <h1 className="lp-h1">Your insurance AR,<br /><em>fully automated.</em></h1>
             <p className="lp-hero-sub">
-              CollectRx runs outstanding claims through a complete follow-up pipeline —
-              carrier-specific IVR navigation, live adjudication tracking, and denial escalation —
-              without your staff on hold.
+              CollectRx runs outstanding claims through a complete follow-up pipeline: carrier-specific IVR navigation, live adjudication tracking, and denial escalation, without your staff on hold.
             </p>
             <div className="lp-hero-btns">
               <button className="lp-btn-primary" onClick={() => to('lp-cta')}>Request Early Access</button>
@@ -734,7 +732,7 @@ export default function LandingPage() {
               <div className="lp-section-eyebrow">Carrier Coverage</div>
               <h2 className="lp-section-h2" style={{ marginBottom: 8 }}>Six carriers.<br /><em>78% of the market.</em></h2>
               <p style={{ fontSize: 14, color: 'var(--ink2)', marginBottom: 32, lineHeight: 1.7 }}>
-                Each integration handles the full call workflow for that carrier — IVR navigation, hold patterns, rep protocols, and status formats.
+                Each integration handles the full call workflow for that carrier: IVR navigation, hold patterns, rep protocols, and status formats.
                 Select a carrier to preview how CollectRx processes its claims.
               </p>
             </div>
@@ -758,9 +756,9 @@ export default function LandingPage() {
         <section className="lp-trust" id="lp-trust">
           <div className="lp-reveal">
             <div className="lp-section-eyebrow">Compliance</div>
-            <h2 className="lp-section-h2" style={{ marginBottom: 8 }}>Compliance is architecture,<br /><em>not policy.</em></h2>
+            <h2 className="lp-section-h2" style={{ marginBottom: 8 }}>Compliance is the architecture,<br /><em>not the afterthought.</em></h2>
             <p style={{ fontSize: 15, color: 'var(--ink2)', marginBottom: 40, lineHeight: 1.75, maxWidth: 520 }}>
-              In healthcare, privacy cannot be an add-on. Every design decision in CollectRx — from how claims are ingested to how calls are scheduled — treats PHI protection as a structural requirement.
+              In healthcare, privacy built in after the fact is privacy that fails. In CollectRx, from how claims are ingested to how calls are scheduled, PHI protection is a structural requirement.
             </p>
           </div>
           <div className="lp-trust-grid lp-reveal">
