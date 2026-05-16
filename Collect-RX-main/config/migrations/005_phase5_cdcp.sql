@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS cdcp_denied_claims (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   claim_id               VARCHAR(100) NOT NULL UNIQUE,
   patient_token          UUID NOT NULL,
-  practice_id            UUID NOT NULL REFERENCES practices(id),
+  practice_id            INTEGER NOT NULL REFERENCES practices(id),
   cdt_code               VARCHAR(10) NOT NULL,
   cda_code               VARCHAR(10),
   denial_reason_code     VARCHAR(10) NOT NULL,  -- F-010 through F-020
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS cdcp_reconsiderations (
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   claim_id                     VARCHAR(100) NOT NULL REFERENCES cdcp_denied_claims(claim_id),
   patient_token                UUID NOT NULL,
-  practice_id                  UUID NOT NULL REFERENCES practices(id),
+  practice_id                  INTEGER NOT NULL REFERENCES practices(id),
   denial_reason_code           VARCHAR(10) NOT NULL,
   denial_date                  DATE NOT NULL,
   deadline_date                DATE NOT NULL,  -- denial_date + 60 days
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS cdanet_attachments (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   reconsideration_id   UUID NOT NULL REFERENCES cdcp_reconsiderations(id),
   claim_id             VARCHAR(100) NOT NULL,
-  practice_id          UUID NOT NULL REFERENCES practices(id),
+  practice_id          INTEGER NOT NULL REFERENCES practices(id),
   transaction_type     CHAR(2) NOT NULL DEFAULT '09',
   cdanet_version       VARCHAR(5) NOT NULL DEFAULT '04',
   itrans_version       VARCHAR(5) NOT NULL DEFAULT '2.0',
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS cdanet_attachments (
 
 CREATE TABLE IF NOT EXISTS phase5_kpi_snapshots (
   id                                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  practice_id                       UUID NOT NULL REFERENCES practices(id),
+  practice_id                       INTEGER NOT NULL REFERENCES practices(id),
   snapshot_date                     DATE NOT NULL,
   reconsideration_success_rate      DECIMAL(5,2),  -- %
   ivr_navigation_success_rate       DECIMAL(5,2),

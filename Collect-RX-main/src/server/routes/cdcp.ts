@@ -57,7 +57,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       // Get existing reconsideration claim IDs for this practice
       const practiceId = req.practiceAuth?.practiceId;
       const existing = await prisma.$queryRaw<{ claim_id: string }[]>`
-        SELECT claim_id FROM cdcp_reconsiderations WHERE practice_id = ${practiceId}::uuid
+        SELECT claim_id FROM cdcp_reconsiderations WHERE practice_id = ${practiceId}::integer
       `;
       const existingIds = new Set<string>(existing.map((r: { claim_id: string }) => r.claim_id));
 
@@ -77,7 +77,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
                procedure_fee_cents, province, transaction_type)
             VALUES
               (${rec.id}::uuid, ${rec.claimId}, ${rec.patientToken}::uuid,
-               ${rec.practiceId}::uuid,
+               ${parseInt(rec.practiceId)},
                ${claims.find(c => c.claimId === rec.claimId)?.cdtCode ?? ''},
                ${claims.find(c => c.claimId === rec.claimId)?.cdaCode ?? null},
                ${rec.denialReasonCode}, ${rec.denialDate}::date,
@@ -95,7 +95,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
                original_adjudicator_id, evidence_checklist_json)
             VALUES
               (${rec.id}::uuid, ${rec.claimId}, ${rec.patientToken}::uuid,
-               ${rec.practiceId}::uuid, ${rec.denialReasonCode},
+               ${parseInt(rec.practiceId)}, ${rec.denialReasonCode},
                ${rec.denialDate}::date, ${rec.deadlineDate}::date,
                ${rec.urgentEscalationDate}::date, ${rec.status},
                ${rec.originalAdjudicatorId ?? null}, ${JSON.stringify([])}::jsonb)
@@ -133,7 +133,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         SELECT r.*, d.cdt_code, d.province, d.procedure_fee_cents
         FROM cdcp_reconsiderations r
         JOIN cdcp_denied_claims d ON d.claim_id = r.claim_id
-        WHERE r.practice_id = ${practiceId}::uuid
+        WHERE r.practice_id = ${practiceId}::integer
           AND r.status IN ('eligible', 'urgent', 'submitted')
         ORDER BY r.deadline_date ASC
       `;
@@ -226,7 +226,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       if (assignedAdjudicatorId) {
         const existing = await prisma.$queryRaw<{ original_adjudicator_id: string }[]>`
           SELECT original_adjudicator_id FROM cdcp_reconsiderations
-          WHERE id = ${id}::uuid AND practice_id = ${practiceId}::uuid
+          WHERE id = ${id}::uuid AND practice_id = ${practiceId}::integer
         `;
         if (existing.length === 0) {
           return res.status(404).json({ error: 'Reconsideration not found' });
@@ -251,7 +251,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
           submitted_at = CASE WHEN ${status ?? null} = 'submitted' THEN NOW() ELSE submitted_at END,
           notes = COALESCE(${notes ?? null}, notes),
           updated_at = NOW()
-        WHERE id = ${id}::uuid AND practice_id = ${practiceId}::uuid
+        WHERE id = ${id}::uuid AND practice_id = ${practiceId}::integer
       `;
 
       res.json({ success: true });
@@ -300,7 +300,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       const rows = await prisma.$queryRaw<any[]>`
         SELECT * FROM phase5_kpi_snapshots
-        WHERE practice_id = ${practiceId}::uuid
+        WHERE practice_id = ${practiceId}::integer
           AND snapshot_date <= ${snapshotDate}::date
         ORDER BY snapshot_date DESC
         LIMIT 10
