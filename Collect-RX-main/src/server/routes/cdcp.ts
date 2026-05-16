@@ -15,8 +15,8 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { requireAuth } from '../middleware/auth.js';
+import type { PrismaClient } from '@prisma/client';
+import { authenticate } from '../middleware/authenticate.js';
 import {
   calculateReconsiderationStatus,
   createReconsiderationRecord,
@@ -36,7 +36,7 @@ import {
   getCdcpFeeCeiling,
   apply2026FeeGuide,
 } from '../services/carrierRules.js';
-import type { CdcpDeniedClaim, ReconsiderationRecord } from '../services/cdcp/types.js';
+import type { CdcpDeniedClaim, ReconsiderationRecord, CdcpDenialReasonCode, ReconsiderationStatus, EvidenceChecklistItem } from '../services/cdcp/types.js';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -46,7 +46,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   const router = Router();
 
   // All CDCP routes require authentication
-  router.use(requireAuth);
+  router.use(authenticate);
 
   // ── POST /api/cdcp/denied-claims ────────────────────────────────────────────
   // Called by Abeldent sync when Transaction 11 denials are detected
@@ -59,11 +59,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       }
 
       // Get existing reconsideration claim IDs for this practice
-      const practiceId = req.user?.practiceId;
+      const practiceId = req.practiceAuth?.practiceId;
       const existing = await prisma.$queryRaw<{ claim_id: string }[]>`
         SELECT claim_id FROM cdcp_reconsiderations WHERE practice_id = ${practiceId}::uuid
       `;
-      const existingIds = new Set(existing.map(r => r.claim_id));
+      const existingIds = new Set<string>(existing.map((r: { claim_id: string }) => r.claim_id));
 
       const result = processAbeldentSyncDenials(
         claims.filter(c => c.practiceId === practiceId),
@@ -123,9 +123,17 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   // ── GET /api/cdcp/queue ─────────────────────────────────────────────────────
   router.get('/queue', async (req: Request, res: Response) => {
     try {
-      const practiceId = req.user?.practiceId;
+      const practiceId = req.practiceAuth?.practiceId;
 
-      const rows = await prisma.$queryRaw<any[]>`
+      interface QueueRow {
+        id: string; claim_id: string; patient_token: string; practice_id: string;
+        denial_reason_code: string; denial_date: Date | string; deadline_date: Date | string;
+        urgent_escalation_date: Date | string; status: string; evidence_checklist_json: unknown;
+        original_adjudicator_id: string | null; assigned_adjudicator_id: string | null;
+        notes: string | null; created_at: Date | string; updated_at: Date | string;
+        cdt_code: string; province: string; procedure_fee_cents: number;
+      }
+      const rows = await prisma.$queryRaw<QueueRow[]>`
         SELECT r.*, d.cdt_code, d.province, d.procedure_fee_cents
         FROM cdcp_reconsiderations r
         JOIN cdcp_denied_claims d ON d.claim_id = r.claim_id
@@ -135,20 +143,20 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       `;
 
       // Re-run triage with current date for accurate status
-      const records: ReconsiderationRecord[] = rows.map(row => ({
+      const records: ReconsiderationRecord[] = rows.map((row: QueueRow) => ({
         id: row.id,
         claimId: row.claim_id,
         patientToken: row.patient_token,
         practiceId: row.practice_id,
-        denialReasonCode: row.denial_reason_code,
+        denialReasonCode: row.denial_reason_code as CdcpDenialReasonCode,
         denialDate: new Date(row.denial_date),
         deadlineDate: new Date(row.deadline_date),
         urgentEscalationDate: new Date(row.urgent_escalation_date),
-        status: row.status,
-        evidenceChecklist: row.evidence_checklist_json ?? [],
-        originalAdjudicatorId: row.original_adjudicator_id,
-        assignedAdjudicatorId: row.assigned_adjudicator_id,
-        notes: row.notes,
+        status: row.status as ReconsiderationStatus,
+        evidenceChecklist: (row.evidence_checklist_json as EvidenceChecklistItem[]) ?? [],
+        originalAdjudicatorId: row.original_adjudicator_id ?? undefined,
+        assignedAdjudicatorId: row.assigned_adjudicator_id ?? undefined,
+        notes: row.notes ?? undefined,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
       }));
@@ -216,7 +224,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
     try {
       const { id } = req.params;
       const { status, assignedAdjudicatorId, confirmationNumber, notes, submissionMethod } = req.body;
-      const practiceId = req.user?.practiceId;
+      const practiceId = req.practiceAuth?.practiceId;
 
       // If assigning an adjudicator, validate rotation
       if (assignedAdjudicatorId) {
@@ -290,7 +298,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   // ── GET /api/cdcp/kpi ───────────────────────────────────────────────────────
   router.get('/kpi', async (req: Request, res: Response) => {
     try {
-      const practiceId = req.user?.practiceId;
+      const practiceId = req.practiceAuth?.practiceId;
       const { date } = req.query as { date?: string };
       const snapshotDate = date ?? new Date().toISOString().slice(0, 10);
 
