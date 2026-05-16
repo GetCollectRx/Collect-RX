@@ -13,7 +13,7 @@
  *  8. Median Call Duration (target <12 min)
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, Cell,

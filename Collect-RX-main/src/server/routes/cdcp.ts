@@ -18,8 +18,6 @@ import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate.js';
 import {
-  calculateReconsiderationStatus,
-  createReconsiderationRecord,
   validateAdjudicatorRotation,
   triageReconsiderationQueue,
   processAbeldentSyncDenials,
@@ -29,8 +27,6 @@ import {
 } from '../services/cdcp/evidenceMapper.js';
 import {
   selectSubmissionStrategy,
-  validateAttachments,
-  buildPaperReconsiderationPackage,
 } from '../services/cdcp/cdanetSubmission.js';
 import {
   getCdcpFeeCeiling,

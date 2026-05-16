@@ -405,12 +405,12 @@
       "frequencyLimits": [
         {
           "cdtCodePattern": "D1110",
-          "limitMonths": 9,
+          "limitPerMonths": 9,
           "description": "Cleaning every 9 months (more restrictive than private plans)"
         },
         {
           "cdtCodePattern": "D0150",
-          "limitMonths": 12,
+          "limitPerMonths": 12,
           "description": "Exam annually"
         }
       ],
