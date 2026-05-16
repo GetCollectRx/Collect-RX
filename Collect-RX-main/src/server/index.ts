@@ -14,6 +14,7 @@
 //   /api/dashboard/*       dashboardRoutes.ts (ops stats)
 //   /api/admin/*           adminRoutes.ts (settings, integrations, audit, CSV)
 //   /api/eligibility/*     eligibility.ts
+//   /api/cdcp/*            cdcp.ts (Phase 5: CDCP reconsideration, evidence gap, fee ceiling)
 //   /api/queue/*          queue.ts (priority scores + carrier-order persistence)
 //   /api/public/*        publicPatientPayRoutes.ts (public pay token, email unsubscribe — no auth)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
@@ -67,6 +68,7 @@ import { createPublicPatientPayRouter } from './routes/publicPatientPayRoutes';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
+import { createCdcpRouter } from './routes/cdcp.js';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
@@ -207,6 +209,8 @@ app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      adminRouter);
+// Phase 5: CDCP Reconsideration & High-Precision Adjudication
+app.use('/api/cdcp',       createCdcpRouter(prisma));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)

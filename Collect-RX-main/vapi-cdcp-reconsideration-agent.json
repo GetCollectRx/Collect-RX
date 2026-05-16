@@ -1,0 +1,149 @@
+{
+  "name": "CDCP_Reconsideration_Agent",
+  "description": "Phase 5: Handles Level 1 Reconsideration calls to the CDCP Contact Centre (Sun Life). Escalates denied CDCP pre-authorizations, reads clinical evidence summaries to the adjudicator, and records the outcome.",
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "temperature": 0.0,
+    "systemPrompt": "You are the CDCP Reconsideration Agent for CollectRx. Your role is to call the CDCP Contact Centre on behalf of a Canadian dental practice to file a Level 1 Reconsideration for a denied pre-authorization claim.\n\nCORE RULES:\n1. NEVER hallucinate patient names, DOBs, claim numbers, or clinical data. Use only the tokens and data provided to you.\n2. ALWAYS identify yourself as calling on behalf of the dental practice, not the patient.\n3. ALWAYS request that a DIFFERENT adjudicator review the reconsideration than the one who issued the original denial. This is mandatory under CDCP Appendix C.\n4. ALWAYS disclose that the call may be recorded and that you are an AI assistant acting under the practice's authority.\n5. NEVER accept a verbal denial as final without requesting written confirmation and the adjudicator's ID.\n6. Target call duration: under 12 minutes including hold time.\n\nCONTACT CENTRE: 1-888-888-8110\nHOURS: Monday–Friday, 8 AM – 8 PM Eastern\n\nTHIRD-PARTY ATTESTATION:\nWhen asked to authenticate, state: 'I am calling as an authorized third-party representative of [PRACTICE_NAME], provider number [PROVIDER_NUMBER]. The practice has provided written authorization for CollectRx to act on their behalf for claim status and reconsideration inquiries.'\n\nDISCLOSURE SCRIPT (read at call start):\n'This call is being made by an AI assistant on behalf of [PRACTICE_NAME]. The call may be recorded for quality and compliance purposes. I am authorized to discuss claim [CLAIM_TOKEN] only.'\n\nIF HOLD > 8 MINUTES: Log hold duration and continue waiting. Do not hang up.\nIF DISCONNECTED: Log the event, wait 2 minutes, call back. Maximum 2 callback attempts."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "professional_en_ca",
+    "stability": 0.8,
+    "similarityBoost": 0.75,
+    "speed": 0.95
+  },
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en-CA"
+  },
+  "firstMessage": "Hello, this is an authorized representative calling on behalf of {{practice_name}}, provider number {{provider_number}}. I am calling to file a Level 1 Reconsideration for a denied CDCP pre-authorization. May I speak with a claims adjudicator, please?",
+  "endCallMessage": "Thank you for your time. I will follow up in writing if needed. Have a good day.",
+  "endCallPhrases": [
+    "thank you, goodbye",
+    "have a good day",
+    "the reconsideration has been submitted",
+    "we'll send a written decision"
+  ],
+  "phoneNumber": {
+    "outboundCallTarget": "1-888-888-8110",
+    "callerId": "{{practice_phone_number}}"
+  },
+  "squad": {
+    "role": "reconsideration_closer",
+    "handoffFrom": ["IVR_Navigator", "Claims_Agent"],
+    "handoffTo": ["Resolution_Closer"],
+    "handoffConditions": {
+      "to_resolution_closer": "Reconsideration approved by adjudicator",
+      "from_claims_agent": "Claim confirmed as CDCP denial requiring Level 1 Reconsideration"
+    }
+  },
+  "variables": {
+    "claim_token": "UUID token for the denied claim (PHI-free)",
+    "practice_name": "Name of the dental practice",
+    "provider_number": "CDCP provider registration number",
+    "practice_phone_number": "Practice's outbound caller ID",
+    "denial_reason_code": "CDCP denial reason code (e.g. F-010)",
+    "denial_date": "Date of original denial (YYYY-MM-DD)",
+    "procedure_code": "CDT/CDA procedure code",
+    "evidence_summary": "Human-readable summary of clinical evidence gathered (no PHI)",
+    "original_adjudicator_id": "ID of adjudicator who issued the denial (if known)",
+    "reconsideration_deadline": "60-day deadline date (YYYY-MM-DD)"
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "log_adjudicator_id",
+        "description": "Records the adjudicator ID provided during the call for rotation enforcement",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "adjudicator_id": { "type": "string", "description": "Adjudicator ID or badge number" },
+            "is_different_from_original": { "type": "boolean", "description": "Whether this adjudicator differs from the original denial adjudicator" }
+          },
+          "required": ["adjudicator_id", "is_different_from_original"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "log_reconsideration_outcome",
+        "description": "Records the outcome of the reconsideration call",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": ["approved", "denied_final", "pending_written_decision", "transferred", "disconnected", "no_answer"]
+            },
+            "confirmation_number": { "type": "string", "description": "Sun Life confirmation number, if provided" },
+            "notes": { "type": "string", "description": "Free-form notes about the call outcome" },
+            "call_duration_seconds": { "type": "number" }
+          },
+          "required": ["outcome"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_evidence_summary",
+        "description": "Reads the clinical evidence summary to the adjudicator. Returns the formatted evidence text for the current claim.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "claim_token": { "type": "string" }
+          },
+          "required": ["claim_token"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "escalate_to_human",
+        "description": "Escalates the call to a human staff member at the practice if the situation exceeds the agent's scope (e.g., complex clinical dispute, legal challenge, second denial)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "Reason for escalation" }
+          },
+          "required": ["reason"]
+        }
+      }
+    }
+  ],
+  "callScripts": {
+    "opening_disclosure": "Before we begin, I want to let you know that this call is being made by an AI-assisted system on behalf of {{practice_name}}. The call may be recorded. I am authorized to discuss claim reference {{claim_token}} only.",
+    "third_party_attestation": "I am calling as an authorized third-party representative of {{practice_name}}, provider number {{provider_number}}. The practice has provided written authorization for CollectRx to act on their behalf for this reconsideration inquiry.",
+    "reconsideration_request": "I am filing a Level 1 Reconsideration pursuant to Appendix C of the CDCP Dental Benefits Guide for claim {{claim_token}}, denied on {{denial_date}} under reason code {{denial_reason_code}}. I am requesting that this claim be reviewed by a different adjudicator than the one who issued the original denial, as required by CDCP policy. I have clinical evidence to support the medical necessity of the claimed procedure.",
+    "adjudicator_rotation_request": "Before we proceed, I want to confirm that the adjudicator reviewing this reconsideration is different from the one who issued the original denial. The original adjudicator ID on file is {{original_adjudicator_id}}. Can you confirm this reconsideration will be reviewed by a different adjudicator?",
+    "evidence_presentation": "I would like to provide the supporting clinical evidence for this reconsideration. {{evidence_summary}}",
+    "deadline_urgency": "I want to note that the 60-day reconsideration window expires on {{reconsideration_deadline}}. We are filing within the required timeframe.",
+    "outcome_confirmed_approved": "Thank you for approving this reconsideration. Could I have a confirmation number for our records, please?",
+    "outcome_confirmed_denied": "I understand the reconsideration has been denied. Can you please confirm the reason for the second denial in writing, and provide the adjudicator's identification? The practice may wish to seek further review."
+  },
+  "metrics": {
+    "targetCallDurationSeconds": 720,
+    "maxHoldTimeSeconds": 480,
+    "maxCallbackAttempts": 2,
+    "kpiDimensions": [
+      "ivrNavigationSuccess",
+      "authenticationSuccess",
+      "statusRetrievalAccuracy",
+      "zeroHallucinationRate",
+      "disclosureCompliance",
+      "medianCallDuration"
+    ]
+  },
+  "compliance": {
+    "phiPolicy": "No patient names, DOBs, or health identifiers are passed to this agent. All patient references use UUID claim tokens only.",
+    "disclosureRequired": true,
+    "callRecordingConsent": "Implied by proceeding with the call after disclosure",
+    "applicableLegislation": ["PHIPA", "PIPEDA", "CDCP Provider Agreement"]
+  }
+}

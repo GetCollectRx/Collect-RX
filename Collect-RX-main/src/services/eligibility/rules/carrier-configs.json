@@ -12,7 +12,10 @@
       "deductible": {
         "individual": 50,
         "family": 150,
-        "appliesToTiers": ["basic", "major"]
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
       },
       "annualMax": {
         "individual": 1500,
@@ -29,34 +32,33 @@
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis (cleaning) — once per 6 months"
+          "description": "Adult prophylaxis (cleaning) \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months"
+          "description": "Child prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays (4 images) — once per 12 months"
+          "description": "Bitewing X-rays (4 images) \u2014 once per 12 months"
         }
       ],
       "notes": "Major group insurer. Standard COB. Ortho lifetime max tracked separately.",
       "isClearinghouse": false,
       "minWaitDayForClaims": 32
     },
-
     "canada_life": {
       "carrierId": "canada_life",
       "name": "Canada Life",
@@ -69,7 +71,10 @@
       "deductible": {
         "individual": 75,
         "family": 225,
-        "appliesToTiers": ["basic", "major"]
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
       },
       "annualMax": {
         "individual": 1200,
@@ -86,34 +91,33 @@
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis — once per 6 months"
+          "description": "Adult prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months"
+          "description": "Child prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays — once per 12 months"
+          "description": "Bitewing X-rays \u2014 once per 12 months"
         }
       ],
       "notes": "Standard COB. No ortho coverage on most plans. Higher deductible than Sun Life.",
       "isClearinghouse": false,
       "minWaitDayForClaims": 32
     },
-
     "manulife": {
       "carrierId": "manulife",
       "name": "Manulife Financial",
@@ -143,34 +147,33 @@
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis — once per 6 months"
+          "description": "Adult prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months"
+          "description": "Child prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays — once per 12 months"
+          "description": "Bitewing X-rays \u2014 once per 12 months"
         }
       ],
-      "notes": "No deductible — industry differentiator. Higher basic/major coverage. Family annual max is tracked per individual and per household.",
+      "notes": "No deductible \u2014 industry differentiator. Higher basic/major coverage. Family annual max is tracked per individual and per household.",
       "isClearinghouse": false,
       "minWaitDayForClaims": 32
     },
-
     "green_shield": {
       "carrierId": "green_shield",
       "name": "Green Shield Canada",
@@ -183,7 +186,10 @@
       "deductible": {
         "individual": 50,
         "family": 150,
-        "appliesToTiers": ["basic", "major"]
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
       },
       "annualMax": {
         "individual": 1500,
@@ -200,39 +206,38 @@
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis — once per 6 months (strict enforcement)"
+          "description": "Adult prophylaxis \u2014 once per 6 months (strict enforcement)"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months (strict enforcement)"
+          "description": "Child prophylaxis \u2014 once per 6 months (strict enforcement)"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays — once per 12 months"
+          "description": "Bitewing X-rays \u2014 once per 12 months"
         },
         {
           "cdtCodePattern": "D4341",
           "limitPerMonths": 24,
-          "description": "Periodontal scaling — once per 24 months per quadrant"
+          "description": "Periodontal scaling \u2014 once per 24 months per quadrant"
         }
       ],
       "notes": "Known for strict frequency limit enforcement. Automated adjudication rejects duplicates quickly. No ortho on standard plans.",
       "isClearinghouse": false,
       "minWaitDayForClaims": 32
     },
-
     "rbc": {
       "carrierId": "rbc",
       "name": "RBC Insurance",
@@ -245,7 +250,10 @@
       "deductible": {
         "individual": 100,
         "family": 300,
-        "appliesToTiers": ["basic", "major"]
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
       },
       "annualMax": {
         "individual": 1800,
@@ -267,34 +275,33 @@
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis — once per 6 months"
+          "description": "Adult prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months"
+          "description": "Child prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays — once per 12 months"
+          "description": "Bitewing X-rays \u2014 once per 12 months"
         }
       ],
       "notes": "Higher deductible. Ortho coverage included. Higher annual max offset by deductible.",
       "isClearinghouse": false,
       "minWaitDayForClaims": 32
     },
-
     "telus_adjudicare": {
       "carrierId": "telus_adjudicare",
       "name": "TELUS AdjudiCare",
@@ -307,7 +314,10 @@
       "deductible": {
         "individual": 50,
         "family": 150,
-        "appliesToTiers": ["basic", "major"]
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
       },
       "annualMax": {
         "individual": 1500,
@@ -317,37 +327,37 @@
         {
           "tier": "major",
           "months": 12,
-          "description": "12-month waiting for major restorative — varies by underlying TPA"
+          "description": "12-month waiting for major restorative \u2014 varies by underlying TPA"
         }
       ],
       "frequencyLimits": [
         {
           "cdtCodePattern": "D1110",
           "limitPerMonths": 6,
-          "description": "Adult prophylaxis — once per 6 months"
+          "description": "Adult prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D1120",
           "limitPerMonths": 6,
-          "description": "Child prophylaxis — once per 6 months"
+          "description": "Child prophylaxis \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0210",
           "limitPerMonths": 36,
-          "description": "Full-mouth X-rays — once every 36 months"
+          "description": "Full-mouth X-rays \u2014 once every 36 months"
         },
         {
           "cdtCodePattern": "D0120",
           "limitPerMonths": 6,
-          "description": "Periodic oral exam — once per 6 months"
+          "description": "Periodic oral exam \u2014 once per 6 months"
         },
         {
           "cdtCodePattern": "D0274",
           "limitPerMonths": 12,
-          "description": "Bitewing X-rays — once per 12 months"
+          "description": "Bitewing X-rays \u2014 once per 12 months"
         }
       ],
-      "notes": "TELUS AdjudiCare is a clearinghouse/TPA platform — not a single insurer. Must identify underlying TPA from member card before IVR navigation. Benefits shown are defaults; actual plan varies by employer group.",
+      "notes": "TELUS AdjudiCare is a clearinghouse/TPA platform \u2014 not a single insurer. Must identify underlying TPA from member card before IVR navigation. Benefits shown are defaults; actual plan varies by employer group.",
       "isClearinghouse": true,
       "minWaitDayForClaims": 21,
       "telusTpaProfiles": {
@@ -367,6 +377,94 @@
           "T": "Third-party TPA (manual verification required)"
         }
       }
+    },
+    "cdcp": {
+      "carrierId": "cdcp",
+      "name": "Canadian Dental Care Plan (Sun Life)",
+      "isFederalProgram": true,
+      "cdcpFeeGridCeilingPct": 90,
+      "preAuthRequired": true,
+      "reconsiderationWindowDays": 60,
+      "contactCentre": "1-888-888-8110",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 80,
+        "major": 50,
+        "ortho": 0
+      },
+      "deductible": {
+        "individual": 0,
+        "family": 0,
+        "appliesToTiers": []
+      },
+      "annualMax": {
+        "individual": 1400,
+        "family": null
+      },
+      "waitingPeriods": [],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitMonths": 9,
+          "description": "Cleaning every 9 months (more restrictive than private plans)"
+        },
+        {
+          "cdtCodePattern": "D0150",
+          "limitMonths": 12,
+          "description": "Exam annually"
+        }
+      ],
+      "notes": "Federal program launched 2024. Pre-auth (T11) required for major. Balance billing above CDCP fee grid prohibited. Level 1 Reconsideration within 60 days."
+    }
+  },
+  "provincialFeeGuides2026": {
+    "AB": {
+      "province": "Alberta",
+      "incrementPct": 4.5,
+      "multiplier": 1.045,
+      "cdcpReimbursementPct": 90,
+      "cdcpCeilingMultiplier": 0.9405,
+      "effectiveDate": "2026-01-01"
+    },
+    "ON": {
+      "province": "Ontario",
+      "incrementPct": 3.32,
+      "multiplier": 1.0332,
+      "cdcpReimbursementPct": 90,
+      "cdcpCeilingMultiplier": 0.92988,
+      "effectiveDate": "2026-01-01"
+    },
+    "BC": {
+      "province": "British Columbia",
+      "incrementPct": 2.66,
+      "multiplier": 1.0266,
+      "cdcpReimbursementPct": 88,
+      "cdcpCeilingMultiplier": 0.90341,
+      "effectiveDate": "2026-01-01"
+    },
+    "QC": {
+      "province": "Quebec",
+      "incrementPct": 3.0,
+      "multiplier": 1.03,
+      "cdcpReimbursementPct": 90,
+      "cdcpCeilingMultiplier": 0.927,
+      "effectiveDate": "2026-01-01"
+    },
+    "MB": {
+      "province": "Manitoba",
+      "incrementPct": 3.0,
+      "multiplier": 1.03,
+      "cdcpReimbursementPct": 90,
+      "cdcpCeilingMultiplier": 0.927,
+      "effectiveDate": "2026-01-01"
+    },
+    "SK": {
+      "province": "Saskatchewan",
+      "incrementPct": 3.0,
+      "multiplier": 1.03,
+      "cdcpReimbursementPct": 90,
+      "cdcpCeilingMultiplier": 0.927,
+      "effectiveDate": "2026-01-01"
     }
   }
 }
