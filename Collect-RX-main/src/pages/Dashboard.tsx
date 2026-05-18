@@ -15,6 +15,15 @@ interface DashboardStats {
   aging: { '0-30': number; '31-60': number; '>60': number }
   stageCounts: Record<string, number>
   openBalanceCount: number
+  openWorkItemCount?: number
+  insuranceOpenAR?: number
+  unifiedAr?: boolean
+  lastPmsImport?: {
+    at: string
+    status: string
+    source: string
+    validationPassed: boolean | null
+  } | null
   claimsResolvedToday?: number
   revenueToday?: number
   revenueThisWeek?: number
@@ -105,10 +114,22 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">Export</Button>
-          <Button variant="primary" size="sm">Run Call Batch</Button>
+          <Link to="/work-queue"><Button variant="secondary" size="sm">Work queue</Button></Link>
+          <Link to="/insurance"><Button variant="secondary" size="sm">Insurance AR</Button></Link>
+          <Link to="/admin/sync"><Button variant="ghost" size="sm">PMS sync</Button></Link>
         </div>
       </div>
+
+      {s.lastPmsImport && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 -mt-4">
+          Last PMS import ({s.lastPmsImport.source}):{' '}
+          {new Date(s.lastPmsImport.at).toLocaleString('en-CA')}
+          {' · '}
+          <span className={s.lastPmsImport.validationPassed === false ? 'text-amber-600' : 'text-crx-600'}>
+            {s.lastPmsImport.status}
+          </span>
+        </p>
+      )}
 
       {(() => {
         const oa = s.operationalAlerts
@@ -146,7 +167,11 @@ export default function Dashboard() {
         <StatTile
           label="Total Open A/R"
           value={fmtCurrency(s.totalOpenAR)}
-          sub={`${s.openBalanceCount} open claims`}
+          sub={
+            s.unifiedAr
+              ? `${s.openWorkItemCount ?? 0} work queue items (insurance + patient + outreach)`
+              : `${s.openBalanceCount} open insurance claims`
+          }
           icon="💰"
           accent="default"
         />

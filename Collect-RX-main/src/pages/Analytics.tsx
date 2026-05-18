@@ -405,6 +405,14 @@ export default function Analytics() {
   const [msgEffect,      setMsgEffect]     = useState<any[]>([])
   const [paymentTrends,  setPaymentTrends] = useState<any[]>([])
   const [carrierPerf,    setCarrierPerf]   = useState<CarrierPerfRow[]>([])
+  const [practicePerf, setPracticePerf]   = useState<{
+    openArTotal: number
+    openWorkItemCount: number
+    daysInAr: number
+    grossCollectionRate: number
+    netCollectionRate: number
+    topDenialReasons: { reason: string; count: number }[]
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -418,6 +426,7 @@ export default function Analytics() {
       apiFetch(`/api/analytics/message-effectiveness?practiceId=${practiceId}`),
       apiFetch(`/api/analytics/payment-trends?practiceId=${practiceId}`),
       apiFetch(`/api/analytics/carrier-performance?practiceId=${practiceId}`),
+      apiFetch(`/api/analytics/practice-performance?practiceId=${practiceId}`),
     ])
       .then(async (rs) => {
         const parsed = await Promise.all(
@@ -432,13 +441,14 @@ export default function Analytics() {
         return parsed
       })
       .then((results) => {
-        const [col, fun, pri, eff, trends, car] = results as [
+        const [col, fun, pri, eff, trends, car, perf] = results as [
           Record<string, unknown>,
           { funnel?: unknown[] },
           { priorityBalances?: unknown[] },
           { effectiveness?: unknown[] },
           { trends?: unknown[] },
           { performance?: CarrierPerfRow[] },
+          { success?: boolean; data?: typeof practicePerf },
         ]
         setCollectionRate(col)
         setFunnel(fun.funnel ?? [])
@@ -446,6 +456,7 @@ export default function Analytics() {
         setMsgEffect(eff.effectiveness ?? [])
         setPaymentTrends(trends.trends ?? [])
         setCarrierPerf(car.performance ?? [])
+        setPracticePerf(perf.data ?? null)
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -474,6 +485,45 @@ export default function Analytics() {
             Insurance claims recovery, time saved, and collection performance
           </p>
         </div>
+
+        {practicePerf && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatTile
+              label="Unified open AR"
+              value={`$${practicePerf.openArTotal.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
+              sub={`${practicePerf.openWorkItemCount} queue items`}
+            />
+            <StatTile
+              label="Days in AR"
+              value={String(practicePerf.daysInAr)}
+              sub="insurance claims average"
+            />
+            <StatTile
+              label="Gross collection"
+              value={`${practicePerf.grossCollectionRate}%`}
+              sub="patient AR paid / billed"
+            />
+            <StatTile
+              label="Net collection"
+              value={`${practicePerf.netCollectionRate}%`}
+              sub="insurance recovered / billed"
+            />
+          </div>
+        )}
+
+        {practicePerf && practicePerf.topDenialReasons.length > 0 && (
+          <Card>
+            <CardHeader title="Top denial reasons" subtitle="From insurance call outcomes (live)" />
+            <ul className="px-4 pb-4 space-y-2 text-sm">
+              {practicePerf.topDenialReasons.map((r) => (
+                <li key={r.reason} className="flex justify-between gap-4">
+                  <span className="text-gray-700 dark:text-gray-300 truncate">{r.reason}</span>
+                  <span className="font-medium tabular-nums">{r.count}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         {/* ── Insurance AI section ──────────────────────────────────────── */}
         {practiceId && <InsuranceSection practiceId={practiceId} />}

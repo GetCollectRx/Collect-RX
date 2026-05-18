@@ -7,6 +7,7 @@ import {
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
+import { syncWorkItemsForPractice } from '../services/workQueueService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -28,6 +29,32 @@ router.get('/stats', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
     const practiceId = practiceIdFromSession(req);
+
+    const existingWorkItems = await prisma.workItem.count({ where: { practiceId } });
+    if (existingWorkItems === 0) {
+      try {
+        await syncWorkItemsForPractice(prisma, practiceId);
+      } catch (syncErr) {
+        console.warn('[GET /dashboard/stats] work queue bootstrap failed:', (syncErr as Error).message);
+      }
+    }
+
+    const workAgg = await prisma.workItem.aggregate({
+      where: { practiceId, status: 'open' },
+      _sum: { dollarsAtRisk: true },
+      _count: true,
+    });
+
+    const lastImport = await prisma.pmsImportRun.findFirst({
+      where: { practiceId },
+      orderBy: { startedAt: 'desc' },
+      select: {
+        startedAt: true,
+        status: true,
+        pmsSource: true,
+        validationPassed: true,
+      },
+    });
 
     const claims = await prisma.insuranceClaim.findMany({
       where: { practiceId, status: { in: OPEN_STATUSES } },
@@ -110,11 +137,25 @@ router.get('/stats', async (req: Request, res: Response) => {
       patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
     }));
 
+    const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
+    const useUnifiedAr = workAgg._count > 0;
+
     return res.json({
-      totalOpenAR,
+      totalOpenAR: useUnifiedAr ? unifiedOpenAR : totalOpenAR,
       aging,
       stageCounts,
       openBalanceCount: claims.length,
+      openWorkItemCount: workAgg._count,
+      insuranceOpenAR: totalOpenAR,
+      unifiedAr: useUnifiedAr,
+      lastPmsImport: lastImport
+        ? {
+            at: lastImport.startedAt.toISOString(),
+            status: lastImport.status,
+            source: lastImport.pmsSource,
+            validationPassed: lastImport.validationPassed,
+          }
+        : null,
       claimsResolvedToday,
       revenueToday,
       revenueThisWeek,

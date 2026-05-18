@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { generateMessageBody } from './messageTemplates.js';
 import { syncCallQueueSchedulingFromPriority } from './services/priorityEngine.js';
+import { syncWorkItemsForPractice } from './services/workQueueService.js';
 import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 
@@ -32,8 +33,19 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     console.error('[rulesEngine] EMR outbox batch failed:', (err as Error).message);
   }
 
-  const closeHour = parseInt(process.env.AR_CLOSE_UTC_HOUR ?? '23', 10);
   const now = new Date();
+  if (now.getUTCMinutes() === 0) {
+    try {
+      const practices = await prisma.practice.findMany({ select: { id: true } });
+      for (const p of practices) {
+        await syncWorkItemsForPractice(prisma, p.id);
+      }
+    } catch (err) {
+      console.error('[rulesEngine] hourly work queue sync failed:', (err as Error).message);
+    }
+  }
+
+  const closeHour = parseInt(process.env.AR_CLOSE_UTC_HOUR ?? '23', 10);
   if (now.getUTCHours() === closeHour && now.getUTCMinutes() < 2) {
     try {
       await runDailyArCloseAllPractices(prisma);
