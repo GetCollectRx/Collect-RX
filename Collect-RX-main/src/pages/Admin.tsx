@@ -202,7 +202,10 @@ export default function Admin() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Practice settings, carrier configuration, and test data tools</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          Practice settings, carrier configuration, and test data tools.{' '}
+          <Link to="/admin/sync" className="text-crx-600 hover:underline">PMS sync ops →</Link>
+        </p>
       </div>
 
       {toast && <InlineToast toast={toast} />}

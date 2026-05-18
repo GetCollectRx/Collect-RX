@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { generateMessageBody } from './messageTemplates.js';
 import { syncCallQueueSchedulingFromPriority } from './services/priorityEngine.js';
 import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
+import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 
 /**
  * One evaluation pass (legacy `Balance` / `BalanceState` model). Safe to call from a worker on a schedule.
@@ -29,6 +30,16 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     }
   } catch (err) {
     console.error('[rulesEngine] EMR outbox batch failed:', (err as Error).message);
+  }
+
+  const closeHour = parseInt(process.env.AR_CLOSE_UTC_HOUR ?? '23', 10);
+  const now = new Date();
+  if (now.getUTCHours() === closeHour && now.getUTCMinutes() < 2) {
+    try {
+      await runDailyArCloseAllPractices(prisma);
+    } catch (err) {
+      console.error('[rulesEngine] daily AR close failed:', (err as Error).message);
+    }
   }
 
   const openBalances = await prisma.balance.findMany({

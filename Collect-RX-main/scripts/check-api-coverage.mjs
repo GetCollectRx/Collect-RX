@@ -40,6 +40,7 @@ const SERVER_PREFIXES = [
   '/api/queue/',
   '/api/dashboard/',
   '/api/admin/',
+  '/api/work-queue/',
   '/api/benefits/',
   '/api/patients/',
   '/api/balances',
@@ -64,6 +65,9 @@ const SERVER_EXTRA = [
   /^\/api\/patients\/balances\//,
   /^\/api\/public\/pay\//,
   /^\/api\/public\/email-unsubscribe$/,
+  /^\/api\/work-queue$/,
+  /^\/api\/work-queue\//,
+  /^\/api\/admin\/sync\//,
 ];
 
 function walkFiles(absDir, acc) {

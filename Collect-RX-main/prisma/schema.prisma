@@ -594,3 +594,89 @@ model ReconciliationLog {
   @@index([claimId])
   @@map("reconciliation_logs")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AR Brain roadmap — PMS sync, unified work queue, daily close
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum WorkItemType {
+  insurance
+  patient_ar
+  outreach
+
+  @@map("work_item_type")
+}
+
+enum WorkItemSource {
+  insurance_claim
+  patient_balance
+  outreach_balance
+
+  @@map("work_item_source")
+}
+
+/// Nightly PMS export import audit (Dentrix / AbelDent file drops).
+model PmsImportRun {
+  id                   String    @id @default(uuid())
+  practiceId           String    @map("practice_id")
+  pmsSource            String    @map("pms_source")
+  status               String    @default("running")
+  startedAt            DateTime  @default(now()) @map("started_at")
+  completedAt          DateTime? @map("completed_at")
+  recordsTotal         Int       @default(0) @map("records_total")
+  recordsImported      Int       @default(0) @map("records_imported")
+  recordsFailed        Int       @default(0) @map("records_failed")
+  recordsSkipped       Int       @default(0) @map("records_skipped")
+  sourceRecordCount    Int?      @map("source_record_count")
+  sourceBalanceTotal   Decimal?  @map("source_balance_total") @db.Decimal(14, 2)
+  importedBalanceTotal Decimal?  @map("imported_balance_total") @db.Decimal(14, 2)
+  driftPct             Float?    @map("drift_pct")
+  validationPassed     Boolean?  @map("validation_passed")
+  errorLog             Json?     @map("error_log")
+
+  @@index([practiceId, startedAt(sort: Desc)])
+  @@map("pms_import_runs")
+}
+
+/// Unified AR work queue — merged from insurance claims, patient AR, outreach balances.
+model WorkItem {
+  id               String         @id @default(uuid())
+  practiceId       String         @map("practice_id")
+  sourceType       WorkItemSource @map("source_type")
+  sourceId         String         @map("source_id")
+  itemType         WorkItemType   @map("item_type")
+  dollarsAtRisk    Decimal        @map("dollars_at_risk") @db.Decimal(12, 2)
+  daysOutstanding  Int            @default(0) @map("days_outstanding")
+  carrierId        CarrierId?     @map("carrier_id")
+  title            String?
+  assignedRep      String?        @map("assigned_rep")
+  followUpAt       DateTime?      @map("follow_up_at")
+  notes            String?
+  status           String         @default("open")
+  rankScore        Float          @default(0) @map("rank_score")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@unique([practiceId, sourceType, sourceId])
+  @@index([practiceId, status, rankScore(sort: Desc)])
+  @@index([practiceId, assignedRep])
+  @@map("work_items")
+}
+
+/// End-of-day AR reconciliation vs PMS / queue totals.
+model ArCloseRun {
+  id                 String    @id @default(uuid())
+  practiceId         String    @map("practice_id")
+  closeDate          DateTime  @map("close_date") @db.Date
+  queueOpenTotal     Decimal   @map("queue_open_total") @db.Decimal(14, 2)
+  paymentsReceived   Decimal   @map("payments_received") @db.Decimal(14, 2)
+  pmsLedgerTotal     Decimal?  @map("pms_ledger_total") @db.Decimal(14, 2)
+  variancePct        Float     @map("variance_pct")
+  validationPassed   Boolean   @map("validation_passed")
+  details            Json?
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@unique([practiceId, closeDate])
+  @@index([practiceId, closeDate(sort: Desc)])
+  @@map("ar_close_runs")
+}

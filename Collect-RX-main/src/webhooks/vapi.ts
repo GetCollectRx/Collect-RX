@@ -284,14 +284,28 @@ router.post('/', async (req: Request, res: Response) => {
   // ── 11. Detokenize for practice record updates (if needed) ───────────────
   // Only called if downstream practice systems need the real patientId.
   // The resolved patientId is NEVER stored back into any call-related table.
+  try {
+    await enqueueEmrClaimEvent(prisma, {
+      practiceId: claim.practiceId,
+      claimId: claim.id,
+      eventType: 'CALL_OUTCOME',
+      payload: {
+        vapiCallId,
+        claimStatus: newClaimStatus,
+        outcome: processed.outcome,
+        outcomeDetail: processed.outcomeDetail,
+        at: new Date().toISOString(),
+      },
+    });
+  } catch (emrErr) {
+    console.error('[vapi-webhook] EMR outbox enqueue (call outcome):', emrErr);
+  }
+
   if (newClaimStatus === 'RESOLVED' && metadata.patientToken) {
     try {
       const realPatientId = piiVault.detokenize(metadata.patientToken);
-      // TODO: wire to practice EMR sync when Abeldent connector is ready
-      // e.g. await practiceSync.markClaimResolved(realPatientId, claim.id);
       console.log(`[vapi-webhook] Claim ${claim.id} resolved for patient (internal ID: ${realPatientId})`);
     } catch (vaultErr) {
-      // Token may have expired — log but don't fail the webhook
       console.warn('[vapi-webhook] PIIVault detokenize failed (token may have expired):', vaultErr);
     }
   }

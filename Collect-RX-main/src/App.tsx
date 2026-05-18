@@ -22,12 +22,18 @@ import { LoginPage }         from './pages/LoginPage'
 import LandingPage           from './pages/LandingPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
 import Phase5Dashboard       from './pages/Phase5Dashboard'
+import InsuranceClaims       from './pages/InsuranceClaims'
+import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
+import WorkQueue             from './pages/WorkQueue'
+import SyncOpsDashboard      from './pages/SyncOpsDashboard'
 import { useEffect } from 'react'
 
 // ── Icons (inline SVG — zero dependency) ─────────────────────────────────
 const ICONS = {
   dashboard:  'M2 10a8 8 0 1116 0A8 8 0 012 10zm7-3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm1 3a1 1 0 00-.707 1.707l2 2a1 1 0 001.414-1.414L11 11.586V10a1 1 0 00-1-1z',
   balances:   'M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z',
+  insurance:  'M9 2a1 1 0 000 2h2a1 1 0 100-2H9z M4 5a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm4 5a1 1 0 100 2h4a1 1 0 100-2H8z',
+  workqueue:  'M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10 0a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
   patientar:  'M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z',
   estimate:   'M9 2a1 1 0 000 2h2a1 1 0 100-2H9z M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z',
   analytics:  'M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z',
@@ -43,7 +49,9 @@ const ICONS = {
 const NAV_ITEMS = [
   { to: '/',          exact: true,  label: 'Dashboard',  icon: ICONS.dashboard  },
   { to: '/guide',    exact: true,  label: 'How it works', icon: ICONS.guide     },
-  { to: '/balances',  exact: false, label: 'Balances',   icon: ICONS.balances   },
+  { to: '/work-queue', exact: false, label: 'Work queue', icon: ICONS.workqueue  },
+  { to: '/insurance',  exact: false, label: 'Insurance AR', icon: ICONS.insurance },
+  { to: '/balances',  exact: false, label: 'Outreach AR', icon: ICONS.balances   },
   { to: '/patient-ar',exact: false, label: 'Patient AR', icon: ICONS.patientar  },
   { to: '/estimate',  exact: false, label: 'Estimate',   icon: ICONS.estimate   },
   { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics  },
@@ -180,8 +188,12 @@ function AppShell() {
         <Routes>
           <Route path="/"             element={<Dashboard />} />
           <Route path="/guide"        element={<OfficeGuide />} />
+          <Route path="/work-queue"   element={<WorkQueue />} />
+          <Route path="/insurance"    element={<InsuranceClaims />} />
+          <Route path="/insurance/:id" element={<InsuranceClaimDetail />} />
           <Route path="/balances"     element={<Balances />} />
           <Route path="/balances/:id" element={<BalanceDetail />} />
+          <Route path="/admin/sync"   element={<SyncOpsDashboard />} />
           <Route path="/patient-ar"   element={<PatientAR />} />
           <Route path="/estimate"     element={<PreTreatmentEstimate />} />
           <Route path="/analytics"    element={<Analytics />} />

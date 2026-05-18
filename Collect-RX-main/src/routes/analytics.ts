@@ -281,4 +281,83 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/practice-performance', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const since90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+    const [workItems, claims, closeRuns, patientPaid] = await Promise.all([
+      prisma.workItem.aggregate({
+        where: { practiceId, status: 'open' },
+        _sum: { dollarsAtRisk: true },
+        _count: true,
+      }),
+      prisma.insuranceClaim.findMany({
+        where: { practiceId },
+        select: { status: true, outstandingAmount: true, billedAmount: true, daysOutstanding: true, updatedAt: true },
+      }),
+      prisma.arCloseRun.findMany({
+        where: { practiceId, closeDate: { gte: since90 } },
+        orderBy: { closeDate: 'asc' },
+        take: 90,
+      }),
+      prisma.patientBalance.aggregate({
+        where: { practiceId, paymentStatus: 'paid' },
+        _sum: { amountPaid: true, amountBilled: true },
+      }),
+    ]);
+
+    const openInsurance = claims.filter((c) => c.status !== 'RESOLVED');
+    const daysInAr =
+      openInsurance.length > 0
+        ? Math.round(
+            openInsurance.reduce((s, c) => s + c.daysOutstanding, 0) / openInsurance.length,
+          )
+        : 0;
+
+    const billed = Number(patientPaid._sum.amountBilled ?? 0);
+    const collected = Number(patientPaid._sum.amountPaid ?? 0);
+    const grossCollectionRate = billed > 0 ? Math.round((collected / billed) * 1000) / 10 : 0;
+
+    const resolvedClaims = claims.filter((c) => c.status === 'RESOLVED');
+    const insuranceRecovered = resolvedClaims.reduce(
+      (s, c) => s + Math.max(0, Number(c.billedAmount) - Number(c.outstandingAmount)),
+      0,
+    );
+    const insuranceBilled = claims.reduce((s, c) => s + Number(c.billedAmount), 0);
+    const netCollectionRate =
+      insuranceBilled > 0 ? Math.round((insuranceRecovered / insuranceBilled) * 1000) / 10 : 0;
+
+    const agingTrend = closeRuns.map((r) => ({
+      date: r.closeDate.toISOString().slice(0, 10),
+      queueOpenTotal: Number(r.queueOpenTotal),
+      variancePct: r.variancePct,
+    }));
+
+    const { getDenialAnalytics } = await import('../services/insurance-denial-analytics.js');
+    const denials = await getDenialAnalytics(prisma, practiceId);
+
+    return res.json({
+      success: true,
+      data: {
+        openArTotal: Number(workItems._sum.dollarsAtRisk ?? 0),
+        openWorkItemCount: workItems._count,
+        daysInAr,
+        grossCollectionRate,
+        netCollectionRate,
+        agingTrend,
+        topDenialReasons: denials.topDenialReasons.slice(0, 5),
+        denialByCarrier: denials.byCarrier.slice(0, 5),
+      },
+    });
+  } catch (err) {
+    console.error('[GET /analytics/practice-performance]', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
 export default router;

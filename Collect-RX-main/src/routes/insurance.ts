@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma';
 import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
 import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
+import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { authenticate } from '../server/middleware/authenticate';
 import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
@@ -212,26 +213,50 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/claims/import', strictLimiter, async (req: Request, res: Response) => {
   try {
-    // Dynamic require so the JS importer doesn't need TypeScript declarations
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { importClaims } = require('../claims/importer');
-    const raw = req.body;
-    const rows = Array.isArray(raw) ? raw : raw?.records;
+    const body = req.body as { records?: unknown[]; pmsSource?: string } | unknown[];
+    const rows = Array.isArray(body) ? body : body?.records;
     if (!Array.isArray(rows)) {
       return res.status(400).json({
         success: false,
         error: 'Expected a JSON array of rows or { records: array }',
       });
     }
-    const result = await importClaims(rows, practiceIdFromSession(req));
-    return res.json({ success: true, ...result });
+    const practiceId = practiceIdFromSession(req);
+    const pmsSource = (
+      !Array.isArray(body) && body?.pmsSource === 'dentrix' ? 'dentrix' : 'abeldent'
+    ) as 'dentrix' | 'abeldent';
+    const { runPmsImportPipeline } = await import('../server/pms/pmsImportPipeline.js');
+    const result = await runPmsImportPipeline(prisma, {
+      practiceId,
+      pmsSource,
+      rows: rows as Record<string, unknown>[],
+      sourceRecordCount: rows.length,
+    });
+    return res.json({
+      success: true,
+      imported: result.imported,
+      skipped: result.skipped,
+      failed: result.failed,
+      errors: result.errors,
+      runId: result.runId,
+    });
   } catch (err) {
     console.error('[POST /insurance/claims/import]', err);
-    // Provide actionable error if importer module is missing
-    const msg = (err as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND'
-      ? 'Claim importer not found — ensure src/claims/importer.js exists'
-      : (err as Error).message;
-    return res.status(500).json({ success: false, error: msg });
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+router.get('/analytics/denials', async (req: Request, res: Response) => {
+  try {
+    const qP = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qP)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const data = await getDenialAnalytics(prisma, practiceIdFromSession(req));
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /insurance/analytics/denials]', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
   }
 });
 

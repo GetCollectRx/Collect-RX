@@ -68,6 +68,8 @@ import { createPublicPatientPayRouter } from './routes/publicPatientPayRoutes';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
+import pmsSyncRouter from './routes/pmsSyncRoutes.js';
+import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
@@ -209,6 +211,8 @@ app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      adminRouter);
+app.use('/api/admin/sync', pmsSyncRouter);
+app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
 
