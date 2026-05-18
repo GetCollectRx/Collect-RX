@@ -21,6 +21,7 @@ import PaymentPage           from './pages/PaymentPage'
 import { LoginPage }         from './pages/LoginPage'
 import LandingPage           from './pages/LandingPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
+import Phase5Dashboard       from './pages/Phase5Dashboard'
 import { useEffect } from 'react'
 
 // ── Icons (inline SVG — zero dependency) ─────────────────────────────────
@@ -33,6 +34,7 @@ const ICONS = {
   outbox:     'M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z',
   admin:      'M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z',
   guide:      'M9 4h6v2H9V4zM7 6h10a2 2 0 012 2v10H5V8a2 2 0 012-2zm2 4h6v2H9v-2zm0 4h6v2H9v-2z',
+  cdcp:       'M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z',
   sun:        'M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z',
   moon:       'M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z',
   logo:       'M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z',
@@ -47,6 +49,7 @@ const NAV_ITEMS = [
   { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics  },
   { to: '/outbox',    exact: false, label: 'Outbox',     icon: ICONS.outbox     },
   { to: '/admin',     exact: false, label: 'Admin',      icon: ICONS.admin      },
+  { to: '/cdcp',      exact: false, label: 'CDCP',       icon: ICONS.cdcp       },
 ]
 
 // ── Dark-mode toggle button ───────────────────────────────────────────────
@@ -185,6 +188,7 @@ function AppShell() {
           <Route path="/outbox"       element={<Outbox />} />
           <Route path="/admin"        element={<Admin />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
+          <Route path="/cdcp"           element={<Phase5Dashboard />} />
         </Routes>
       </main>
     </div>
