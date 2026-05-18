@@ -65,6 +65,11 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
 
+    const openWorkItems = await prisma.workItem.findMany({
+      where: { practiceId, status: 'open' },
+      select: { dollarsAtRisk: true, daysOutstanding: true, itemType: true },
+    });
+
     let totalOpenAR = 0;
     const aging = { '0-30': 0, '31-60': 0, '>60': 0 };
     const stageCounts: Record<string, number> = {};
@@ -73,12 +78,30 @@ router.get('/stats', async (req: Request, res: Response) => {
     for (const c of claims) {
       const amt = Number(c.outstandingAmount);
       totalOpenAR += amt;
-      const d = c.daysOutstanding;
-      if (d <= 30) aging['0-30'] += amt;
-      else if (d <= 60) aging['31-60'] += amt;
-      else aging['>60'] += amt;
       const st = String(c.status);
       stageCounts[st] = (stageCounts[st] ?? 0) + 1;
+    }
+
+    const useUnifiedAr = workAgg._count > 0;
+    if (useUnifiedAr) {
+      aging['0-30'] = 0;
+      aging['31-60'] = 0;
+      aging['>60'] = 0;
+      for (const w of openWorkItems) {
+        const amt = Number(w.dollarsAtRisk);
+        const d = w.daysOutstanding;
+        if (d <= 30) aging['0-30'] += amt;
+        else if (d <= 60) aging['31-60'] += amt;
+        else aging['>60'] += amt;
+      }
+    } else {
+      for (const c of claims) {
+        const amt = Number(c.outstandingAmount);
+        const d = c.daysOutstanding;
+        if (d <= 30) aging['0-30'] += amt;
+        else if (d <= 60) aging['31-60'] += amt;
+        else aging['>60'] += amt;
+      }
     }
 
     const startOfUtcDay = new Date();
@@ -138,7 +161,6 @@ router.get('/stats', async (req: Request, res: Response) => {
     }));
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
-    const useUnifiedAr = workAgg._count > 0;
 
     return res.json({
       totalOpenAR: useUnifiedAr ? unifiedOpenAR : totalOpenAR,

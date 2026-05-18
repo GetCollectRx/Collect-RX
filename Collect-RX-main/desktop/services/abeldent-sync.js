@@ -118,7 +118,7 @@ async function fetchFromAbeldent() {
 }
 
 // Post to Railway
-function postToRailway(rows, endpoint) {
+function postToRailway(payload, endpoint) {
   return new Promise((resolve, reject) => {
     if (!RAILWAY_URL || !API_TOKEN) {
       return reject(new Error('RAILWAY_API_URL or RAILWAY_API_TOKEN is not set'));
@@ -126,7 +126,7 @@ function postToRailway(rows, endpoint) {
 
     const url = `${RAILWAY_URL}${endpoint}${PRACTICE_ID ? `?practice_id=${PRACTICE_ID}` : ''}`;
     const parsed = new URL(url);
-    const body = Buffer.from(JSON.stringify(rows));
+    const body = Buffer.from(JSON.stringify(payload));
 
     const options = {
       hostname: parsed.hostname,
@@ -180,7 +180,15 @@ async function runClaimsSync() {
   sendStatus('syncing');
   try {
     const rows = await fetchFromAbeldent();
-    const result = await postToRailway(rows, '/api/insurance/claims/import');
+    const result = await postToRailway(
+      { records: rows, pmsSource: 'abeldent' },
+      '/api/insurance/claims/import',
+    );
+    try {
+      await postToRailway({}, '/api/work-queue/sync');
+    } catch (syncErr) {
+      console.warn('[Sync] Work queue refresh failed:', syncErr.message);
+    }
     sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
     return true;
   } catch (err) {

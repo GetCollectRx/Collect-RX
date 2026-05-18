@@ -104,6 +104,10 @@ export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
         firstName: (b.patientFirstName || '').trim() || 'there',
       });
     } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'P2025' || code === 'P2021') {
+        return res.status(404).json({ error: 'Not found' });
+      }
       console.error('GET /public/pay/:publicToken error', e);
       return res.status(500).json({ error: 'Failed to load payment' });
     }

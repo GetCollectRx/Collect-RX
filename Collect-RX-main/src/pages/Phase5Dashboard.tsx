@@ -219,9 +219,51 @@ export default function Phase5Dashboard() {
   const { practiceId } = usePractice();
   const [activeTab, setActiveTab] = useState<'overview' | 'queue' | 'trends'>('overview');
   const [dims, setDims] = useState<KpiDimension[]>(MOCK_KPI_DIMENSIONS);
-  const [queue] = useState<ReconsiderationRow[]>(MOCK_RECONSIDERATIONS);
+  const [queue, setQueue] = useState<ReconsiderationRow[]>(MOCK_RECONSIDERATIONS);
+  const [queueSource, setQueueSource] = useState<'live' | 'mock'>('mock');
   const [trend, setTrend] = useState<TrendPoint[]>(MOCK_TREND);
   const [kpiSource, setKpiSource] = useState<'live' | 'mock'>('mock');
+
+  useEffect(() => {
+    if (!practiceId) return;
+    apiFetchJson<{
+      queue?: Array<{
+        priority: string;
+        record: {
+          claimId: string;
+          denialDate: string;
+          deadlineDate: string;
+          status: ReconsiderationRow['status'];
+          denialReasonCode: string;
+        };
+        cdtCode?: string;
+        province?: string;
+      }>;
+    }>('/api/cdcp/queue')
+      .then((res) => {
+        const items = res.queue ?? [];
+        if (items.length === 0) return;
+        const now = Date.now();
+        setQueue(
+          items.map((t) => {
+            const deadline = new Date(t.record.deadlineDate);
+            const daysRemaining = Math.ceil((deadline.getTime() - now) / 86400000);
+            return {
+              claimId: t.record.claimId,
+              denialDate: t.record.denialDate.slice(0, 10),
+              deadline: t.record.deadlineDate.slice(0, 10),
+              daysRemaining,
+              procedure: t.cdtCode ? `CDT ${t.cdtCode}` : '—',
+              denialCode: t.record.denialReasonCode,
+              status: (t.priority === 'urgent' ? 'urgent' : t.record.status) as ReconsiderationRow['status'],
+              province: t.province ?? '—',
+            };
+          }),
+        );
+        setQueueSource('live');
+      })
+      .catch(() => setQueueSource('mock'));
+  }, [practiceId]);
 
   useEffect(() => {
     if (!practiceId) return;
@@ -329,7 +371,9 @@ export default function Phase5Dashboard() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="font-semibold text-gray-800">Reconsideration Queue</h2>
-            <span className="text-xs text-gray-400">{queue.length} claims</span>
+            <span className="text-xs text-gray-400">
+              {queue.length} claims · {queueSource === 'live' ? 'CDCP API' : 'demo data'}
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

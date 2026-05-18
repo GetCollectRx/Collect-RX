@@ -69,6 +69,16 @@ describe('Practice-scoped APIs — require authentication', () => {
     const res = await request(app).get('/api/queue/carrier-order');
     expect(res.status).toBe(401);
   });
+
+  it('GET /api/work-queue returns 401 without session', async () => {
+    const res = await request(app).get('/api/work-queue');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/admin/sync/runs returns 401 without session', async () => {
+    const res = await request(app).get('/api/admin/sync/runs');
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('Public patient pay — no auth', () => {

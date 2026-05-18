@@ -27,6 +27,7 @@ export default function SyncOpsDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState<string | null>(null)
+  const [lastResult, setLastResult] = useState<string | null>(null)
 
   const load = () => {
     if (!practiceId) return
@@ -45,7 +46,19 @@ export default function SyncOpsDashboard() {
     fd.append('file', file)
     try {
       const r = await apiFetch(`/api/admin/sync/import/${pmsSource}`, { method: 'POST', body: fd })
-      if (!r.ok) throw new Error('Import failed')
+      const j = await r.json().catch(() => ({})) as {
+        error?: string
+        imported?: number
+        skipped?: number
+        failed?: number
+        validationPassed?: boolean
+      }
+      if (!r.ok) throw new Error(j.error ?? 'Import failed')
+      setLastResult(
+        `${pmsSource}: ${j.imported ?? 0} imported, ${j.skipped ?? 0} skipped, ${j.failed ?? 0} failed` +
+          (j.validationPassed === false ? ' · validation drift flagged' : ''),
+      )
+      await apiFetch('/api/work-queue/sync', { method: 'POST' }).catch(() => undefined)
       load()
     } catch (e) {
       setError((e as Error).message)
@@ -64,6 +77,13 @@ export default function SyncOpsDashboard() {
             <p className="page-subtitle">PMS export imports, validation drift, and error drill-down.</p>
           </div>
         </header>
+
+        {lastResult && (
+          <p className="text-sm text-crx-600 dark:text-crx-400" role="status">
+            {lastResult}.{' '}
+            <Link to="/work-queue" className="underline">Open work queue</Link>
+          </p>
+        )}
 
         <Card>
           <CardHeader title="Upload nightly export" />

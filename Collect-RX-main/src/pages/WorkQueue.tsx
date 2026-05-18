@@ -30,7 +30,9 @@ export default function WorkQueue() {
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ itemType: '', aging: '' })
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingRepId, setEditingRepId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
+  const [rep, setRep] = useState('')
 
   const load = () => {
     if (!practiceId) return
@@ -63,6 +65,16 @@ export default function WorkQueue() {
       body: JSON.stringify({ notes }),
     })
     setEditingId(null)
+    load()
+  }
+
+  const saveRep = async (id: string) => {
+    await apiFetch(`/api/work-queue/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedRep: rep || null }),
+    })
+    setEditingRepId(null)
     load()
   }
 
@@ -124,7 +136,13 @@ export default function WorkQueue() {
                     <Td><Badge>{row.itemType}</Badge></Td>
                     <Td>${Number(row.dollarsAtRisk).toFixed(2)}</Td>
                     <Td>{row.daysOutstanding}</Td>
-                    <Td className="text-xs">{row.assignedRep ?? '—'}</Td>
+                    <Td className="text-xs max-w-[120px]">
+                      {editingRepId === row.id ? (
+                        <Input value={rep} onChange={(e) => setRep(e.target.value)} className="text-xs" />
+                      ) : (
+                        row.assignedRep ?? '—'
+                      )}
+                    </Td>
                     <Td className="max-w-xs">
                       {editingId === row.id ? (
                         <Input value={notes} onChange={(e) => setNotes(e.target.value)} className="text-xs" />
@@ -136,8 +154,13 @@ export default function WorkQueue() {
                       <Link to={linkFor(row)}><Button variant="ghost" size="sm">Open</Button></Link>
                       {editingId === row.id ? (
                         <Button variant="secondary" size="sm" onClick={() => void saveNotes(row.id)}>Save</Button>
+                      ) : editingRepId === row.id ? (
+                        <Button variant="secondary" size="sm" onClick={() => void saveRep(row.id)}>Save</Button>
                       ) : (
-                        <Button variant="ghost" size="sm" onClick={() => { setEditingId(row.id); setNotes(row.notes ?? '') }}>Note</Button>
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingId(row.id); setNotes(row.notes ?? '') }}>Note</Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingRepId(row.id); setRep(row.assignedRep ?? '') }}>Rep</Button>
+                        </>
                       )}
                     </Td>
                   </Tr>

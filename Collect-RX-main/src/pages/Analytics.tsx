@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
@@ -134,6 +135,7 @@ function CallQueuePriorityTable({ practiceId }: { practiceId: string }) {
                 <Th align="right">Appeal days</Th>
                 <Th align="right">Score</Th>
                 <Th align="right">Parts (age / $ / dl / att / st)</Th>
+                <Th />
               </tr>
             </Thead>
             <Tbody>
@@ -147,6 +149,11 @@ function CallQueuePriorityTable({ practiceId }: { practiceId: string }) {
                   <Td align="right"><Badge color="blue">{Math.round(r.scores.total)}</Badge></Td>
                   <Td align="right" muted className="text-xs whitespace-nowrap">
                     {Math.round(r.scores.age)} / {Math.round(r.scores.amount)} / {Math.round(r.scores.deadline)} / {r.scores.attempts} / {r.scores.status}
+                  </Td>
+                  <Td>
+                    <Link to={`/insurance/${r.claimId}`} className="text-xs text-crx-600 dark:text-crx-400 underline">
+                      Open
+                    </Link>
                   </Td>
                 </Tr>
               ))}

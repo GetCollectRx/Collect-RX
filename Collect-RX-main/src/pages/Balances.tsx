@@ -72,12 +72,19 @@ export default function Balances() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sortable by carrier, aging bucket, and amount</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link to="/work-queue"><Button variant="ghost" size="sm">Work queue</Button></Link>
+          <Link to="/insurance"><Button variant="secondary" size="sm">Carrier claims</Button></Link>
           {overdue60 > 0 && (
             <Badge color="red" dot>{overdue60} overdue &gt;60 d</Badge>
           )}
           <Button variant="secondary" size="sm">Export CSV</Button>
         </div>
       </div>
+
+      <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+        Outreach balances (reminder cadence). For carrier claim follow-up and voice queue, use{' '}
+        <Link to="/insurance" className="text-crx-600 underline">Insurance AR</Link>.
+      </p>
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-4 py-3 flex flex-wrap items-end gap-3">

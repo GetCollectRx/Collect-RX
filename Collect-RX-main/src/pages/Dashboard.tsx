@@ -185,7 +185,7 @@ export default function Dashboard() {
         <StatTile
           label="Calls Placed Today"
           value={s.telephony?.callsPlacedToday != null ? String(s.telephony.callsPlacedToday) : '—'}
-          sub="Vapi telephony not connected to this dashboard yet"
+          sub="carrier call attempts today (Vapi)"
           icon="📞"
           accent="blue"
         />
@@ -203,7 +203,14 @@ export default function Dashboard() {
 
         {/* A/R Aging analysis */}
         <Card className="xl:col-span-2">
-          <CardHeader title="A/R Aging Breakdown" subtitle="By days outstanding — oldest is highest risk" />
+          <CardHeader
+            title="A/R Aging Breakdown"
+            subtitle={
+              s.unifiedAr
+                ? 'All open work queue items (insurance + patient + outreach)'
+                : 'Insurance claims by days outstanding'
+            }
+          />
 
           {/* Bar chart */}
           <BarChart

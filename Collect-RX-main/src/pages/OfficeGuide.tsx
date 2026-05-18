@@ -22,8 +22,9 @@ export default function OfficeGuide() {
         <ol className="list-decimal list-inside space-y-3 text-sm text-gray-700 dark:text-gray-300">
           <li>
             <strong className="text-gray-900 dark:text-gray-100">Aging and balances show up.</strong>{' '}
-            Insurance and patient balances appear in <strong>Balances</strong> and <strong>Patient AR</strong> after
-            data sync (from your practice software or import). New items land in aging buckets you can see on the{' '}
+            Insurance and patient balances appear in <strong>Insurance AR</strong>, <strong>Outreach AR</strong>, and{' '}
+            <strong>Patient AR</strong> after data sync (from your practice software or import). Staff should use the{' '}
+            <strong>Work queue</strong> for ranked follow-up across all AR types. Aging summaries are on the{' '}
             <strong>Dashboard</strong>.
           </li>
           <li>
@@ -77,7 +78,8 @@ export default function OfficeGuide() {
               new procedures never appear.
             </p>
             <p className="mb-2">
-              <strong>What to do:</strong> If you use the CollectRx desktop helper, check the system tray icon: it
+              <strong>What to do:</strong> Open <Link to="/admin/sync" className="text-crx-600 dark:text-crx-400 underline">Admin → Sync ops</Link>
+              {' '}for import history and drift flags. If you use the CollectRx desktop helper, check the system tray icon: it
               normally shows sync status. Trigger a manual sync from the tray menu if available. If sync shows an
               error, note the message and contact support — the office does not need to open SQL or Railway.
             </p>

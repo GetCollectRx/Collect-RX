@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import type { CarrierId } from '@prisma/client';
+import type { CarrierId, WorkItemSource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { authenticate } from '../server/middleware/authenticate';
 import {
@@ -37,6 +37,24 @@ router.get('/', async (req: Request, res: Response) => {
     return res.json({ success: true, ...result });
   } catch (err) {
     console.error('[GET /work-queue]', err);
+    return res.status(500).json({ success: false, error: (err as Error).message });
+  }
+});
+
+router.get('/by-source/:sourceType/:sourceId', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const sourceType = req.params.sourceType as WorkItemSource;
+    const item = await prisma.workItem.findFirst({
+      where: {
+        practiceId,
+        sourceType,
+        sourceId: req.params.sourceId,
+        status: 'open',
+      },
+    });
+    return res.json({ success: true, data: item });
+  } catch (err) {
     return res.status(500).json({ success: false, error: (err as Error).message });
   }
 });

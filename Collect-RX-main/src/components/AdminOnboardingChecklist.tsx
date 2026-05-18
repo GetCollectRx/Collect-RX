@@ -5,7 +5,7 @@ const STEPS = [
   {
     id: 'import',
     title: 'Import balances',
-    body: 'Upload a CSV in Admin (Abeldent Sync simulator or your import path). Fix row errors until the import is clean.',
+    body: 'Upload a Dentrix or AbelDent export under Admin → Sync ops (or use the desktop AbelDent helper). Fix row errors until validation passes.',
   },
   {
     id: 'verify',
