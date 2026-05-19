@@ -25,6 +25,7 @@ import { sendCarrierBlockAlert } from '../services/alerts';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../outcome/webhookOutcomeResolver.js';
 import { recordVapiWebhook } from '../server/observability/metrics.js';
 import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
+import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
 import type { CarrierId } from '@prisma/client';
 import { claimStatusFromCallOutcome } from '../server/claimStatusFromCallOutcome.js';
@@ -173,6 +174,44 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
     throw err;
+  }
+
+  // Retrieve the created CallAttempt for guardrails updates
+  const callAttempt = await prisma.callAttempt.findUnique({
+    where: { vapi_call_id: vapiCallId },
+    select: { id: true },
+  });
+  if (!callAttempt) {
+    console.error('[vapi-webhook] Failed to retrieve created CallAttempt for guardrails');
+    return;
+  }
+
+  // ── 7b. Guardrails: scan metadata and payload ────────────────────────────
+  try {
+    const metadataResult = await webhookGuardScanMetadata(payload);
+    if (metadataResult.hasPhi) {
+      console.warn('[guardrails] Metadata contains PHI patterns:', metadataResult.findings);
+    }
+
+    const payloadResult = await webhookGuardScanPayload(payload);
+    if (payloadResult.hasPhi) {
+      console.warn('[guardrails] Payload contains PHI-like patterns:', payloadResult.findings);
+    }
+
+    // ── 7c. Persist transcript text ──────────────────────────────────────────
+    const transcriptResult = await persistFromVapiPayload(payload);
+    if (!transcriptResult.persisted) {
+      console.warn('[guardrails] Failed to persist transcript:', transcriptResult.error);
+    }
+
+    // ── 7d. Enqueue for async audit ──────────────────────────────────────────
+    const auditResult = await enqueueForAudit(callAttempt.id);
+    if (!auditResult.enqueued) {
+      console.warn('[guardrails] Failed to enqueue audit job:', auditResult.error);
+    }
+  } catch (guardrailsErr) {
+    console.error('[vapi-webhook] Guardrails error (non-fatal):', guardrailsErr);
+    // Continue processing — guardrails failures should not block the webhook
   }
 
   // ── 8. CARRIER_BLOCK protocol ────────────────────────────────────────────

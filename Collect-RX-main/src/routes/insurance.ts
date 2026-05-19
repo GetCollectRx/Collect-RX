@@ -17,6 +17,7 @@ import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
 import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
+import { writeDispatchAudit } from '../services/guardrails/index.js';
 import { authenticate } from '../server/middleware/authenticate';
 import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
@@ -298,6 +299,13 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       claimStatus: claim.status,
       scheduledFor: new Date(),
     });
+
+    // Write guardrails audit log (non-blocking)
+    try {
+      await writeDispatchAudit(claim.id, claim.patientToken, guard);
+    } catch (err) {
+      console.error('[guardrails] Failed to write dispatch audit:', err);
+    }
 
     if (!guard.allowed) {
       // If > 90 days → auto-escalate

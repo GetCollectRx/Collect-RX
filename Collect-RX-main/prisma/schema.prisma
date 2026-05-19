@@ -429,11 +429,15 @@ model CallAttempt {
   repName              String?     @map("rep_name")
   referenceNumber      String?     @map("reference_number")
   transcriptUrl        String?     @map("transcript_url")
+  /// Full transcript text from Vapi (persisted by guardrails layer)
+  transcriptText       String?     @map("transcript_text")
   /// True if this call triggered the CARRIER_BLOCK protocol.
   carrierBlockDetected Boolean     @default(false) @map("carrier_block_detected")
   createdAt            DateTime    @default(now()) @map("created_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
+  guardrailAudits      GuardrailAudit[]
+  guardrailOutbox      GuardrailAuditOutbox?
 
   @@index([claimId])
   @@index([vapiCallId])
@@ -745,4 +749,40 @@ model LearningCandidate {
   @@unique([cycleRunId, notionPageId])
   @@index([cycleRunId, rankScore(sort: Desc)])
   @@map("learning_candidates")
+}
+
+/// Outbox for async guardrail audit jobs (same pattern as EmrSyncOutbox)
+model GuardrailAuditOutbox {
+  id            String    @id @default(uuid())
+  callAttemptId String    @unique @map("call_attempt_id")
+  enqueuedAt    DateTime  @default(now()) @map("enqueued_at")
+  processedAt   DateTime? @map("processed_at")
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@index([enqueuedAt])
+  @@index([processedAt])
+  @@map("guardrail_audit_outbox")
+}
+
+/// Immutable audit results from NeMo Guardrails sidecar
+model GuardrailAudit {
+  id              String   @id @default(uuid())
+  callAttemptId   String   @map("call_attempt_id")
+  rulesVersion    String   @map("rules_version")
+  ranAt           DateTime @default(now()) @map("ran_at")
+  riskScore       Decimal  @map("risk_score") // 0.000..1.000
+  violationsJson  Json     @map("violations_json")
+  signalsJson     Json     @map("signals_json")
+  sidecarLatencyMs Int?    @map("sidecar_latency_ms")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@unique([callAttemptId, rulesVersion])
+  @@index([callAttemptId])
+  @@index([riskScore(sort: Desc)])
+  @@index([ranAt(sort: Desc)])
+  @@map("guardrail_audits")
 }

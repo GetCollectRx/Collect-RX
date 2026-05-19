@@ -76,6 +76,7 @@ import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { isLearningLoopEnabled } from './learning/config.js';
+import { drainGuardrailAuditOutbox } from '../workers/guardrailAuditWorker.js';
 import { getMetrics } from './observability/metrics.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
@@ -310,6 +311,14 @@ async function boot() {
     });
   } else if (isLearningLoopEnabled()) {
     startLearningLoopInProcess(prisma);
+  }
+
+  // Start guardrail audit worker (non-blocking, runs every 60s)
+  if (process.env.SIDECAR_URL) {
+    setInterval(drainGuardrailAuditOutbox, 60_000);
+    console.log('[server] Guardrail audit worker started');
+  } else {
+    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled');
   }
 
   const server = app.listen(PORT, () => {
