@@ -5,18 +5,27 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
+import express from 'express';
 import IORedis from 'ioredis';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runReminderCycle } from './patients/reminderEngine.js';
+import { runLearningCycle } from './learning/cycle.js';
 
 if (!process.env.REDIS_URL) {
-  console.error('worker: REDIS_URL is required');
+  console.error(
+    'worker: REDIS_URL is required.\n' +
+      '  Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env:\n' +
+      '    REDIS_URL=redis://127.0.0.1:6379\n' +
+      '  Without Redis: background jobs run in the API process when you `npm run dev` or `npm run start`.\n' +
+      '  One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
+  );
   process.exit(1);
 }
 
 const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 const prisma = new PrismaClient();
+const healthPort = parseInt(process.env.PORT ?? '3000', 10);
 
 const worker = new Worker(
   AR_QUEUE_NAME,
@@ -26,6 +35,8 @@ const worker = new Worker(
       await runRulesEngineTick(prisma);
     } else if (job.name === 'REMINDER_CYCLE') {
       await runReminderCycle();
+    } else if (job.name === 'LEARNING_CYCLE') {
+      await runLearningCycle(prisma);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);
     }
@@ -39,8 +50,27 @@ worker.on('failed', (job, err) => {
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
 
+// Railway services commonly enforce the same healthcheck path as the web service.
+// The worker is not public-facing, but this tiny endpoint lets Railway confirm it is alive.
+const healthApp = express();
+healthApp.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });
+});
+healthApp.get('/api/health/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ready', service: 'collectrx-worker' });
+  } catch (err) {
+    res.status(503).json({ status: 'not_ready', error: (err as Error).message });
+  }
+});
+const healthServer = healthApp.listen(healthPort, () => {
+  console.log(`[worker] health endpoint listening on port ${healthPort}`);
+});
+
 async function shutdown() {
   console.log('[worker] shutting down...');
+  healthServer.close();
   await worker.close();
   await prisma.$disconnect();
   await connection.quit();

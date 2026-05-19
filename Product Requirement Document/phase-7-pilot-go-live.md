@@ -1,4 +1,4 @@
-# PRD — Phase 6: Pilot Go-Live & Assumption Validation
+# PRD — Phase 7: Pilot Go-Live & Assumption Validation
 
 **Status:** ⏳ Pending  
 **Owner:** Khalid  
@@ -127,3 +127,72 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 - [ ] Pricing conversation with Dr. Hasan conducted
 - [ ] Post-pilot learnings documented for expansion playbook
 - [ ] Decision: proceed to Abeldent market expansion (3,700 practices) or pivot
+
+---
+
+## V2 Execution Layer
+
+### Validation Mode (Mandatory)
+
+- This phase is executed in **single-practice pilot validation mode**.
+- Expansion work is blocked until the Day-90 decision marks assumptions as validated.
+
+### Scope Lock
+
+**In scope**
+- Single-practice pilot operation, instrumentation, and assumption validation
+- Weekly KPI reporting and incident response workflow
+- Final go/no-go business decision package
+
+**Out of scope**
+- Concurrent onboarding of additional practices
+- Automated billing and generalized GTM rollout
+
+### Task Breakdown
+
+| ID | Task | Owner | Estimate | Dependency |
+|----|------|-------|----------|------------|
+| P6-1 | Finalize pilot scorecard and KPI calculation definitions | Khalid | 0.5 day | none |
+| P6-2 | Implement telemetry events for calls, outcomes, blocks, payments | Eng | 1 day | none |
+| P6-3 | Build weekly pilot report pipeline and template | Eng | 0.5 day | P6-2 |
+| P6-4 | Execute go-live checklist and day-1 on-call protocol | Khalid | 0.5 day | P6-1..P6-3 |
+| P6-5 | Run day-30 and day-60 structured checkpoint reviews | Khalid | 1 day total | P6-4 |
+| P6-6 | Compile day-90 assumption validation and pricing decision memo | Khalid | 1 day | P6-5 |
+
+### Test Plan
+
+- **Operational tests**
+  - Simulate webhook outage and verify alert routing.
+  - Simulate sync failure and verify runbook action timing.
+- **Data quality tests**
+  - Validate KPI formulas against raw event data weekly.
+  - Reconcile reported recovery totals with payment records.
+- **Pilot process tests**
+  - Dry-run escalation email and practice support handoff flow.
+  - Confirm block detection halts carrier calls immediately.
+
+### Risks & Mitigations
+
+| Risk | Trigger | Mitigation | Fallback |
+|------|---------|------------|----------|
+| KPI ambiguity weakens decision quality | Conflicting metric interpretations | Lock formula definitions before day 1 | Recompute all reports using canonical definition set |
+| Carrier behavior shifts mid-pilot | Sudden IVR/menu changes | Keep carrier rules in config and patch within 24h | Temporary manual routing for impacted carrier |
+| Pilot partner confidence drops | Sustained incidents or unclear ROI | Weekly transparent reporting + rapid incident follow-up | Pause automation and run assisted mode |
+
+### Operational Runbook
+
+- Publish weekly pilot summary every Friday (calls, outcomes, ROI, incidents).
+- Declare incident severity levels with response SLAs:
+  - Sev1: immediate SMS + active incident channel
+  - Sev2: response within 30 minutes
+  - Sev3: same-day triage
+- Maintain decision log for all config changes during pilot.
+
+### Exit Criteria (Go/No-Go)
+
+- [ ] Day-30, day-60, and day-90 reports completed with signed owner review
+- [ ] Assumption outcomes clearly marked Validated / Invalidated / Inconclusive
+- [ ] Incident summary and mitigation effectiveness documented
+- [ ] Pricing continuation decision recorded
+- [ ] Expansion recommendation package delivered
+- [ ] Explicit decision recorded: `scale`, `hold`, or `pivot` before any multi-practice work starts

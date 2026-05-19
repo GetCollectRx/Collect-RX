@@ -680,3 +680,69 @@ model ArCloseRun {
   @@index([practiceId, closeDate(sort: Desc)])
   @@map("ar_close_runs")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Autonomous learning & implementation loop
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum LearningBucket {
+  PRODUCT
+  ENGINEERING
+  OPS
+  GROWTH
+  COMPLIANCE
+
+  @@map("learning_bucket")
+}
+
+enum LearningCandidateStatus {
+  RESEARCHED
+  RANKED
+  IMPLEMENTED
+  SKIPPED
+  FAILED
+
+  @@map("learning_candidate_status")
+}
+
+/// One scheduled learning cycle (Notion pull → research → rank → implement → SMS).
+model LearningCycleRun {
+  id                String    @id @default(uuid())
+  startedAt         DateTime  @default(now()) @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  status            String    @default("running")
+  pulledCount       Int       @default(0) @map("pulled_count")
+  researchedCount   Int       @default(0) @map("researched_count")
+  rankedCount       Int       @default(0) @map("ranked_count")
+  implementedCount  Int       @default(0) @map("implemented_count")
+  skippedCount      Int       @default(0) @map("skipped_count")
+  smsSent           Boolean   @default(false) @map("sms_sent")
+  summary           Json?
+  error             String?
+
+  candidates LearningCandidate[]
+
+  @@index([startedAt(sort: Desc)])
+  @@map("learning_cycle_runs")
+}
+
+/// Item processed in a cycle; linked to Notion page.
+model LearningCandidate {
+  id                   String                  @id @default(uuid())
+  cycleRunId           String                  @map("cycle_run_id")
+  notionPageId         String                  @map("notion_page_id")
+  title                String
+  bucket               LearningBucket?
+  rankScore            Float?                  @map("rank_score")
+  feasibilityScore     Float?                  @map("feasibility_score")
+  status               LearningCandidateStatus @default(RESEARCHED)
+  researchNotes        Json?                   @map("research_notes")
+  implementationResult Json?                   @map("implementation_result")
+  createdAt            DateTime                @default(now()) @map("created_at")
+
+  cycleRun LearningCycleRun @relation(fields: [cycleRunId], references: [id], onDelete: Cascade)
+
+  @@unique([cycleRunId, notionPageId])
+  @@index([cycleRunId, rankScore(sort: Desc)])
+  @@map("learning_candidates")
+}

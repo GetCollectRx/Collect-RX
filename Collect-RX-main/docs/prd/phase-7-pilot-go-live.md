@@ -1,4 +1,4 @@
-# PRD — Phase 6: Pilot Go-Live & Assumption Validation
+# PRD — Phase 7: Pilot Go-Live & Assumption Validation
 
 **Status:** ⏳ Pending  
 **Owner:** Khalid  

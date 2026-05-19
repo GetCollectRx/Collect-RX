@@ -14,7 +14,7 @@ CollectRx is in **single-practice pilot mode** until an explicit **Day-90 decisi
 
 Before any expansion:
 
-1. Assumption validation is documented (see `Product Requirement Document/phase-6-pilot-go-live.md` and Notion).
+1. Assumption validation is documented (see `Product Requirement Document/phase-7-pilot-go-live.md` and Notion).
 2. A one-line decision is recorded: `scale` | `hold` | `pivot`.
 3. Stakeholders acknowledge the written guardrail in the project Notion and repository.
 

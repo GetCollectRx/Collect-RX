@@ -1,9 +1,20 @@
-# Local PostgreSQL for Collect-RX-main (matches production engine: PostgreSQL 16).
+# Local PostgreSQL + Redis for Collect-RX-main.
 # Usage: docker compose up -d
 # Host port 5433 avoids clashing with a native Postgres install on 5432 (Homebrew, Postgres.app).
+# Redis on 6379 — set REDIS_URL=redis://127.0.0.1:6379 in Collect-RX-main/.env for npm run worker.
 # Then set DATABASE_URL in Collect-RX-main/.env (see Collect-RX-main/.env.example).
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   postgres:
     image: postgres:16-alpine
     ports:

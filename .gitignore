@@ -21,6 +21,7 @@ Click-main/
 
 # Local Claude / Obsidian working copies
 Claude/
+.claude/worktrees/
 
 # Ad-hoc notes at repo root
 /CLAUDE 2.md

@@ -31,7 +31,22 @@ export async function registerArJobSchedulers(): Promise<void> {
     await q.add('REMINDER_CYCLE', {}, { repeat: { pattern } });
   }
 
+  const learningPattern = (process.env.LEARNING_CRON || '0 6 * * *').trim();
+  const learningOn = ['1', 'true', 'yes'].includes(
+    (process.env.LEARNING_LOOP_ENABLED || '').trim().toLowerCase(),
+  );
+  if (learningOn) {
+    if (!cron.validate(learningPattern)) {
+      console.error(
+        `[registerSchedulers] Invalid LEARNING_CRON "${learningPattern}" — LEARNING_CYCLE not registered`,
+      );
+    } else {
+      await q.add('LEARNING_CYCLE', {}, { repeat: { pattern: learningPattern } });
+    }
+  }
+
   console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"`
+    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"` +
+      (learningOn ? `, LEARNING cron "${learningPattern}"` : ''),
   );
 }

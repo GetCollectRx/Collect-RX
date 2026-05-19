@@ -74,6 +74,8 @@ import { createCdcpRouter } from './routes/cdcp.js';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startLearningLoopInProcess } from './learning/scheduler.js';
+import { isLearningLoopEnabled } from './learning/config.js';
 import { getMetrics } from './observability/metrics.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
@@ -306,6 +308,8 @@ async function boot() {
     registerArJobSchedulers().catch((err) => {
       console.error('[server] registerArJobSchedulers failed:', (err as Error).message);
     });
+  } else if (isLearningLoopEnabled()) {
+    startLearningLoopInProcess(prisma);
   }
 
   const server = app.listen(PORT, () => {

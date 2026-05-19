@@ -5,6 +5,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
+import { readPublicAppUrl } from '../envRailway.js';
 
 export function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -15,7 +16,7 @@ export function getStripe(): Stripe {
 
 /** Browser origin for Checkout / Portal return URLs (Vite dev vs production). */
 export function frontendBaseUrl(): string {
-  const fromEnv = process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL;
+  const fromEnv = readPublicAppUrl();
   if (fromEnv) return fromEnv.replace(/\/$/, '');
   if (process.env.NODE_ENV === 'production') return 'https://www.collectrx.ca';
   return 'http://localhost:5173';

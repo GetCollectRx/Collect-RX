@@ -11,4 +11,5 @@ Product requirements for every build phase. These are the source of truth — No
 | Phase 3 | [phase-3-eligibility-rules-engine.md](./phase-3-eligibility-rules-engine.md) | ✅ Complete |
 | Phase 4 | [phase-4-windows-installer-schema-discovery.md](./phase-4-windows-installer-schema-discovery.md) | ✅ Engineering complete (live session pending) |
 | Phase 5 | [phase-5-ui-ux-redesign.md](./phase-5-ui-ux-redesign.md) | ✅ Pilot-ready v1 |
-| Phase 6 | [phase-6-pilot-go-live.md](./phase-6-pilot-go-live.md) | ⏳ Pending |
+| Phase 6 | [phase-6-learning-and-implementation.md](./phase-6-learning-and-implementation.md) | 🚧 In progress |
+| Phase 7 | [phase-7-pilot-go-live.md](./phase-7-pilot-go-live.md) | ⏳ Pending |

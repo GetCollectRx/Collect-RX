@@ -31,6 +31,9 @@ prisma/dev.db-journal
 
 # OS
 .DS_Store
+
+# Parent monorepo Claude worktrees
+../.claude/worktrees/
 Thumbs.db
 
 # Logs

@@ -7,6 +7,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
 # Install dependencies
@@ -24,5 +25,5 @@ RUN npm run build
 # Expose port
 EXPOSE 3000
 
-# Start the server
-CMD ["npm", "run", "start"]
+# Start the web API by default; Railway worker service sets SERVICE_ROLE=worker.
+CMD ["sh", "-c", "if [ \"$SERVICE_ROLE\" = \"worker\" ]; then npm run worker; else npm run start; fi"]

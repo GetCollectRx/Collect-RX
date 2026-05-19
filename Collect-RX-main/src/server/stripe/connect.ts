@@ -11,6 +11,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
 import { PrismaClient } from '@prisma/client';
+import { readServerUrl } from '../envRailway.js';
 import { sendPaymentReceiptEmail } from '../patients/messaging';
 import { handlePlatformBillingWebhook } from './billing';
 
@@ -56,7 +57,7 @@ function getStripe(): Stripe {
   return new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
-const SERVER_URL = () => (process.env.SERVER_URL || 'https://localhost:3000').replace(/\/$/, '');
+const SERVER_URL = () => (readServerUrl() || 'https://localhost:3000').replace(/\/$/, '');
 
 // Connect account lookup
 export async function getConnectAccount(practiceId: string) {

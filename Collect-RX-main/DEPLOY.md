@@ -3,6 +3,8 @@
 This guide walks through exactly what your codebase needs to get from
 "Railway 404 train page" to a live app in the browser and a working desktop app.
 
+**Selling to practices / 24×7 for clients (not your Mac):** use the full production layout — web + Postgres + Redis + worker + custom domain — in **[docs/operations/RAILWAY-PRODUCTION.md](../docs/operations/RAILWAY-PRODUCTION.md)**.
+
 ---
 
 ## What you already have (no changes needed)
@@ -12,7 +14,7 @@ This guide walks through exactly what your codebase needs to get from
 | `Dockerfile` | ✅ Correct | Builds Prisma + TS + Vite, starts on port 3000 |
 | `railway.toml` | ✅ Correct | Docker builder, health check at `/api/health` |
 | `prisma/schema.prisma` | ✅ Ready | PostgreSQL, all models present |
-| `prisma/migrations/` | ✅ Ready | 8 migrations staged for `migrate deploy` |
+| `prisma/migrations/` | ✅ Ready | Migrations run via `releaseCommand` on each deploy |
 
 ---
 
@@ -171,15 +173,18 @@ Once the service is live, update these in external dashboards:
 Also set `TWILIO_SMS_INBOUND_URL` in Railway Variables to the Twilio webhook URL above
 (Twilio uses this for signature validation).
 
-### C2 — Background jobs with Redis (optional, Phase 8)
+### C2 — Background jobs with Redis (recommended for production / clients)
 
-If you want background job processing via BullMQ:
-1. Add a Redis service in Railway
-2. Add `REDIS_URL` variable to your web service (reference the Redis service)
-3. Add a second Railway service from the same repo/root with start command `npm run worker`
-   and the same `DATABASE_URL` + `REDIS_URL` variables
+**Required for selling:** reminders, rules, and Phase 6 learning should not depend on your laptop.
 
-Without Redis, rules and reminders run in-process — fine for a single-instance pilot.
+1. Add a **Redis** service in Railway
+2. Add `REDIS_URL` on **collectrx-web** (reference Redis)
+3. Add a second service **collectrx-worker** — same repo, root `Collect-RX-main`, same Dockerfile, **Custom Start Command:** `npm run worker`
+4. Copy `DATABASE_URL`, `REDIS_URL`, `NODE_ENV=production`, and integration env (Twilio, Notion for learning, etc.)
+
+See **[docs/operations/RAILWAY-PRODUCTION.md](../docs/operations/RAILWAY-PRODUCTION.md)** for the full diagram and variable list.
+
+Without Redis, rules/reminders/learning run in-process on the web container only — acceptable for a single-instance pilot, not ideal for multi-client production.
 
 ### C3 — Practice details
 
@@ -219,6 +224,15 @@ JWT_SECRET            → openssl rand -hex 32
 PUBLIC_APP_URL        → https://YOUR_SERVICE.up.railway.app
 ALLOWED_ORIGINS       → https://YOUR_SERVICE.up.railway.app
 SERVER_URL            → https://YOUR_SERVICE.up.railway.app
+```
+
+**Phase 6 learning loop (Railway):**
+
+```
+LEARNING_LOOP_ENABLED=1
+NOTION_API_KEY=...
+NOTION_LEARNING_DATABASE_ID=...
+LEARNING_CRON=0 6 * * *
 ```
 
 Everything else in `.env.example` is optional until you enable those integrations.

@@ -1,17 +1,14 @@
 const COLLECTRX_APEX = 'https://collectrx.ca';
 const COLLECTRX_WWW = 'https://www.collectrx.ca';
 
+import { readAllowedOriginsRaw as readAllowedOriginsEnv } from './envRailway.js';
+
 /**
  * Raw `ALLOWED_ORIGINS` string. Railway UI sometimes labels the row "Allowed Origins";
  * the canonical key is `ALLOWED_ORIGINS` — we accept a few aliases so CORS still applies.
  */
 export function readAllowedOriginsRaw(): string {
-  const v =
-    process.env.ALLOWED_ORIGINS ??
-    process.env['Allowed Origins'] ??
-    process.env.ALLOWED_ORIGIN ??
-    process.env.allowed_origins;
-  return (typeof v === 'string' ? v : '').trim();
+  return readAllowedOriginsEnv();
 }
 
 /**
