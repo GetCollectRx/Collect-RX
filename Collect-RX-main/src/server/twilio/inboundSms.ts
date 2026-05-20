@@ -54,12 +54,6 @@ export async function handleTwilioInboundSms(
       where: { patientPhone: { in: phoneCandidates } },
       select: { id: true, patientPhone: true },
     });
-    if (rows.length === 0) {
-      rows = await prisma.patientBalance.findMany({
-        where: { patientPhone: { not: null } },
-        select: { id: true, patientPhone: true },
-      });
-    }
   }
 
   if (STOP_RE.test(body)) {

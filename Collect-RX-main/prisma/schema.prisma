@@ -53,6 +53,9 @@ model Balance {
   states            BalanceState[]
   outreachEvents    OutreachEvent[]
   paymentEvents     PaymentEvent[]
+
+  @@index([practiceId])
+  @@index([practiceId, status])
 }
 
 model BalanceState {
@@ -61,6 +64,8 @@ model BalanceState {
   stage     String
   stageAt   DateTime @default(now())
   balance   Balance  @relation(fields: [balanceId], references: [id])
+
+  @@index([balanceId, stageAt(sort: Desc)])
 }
 
 model OutreachEvent {
@@ -169,6 +174,7 @@ model PatientBalance {
   @@index([practiceId])
   @@index([emailOptOutAt])
   @@index([patientPhone])
+  @@index([practiceId, abeldentPatientId, treatmentDate, procedureCode])
 }
 
 model StripeConnectAccount {
@@ -412,6 +418,7 @@ model InsuranceClaim {
   @@index([practiceId, carrierId])
   @@index([practiceId, status])
   @@index([carrierId, daysOutstanding])
+  @@index([practiceId, status, updatedAt])
   @@map("insurance_claims")
 }
 
@@ -478,6 +485,7 @@ model CallQueue {
   @@index([practiceId, status])
   @@index([scheduledFor])
   @@index([practiceId, priority, scheduledFor])
+  @@index([practiceId, status, updatedAt])
   @@map("call_queue")
 }
 

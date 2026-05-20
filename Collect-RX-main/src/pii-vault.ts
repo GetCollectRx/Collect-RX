@@ -12,6 +12,12 @@
  * PHIPA/PIPEDA compliance depends entirely on this boundary being respected.
  */
 
+/**
+ * @deprecated Use src/services/pii-vault.ts instead. This module stores full
+ * PHI in process memory and should not be used for new code. The canonical
+ * vault at services/pii-vault.ts stores only patientId→token mappings.
+ */
+
 import crypto from 'crypto';
 
 export interface PatientPHI {

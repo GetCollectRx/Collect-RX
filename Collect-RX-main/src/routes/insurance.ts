@@ -89,7 +89,7 @@ router.get('/claims', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /insurance/claims]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -123,7 +123,7 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
     return res.json({ success: true, data: updated });
   } catch (err) {
     console.error('[PATCH /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -181,7 +181,7 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
     return res.json({ success: true, data: updated });
   } catch (err) {
     console.error('[POST /insurance/claims/:id/confirm-payment]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -190,8 +190,32 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
     const claim = await prisma.insuranceClaim.findUnique({
       where: { id: req.params.id },
       include: {
-        callAttempts: { orderBy: { initiatedAt: 'desc' } },
-        queueEntry: true,
+        callAttempts: {
+          orderBy: { initiatedAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            vapiCallId: true,
+            initiatedAt: true,
+            completedAt: true,
+            durationSeconds: true,
+            outcome: true,
+            outcomeDetail: true,
+            repName: true,
+            referenceNumber: true,
+            carrierBlockDetected: true,
+          },
+        },
+        queueEntry: {
+          select: {
+            id: true,
+            status: true,
+            attempts: true,
+            scheduledFor: true,
+            lastAttemptAt: true,
+            priority: true,
+          },
+        },
       },
     });
 
@@ -202,7 +226,7 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
     return res.json({ success: true, data: claim });
   } catch (err) {
     console.error('[GET /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -242,7 +266,7 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
     });
   } catch (err) {
     console.error('[POST /insurance/claims/import]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -256,7 +280,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /insurance/analytics/denials]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -412,7 +436,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     });
   } catch (err) {
     console.error('[POST /insurance/queue/trigger/:claimId]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
@@ -465,7 +489,7 @@ router.get('/queue', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /insurance/queue]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
   }
 });
 
