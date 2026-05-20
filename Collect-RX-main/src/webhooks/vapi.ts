@@ -185,7 +185,23 @@ router.post('/', async (req: Request, res: Response) => {
 
     recordVapiWebhook('carrier_block');
 
-    await prisma.$transaction(async (tx) => {
+    // Lock the carrier_block_events row (if one exists) to serialize concurrent
+    // block detections for the same practice+carrier pair.
+    const alreadyBlocked = await prisma.$transaction(async (tx) => {
+      // Acquire advisory-style serialization: lock any existing active block row
+      // for this practice+carrier so a concurrent handler waits here.
+      const existingBlock = await tx.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT id FROM carrier_block_events
+         WHERE practice_id = $1 AND carrier_id = $2 AND resumed_at IS NULL
+         FOR UPDATE`,
+        claim.practiceId,
+        claim.carrierId,
+      );
+
+      if (existingBlock.length > 0) {
+        return true; // block already active — skip duplicate creation
+      }
+
       // a. Write CarrierBlockEvent
       await tx.carrierBlockEvent.create({
         data: {
@@ -212,18 +228,26 @@ router.post('/', async (req: Request, res: Response) => {
         where: { id: claim.id },
         data:  { status: 'BLOCKED' },
       });
+
+      return false;
     });
 
-    // d. Send alert (outside transaction — non-fatal if it fails)
-    try {
-      await sendCarrierBlockAlert({
-        practiceId:   claim.practiceId,
-        carrierId:    claim.carrierId as CarrierId,
-        vapiCallId,
-        outcomeDetail: processed.outcomeDetail,
-      });
-    } catch (alertErr) {
-      console.error('[vapi-webhook] Failed to send carrier block alert:', alertErr);
+    // d. Send alert only if we created a new block (outside transaction — non-fatal)
+    if (!alreadyBlocked) {
+      try {
+        await sendCarrierBlockAlert({
+          practiceId:   claim.practiceId,
+          carrierId:    claim.carrierId as CarrierId,
+          vapiCallId,
+          outcomeDetail: processed.outcomeDetail,
+        });
+      } catch (alertErr) {
+        console.error('[vapi-webhook] Failed to send carrier block alert:', alertErr);
+      }
+    } else {
+      console.log(
+        `[vapi-webhook] CARRIER_BLOCK already active for carrierId=${claim.carrierId} — skipping duplicate`,
+      );
     }
 
     return;  // Do not update claim status further — it's BLOCKED
@@ -232,6 +256,9 @@ router.post('/', async (req: Request, res: Response) => {
   // ── 9–10. Persist claim + queue status
   // APPROVED_PENDING_PAYMENT: close the *carrier automation* queue row (COMPLETED) — payment
   // tracking is practice AR, not repeat carrier dials. Claim row stays open for dashboards / AR.
+  //
+  // Uses SELECT FOR UPDATE to serialize concurrent webhook handlers that target
+  // the same claim (e.g. two different vapiCallIds for one claim finishing at once).
   const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
   const newClaimStatus = claimStatusFromCallOutcome(
     processed.outcome,
@@ -249,17 +276,24 @@ router.post('/', async (req: Request, res: Response) => {
         ? 'ESCALATED'
         : 'PENDING';
 
-  await prisma.callQueue.updateMany({
-    where: { claimId: claim.id },
-    data:  {
-      status:        newQueueStatus,
-      lastAttemptAt: new Date(),
-    },
-  });
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe(
+      `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
+      claim.id,
+    );
 
-  await prisma.insuranceClaim.update({
-    where: { id: claim.id },
-    data:  { status: newClaimStatus },
+    await tx.callQueue.updateMany({
+      where: { claimId: claim.id },
+      data:  {
+        status:        newQueueStatus,
+        lastAttemptAt: new Date(),
+      },
+    });
+
+    await tx.insuranceClaim.update({
+      where: { id: claim.id },
+      data:  { status: newClaimStatus },
+    });
   });
 
   recordVapiWebhook('claim_updated');

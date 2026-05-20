@@ -289,7 +289,8 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const attemptsSoFar = claim.queueEntry?.attempts ?? claim.callAttempts.length;
     const practiceId = claim.practiceId;
 
-    // Validate all dispatch rules
+    // Validate all dispatch rules (non-race-prone checks: CARRIER_BLOCK,
+    // days outstanding, business hours)
     const guard = await validateDispatch(prisma, {
       practiceId,
       carrierId: claim.carrierId,
@@ -316,26 +317,39 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       return res.status(422).json({ success: false, error: guard.reason });
     }
 
-    const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
+    // Atomically reserve the dispatch slot: lock the claim row, re-verify the
+    // attempt count under lock, set status to CALLING, and increment attempts.
+    // This eliminates the TOCTOU gap where two concurrent triggers could both
+    // pass the < 3 check and both dispatch.
+    const reserved = await prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(
+        `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
+        claimId,
+      );
 
-    // Initiate Vapi call
-    const vapiResult = await vapiClient.initiateCall({
-      claimId: claim.id,
-      carrierId: claim.carrierId,
-      patientToken: claim.patientToken,  // UUID from PIIVault — no real PHI
-      carrierPhone: carrierConfig.phone,
-      claimNumber: claim.claimNumber,
-      billedAmount: Number(claim.billedAmount),
-      outstandingAmount: Number(claim.outstandingAmount),
-    });
+      const lockedQueue = await tx.callQueue.findUnique({
+        where: { claimId },
+        select: { attempts: true, status: true },
+      });
+      const lockedClaim = await tx.insuranceClaim.findUnique({
+        where: { id: claimId },
+        select: { status: true },
+      });
 
-    // Update claim status and queue
-    await prisma.$transaction([
-      prisma.insuranceClaim.update({
+      const lockedAttempts = lockedQueue?.attempts ?? claim.callAttempts.length;
+      if (lockedAttempts >= 3) {
+        return { ok: false as const, reason: `Maximum 3 call attempts reached (${lockedAttempts} so far)` };
+      }
+      if (lockedClaim?.status === 'CALLING' || lockedQueue?.status === 'IN_PROGRESS') {
+        return { ok: false as const, reason: 'A call is already in progress for this claim' };
+      }
+
+      await tx.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },
-      }),
-      prisma.callQueue.upsert({
+      });
+
+      await tx.callQueue.upsert({
         where: { claimId },
         create: {
           practiceId,
@@ -351,8 +365,45 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
           attempts: { increment: 1 },
           lastAttemptAt: new Date(),
         },
-      }),
-    ]);
+      });
+
+      return { ok: true as const };
+    });
+
+    if (!reserved.ok) {
+      return res.status(422).json({ success: false, error: reserved.reason });
+    }
+
+    // Initiate Vapi call (outside the transaction — no DB lock held during HTTP)
+    const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
+    let vapiResult;
+    try {
+      vapiResult = await vapiClient.initiateCall({
+        claimId: claim.id,
+        carrierId: claim.carrierId,
+        patientToken: claim.patientToken,
+        carrierPhone: carrierConfig.phone,
+        claimNumber: claim.claimNumber,
+        billedAmount: Number(claim.billedAmount),
+        outstandingAmount: Number(claim.outstandingAmount),
+      });
+    } catch (vapiErr) {
+      // Vapi call failed — release the dispatch slot so the attempt isn't wasted
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: claimId },
+          data: { status: claim.status },
+        }),
+        prisma.callQueue.update({
+          where: { claimId },
+          data: {
+            status: 'PENDING',
+            attempts: { decrement: 1 },
+          },
+        }),
+      ]);
+      throw vapiErr;
+    }
 
     return res.json({
       success: true,
