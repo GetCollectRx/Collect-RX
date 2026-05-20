@@ -139,6 +139,14 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
+  const validInFlightStatuses = ['CALLING', 'IN_QUEUE', 'PENDING'];
+  if (!validInFlightStatuses.includes(claim.status)) {
+    console.warn(
+      `[vapi-webhook] Claim ${claim.id} status is ${claim.status} (not in-flight) — ignoring call ${vapiCallId}`,
+    );
+    return;
+  }
+
   recordVapiWebhook('call_ended');
 
   // ── 6. Classify outcome (structured `collectrx` preferred over transcript regex)

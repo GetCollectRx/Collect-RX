@@ -5,10 +5,8 @@
  * PHI stays in PostgreSQL — this module never ships patient data to external services.
  */
 
-import { PrismaClient } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../lib/prisma';
 
 interface BalanceRow {
   patient_first_name?: string;

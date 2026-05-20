@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
-import { setAuthCookie, clearAuthCookie, signPracticeToken } from '../authToken';
+import { setAuthCookie, clearAuthCookie } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authLimiter } from '../middleware/rateLimiter';
 import { getSubscriptionGateState } from '../stripe/billing';
@@ -28,7 +28,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       setAuthCookie(res, practice.id);
       const subscription = await getSubscriptionGateState(prisma, practice.id);
       res.json({
-        token: signPracticeToken(practice.id),
         practice: { id: practice.id, name: practice.name, timezone: practice.timezone },
         subscription,
       });

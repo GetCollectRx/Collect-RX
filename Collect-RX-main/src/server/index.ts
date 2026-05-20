@@ -42,6 +42,7 @@ import { pathToFileURL } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
@@ -52,6 +53,7 @@ import {
   webhookLimiter,
   healthLimiter,
 } from './middleware/rateLimiter';
+import { authenticate } from './middleware/authenticate';
 
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
@@ -124,6 +126,7 @@ app.use(cors({
   origin: resolveCorsAllowedOrigins(),
   credentials: true,
 }));
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe — webhook requires raw body (same signing secret as Connect + Billing)
@@ -185,7 +188,7 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
 });
 
-app.get('/api/health/metrics', healthLimiter, (_req: Request, res: Response) => {
+app.get('/api/health/metrics', healthLimiter, authenticate, (_req: Request, res: Response) => {
   res.json({ success: true, metrics: getMetrics() });
 });
 
