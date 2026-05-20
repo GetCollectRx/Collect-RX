@@ -9,7 +9,10 @@ import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { redactPriorityScoreRow } from '../server/accessControl/redaction.js';
 
 const DEFAULT_CARRIER_ORDER = [
   'sun_life',
@@ -34,6 +37,7 @@ function parseCarrierOrderJson(raw: string): string[] {
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 // GET /api/queue/carrier-order?practiceId=… — persisted drag order for CarrierPriorityPanel
 router.get('/carrier-order', async (req: Request, res: Response) => {
@@ -48,7 +52,7 @@ router.get('/carrier-order', async (req: Request, res: Response) => {
     return res.json({ order });
   } catch (err) {
     console.error('[GET /queue/carrier-order]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -69,7 +73,7 @@ router.post('/carrier-order', async (req: Request, res: Response) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error('[POST /queue/carrier-order]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -111,7 +115,7 @@ router.post('/priority', async (req: Request, res: Response) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error('[POST /queue/priority]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -125,10 +129,11 @@ router.get('/priority-scores', async (req: Request, res: Response) => {
     const practiceId = practiceIdFromSession(req);
 
     const ranked = await buildPriorityQueue(prisma, practiceId);
-    return res.json({ success: true, data: ranked });
+    const data = ranked.map((row) => redactPriorityScoreRow(row as Record<string, unknown>, req.auth));
+    return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /queue/priority-scores]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

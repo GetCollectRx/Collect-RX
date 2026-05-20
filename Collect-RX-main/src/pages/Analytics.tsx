@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
   StatTile, Card, CardHeader, StageBadge, Badge,
@@ -404,7 +405,23 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Analytics() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, loading: practiceLoading, isPlatformDev } = usePractice()
+
+  if (isPlatformDev) {
+    return (
+      <div className="page-enter p-6 space-y-6 max-w-6xl">
+        <div>
+          <h1 className="page-title">Analytics</h1>
+          <p className="page-subtitle">
+            Insurance recovery metrics only — patient-level reports are hidden in developer sessions.
+          </p>
+        </div>
+        {practiceId ? <InsuranceSection practiceId={practiceId} /> : (
+          <p className="text-sm text-gray-500">Select a practice in the sidebar to load metrics.</p>
+        )}
+      </div>
+    )
+  }
   const [loading,        setLoading]       = useState(false)
   const [collectionRate, setCollectionRate] = useState<any>(null)
   const [funnel,         setFunnel]        = useState<any[]>([])
@@ -486,11 +503,21 @@ export default function Analytics() {
       <div className="page-enter p-6 space-y-6 max-w-[1400px]">
 
         {/* Page header */}
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Analytics</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Insurance claims recovery, time saved, and collection performance
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Analytics</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Insurance claims recovery, time saved, and collection performance
+            </p>
+          </div>
+          {practiceId && (
+            <a
+              href={resolveApiUrl(`/api/analytics/practice-performance/export?practiceId=${encodeURIComponent(practiceId)}`)}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Export CSV
+            </a>
+          )}
         </div>
 
         {practicePerf && (

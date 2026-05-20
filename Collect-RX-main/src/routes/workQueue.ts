@@ -5,15 +5,19 @@ import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { redactWorkItem } from '../server/accessControl/redaction.js';
 import {
   listWorkItems,
   syncWorkItemsForPractice,
   type WorkQueueFilters,
 } from '../server/services/workQueueService.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -34,10 +38,13 @@ router.get('/', async (req: Request, res: Response) => {
     };
 
     const result = await listWorkItems(prisma, practiceId, filters, page, limit);
-    return res.json({ success: true, ...result });
+    const items = result.items.map((row) =>
+      redactWorkItem(row as Record<string, unknown>, req.auth),
+    );
+    return res.json({ success: true, ...result, items });
   } catch (err) {
     console.error('[GET /work-queue]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -53,9 +60,12 @@ router.get('/by-source/:sourceType/:sourceId', async (req: Request, res: Respons
         status: 'open',
       },
     });
-    return res.json({ success: true, data: item });
+    return res.json({
+      success: true,
+      data: item ? redactWorkItem(item as Record<string, unknown>, req.auth) : null,
+    });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -65,7 +75,7 @@ router.post('/sync', async (req: Request, res: Response) => {
     const result = await syncWorkItemsForPractice(prisma, practiceId);
     return res.json({ success: true, ...result });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -99,9 +109,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactWorkItem(updated as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

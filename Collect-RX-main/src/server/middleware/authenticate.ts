@@ -1,14 +1,17 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
-import { COOKIE_NAME, verifyPracticeToken } from '../authToken';
-import type { PracticeJwtPayload } from '../authToken';
+import { COOKIE_NAME, verifyAuthToken } from '../authToken';
+import type { AuthJwtPayload } from '../accessControl/types.js';
+import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 
 declare global {
   namespace Express {
     interface Request {
-      /** Set by `authenticate` after a valid practice JWT. */
-      practiceAuth?: PracticeJwtPayload;
+      /** Set by `authenticate` after a valid JWT. */
+      auth?: AuthJwtPayload;
+      /** @deprecated Use `auth` — still set for practice sessions during migration. */
+      practiceAuth?: AuthJwtPayload;
     }
   }
 }
@@ -26,12 +29,20 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    const payload = verifyPracticeToken(raw);
-    if (payload.role !== 'practice' || !payload.practiceId) {
+    const payload = verifyAuthToken(raw);
+    if (payload.role === 'practice' && !payload.practiceId) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
+    req.auth = payload;
     req.practiceAuth = payload;
+
+    const phiBlock = assertPhiRouteAllowed(payload, req);
+    if (phiBlock) {
+      res.status(403).json({ error: phiBlock });
+      return;
+    }
+
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });

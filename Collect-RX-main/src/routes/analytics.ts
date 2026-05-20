@@ -18,10 +18,13 @@ import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 // ---------------------------------------------------------------------------
 // GET /api/analytics/insurance
@@ -68,7 +71,7 @@ router.get('/insurance', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /analytics/insurance]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -119,7 +122,7 @@ router.get('/collection-rate', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /analytics/collection-rate]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -147,7 +150,7 @@ router.get('/stage-funnel', async (req: Request, res: Response) => {
     return res.json({ funnel });
   } catch (err) {
     console.error('[GET /analytics/stage-funnel]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -184,7 +187,7 @@ router.get('/priority-balances', async (req: Request, res: Response) => {
     return res.json({ priorityBalances });
   } catch (err) {
     console.error('[GET /analytics/priority-balances]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -214,7 +217,7 @@ router.get('/message-effectiveness', async (req: Request, res: Response) => {
     return res.json({ effectiveness });
   } catch (err) {
     console.error('[GET /analytics/message-effectiveness]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -241,7 +244,7 @@ router.get('/payment-trends', async (req: Request, res: Response) => {
     return res.json({ trends });
   } catch (err) {
     console.error('[GET /analytics/payment-trends]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -277,7 +280,81 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
     return res.json({ performance });
   } catch (err) {
     console.error('[GET /analytics/carrier-performance]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/phase5-kpis', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const days = Math.min(365, parseInt(String(req.query.days ?? '30'), 10) || 30);
+    const since = new Date(Date.now() - days * 86_400_000);
+    const { getPhase5CallKpis } = await import('../server/services/phase5CallKpis.js');
+    const data = await getPhase5CallKpis(prisma, practiceId, since);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /analytics/phase5-kpis]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/practice-performance/export', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const since90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const [workItems, closeRuns, patientPaid, claims] = await Promise.all([
+      prisma.workItem.aggregate({
+        where: { practiceId, status: 'open' },
+        _sum: { dollarsAtRisk: true },
+        _count: true,
+      }),
+      prisma.arCloseRun.findMany({
+        where: { practiceId, closeDate: { gte: since90 } },
+        orderBy: { closeDate: 'asc' },
+      }),
+      prisma.patientBalance.aggregate({
+        where: { practiceId, paymentStatus: 'paid' },
+        _sum: { amountPaid: true, amountBilled: true },
+      }),
+      prisma.insuranceClaim.count({ where: { practiceId, status: { not: 'RESOLVED' } } }),
+    ]);
+    const billed = Number(patientPaid._sum.amountBilled ?? 0);
+    const collected = Number(patientPaid._sum.amountPaid ?? 0);
+    const grossCollectionRate = billed > 0 ? Math.round((collected / billed) * 1000) / 10 : 0;
+    const lines: string[] = [
+      'section,metric,value',
+      `summary,open_ar_total,${Number(workItems._sum.dollarsAtRisk ?? 0)}`,
+      `summary,open_work_items,${workItems._count}`,
+      `summary,open_insurance_claims,${claims}`,
+      `summary,gross_collection_rate_pct,${grossCollectionRate}`,
+    ];
+    for (const r of closeRuns) {
+      lines.push(
+        [
+          'daily_close',
+          r.closeDate.toISOString().slice(0, 10),
+          Number(r.queueOpenTotal),
+          Number(r.paymentsReceived),
+          r.variancePct,
+          r.validationPassed,
+        ].join(','),
+      );
+    }
+    const body = lines.join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="collectrx-practice-performance.csv"');
+    return res.send(body);
+  } catch (err) {
+    console.error('[GET /analytics/practice-performance/export]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -356,7 +433,7 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /analytics/practice-performance]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
