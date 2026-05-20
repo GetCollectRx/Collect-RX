@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { verifyUnsubscribeRequest } from '../email/unsubscribeUrl';
+import { strictLimiter } from '../middleware/rateLimiter';
 
 /**
  * Unauthenticated public routes: patient pay token page + signed email unsubscribe.
@@ -60,7 +61,7 @@ export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.get('/public/pay/:publicToken', async (req: Request, res: Response) => {
+  r.get('/public/pay/:publicToken', strictLimiter, async (req: Request, res: Response) => {
     const publicToken = req.params.publicToken?.trim() ?? '';
     if (!publicToken) {
       return res.status(400).json({ error: 'Invalid link' });

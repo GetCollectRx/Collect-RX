@@ -10,12 +10,11 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import { readServerUrl } from '../envRailway.js';
 import { sendPaymentReceiptEmail } from '../patients/messaging';
 import { handlePlatformBillingWebhook } from './billing';
-
-const prisma = new PrismaClient();
 
 /** Prefer STRIPE_ONBOARD_RETURN_SECRET in prod if JWT rotation should not invalidate old Stripe return links. */
 function onboardHmacSecret(): string {

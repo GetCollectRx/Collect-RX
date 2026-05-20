@@ -17,6 +17,7 @@ import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
 
 import { authenticate } from '../middleware/authenticate';
+import { strictLimiter } from '../middleware/rateLimiter';
 
 function practiceId(req: Request): string {
   return req.practiceAuth!.practiceId;
@@ -64,7 +65,7 @@ export function createPatientArApiRouter(prisma: PrismaClient): Router {
   });
 
   /** AbelDent / service sync — JSON array or `{ records: [] }` (same shape as admin CSV pipeline). */
-  r.post('/patients/balances', async (req: Request, res: Response) => {
+  r.post('/patients/balances', strictLimiter, async (req: Request, res: Response) => {
     const pid = practiceId(req);
     try {
       const raw = req.body as unknown;
