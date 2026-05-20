@@ -89,14 +89,25 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
         continue;
       }
       const em = (ev.email || '').toLowerCase().trim();
+      const practiceId = (ev as Record<string, unknown>).practice_id as string | undefined;
       if (em) {
         try {
+          const where: Record<string, unknown> = {
+            patientEmail: { equals: em, mode: 'insensitive' },
+          };
+          if (practiceId) {
+            where.practiceId = practiceId;
+          }
           const r = await prisma.patientBalance.updateMany({
-            where: { patientEmail: { equals: em, mode: 'insensitive' } },
+            where,
             data: { emailOptOutAt: new Date() },
           });
           if (r.count) {
-            console.log('[sendgrid/webhook] email opt-out by address', { event: ev.event, count: r.count });
+            console.log('[sendgrid/webhook] email opt-out by address', {
+              event: ev.event,
+              count: r.count,
+              scoped: !!practiceId,
+            });
           }
         } catch (e) {
           console.error('[sendgrid/webhook] db error', (e as Error).message);
