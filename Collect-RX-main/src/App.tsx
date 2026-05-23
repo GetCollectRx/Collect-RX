@@ -26,6 +26,9 @@ import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
+import PatientLookup         from './pages/PatientLookup'
+import { useRoleAccess }     from './lib/useRoleAccess'
+import { ROLE_LABELS }       from './lib/authTypes'
 import { useEffect, type ReactNode } from 'react'
 
 // ── Icons ─────────────────────────────────────────────────────────────────
@@ -47,61 +50,6 @@ const ICONS = {
   signout:    'M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z',
 }
 
-/** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
-const PLATFORM_DEV_BLOCKED_PREFIXES = [
-  '/balances',
-  '/patient-ar',
-  '/estimate',
-  '/outbox',
-  '/cdcp',
-  '/pay',
-]
-
-const PLATFORM_DEV_NAV_PATHS = new Set([
-  '/',
-  '/guide',
-  '/work-queue',
-  '/insurance',
-  '/analytics',
-  '/admin',
-  '/admin/sync',
-])
-
-// ── Nav structure with section groupings ─────────────────────────────────
-const NAV_SECTIONS = [
-  {
-    label: 'Overview',
-    items: [
-      { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
-      { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
-    ],
-  },
-  {
-    label: 'Claims',
-    items: [
-      { to: '/work-queue', exact: false, label: 'Work Queue',    icon: ICONS.workqueue  },
-      { to: '/insurance',  exact: false, label: 'Insurance AR',  icon: ICONS.insurance  },
-      { to: '/balances',   exact: false, label: 'Outreach AR',   icon: ICONS.balances   },
-      { to: '/patient-ar', exact: false, label: 'Patient AR',    icon: ICONS.patientar  },
-    ],
-  },
-  {
-    label: 'Tools',
-    items: [
-      { to: '/estimate',  exact: false, label: 'Estimate',   icon: ICONS.estimate  },
-      { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics },
-      { to: '/outbox',    exact: false, label: 'Outbox',     icon: ICONS.outbox    },
-      { to: '/cdcp',      exact: false, label: 'CDCP',       icon: ICONS.cdcp      },
-    ],
-  },
-  {
-    label: 'Setup',
-    items: [
-      { to: '/admin', exact: false, label: 'Admin', icon: ICONS.admin },
-    ],
-  },
-]
-
 // ── Dark-mode toggle ──────────────────────────────────────────────────────
 function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme()
@@ -122,15 +70,49 @@ function ThemeToggle() {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
-  const { practices, practiceId, setPracticeId, logout, isPlatformDev } = usePractice()
+  const { practices, practiceId, setPracticeId, logout, isPlatformDev, sessionUser } = usePractice()
+  const access = useRoleAccess()
   const location = useLocation()
 
-  const navSections = isPlatformDev
-    ? NAV_SECTIONS.map((section) => ({
-        ...section,
-        items: section.items.filter((item) => PLATFORM_DEV_NAV_PATHS.has(item.to)),
-      })).filter((section) => section.items.length > 0)
-    : NAV_SECTIONS
+  // Build nav sections filtered by role access
+  const allSections = [
+    {
+      label: 'Overview',
+      items: [
+        access.canViewDashboard && { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
+        access.canViewGuide     && { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
+      ],
+    },
+    {
+      label: 'Claims',
+      items: [
+        access.canViewWorkQueue  && { to: '/work-queue', exact: false, label: 'Work Queue',   icon: ICONS.workqueue },
+        access.canViewInsurance  && { to: '/insurance',  exact: false, label: 'Insurance AR', icon: ICONS.insurance },
+        access.canViewBalances   && { to: '/balances',   exact: false, label: 'Outreach AR',  icon: ICONS.balances  },
+        access.canViewPatientAR  && { to: '/patient-ar', exact: false, label: 'Patient AR',   icon: ICONS.patientar },
+      ],
+    },
+    {
+      label: 'Tools',
+      items: [
+        access.canViewEstimate   && { to: '/estimate',  exact: false, label: 'Estimate',  icon: ICONS.estimate  },
+        access.canViewAnalytics  && { to: '/analytics', exact: false, label: 'Analytics', icon: ICONS.analytics },
+        access.canViewOutbox     && { to: '/outbox',    exact: false, label: 'Outbox',    icon: ICONS.outbox    },
+        access.canViewCdcp       && { to: '/cdcp',      exact: false, label: 'CDCP',      icon: ICONS.cdcp      },
+      ],
+    },
+    {
+      label: 'Setup',
+      items: [
+        access.canViewAdmin   && { to: '/admin',        exact: false, label: 'Admin',    icon: ICONS.admin   },
+        access.canViewBilling && { to: '/billing',      exact: false, label: 'Billing',  icon: ICONS.balances },
+      ],
+    },
+  ]
+
+  const navSections = allSections
+    .map(s => ({ ...s, items: s.items.filter(Boolean) as { to: string; exact: boolean; label: string; icon: string }[] }))
+    .filter(s => s.items.length > 0)
 
   return (
     <aside
@@ -192,6 +174,18 @@ function Sidebar() {
 
       {/* ── Footer ── */}
       <div className="border-t border-gray-100 dark:border-gray-800/70 flex-shrink-0">
+        {/* Logged-in user */}
+        {sessionUser && (
+          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate leading-tight">
+              {sessionUser.displayName}
+            </p>
+            <p className="text-2xs text-gray-400 dark:text-gray-600 mt-0.5">
+              {ROLE_LABELS[sessionUser.role] ?? sessionUser.role}
+            </p>
+          </div>
+        )}
+
         {/* Practice selector */}
         {practices.length > 0 && (
           <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
@@ -247,20 +241,52 @@ function Sidebar() {
   )
 }
 
-function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
-  const { isPlatformDev } = usePractice()
+// ── Route guard — redirects role to its allowed home if accessing a blocked path ──
+function RoleRouteGuard({ children }: { children: ReactNode }) {
+  const access = useRoleAccess()
   const location = useLocation()
-  if (
-    isPlatformDev &&
-    PLATFORM_DEV_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
-  ) {
-    return <Navigate to="/" replace />
-  }
+
+  // Map paths to the access flag that permits them
+  const routeAccess: [string, boolean][] = [
+    ['/work-queue',  access.canViewWorkQueue],
+    ['/insurance',   access.canViewInsurance],
+    ['/balances',    access.canViewBalances],
+    ['/patient-ar',  access.canViewPatientAR],
+    ['/estimate',    access.canViewEstimate],
+    ['/analytics',   access.canViewAnalytics],
+    ['/outbox',      access.canViewOutbox],
+    ['/cdcp',        access.canViewCdcp],
+    ['/admin',       access.canViewAdmin],
+    ['/billing',     access.canViewBilling],
+    ['/',            access.canViewDashboard],
+    ['/guide',       access.canViewGuide],
+  ]
+
+  const blocked = routeAccess.find(([prefix, allowed]) => {
+    const matches = prefix === '/'
+      ? location.pathname === '/'
+      : location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
+    return matches && !allowed
+  })
+
+  if (blocked) return <Navigate to={access.homeRoute} replace />
   return <>{children}</>
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
+  const access = useRoleAccess()
+
+  // Front desk gets their own minimal shell (no sidebar)
+  if (access.isPatientLookupOnly) {
+    return (
+      <Routes>
+        <Route path="/patient-lookup" element={<PatientLookup />} />
+        <Route path="*" element={<Navigate to="/patient-lookup" replace />} />
+      </Routes>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50/60 dark:bg-gray-950">
       <Sidebar />
@@ -268,25 +294,26 @@ function AppShell() {
         className="flex-1 ml-[220px] min-h-screen flex flex-col"
         id="main-content"
       >
-        <PlatformDevRouteGuard>
-        <Routes>
-          <Route path="/"              element={<Dashboard />} />
-          <Route path="/guide"         element={<OfficeGuide />} />
-          <Route path="/work-queue"    element={<WorkQueue />} />
-          <Route path="/insurance"     element={<InsuranceClaims />} />
-          <Route path="/insurance/:id" element={<InsuranceClaimDetail />} />
-          <Route path="/balances"      element={<Balances />} />
-          <Route path="/balances/:id"  element={<BalanceDetail />} />
-          <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/patient-ar"    element={<PatientAR />} />
-          <Route path="/estimate"      element={<PreTreatmentEstimate />} />
-          <Route path="/analytics"     element={<Analytics />} />
-          <Route path="/outbox"        element={<Outbox />} />
-          <Route path="/admin"         element={<Admin />} />
-          <Route path="/pay/:balanceId" element={<PaymentPage />} />
-          <Route path="/cdcp"          element={<Phase5Dashboard />} />
-        </Routes>
-        </PlatformDevRouteGuard>
+        <RoleRouteGuard>
+          <Routes>
+            <Route path="/"              element={<Dashboard />} />
+            <Route path="/guide"         element={<OfficeGuide />} />
+            <Route path="/work-queue"    element={<WorkQueue />} />
+            <Route path="/insurance"     element={<InsuranceClaims />} />
+            <Route path="/insurance/:id" element={<InsuranceClaimDetail />} />
+            <Route path="/balances"      element={<Balances />} />
+            <Route path="/balances/:id"  element={<BalanceDetail />} />
+            <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
+            <Route path="/patient-ar"    element={<PatientAR />} />
+            <Route path="/estimate"      element={<PreTreatmentEstimate />} />
+            <Route path="/analytics"     element={<Analytics />} />
+            <Route path="/outbox"        element={<Outbox />} />
+            <Route path="/admin"         element={<Admin />} />
+            <Route path="/billing"       element={<PracticeBillingPage />} />
+            <Route path="/pay/:balanceId" element={<PaymentPage />} />
+            <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          </Routes>
+        </RoleRouteGuard>
       </main>
     </div>
   )
