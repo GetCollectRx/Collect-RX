@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
+import { ChangePasswordModal } from './components/ChangePasswordModal'
 import PublicPatientPay from './pages/PublicPatientPay'
 import PaymentThankYou  from './pages/PaymentThankYou'
 import LegalTerms from './pages/LegalTerms'
@@ -27,9 +28,10 @@ import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
 import PatientLookup         from './pages/PatientLookup'
+import UsersAdmin            from './pages/UsersAdmin'
 import { useRoleAccess }     from './lib/useRoleAccess'
 import { ROLE_LABELS }       from './lib/authTypes'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -73,6 +75,7 @@ function Sidebar() {
   const { practices, practiceId, setPracticeId, logout, isPlatformDev, sessionUser } = usePractice()
   const access = useRoleAccess()
   const location = useLocation()
+  const [showChangePw, setShowChangePw] = useState(false)
 
   // Build nav sections filtered by role access
   const allSections = [
@@ -105,6 +108,7 @@ function Sidebar() {
       label: 'Setup',
       items: [
         access.canViewAdmin   && { to: '/admin',        exact: false, label: 'Admin',    icon: ICONS.admin   },
+        access.canManageUsers && { to: '/admin/users',  exact: false, label: 'Staff',    icon: ICONS.patientar },
         access.canViewBilling && { to: '/billing',      exact: false, label: 'Billing',  icon: ICONS.balances },
       ],
     },
@@ -183,8 +187,16 @@ function Sidebar() {
             <p className="text-2xs text-gray-400 dark:text-gray-600 mt-0.5">
               {ROLE_LABELS[sessionUser.role] ?? sessionUser.role}
             </p>
+            <button
+              onClick={() => setShowChangePw(true)}
+              className="mt-1 text-2xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400 transition-colors"
+            >
+              Change password
+            </button>
           </div>
         )}
+
+        {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
 
         {/* Practice selector */}
         {practices.length > 0 && (
@@ -248,18 +260,19 @@ function RoleRouteGuard({ children }: { children: ReactNode }) {
 
   // Map paths to the access flag that permits them
   const routeAccess: [string, boolean][] = [
-    ['/work-queue',  access.canViewWorkQueue],
-    ['/insurance',   access.canViewInsurance],
-    ['/balances',    access.canViewBalances],
-    ['/patient-ar',  access.canViewPatientAR],
-    ['/estimate',    access.canViewEstimate],
-    ['/analytics',   access.canViewAnalytics],
-    ['/outbox',      access.canViewOutbox],
-    ['/cdcp',        access.canViewCdcp],
-    ['/admin',       access.canViewAdmin],
-    ['/billing',     access.canViewBilling],
-    ['/',            access.canViewDashboard],
-    ['/guide',       access.canViewGuide],
+    ['/work-queue',   access.canViewWorkQueue],
+    ['/insurance',    access.canViewInsurance],
+    ['/balances',     access.canViewBalances],
+    ['/patient-ar',   access.canViewPatientAR],
+    ['/estimate',     access.canViewEstimate],
+    ['/analytics',    access.canViewAnalytics],
+    ['/outbox',       access.canViewOutbox],
+    ['/cdcp',         access.canViewCdcp],
+    ['/admin/users',  access.canManageUsers],
+    ['/admin',        access.canViewAdmin],
+    ['/billing',      access.canViewBilling],
+    ['/',             access.canViewDashboard],
+    ['/guide',        access.canViewGuide],
   ]
 
   const blocked = routeAccess.find(([prefix, allowed]) => {
@@ -304,6 +317,7 @@ function AppShell() {
             <Route path="/balances"      element={<Balances />} />
             <Route path="/balances/:id"  element={<BalanceDetail />} />
             <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
+            <Route path="/admin/users"   element={<UsersAdmin />} />
             <Route path="/patient-ar"    element={<PatientAR />} />
             <Route path="/estimate"      element={<PreTreatmentEstimate />} />
             <Route path="/analytics"     element={<Analytics />} />
@@ -312,6 +326,7 @@ function AppShell() {
             <Route path="/billing"       element={<PracticeBillingPage />} />
             <Route path="/pay/:balanceId" element={<PaymentPage />} />
             <Route path="/cdcp"          element={<Phase5Dashboard />} />
+            <Route path="*"              element={<Navigate to={access.homeRoute} replace />} />
           </Routes>
         </RoleRouteGuard>
       </main>

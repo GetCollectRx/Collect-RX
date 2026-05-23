@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
+import { useRoleAccess } from '../lib/useRoleAccess'
 import {
   StatTile, Badge, Button, Select, InlineToast, useToast,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty,
@@ -56,6 +57,7 @@ export default function PatientAR() {
   const [writingOffId, setWriteOff] = useState<string | null>(null)
   const [error, setError]           = useState<string | null>(null)
   const { toast, showToast }        = useToast()
+  const { canSendReminders, isReadOnly } = useRoleAccess()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -176,8 +178,8 @@ export default function PatientAR() {
               ) : (
                 balances.map(b => {
                   const fullName   = `${b.patientFirstName} ${b.patientLastName}`
-                  const canRemind  = (b.paymentStatus === 'outstanding' || b.paymentStatus === 'partial') && b.reminderStatus !== 'reminder_3'
-                  const canWriteOff = b.paymentStatus !== 'paid' && b.paymentStatus !== 'written_off'
+                  const canRemind  = !isReadOnly && canSendReminders && (b.paymentStatus === 'outstanding' || b.paymentStatus === 'partial') && b.reminderStatus !== 'reminder_3'
+                  const canWriteOff = !isReadOnly && (b.paymentStatus !== 'paid' && b.paymentStatus !== 'written_off')
                   const days       = b.daysSinceAdjudication ?? 0
                   const pStatus    = PAYMENT_LABELS[b.paymentStatus]  ?? { label: b.paymentStatus, color: 'gray' as const }
                   const rStatus    = REMINDER_LABELS[b.reminderStatus] ?? { label: b.reminderStatus, color: 'gray' as const }

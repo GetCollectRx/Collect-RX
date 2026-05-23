@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { useRoleAccess } from '../lib/useRoleAccess'
 import {
   Button, Select, Input, DataState,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty, Badge,
@@ -33,6 +34,7 @@ export default function WorkQueue() {
   const [editingRepId, setEditingRepId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [rep, setRep] = useState('')
+  const { isReadOnly } = useRoleAccess()
 
   const load = () => {
     if (!practiceId) return
@@ -92,7 +94,7 @@ export default function WorkQueue() {
             <h1 className="page-title">Work queue</h1>
             <p className="page-subtitle">All open AR ranked by dollars at risk, aging, and carrier denial risk.</p>
           </div>
-          <Button size="sm" onClick={() => void syncQueue()} disabled={syncing}>
+          <Button size="sm" onClick={() => void syncQueue()} disabled={syncing || isReadOnly}>
             {syncing ? 'Syncing…' : 'Refresh from sources'}
           </Button>
         </header>
@@ -152,15 +154,17 @@ export default function WorkQueue() {
                     </Td>
                     <Td className="space-x-1">
                       <Link to={linkFor(row)}><Button variant="ghost" size="sm">Open</Button></Link>
-                      {editingId === row.id ? (
-                        <Button variant="secondary" size="sm" onClick={() => void saveNotes(row.id)}>Save</Button>
-                      ) : editingRepId === row.id ? (
-                        <Button variant="secondary" size="sm" onClick={() => void saveRep(row.id)}>Save</Button>
-                      ) : (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingId(row.id); setNotes(row.notes ?? '') }}>Note</Button>
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingRepId(row.id); setRep(row.assignedRep ?? '') }}>Rep</Button>
-                        </>
+                      {!isReadOnly && (
+                        editingId === row.id ? (
+                          <Button variant="secondary" size="sm" onClick={() => void saveNotes(row.id)}>Save</Button>
+                        ) : editingRepId === row.id ? (
+                          <Button variant="secondary" size="sm" onClick={() => void saveRep(row.id)}>Save</Button>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingId(row.id); setNotes(row.notes ?? '') }}>Note</Button>
+                            <Button variant="ghost" size="sm" onClick={() => { setEditingRepId(row.id); setRep(row.assignedRep ?? '') }}>Rep</Button>
+                          </>
+                        )
                       )}
                     </Td>
                   </Tr>
