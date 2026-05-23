@@ -84,7 +84,8 @@
     "stripe": "^21.0.1",
     "twilio": "^5.13.1",
     "winston": "^3.13.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
@@ -155,7 +156,9 @@
       "identity": "-",
       "timestamp": "none",
       "strictVerify": false,
-      "additionalArguments": ["--strip-disallowed-xattrs"]
+      "additionalArguments": [
+        "--strip-disallowed-xattrs"
+      ]
     },
     "win": {
       "target": [

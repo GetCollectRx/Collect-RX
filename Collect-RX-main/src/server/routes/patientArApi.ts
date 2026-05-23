@@ -17,8 +17,14 @@ import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
 
 import { authenticate } from '../middleware/authenticate';
+import { authorizeRole } from '../middleware/authorizeRole';
+import { isUserSession } from '../accessControl/types.js';
+import type { UserAuthPayload } from '../accessControl/types.js';
 
 function practiceId(req: Request): string {
+  const auth = req.auth ?? req.practiceAuth;
+  if (auth && isUserSession(auth)) return (auth as UserAuthPayload).practiceId;
+  // fallback for practiceAuth (legacy)
   return req.practiceAuth!.practiceId;
 }
 
@@ -167,6 +173,62 @@ export function createPatientArApiRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('write-off error', e);
       return res.status(500).json({ error: 'Failed to write off' });
+    }
+  });
+
+  /**
+   * GET /api/patients/lookup?name=<search>
+   *
+   * Slim endpoint for Front Desk staff — returns ONLY balance, claim_status, and
+   * last_reminder_sent per the RBAC spec. Never returns full patient records.
+   * Accessible to front_desk and all higher roles.
+   */
+  r.get('/patients/lookup', authorizeRole('front_desk'), async (req: Request, res: Response) => {
+    try {
+      const auth = req.auth!;
+      const pid = isUserSession(auth)
+        ? (auth as UserAuthPayload).practiceId
+        : practiceId(req);
+
+      const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+      if (!name || name.length < 2) {
+        return res.status(400).json({ error: 'name query parameter must be at least 2 characters' });
+      }
+
+      const rows = await prisma.patientBalance.findMany({
+        where: {
+          practiceId: pid,
+          OR: [
+            { patientFirstName: { contains: name, mode: 'insensitive' } },
+            { patientLastName: { contains: name, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          id: true,
+          patientFirstName: true,
+          patientLastName: true,
+          patientOwes: true,
+          paymentStatus: true,
+          reminderStatus: true,
+          lastReminderEmailAt: true,
+          lastReminderSmsAt: true,
+        },
+        take: 20,
+        orderBy: { patientLastName: 'asc' },
+      });
+
+      return res.json({
+        results: rows.map((r) => ({
+          id: r.id,
+          name: `${r.patientFirstName} ${r.patientLastName}`,
+          balance: r.patientOwes,
+          claim_status: r.paymentStatus,
+          last_reminder_sent: r.lastReminderEmailAt ?? r.lastReminderSmsAt ?? null,
+        })),
+      });
+    } catch (e) {
+      console.error('patient lookup error', e);
+      return res.status(500).json({ error: 'Lookup failed' });
     }
   });
 

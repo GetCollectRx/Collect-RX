@@ -9,6 +9,7 @@ import {
 import { frontendBaseUrl } from '../stripe/billing';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import { practiceIdFromAuth, practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { isUserSession } from '../accessControl/types.js';
 import { apiClientErrorMessage, apiErrorMessageForResponse } from '../apiErrorMessage.js';
 
 function sessionPracticeIdForStripeReturn(req: Request, urlPracticeId: string): boolean {
@@ -19,7 +20,7 @@ function sessionPracticeIdForStripeReturn(req: Request, urlPracticeId: string): 
     const raw = fromBearer || fromCookie;
     if (!raw) return false;
     const payload = verifyAuthToken(raw);
-    if (payload.role === 'practice') return payload.practiceId === urlPracticeId;
+    if (isUserSession(payload)) return payload.practiceId === urlPracticeId;
     const ctx = practiceIdFromRequestHints(req) ?? practiceIdFromAuth(payload, req);
     return ctx === urlPracticeId;
   } catch {

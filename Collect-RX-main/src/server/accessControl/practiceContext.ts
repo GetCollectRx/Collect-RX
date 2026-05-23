@@ -1,5 +1,6 @@
 import type { Request } from 'express';
-import type { AuthJwtPayload } from './types.js';
+import type { AuthJwtPayload, UserAuthPayload } from './types.js';
+import { isPlatformDev, isUserSession } from './types.js';
 
 export const PRACTICE_CONTEXT_ERROR =
   'practiceId query parameter (or X-Practice-Id header) is required for platform developer sessions';
@@ -17,6 +18,8 @@ export function practiceIdFromRequestHints(req: Request): string | undefined {
 }
 
 export function practiceIdFromAuth(auth: AuthJwtPayload, req: Request): string | null {
-  if (auth.role === 'practice') return auth.practiceId;
-  return practiceIdFromRequestHints(req) ?? null;
+  if (isUserSession(auth)) return (auth as UserAuthPayload).practiceId;
+  // platform_dev: must supply practice context via query/body/header
+  if (isPlatformDev(auth)) return practiceIdFromRequestHints(req) ?? null;
+  return null;
 }

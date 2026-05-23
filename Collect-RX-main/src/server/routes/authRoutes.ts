@@ -3,20 +3,29 @@ import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import {
-  setAuthCookie,
+  setUserAuthCookie,
   setPlatformDevAuthCookie,
   clearAuthCookie,
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
+import { authorizeRole } from '../middleware/authorizeRole';
 import { authLimiter } from '../middleware/rateLimiter';
 import { getSubscriptionGateState } from '../stripe/billing';
 import {
   formatZodError,
   loginBodySchema,
   platformDevLoginBodySchema,
+  createUserBodySchema,
+  updateUserBodySchema,
+  changePasswordBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
-import { isPlatformDev } from '../accessControl/types.js';
+import { isPlatformDev, isUserSession, ROLE_LEVEL } from '../accessControl/types.js';
+import type { UserAuthPayload } from '../accessControl/types.js';
+
+const BCRYPT_ROUNDS = 12;
+
+// ─── Platform dev password ────────────────────────────────────────────────────
 
 function platformDevPasswordConfigured(): string | null {
   const plain = process.env.PLATFORM_DEV_PASSWORD?.trim();
@@ -39,38 +48,82 @@ async function verifyPlatformDevPassword(password: string): Promise<boolean> {
   return timingSafeEqual(a, b);
 }
 
+// ─── Role-based helpers ───────────────────────────────────────────────────────
+
+/**
+ * Returns true when the actor can manage the target role.
+ * Rules (from RBAC spec):
+ *  - platform_dev: can manage anyone
+ *  - practice_owner: can manage all roles below owner (not another owner)
+ *  - office_manager: can manage billing_coordinator, front_desk, associate_dentist, accountant
+ */
+function canManageRole(
+  actorAuth: UserAuthPayload,
+  targetRole: string,
+): boolean {
+  const actorLevel = ROLE_LEVEL[actorAuth.role as keyof typeof ROLE_LEVEL] ?? 0;
+  const targetLevel = ROLE_LEVEL[targetRole as keyof typeof ROLE_LEVEL] ?? 0;
+  return actorLevel > targetLevel;
+}
+
+// ─── Router factory ───────────────────────────────────────────────────────────
+
 export function createAuthRouter(prisma: PrismaClient): Router {
   const r = Router();
 
+  // ── Login ────────────────────────────────────────────────────────────────────
+
+  /** POST /api/auth/login — email + password */
   r.post('/login', authLimiter, async (req: Request, res: Response) => {
     try {
       const parsed = loginBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: formatZodError(parsed.error) });
       }
-      const { practiceId, password } = parsed.data;
-      const practice = await prisma.practice.findUnique({ where: { id: practiceId } });
-      if (!practice) {
+      const { email, password } = parsed.data;
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !user.isActive) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      const ok = await bcrypt.compare(password, practice.passwordHash);
+
+      // Accountant token expiry check
+      if (user.role === 'accountant' && user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
+        return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
+      }
+
+      const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      setAuthCookie(res, practice.id);
-      const subscription = await getSubscriptionGateState(prisma, practice.id);
-      res.json({
-        role: 'practice' as const,
-        phiAccess: true,
-        practice: { id: practice.id, name: practice.name, timezone: practice.timezone },
+
+      setUserAuthCookie(res, {
+        userId: user.id,
+        practiceId: user.practiceId,
+        role: user.role as UserAuthPayload['role'],
+        ...(user.providerId ? { providerId: user.providerId } : {}),
+      });
+
+      const practice = await prisma.practice.findUnique({
+        where: { id: user.practiceId },
+        select: { id: true, name: true, timezone: true },
+      });
+      const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+
+      return res.json({
+        role: user.role,
+        phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
+        practice,
         subscription,
+        user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
       });
     } catch (e) {
       console.error('Login error:', e);
-      res.status(500).json({ error: 'Login failed' });
+      return res.status(500).json({ error: 'Login failed' });
     }
   });
 
+  /** POST /api/auth/login/platform-dev */
   r.post('/login/platform-dev', authLimiter, async (req: Request, res: Response) => {
     try {
       if (!platformDevPasswordConfigured()) {
@@ -91,7 +144,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         select: { id: true, name: true, timezone: true },
         orderBy: { name: 'asc' },
       });
-      res.json({
+      return res.json({
         role: 'platform_dev' as const,
         phiAccess: false,
         practices,
@@ -106,18 +159,21 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
     } catch (e) {
       console.error('Platform dev login error:', e);
-      res.status(500).json({ error: 'Login failed' });
+      return res.status(500).json({ error: 'Login failed' });
     }
   });
 
+  /** POST /api/auth/logout */
   r.post('/logout', (_req, res) => {
     clearAuthCookie(res);
     res.json({ ok: true });
   });
 
+  /** GET /api/auth/me */
   r.get('/me', authenticate, async (req, res) => {
     try {
       const auth = req.auth!;
+
       if (isPlatformDev(auth)) {
         const practices = await prisma.practice.findMany({
           select: { id: true, name: true, timezone: true },
@@ -136,34 +192,267 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           practices,
           practice,
           subscription: {
-            enforce: false,
-            active: true,
-            status: null,
-            currentPeriodEnd: null,
-            priceConfigured: false,
-            skipped: true,
+            enforce: false, active: true, status: null,
+            currentPeriodEnd: null, priceConfigured: false, skipped: true,
           },
         });
       }
 
-      const id = auth.practiceId;
-      const practice = await prisma.practice.findUnique({
-        where: { id },
-        select: { id: true, name: true, timezone: true },
-      });
-      if (!practice) {
+      const user = auth as UserAuthPayload;
+      const [dbUser, practice] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: user.userId },
+          select: { id: true, email: true, displayName: true, role: true, isActive: true },
+        }),
+        prisma.practice.findUnique({
+          where: { id: user.practiceId },
+          select: { id: true, name: true, timezone: true },
+        }),
+      ]);
+      if (!dbUser || !dbUser.isActive || !practice) {
         return res.status(401).json({ error: 'Session invalid' });
       }
-      const subscription = await getSubscriptionGateState(prisma, id);
-      res.json({
-        role: 'practice',
-        phiAccess: true,
+      const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+      return res.json({
+        role: user.role,
+        phiAccess: auth.phiAccess,
         practice,
         subscription,
+        user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
       });
     } catch (e) {
       console.error('me error:', e);
-      res.status(500).json({ error: 'Failed' });
+      return res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // ── User management ──────────────────────────────────────────────────────────
+  // All routes below require at minimum office_manager.
+
+  /** GET /api/auth/users — list users for the current practice */
+  r.get('/users', authenticate, authorizeRole('office_manager'), async (req, res) => {
+    try {
+      const auth = req.auth as UserAuthPayload;
+      const practiceId = isPlatformDev(req.auth!)
+        ? (practiceIdFromRequestHints(req) ?? '')
+        : auth.practiceId;
+
+      const users = await prisma.user.findMany({
+        where: { practiceId },
+        select: {
+          id: true, email: true, displayName: true, role: true,
+          isActive: true, providerId: true, tokenExpiresAt: true,
+          createdAt: true, updatedAt: true,
+        },
+        orderBy: { displayName: 'asc' },
+      });
+      return res.json({ users });
+    } catch (e) {
+      console.error('list users error:', e);
+      return res.status(500).json({ error: 'Failed to list users' });
+    }
+  });
+
+  /** POST /api/auth/users — create a user in the current practice */
+  r.post('/users', authenticate, authorizeRole('office_manager'), async (req, res) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      const practiceId = actorAuth
+        ? actorAuth.practiceId
+        : (practiceIdFromRequestHints(req) ?? '');
+
+      const parsed = createUserBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: formatZodError(parsed.error) });
+      }
+      const { email, password, displayName, role, providerId } = parsed.data;
+
+      // Validate role assignment authority
+      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, role)) {
+        return res.status(403).json({ error: `Your role cannot create accounts with role '${role}'` });
+      }
+
+      if (role === 'associate_dentist' && !providerId) {
+        return res.status(400).json({ error: 'providerId is required for associate_dentist role' });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const tokenExpiresAt = role === 'accountant'
+        ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+        : null;
+
+      const user = await prisma.user.create({
+        data: {
+          practiceId,
+          email,
+          passwordHash,
+          displayName,
+          role: role as import('@prisma/client').PracticeRole,
+          providerId: providerId ?? null,
+          tokenExpiresAt,
+        },
+        select: {
+          id: true, email: true, displayName: true, role: true,
+          isActive: true, providerId: true, tokenExpiresAt: true, createdAt: true,
+        },
+      });
+
+      return res.status(201).json({ user });
+    } catch (e) {
+      console.error('create user error:', e);
+      return res.status(500).json({ error: 'Failed to create user' });
+    }
+  });
+
+  /** PATCH /api/auth/users/:userId — update a user */
+  r.patch('/users/:userId', authenticate, authorizeRole('office_manager'), async (req, res) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      const practiceId = actorAuth
+        ? actorAuth.practiceId
+        : (practiceIdFromRequestHints(req) ?? '');
+
+      const target = await prisma.user.findFirst({
+        where: { id: req.params.userId, practiceId },
+      });
+      if (!target) return res.status(404).json({ error: 'User not found' });
+
+      // Check authority to manage target
+      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, target.role)) {
+        return res.status(403).json({ error: 'Insufficient permissions to modify this user' });
+      }
+
+      const parsed = updateUserBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: formatZodError(parsed.error) });
+      }
+      const { displayName, role, isActive, providerId, tokenExpiresAt } = parsed.data;
+
+      // If changing role, verify the actor can assign the new role too
+      if (role && actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, role)) {
+        return res.status(403).json({ error: `Your role cannot assign role '${role}'` });
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: req.params.userId },
+        data: {
+          ...(displayName !== undefined ? { displayName } : {}),
+          ...(role !== undefined ? { role: role as import('@prisma/client').PracticeRole } : {}),
+          ...(isActive !== undefined ? { isActive } : {}),
+          ...(providerId !== undefined ? { providerId } : {}),
+          ...(tokenExpiresAt !== undefined ? { tokenExpiresAt: new Date(tokenExpiresAt) } : {}),
+        },
+        select: {
+          id: true, email: true, displayName: true, role: true,
+          isActive: true, providerId: true, tokenExpiresAt: true, updatedAt: true,
+        },
+      });
+
+      return res.json({ user: updated });
+    } catch (e) {
+      console.error('update user error:', e);
+      return res.status(500).json({ error: 'Failed to update user' });
+    }
+  });
+
+  /** DELETE /api/auth/users/:userId — deactivate a user (soft delete) */
+  r.delete('/users/:userId', authenticate, authorizeRole('office_manager'), async (req, res) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      const practiceId = actorAuth
+        ? actorAuth.practiceId
+        : (practiceIdFromRequestHints(req) ?? '');
+
+      const target = await prisma.user.findFirst({
+        where: { id: req.params.userId, practiceId },
+      });
+      if (!target) return res.status(404).json({ error: 'User not found' });
+
+      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, target.role)) {
+        return res.status(403).json({ error: 'Insufficient permissions to deactivate this user' });
+      }
+
+      // Prevent self-deactivation
+      if (actorAuth && target.id === actorAuth.userId) {
+        return res.status(400).json({ error: 'You cannot deactivate your own account' });
+      }
+
+      await prisma.user.update({ where: { id: target.id }, data: { isActive: false } });
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error('deactivate user error:', e);
+      return res.status(500).json({ error: 'Failed to deactivate user' });
+    }
+  });
+
+  /** POST /api/auth/users/:userId/change-password — user changes their own password */
+  r.post('/users/:userId/change-password', authenticate, async (req, res) => {
+    try {
+      const auth = req.auth!;
+      if (!isUserSession(auth)) {
+        return res.status(403).json({ error: 'Not available for platform dev sessions' });
+      }
+      const actor = auth as UserAuthPayload;
+
+      // Users can only change their own password (managers can reset via PATCH)
+      if (actor.userId !== req.params.userId) {
+        return res.status(403).json({ error: 'You can only change your own password' });
+      }
+
+      const parsed = changePasswordBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: formatZodError(parsed.error) });
+      }
+      const { currentPassword, newPassword } = parsed.data;
+
+      const user = await prisma.user.findUnique({ where: { id: actor.userId } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+      await prisma.user.update({ where: { id: actor.userId }, data: { passwordHash } });
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error('change password error:', e);
+      return res.status(500).json({ error: 'Failed to change password' });
+    }
+  });
+
+  // ── Practice Owner promotion ──────────────────────────────────────────────────
+  // Only platform_dev (Khalid) can promote a user to practice_owner.
+
+  /** POST /api/auth/users/:userId/promote-owner */
+  r.post('/users/:userId/promote-owner', authenticate, authorizeRole('platform_dev'), async (req, res) => {
+    try {
+      const practiceId = practiceIdFromRequestHints(req);
+      if (!practiceId) {
+        return res.status(400).json({ error: 'practiceId is required' });
+      }
+      const target = await prisma.user.findFirst({
+        where: { id: req.params.userId, practiceId },
+      });
+      if (!target) return res.status(404).json({ error: 'User not found' });
+
+      const updated = await prisma.user.update({
+        where: { id: target.id },
+        data: { role: 'practice_owner' },
+        select: { id: true, displayName: true, role: true },
+      });
+      return res.json({ user: updated });
+    } catch (e) {
+      console.error('promote owner error:', e);
+      return res.status(500).json({ error: 'Failed to promote user' });
     }
   });
 

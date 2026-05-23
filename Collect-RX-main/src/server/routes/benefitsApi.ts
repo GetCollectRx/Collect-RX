@@ -5,6 +5,8 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate';
+import { isUserSession } from '../accessControl/types.js';
+import type { UserAuthPayload } from '../accessControl/types.js';
 import {
   getCurrentBenefits,
   getCoverage,
@@ -14,6 +16,8 @@ import {
 import { calculateEstimate } from '../benefits/calculator';
 
 function practiceId(req: Request): string {
+  const auth = req.auth ?? req.practiceAuth;
+  if (auth && isUserSession(auth)) return (auth as UserAuthPayload).practiceId;
   return req.practiceAuth!.practiceId;
 }
 

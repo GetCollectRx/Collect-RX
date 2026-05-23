@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
-import type { AuthJwtPayload } from '../accessControl/types.js';
+import type { AuthJwtPayload, UserAuthPayload } from '../accessControl/types.js';
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 
@@ -11,7 +11,7 @@ declare global {
       /** Set by `authenticate` after a valid JWT. */
       auth?: AuthJwtPayload;
       /** @deprecated Use `auth` — still set for practice sessions during migration. */
-      practiceAuth?: AuthJwtPayload;
+      practiceAuth?: UserAuthPayload;
     }
   }
 }
@@ -30,12 +30,18 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
     const payload = verifyAuthToken(raw);
-    if (payload.role === 'practice' && !payload.practiceId) {
+
+    // Legacy guard: practice-layer tokens must carry practiceId
+    if (payload.role !== 'platform_dev' && !(payload as UserAuthPayload).practiceId) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
+
     req.auth = payload;
-    req.practiceAuth = payload;
+    // Keep practiceAuth in sync for routes still referencing it
+    if (payload.role !== 'platform_dev') {
+      req.practiceAuth = payload as UserAuthPayload;
+    }
 
     const phiBlock = assertPhiRouteAllowed(payload, req);
     if (phiBlock) {

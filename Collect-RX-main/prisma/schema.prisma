@@ -7,11 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Practice-layer roles. platform_dev is handled separately (no DB row).
+enum PracticeRole {
+  practice_owner
+  office_manager
+  billing_coordinator
+  front_desk
+  associate_dentist
+  accountant
+  group_admin
+}
+
 model Practice {
   id            String    @id @default(uuid())
   name          String
   timezone      String    @default("America/New_York")
-  // bcrypt/argon2 hash; required for /api/auth/login
+  /// Legacy single-practice password hash — kept for migration tooling only. Login now uses User.passwordHash.
   passwordHash  String
   /// Optional JSON: admin UI prefs (e.g. carrier toggles) — see /api/admin/settings
   settings      Json?
@@ -25,6 +36,28 @@ model Practice {
   balances              Balance[]
   ruleSets              RuleSet[]
   eligibilitySnapshots  EligibilitySnapshot[]
+  users                 User[]
+}
+
+/// Individual user account within a practice (or spanning practices for group_admin).
+model User {
+  id           String       @id @default(uuid())
+  practiceId   String
+  email        String       @unique
+  passwordHash String
+  role         PracticeRole
+  displayName  String
+  isActive     Boolean      @default(true)
+  /// associate_dentist only — all queries scoped to this provider ID server-side.
+  providerId   String?
+  /// accountant only — token is invalid after this date; renewable by office_manager.
+  tokenExpiresAt DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  practice     Practice     @relation(fields: [practiceId], references: [id])
+
+  @@index([practiceId])
+  @@index([email])
 }
 
 model Patient {
@@ -302,6 +335,8 @@ model AuditLog {
   id           String   @id @default(uuid())
   createdAt    DateTime @default(now())
   practiceId   String
+  /// User who performed the action; null for automated system actions or legacy entries.
+  userId       String?
   /// e.g. admin.settings.update, admin.csv.import, patient_ar.write_off
   action       String
   subjectType  String?
@@ -312,6 +347,7 @@ model AuditLog {
   userAgent  String?
 
   @@index([practiceId, createdAt])
+  @@index([userId, createdAt])
   @@index([createdAt])
 }
 

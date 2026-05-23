@@ -4,9 +4,10 @@ import {
   practiceIdFromRequestHints,
   PRACTICE_CONTEXT_ERROR,
 } from '../accessControl/practiceContext.js';
-import { isPlatformDev } from '../accessControl/types.js';
+import { isPlatformDev, isUserSession } from '../accessControl/types.js';
+import type { UserAuthPayload } from '../accessControl/types.js';
 
-/** Practice ID from JWT (practice) or `?practiceId=` / body / X-Practice-Id (platform_dev). */
+/** Practice ID from JWT (user session) or `?practiceId=` / body / X-Practice-Id (platform_dev). */
 export function practiceIdFromSession(req: Request): string {
   const auth = req.auth ?? req.practiceAuth;
   if (!auth) {
@@ -26,8 +27,9 @@ export function practiceIdFromSession(req: Request): string {
 export function queryPracticeConflictsSession(req: Request, queryPracticeId: string | undefined): boolean {
   const auth = req.auth ?? req.practiceAuth;
   if (!auth || isPlatformDev(auth)) return false;
-  if (auth.role !== 'practice') return false;
-  return Boolean(queryPracticeId?.trim() && queryPracticeId.trim() !== auth.practiceId);
+  if (!isUserSession(auth)) return false;
+  const practiceId = (auth as UserAuthPayload).practiceId;
+  return Boolean(queryPracticeId?.trim() && queryPracticeId.trim() !== practiceId);
 }
 
 /** Rejects platform_dev requests that omit practice context (400). */
@@ -37,7 +39,7 @@ export function requirePracticeContext(req: Request, res: Response, next: NextFu
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
-  if (auth.role === 'practice') {
+  if (isUserSession(auth)) {
     next();
     return;
   }
