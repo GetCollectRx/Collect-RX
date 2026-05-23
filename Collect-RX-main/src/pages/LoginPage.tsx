@@ -4,9 +4,7 @@ import { usePractice } from '../context/PracticeContext'
 
 export function LoginPage() {
   const { login, loginPlatformDev } = usePractice()
-  const [practiceId, setPracticeId] = useState(
-    () => (typeof localStorage !== 'undefined' && localStorage.getItem('crx_last_practice_id')) || ''
-  )
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [devPassword, setDevPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -30,9 +28,9 @@ export function LoginPage() {
     setError(null)
     setBusy(true)
     try {
-      await login(practiceId.trim(), password)
-    } catch {
-      setError('Invalid practice ID or password')
+      await login(email.trim().toLowerCase(), password)
+    } catch (err) {
+      setError((err as Error).message || 'Invalid email or password')
     } finally {
       setBusy(false)
     }
@@ -58,7 +56,6 @@ export function LoginPage() {
         background: 'radial-gradient(ellipse 80% 60% at 50% 40%, rgba(15,110,86,0.06) 0%, transparent 60%), #f8faf8',
       }}
     >
-      {/* Dark mode override */}
       <style>{`
         .dark #crx-login-bg {
           background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(18,201,109,0.04) 0%, transparent 60%), #030805;
@@ -94,16 +91,17 @@ export function LoginPage() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label htmlFor="crx-pid" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
-                Practice ID
+              <label htmlFor="crx-email" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                Email
               </label>
               <input
-                id="crx-pid"
+                id="crx-email"
+                type="email"
                 className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-crx-500/30 focus:border-crx-500 transition-colors"
-                placeholder="e.g. practice_abc123"
-                value={practiceId}
-                onChange={e => setPracticeId(e.target.value)}
-                autoComplete="username"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete="email"
                 required
               />
             </div>

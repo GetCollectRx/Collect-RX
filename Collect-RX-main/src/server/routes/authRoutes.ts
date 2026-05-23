@@ -456,5 +456,103 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // ── Password reset ────────────────────────────────────────────────────────────
+
+  /**
+   * POST /api/auth/reset-password/request
+   * Body: { email }
+   * Issues a reset token. In production, the token would be emailed; for now it is
+   * returned in the response so the admin can relay it to the user.
+   * Always returns 200 to avoid email enumeration.
+   */
+  r.post('/reset-password/request', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+      if (!email) return res.status(400).json({ error: 'email is required' });
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !user.isActive) {
+        // Return 200 regardless to prevent email enumeration
+        return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
+      }
+
+      // Invalidate any existing unused tokens for this user
+      await prisma.passwordResetToken.updateMany({
+        where: { userId: user.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+
+      const { randomBytes } = await import('node:crypto');
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await prisma.passwordResetToken.create({
+        data: { userId: user.id, token, expiresAt },
+      });
+
+      // TODO: send email with reset link when email service is configured.
+      // For now, platform_dev can retrieve the token via /api/auth/reset-password/token/:userId
+      console.log(`[password-reset] token issued for ${email}`);
+
+      return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
+    } catch (e) {
+      console.error('reset-password request error:', e);
+      return res.status(500).json({ error: 'Failed to process request' });
+    }
+  });
+
+  /**
+   * GET /api/auth/reset-password/token/:userId
+   * Platform-dev only — retrieves the current active reset token for a user.
+   * Used by admin to relay the token to the user until email delivery is wired up.
+   */
+  r.get('/reset-password/token/:userId', authenticate, authorizeRole('platform_dev'), async (req, res) => {
+    try {
+      const record = await prisma.passwordResetToken.findFirst({
+        where: { userId: req.params.userId, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!record) return res.status(404).json({ error: 'No active reset token found' });
+      return res.json({ token: record.token, expiresAt: record.expiresAt });
+    } catch (e) {
+      console.error('get reset token error:', e);
+      return res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  /**
+   * POST /api/auth/reset-password/confirm
+   * Body: { token, newPassword }
+   * Consumes the token and sets the new password.
+   */
+  r.post('/reset-password/confirm', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+      if (!token || !newPassword) {
+        return res.status(400).json({ error: 'token and newPassword are required' });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
+      }
+
+      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+      if (!record || record.usedAt || record.expiresAt < new Date()) {
+        return res.status(400).json({ error: 'Invalid or expired reset token' });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+      await prisma.$transaction([
+        prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+        prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      ]);
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error('reset-password confirm error:', e);
+      return res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
+
   return r;
 }

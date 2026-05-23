@@ -782,3 +782,16 @@ model LearningCandidate {
   @@index([cycleRunId, rankScore(sort: Desc)])
   @@map("learning_candidates")
 }
+
+/// One-time token for password reset. Expires after 1 hour.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
