@@ -166,18 +166,20 @@ interface ListOptions {
   practiceId?: string;
   paymentStatus?: string;
   reminderStatus?: string;
+  providerId?: string;
   limit?: number;
   offset?: number;
 }
 
 export async function listBalances(options: ListOptions = {}) {
-  const { practiceId, paymentStatus, reminderStatus, limit = 100, offset = 0 } = options;
+  const { practiceId, paymentStatus, reminderStatus, providerId, limit = 100, offset = 0 } = options;
 
   return prisma.patientBalance.findMany({
     where: {
       ...(practiceId && { practiceId }),
       ...(paymentStatus && { paymentStatus }),
       ...(reminderStatus && { reminderStatus }),
+      ...(providerId && { providerId }),
     },
     orderBy: [
       { daysSinceAdjudication: 'desc' },

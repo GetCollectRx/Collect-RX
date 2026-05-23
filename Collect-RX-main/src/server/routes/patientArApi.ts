@@ -17,7 +17,7 @@ import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
 
 import { authenticate } from '../middleware/authenticate';
-import { authorizeRole } from '../middleware/authorizeRole';
+import { authorizeRole, scopeToProvider } from '../middleware/authorizeRole';
 import { isUserSession } from '../accessControl/types.js';
 import type { UserAuthPayload } from '../accessControl/types.js';
 
@@ -36,14 +36,17 @@ function nextReminderStatus(current: string): string {
 export function createPatientArApiRouter(prisma: PrismaClient): Router {
   const r = Router();
   r.use(authenticate);
+  r.use(scopeToProvider);
 
   r.get('/patients/balances', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const ps = (req.query.payment_status as string) || '';
+      const provId = typeof req.query.providerId === 'string' ? req.query.providerId : undefined;
       const rows = await listBalances({
         practiceId: pid,
         paymentStatus: ps || undefined,
+        providerId: provId,
         limit: 500,
       });
       return res.json({
