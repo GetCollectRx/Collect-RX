@@ -1,13 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
-import type { AuthRole } from '../lib/authTypes'
+import type { AuthRole, PracticeRole } from '../lib/authTypes'
+import { isPracticeRole } from '../lib/authTypes'
 import { configureApiSession } from '../lib/practiceScopedApi'
 
 interface Practice {
   id: string
   name: string
   timezone: string
+}
+
+export interface SessionUser {
+  id: string
+  email: string
+  displayName: string
+  role: PracticeRole
 }
 
 export type SubscriptionGate = {
@@ -41,7 +49,9 @@ interface PracticeContextValue {
   phiAccess: boolean
   isPlatformDev: boolean
   subscription: SubscriptionGate
-  login: (practiceId: string, password: string) => Promise<void>
+  /** Current logged-in user (null for platform_dev sessions). */
+  sessionUser: SessionUser | null
+  login: (email: string, password: string) => Promise<void>
   loginPlatformDev: (password: string) => Promise<void>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -55,10 +65,33 @@ type MeResponse = {
   practice?: Practice
   practices?: Practice[]
   subscription?: SubscriptionGate
+  user?: SessionUser
 }
 
 function applySessionConfig(role: AuthRole | null, practiceId: string) {
   configureApiSession(role, practiceId)
+}
+
+function clearState(
+  setters: {
+    setPractices: (v: Practice[]) => void
+    setPracticeId: (v: string) => void
+    setRole: (v: AuthRole | null) => void
+    setPhiAccess: (v: boolean) => void
+    setSessionUser: (v: SessionUser | null) => void
+    setSubscription: (v: SubscriptionGate) => void
+    setAuthState: (v: AuthState) => void
+  },
+  authState: AuthState = 'anon',
+) {
+  setters.setPractices([])
+  setters.setPracticeId('')
+  setters.setRole(null)
+  setters.setPhiAccess(false)
+  setters.setSessionUser(null)
+  applySessionConfig(null, '')
+  setters.setSubscription(defaultSubscription)
+  setters.setAuthState(authState)
 }
 
 export function PracticeProvider({ children }: { children: ReactNode }) {
@@ -68,66 +101,36 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AuthRole | null>(null)
   const [phiAccess, setPhiAccess] = useState(false)
   const [subscription, setSubscription] = useState<SubscriptionGate>(defaultSubscription)
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
 
   const loading = authState === 'loading'
-  const isPlatformDev = role === 'platform_dev'
+  const isPlatformDevFlag = role === 'platform_dev'
+
+  const stateSetters = { setPractices, setPracticeId, setRole, setPhiAccess, setSessionUser, setSubscription, setAuthState }
 
   const logout = useCallback(async () => {
     await fetch(resolveApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' })
-    setPractices([])
-    setPracticeId('')
-    setRole(null)
-    setPhiAccess(false)
-    applySessionConfig(null, '')
-    setSubscription(defaultSubscription)
-    setAuthState('anon')
+    clearState(stateSetters)
   }, [])
 
   useEffect(() => {
-    const onExpired = () => {
-      void logout()
-    }
+    const onExpired = () => { void logout() }
     window.addEventListener('crx:session-expired', onExpired)
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])
 
   const refreshSession = useCallback(async () => {
     const r = await fetch(resolveApiUrl('/api/auth/me'), { credentials: 'include' })
-    if (r.status === 401) {
-      setPractices([])
-      setPracticeId('')
-      setRole(null)
-      setPhiAccess(false)
-      applySessionConfig(null, '')
-      setSubscription(defaultSubscription)
-      setAuthState('anon')
-      return
-    }
+    if (r.status === 401) { clearState(stateSetters); return }
     let data: MeResponse
     try {
       data = await parseApiJson<MeResponse>(r)
     } catch {
-      setPractices([])
-      setPracticeId('')
-      setRole(null)
-      setPhiAccess(false)
-      applySessionConfig(null, '')
-      setSubscription(defaultSubscription)
-      setAuthState('anon')
-      return
+      clearState(stateSetters); return
     }
-    if (!r.ok) {
-      setPractices([])
-      setPracticeId('')
-      setRole(null)
-      setPhiAccess(false)
-      applySessionConfig(null, '')
-      setSubscription(defaultSubscription)
-      setAuthState('anon')
-      return
-    }
+    if (!r.ok) { clearState(stateSetters); return }
 
-    const sessionRole = data.role ?? 'practice'
+    const sessionRole = data.role ?? null
     setRole(sessionRole)
     setPhiAccess(data.phiAccess === true)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
@@ -136,65 +139,42 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       const list = data.practices ?? []
       setPractices(list)
       let pid = ''
-      try {
-        pid = localStorage.getItem('crx_dev_practice_id') ?? ''
-      } catch {
-        /* ignore */
-      }
-      if (!pid || !list.some((p) => p.id === pid)) {
-        pid = list[0]?.id ?? ''
-      }
+      try { pid = localStorage.getItem('crx_dev_practice_id') ?? '' } catch { /* ignore */ }
+      if (!pid || !list.some((p) => p.id === pid)) pid = list[0]?.id ?? ''
       setPracticeId(pid)
-      if (pid) {
-        try {
-          localStorage.setItem('crx_dev_practice_id', pid)
-        } catch {
-          /* ignore */
-        }
-      }
+      if (pid) { try { localStorage.setItem('crx_dev_practice_id', pid) } catch { /* ignore */ } }
       applySessionConfig('platform_dev', pid)
+      setSessionUser(null)
       setAuthState('ready')
       return
     }
 
-    if (!data.practice?.id) {
-      setAuthState('anon')
-      return
-    }
-    try {
-      localStorage.setItem('crx_last_practice_id', data.practice.id)
-    } catch {
-      /* ignore */
-    }
+    if (!data.practice?.id) { setAuthState('anon'); return }
+    try { localStorage.setItem('crx_last_practice_id', data.practice.id) } catch { /* ignore */ }
     setPractices([data.practice])
     setPracticeId(data.practice.id)
-    applySessionConfig('practice', data.practice.id)
+    applySessionConfig(sessionRole, data.practice.id)
+    setSessionUser(data.user ?? null)
     setAuthState('ready')
   }, [])
 
   useEffect(() => {
-    void refreshSession().catch(() => {
-      setAuthState('anon')
-    })
+    void refreshSession().catch(() => { setAuthState('anon') })
   }, [refreshSession])
 
   useEffect(() => {
     if (role === 'platform_dev' && practiceId) {
-      try {
-        localStorage.setItem('crx_dev_practice_id', practiceId)
-      } catch {
-        /* ignore */
-      }
+      try { localStorage.setItem('crx_dev_practice_id', practiceId) } catch { /* ignore */ }
       applySessionConfig('platform_dev', practiceId)
     }
   }, [role, practiceId])
 
-  async function login(id: string, password: string) {
+  async function login(email: string, password: string) {
     const r = await fetch(resolveApiUrl('/api/auth/login'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ practiceId: id, password }),
+      body: JSON.stringify({ email, password }),
     })
     if (!r.ok) {
       let message = 'Login failed'
@@ -204,8 +184,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
           message = errBody.error
         }
       } catch {
-        message =
-          'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
+        message = 'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
       }
       throw new Error(message)
     }
@@ -215,19 +194,16 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     } catch {
       throw new Error('Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.')
     }
-    if (!data?.practice?.id) {
-      throw new Error('Invalid login response')
-    }
-    try {
-      localStorage.setItem('crx_last_practice_id', data.practice.id)
-    } catch {
-      /* ignore */
-    }
-    setRole('practice')
-    setPhiAccess(true)
+    if (!data?.practice?.id) throw new Error('Invalid login response')
+
+    const sessionRole: AuthRole = isPracticeRole(data.role ?? null) ? (data.role as PracticeRole) : 'practice_owner'
+    try { localStorage.setItem('crx_last_practice_id', data.practice.id) } catch { /* ignore */ }
+    setRole(sessionRole)
+    setPhiAccess(data.phiAccess === true)
     setPractices([data.practice])
     setPracticeId(data.practice.id)
-    applySessionConfig('practice', data.practice.id)
+    setSessionUser(data.user ?? null)
+    applySessionConfig(sessionRole, data.practice.id)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
     setAuthState('ready')
   }
@@ -247,8 +223,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
           message = errBody.error
         }
       } catch {
-        message =
-          'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
+        message = 'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
       }
       throw new Error(message)
     }
@@ -259,19 +234,14 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       throw new Error('Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.')
     }
     const list = data.practices ?? []
-    if (list.length === 0) {
-      throw new Error('No practices in database — seed a practice first')
-    }
+    if (list.length === 0) throw new Error('No practices in database — seed a practice first')
     const pid = list[0]!.id
     setRole('platform_dev')
     setPhiAccess(false)
     setPractices(list)
     setPracticeId(pid)
-    try {
-      localStorage.setItem('crx_dev_practice_id', pid)
-    } catch {
-      /* ignore */
-    }
+    setSessionUser(null)
+    try { localStorage.setItem('crx_dev_practice_id', pid) } catch { /* ignore */ }
     applySessionConfig('platform_dev', pid)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
     setAuthState('ready')
@@ -290,8 +260,9 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
         authState,
         role,
         phiAccess,
-        isPlatformDev,
+        isPlatformDev: isPlatformDevFlag,
         subscription,
+        sessionUser,
         login,
         loginPlatformDev,
         logout,
