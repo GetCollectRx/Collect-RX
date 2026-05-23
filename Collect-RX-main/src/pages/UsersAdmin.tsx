@@ -10,6 +10,7 @@ interface StaffUser {
   displayName: string
   role: PracticeRole
   isActive: boolean
+  tokenExpiresAt?: string | null
   createdAt: string
 }
 
@@ -25,7 +26,7 @@ export default function UsersAdmin() {
   const [showAdd, setShowAdd] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-  const [form, setForm] = useState({ email: '', displayName: '', role: 'billing_coordinator' as PracticeRole, password: '' })
+  const [form, setForm] = useState({ email: '', displayName: '', role: 'billing_coordinator' as PracticeRole, password: '', providerId: '' })
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -46,6 +47,21 @@ export default function UsersAdmin() {
     setBusy(id)
     try {
       const res = await apiFetch(`/api/auth/users/${id}`, { method: 'DELETE' })
+      if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
+      await load()
+    } catch (e) { alert((e as Error).message) }
+    finally { setBusy(null) }
+  }
+
+  async function handleRenewAccountant(id: string) {
+    setBusy(id)
+    const newExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+    try {
+      const res = await apiFetch(`/api/auth/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenExpiresAt: newExpiry }),
+      })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
     } catch (e) { alert((e as Error).message) }
@@ -75,7 +91,10 @@ export default function UsersAdmin() {
       const res = await apiFetch('/api/auth/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          providerId: form.role === 'associate_dentist' ? form.providerId : undefined,
+        }),
       })
       const body = await res.json() as { error?: string }
       if (!res.ok) { setFormError(body.error ?? 'Failed to create user'); return }
@@ -126,6 +145,20 @@ export default function UsersAdmin() {
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
                     {ROLE_LABELS[u.role] ?? u.role}
                   </span>
+                  {u.role === 'accountant' && u.tokenExpiresAt && (
+                    <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${new Date(u.tokenExpiresAt) < new Date() ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-900/20' : new Date(u.tokenExpiresAt) < new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) ? 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20' : 'text-gray-400 bg-gray-100 dark:bg-gray-800'}`}>
+                      {new Date(u.tokenExpiresAt) < new Date() ? 'Expired' : `Expires ${new Date(u.tokenExpiresAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}`}
+                    </span>
+                  )}
+                  {u.role === 'accountant' && (
+                    <button
+                      onClick={() => void handleRenewAccountant(u.id)}
+                      disabled={busy === u.id}
+                      className="text-xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400 disabled:opacity-50 transition-colors"
+                    >
+                      {busy === u.id ? '…' : 'Renew 90d'}
+                    </button>
+                  )}
                   {u.id !== sessionUser?.id && (
                     <button
                       onClick={() => void handleDeactivate(u.id, u.displayName)}
@@ -199,6 +232,19 @@ export default function UsersAdmin() {
                   ))}
                 </select>
               </div>
+              {form.role === 'associate_dentist' && (
+                <div>
+                  <label htmlFor="au-provider" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                    Provider ID <span className="text-gray-400 font-normal normal-case">(from AbelDent)</span>
+                  </label>
+                  <input
+                    id="au-provider" type="text" required value={form.providerId}
+                    onChange={e => setForm(p => ({ ...p, providerId: e.target.value }))}
+                    placeholder="e.g. DR001"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-crx-500/30 focus:border-crx-500 transition-colors"
+                  />
+                </div>
+              )}
               {formError && (
                 <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">{formError}</p>
               )}

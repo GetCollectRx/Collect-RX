@@ -22,6 +22,7 @@ import {
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { isPlatformDev, isUserSession, ROLE_LEVEL } from '../accessControl/types.js';
 import type { UserAuthPayload } from '../accessControl/types.js';
+import { sendPasswordResetEmail } from '../email/passwordReset.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -490,8 +491,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         data: { userId: user.id, token, expiresAt },
       });
 
-      // TODO: send email with reset link when email service is configured.
-      // For now, platform_dev can retrieve the token via /api/auth/reset-password/token/:userId
+      // Send email (fire-and-forget; errors are logged but never expose to caller)
+      void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
+        console.error('[password-reset] email send failed', e);
+      });
+
       console.log(`[password-reset] token issued for ${email}`);
 
       return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });

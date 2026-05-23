@@ -55,6 +55,7 @@ import {
 
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
+import { createGroupAdminRouter } from './routes/groupAdminRoutes';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
@@ -199,6 +200,7 @@ app.use('/api', standardLimiter);
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/stripe',     createStripeConnectRouter(prisma));
 app.use('/api/insurance',  insuranceRouter);

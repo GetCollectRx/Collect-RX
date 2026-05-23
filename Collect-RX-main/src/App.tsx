@@ -29,6 +29,8 @@ import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
 import PatientLookup         from './pages/PatientLookup'
 import UsersAdmin            from './pages/UsersAdmin'
+import ResetPasswordPage     from './pages/ResetPasswordPage'
+import GroupDashboard        from './pages/GroupDashboard'
 import { useRoleAccess }     from './lib/useRoleAccess'
 import { ROLE_LABELS }       from './lib/authTypes'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -79,13 +81,14 @@ function Sidebar() {
 
   // Build nav sections filtered by role access
   const allSections = [
-    {
-      label: 'Overview',
-      items: [
-        access.canViewDashboard && { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
-        access.canViewGuide     && { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
-      ],
-    },
+  {
+    label: 'Overview',
+    items: [
+      access.canViewDashboard      && { to: '/',                 exact: true,  label: 'Dashboard',       icon: ICONS.dashboard },
+      access.canViewGroupDashboard && { to: '/group-dashboard',  exact: true,  label: 'Group overview',  icon: ICONS.analytics },
+      access.canViewGuide          && { to: '/guide',            exact: true,  label: 'How it works',    icon: ICONS.guide    },
+    ],
+  },
     {
       label: 'Claims',
       items: [
@@ -260,19 +263,20 @@ function RoleRouteGuard({ children }: { children: ReactNode }) {
 
   // Map paths to the access flag that permits them
   const routeAccess: [string, boolean][] = [
-    ['/work-queue',   access.canViewWorkQueue],
-    ['/insurance',    access.canViewInsurance],
-    ['/balances',     access.canViewBalances],
-    ['/patient-ar',   access.canViewPatientAR],
-    ['/estimate',     access.canViewEstimate],
-    ['/analytics',    access.canViewAnalytics],
-    ['/outbox',       access.canViewOutbox],
-    ['/cdcp',         access.canViewCdcp],
-    ['/admin/users',  access.canManageUsers],
-    ['/admin',        access.canViewAdmin],
-    ['/billing',      access.canViewBilling],
-    ['/',             access.canViewDashboard],
-    ['/guide',        access.canViewGuide],
+    ['/work-queue',       access.canViewWorkQueue],
+    ['/insurance',        access.canViewInsurance],
+    ['/balances',         access.canViewBalances],
+    ['/patient-ar',       access.canViewPatientAR],
+    ['/estimate',         access.canViewEstimate],
+    ['/analytics',        access.canViewAnalytics],
+    ['/outbox',           access.canViewOutbox],
+    ['/cdcp',             access.canViewCdcp],
+    ['/admin/users',      access.canManageUsers],
+    ['/admin',            access.canViewAdmin],
+    ['/billing',          access.canViewBilling],
+    ['/group-dashboard',  access.canViewGroupDashboard],
+    ['/',                 access.canViewDashboard],
+    ['/guide',            access.canViewGuide],
   ]
 
   const blocked = routeAccess.find(([prefix, allowed]) => {
@@ -318,6 +322,7 @@ function AppShell() {
             <Route path="/balances/:id"  element={<BalanceDetail />} />
             <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
             <Route path="/admin/users"   element={<UsersAdmin />} />
+            <Route path="/group-dashboard" element={<GroupDashboard />} />
             <Route path="/patient-ar"    element={<PatientAR />} />
             <Route path="/estimate"      element={<PreTreatmentEstimate />} />
             <Route path="/analytics"     element={<Analytics />} />
@@ -390,6 +395,7 @@ function App() {
             <Route path="/legal/privacy" element={<LegalPrivacy />} />
             <Route path="/product" element={<ProductOnePager />} />
             <Route path="/changelog" element={<Changelog />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>
         </PracticeProvider>

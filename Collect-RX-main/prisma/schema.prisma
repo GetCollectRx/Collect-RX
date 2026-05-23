@@ -193,6 +193,8 @@ model PatientBalance {
   smsOptOutAt            DateTime?
   /// P4-02: set on one-click unsubscribe or SendGrid spam/bounce; blocks balance reminder email.
   emailOptOutAt          DateTime?
+  /// Associate Dentist scoping — populated by AbelDent sync; null means unassigned.
+  providerId             String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -200,6 +202,7 @@ model PatientBalance {
   @@index([paymentStatus])
   @@index([reminderStatus])
   @@index([practiceId])
+  @@index([providerId])
   @@index([emailOptOutAt])
   @@index([patientPhone])
 }
