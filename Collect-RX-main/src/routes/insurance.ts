@@ -22,10 +22,17 @@ import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import {
+  redactInsuranceClaim,
+  redactInsuranceClaimsList,
+} from '../server/accessControl/redaction.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 // ---------------------------------------------------------------------------
 // GET /api/insurance/claims
@@ -84,12 +91,12 @@ router.get('/claims', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      data: claims,
+      data: redactInsuranceClaimsList(claims as Record<string, unknown>[], req.auth),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
     console.error('[GET /insurance/claims]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -120,10 +127,13 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'No supported fields to update (send servicedAt)' });
     }
     const updated = await prisma.insuranceClaim.update({ where: { id }, data });
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
     console.error('[PATCH /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -178,10 +188,13 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
       }
     }
 
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
     console.error('[POST /insurance/claims/:id/confirm-payment]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -223,10 +236,13 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
-    return res.json({ success: true, data: claim });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(claim as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
     console.error('[GET /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -266,7 +282,7 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
     });
   } catch (err) {
     console.error('[POST /insurance/claims/import]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -280,7 +296,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /insurance/analytics/denials]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -436,7 +452,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     });
   } catch (err) {
     console.error('[POST /insurance/queue/trigger/:claimId]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -489,7 +505,7 @@ router.get('/queue', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /insurance/queue]', err);
-    return res.status(500).json({ success: false, error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

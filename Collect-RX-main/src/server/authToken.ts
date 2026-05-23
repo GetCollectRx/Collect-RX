@@ -1,12 +1,11 @@
 import jwt from 'jsonwebtoken';
 import type { CookieOptions, Response } from 'express';
+import type { AuthJwtPayload, PracticeAuthPayload } from './accessControl/types.js';
 
 const COOKIE_NAME = 'crx_access';
 
-export type PracticeJwtPayload = {
-  practiceId: string;
-  role: 'practice';
-};
+/** @deprecated Use `PracticeAuthPayload` — kept for importers that referenced the old name. */
+export type PracticeJwtPayload = PracticeAuthPayload;
 
 function signingSecret(): string {
   if (process.env.NODE_ENV === 'production') {
@@ -53,16 +52,42 @@ function cookieOptions(): CookieOptions {
 }
 
 export function signPracticeToken(practiceId: string): string {
-  const payload: PracticeJwtPayload = { practiceId, role: 'practice' };
+  const payload: PracticeAuthPayload = { practiceId, role: 'practice', phiAccess: true };
   return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
 }
 
-export function verifyPracticeToken(token: string): PracticeJwtPayload {
-  return jwt.verify(token, signingSecret()) as PracticeJwtPayload;
+export function signPlatformDevToken(): string {
+  const payload: AuthJwtPayload = { role: 'platform_dev', phiAccess: false };
+  return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
+}
+
+export function verifyAuthToken(token: string): AuthJwtPayload {
+  const payload = jwt.verify(token, signingSecret()) as AuthJwtPayload;
+  if (payload.role === 'practice') {
+    if (!payload.practiceId) throw new jwt.JsonWebTokenError('missing practiceId');
+    return { role: 'practice', practiceId: payload.practiceId, phiAccess: true };
+  }
+  if (payload.role === 'platform_dev') {
+    return { role: 'platform_dev', phiAccess: false };
+  }
+  throw new jwt.JsonWebTokenError('invalid role');
+}
+
+/** @deprecated Use `verifyAuthToken` */
+export function verifyPracticeToken(token: string): PracticeAuthPayload {
+  const p = verifyAuthToken(token);
+  if (p.role !== 'practice') {
+    throw new jwt.JsonWebTokenError('not a practice token');
+  }
+  return p;
 }
 
 export function setAuthCookie(res: Response, practiceId: string): void {
   res.cookie(COOKIE_NAME, signPracticeToken(practiceId), cookieOptions());
+}
+
+export function setPlatformDevAuthCookie(res: Response): void {
+  res.cookie(COOKIE_NAME, signPlatformDevToken(), cookieOptions());
 }
 
 export function clearAuthCookie(res: Response): void {

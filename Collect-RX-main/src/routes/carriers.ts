@@ -14,10 +14,14 @@ import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { carrierUnblockBodySchema, formatZodError } from '../server/validation/zodSchemas.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 // ---------------------------------------------------------------------------
 // GET /api/carriers/health
@@ -133,7 +137,7 @@ router.get('/health', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /carriers/health]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -154,15 +158,11 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: `Unknown carrier: ${carrierId}` });
     }
 
-    const { resumedBy, notes, practiceId: bodyPracticeId } = req.body as {
-      resumedBy?: string;
-      notes?: string;
-      practiceId?: string;
-    };
-
-    if (!resumedBy) {
-      return res.status(400).json({ success: false, error: 'resumedBy is required' });
+    const parsed = carrierUnblockBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: formatZodError(parsed.error) });
     }
+    const { resumedBy, notes, practiceId: bodyPracticeId } = parsed.data;
 
     const sessionPid = practiceIdFromSession(req);
     if (queryPracticeConflictsSession(req, bodyPracticeId)) {
@@ -212,7 +212,7 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[POST /carriers/:id/unblock]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

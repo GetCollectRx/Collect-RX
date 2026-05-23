@@ -7,20 +7,23 @@ import {
   verifyOnboardReturn,
 } from '../stripe/connect';
 import { frontendBaseUrl } from '../stripe/billing';
-import { COOKIE_NAME, verifyPracticeToken, type PracticeJwtPayload } from '../authToken';
+import { COOKIE_NAME, verifyAuthToken } from '../authToken';
+import { practiceIdFromAuth, practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { apiClientErrorMessage, apiErrorMessageForResponse } from '../apiErrorMessage.js';
 
-function practicePayloadFromRequest(req: Request): PracticeJwtPayload | null {
+function sessionPracticeIdForStripeReturn(req: Request, urlPracticeId: string): boolean {
   try {
     const fromCookie = req.cookies?.[COOKIE_NAME] as string | undefined;
     const header = req.headers.authorization;
     const fromBearer = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
     const raw = fromBearer || fromCookie;
-    if (!raw) return null;
-    const payload = verifyPracticeToken(raw);
-    if (payload.role !== 'practice' || !payload.practiceId) return null;
-    return payload;
+    if (!raw) return false;
+    const payload = verifyAuthToken(raw);
+    if (payload.role === 'practice') return payload.practiceId === urlPracticeId;
+    const ctx = practiceIdFromRequestHints(req) ?? practiceIdFromAuth(payload, req);
+    return ctx === urlPracticeId;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -28,8 +31,7 @@ function practicePayloadFromRequest(req: Request): PracticeJwtPayload | null {
 function allowStripeOnboardReturn(req: Request, practiceId: string): boolean {
   const v = typeof req.query.v === 'string' ? req.query.v : '';
   if (verifyOnboardReturn(practiceId, v)) return true;
-  const session = practicePayloadFromRequest(req);
-  return Boolean(session?.practiceId === practiceId);
+  return sessionPracticeIdForStripeReturn(req, practiceId);
 }
 
 export function stripeWebhookHandler(prisma: PrismaClient) {
@@ -49,7 +51,7 @@ export function stripeWebhookHandler(prisma: PrismaClient) {
       res.json({ received: true, ...result });
     } catch (e) {
       console.error('[stripe/webhook]', e);
-      res.status(400).json({ error: (e as Error).message });
+      res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   };
 }
@@ -73,7 +75,7 @@ export function createStripeConnectRouter(prisma: PrismaClient): Router {
       res.redirect(303, url);
     } catch (e) {
       console.error('[stripe/connect/refresh]', e);
-      res.status(500).send((e as Error).message);
+      res.status(500).send(apiErrorMessageForResponse(e));
     }
   });
 

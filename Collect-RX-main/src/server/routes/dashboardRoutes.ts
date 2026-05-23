@@ -5,12 +5,16 @@ import { authenticate } from '../middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
+  requirePracticeContext,
 } from '../middleware/requirePracticeSession';
+import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 const OPEN_STATUSES: ClaimStatus[] = [
   'PENDING',
@@ -153,12 +157,17 @@ router.get('/stats', async (req: Request, res: Response) => {
       stripeAcct?.chargesEnabled && process.env.STRIPE_SECRET_KEY?.trim(),
     );
 
-    const recentPayments = payments.slice(0, 8).map((p) => ({
-      id: p.id,
-      amount: p.amountCents / 100,
-      paidAt: p.paidAt.toISOString(),
-      patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
-    }));
+    const recentPayments = payments.slice(0, 8).map((p) =>
+      redactDashboardRecentPayment(
+        {
+          id: p.id,
+          amount: p.amountCents / 100,
+          paidAt: p.paidAt.toISOString(),
+          patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
+        },
+        req.auth,
+      ),
+    );
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
 
@@ -196,7 +205,48 @@ router.get('/stats', async (req: Request, res: Response) => {
           'Database schema is missing CollectRx tables. On this machine run: npx prisma migrate deploy (from Collect-RX-main with DATABASE_URL set).',
       });
     }
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/ar-close', async (req: Request, res: Response) => {
+  try {
+    const q = typeof req.query.practiceId === 'string' ? req.query.practiceId.trim() : '';
+    if (queryPracticeConflictsSession(req, q || undefined)) {
+      return res.status(403).json({ error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const limit = Math.min(60, parseInt(String(req.query.limit ?? '30'), 10) || 30);
+    const runs = await prisma.arCloseRun.findMany({
+      where: { practiceId },
+      orderBy: { closeDate: 'desc' },
+      take: limit,
+    });
+    return res.json({
+      success: true,
+      data: runs.map((r) => ({
+        closeDate: r.closeDate.toISOString().slice(0, 10),
+        queueOpenTotal: Number(r.queueOpenTotal),
+        paymentsReceived: Number(r.paymentsReceived),
+        variancePct: r.variancePct,
+        validationPassed: r.validationPassed,
+      })),
+    });
+  } catch (err) {
+    console.error('[GET /dashboard/ar-close]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/ar-close/run', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { runDailyArCloseForPractice } = await import('../jobs/dailyArClose.js');
+    const result = await runDailyArCloseForPractice(prisma, practiceId);
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[POST /dashboard/ar-close/run]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 

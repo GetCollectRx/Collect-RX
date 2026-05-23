@@ -2,11 +2,18 @@ import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 import { prisma } from '../../lib/prisma';
 import { authenticate } from '../middleware/authenticate';
-import { practiceIdFromSession, queryPracticeConflictsSession } from '../middleware/requirePracticeSession';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+  requirePracticeContext,
+} from '../middleware/requirePracticeSession';
 import { parseSimpleCsv } from '../csv/parseSimple';
 import { upsertBalances } from '../patients/balances';
 import { appendAuditLog } from '../audit/auditLog.js';
 import type { Prisma } from '@prisma/client';
+import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
+import { validateCsvUploadFile } from '../validation/csvUpload.js';
+import { isPlatformDev } from '../accessControl/types.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -15,6 +22,7 @@ const upload = multer({
 
 const router = Router();
 router.use(authenticate);
+router.use(requirePracticeContext);
 
 function integrationPayload() {
   const sk = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
@@ -75,7 +83,7 @@ router.get('/settings', async (req: Request, res: Response) => {
     return res.json({ settings: row?.settings ?? null });
   } catch (err) {
     console.error('[GET /admin/settings]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -101,7 +109,7 @@ router.put('/settings', async (req: Request, res: Response) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error('[PUT /admin/settings]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -120,7 +128,7 @@ router.get('/integrations', async (req: Request, res: Response) => {
     return res.json(base);
   } catch (err) {
     console.error('[GET /admin/integrations]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -155,12 +163,17 @@ router.get('/audit-log', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /admin/audit-log]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
 router.post('/generate-balances', async (req: Request, res: Response) => {
   try {
+    if (isPlatformDev(req.auth)) {
+      return res.status(403).json({
+        error: 'Demo patient generation is not available for platform developer sessions',
+      });
+    }
     const practiceId = practiceIdFromSession(req);
     const rawCount = (req.body as { count?: number })?.count;
     const parsed = typeof rawCount === 'number' ? rawCount : parseInt(String(rawCount ?? 10), 10);
@@ -193,18 +206,23 @@ router.post('/generate-balances', async (req: Request, res: Response) => {
     return res.json({ message: `Created ${created} demo patient balance rows.` });
   } catch (err) {
     console.error('[POST /admin/generate-balances]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
 router.post('/import-patient-csv', upload.single('file'), async (req: Request, res: Response) => {
   try {
-    const practiceId = practiceIdFromSession(req);
-    const buf = req.file?.buffer;
-    if (!buf?.length) {
-      return res.status(400).json({ error: 'CSV file required (field name: file)' });
+    if (isPlatformDev(req.auth)) {
+      return res.status(403).json({
+        error: 'Patient CSV import is not available for platform developer sessions',
+      });
     }
-    const text = buf.toString('utf8');
+    const practiceId = practiceIdFromSession(req);
+    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 8 * 1024 * 1024 });
+    if (!uploadCheck.ok) {
+      return res.status(uploadCheck.status).json({ error: uploadCheck.error });
+    }
+    const text = req.file!.buffer!.toString('utf8');
     const rawRows = parseSimpleCsv(text);
     const rows = rawRows.map((r) => {
       const o: Record<string, string | number | undefined> = {};
@@ -230,7 +248,7 @@ router.post('/import-patient-csv', upload.single('file'), async (req: Request, r
     return res.json(result);
   } catch (err) {
     console.error('[POST /admin/import-patient-csv]', err);
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 

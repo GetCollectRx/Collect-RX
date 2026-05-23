@@ -26,9 +26,9 @@ import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
-// ── Icons (inline SVG — zero dependency) ─────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────
 const ICONS = {
   dashboard:  'M2 10a8 8 0 1116 0A8 8 0 012 10zm7-3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm1 3a1 1 0 00-.707 1.707l2 2a1 1 0 001.414-1.414L11 11.586V10a1 1 0 00-1-1z',
   balances:   'M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z',
@@ -43,36 +43,78 @@ const ICONS = {
   cdcp:       'M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z',
   sun:        'M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z',
   moon:       'M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z',
-  logo:       'M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z',
+  logo:       'M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14.924a7.003 7.003 0 01-2 0V11a1 1 0 112 0v3.924zm1-5.924a1 1 0 11-2 0 1 1 0 012 0z',
+  signout:    'M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z',
 }
 
-const NAV_ITEMS = [
-  { to: '/',          exact: true,  label: 'Dashboard',  icon: ICONS.dashboard  },
-  { to: '/guide',    exact: true,  label: 'How it works', icon: ICONS.guide     },
-  { to: '/work-queue', exact: false, label: 'Work queue', icon: ICONS.workqueue  },
-  { to: '/insurance',  exact: false, label: 'Insurance AR', icon: ICONS.insurance },
-  { to: '/balances',  exact: false, label: 'Outreach AR', icon: ICONS.balances   },
-  { to: '/patient-ar',exact: false, label: 'Patient AR', icon: ICONS.patientar  },
-  { to: '/estimate',  exact: false, label: 'Estimate',   icon: ICONS.estimate   },
-  { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics  },
-  { to: '/outbox',    exact: false, label: 'Outbox',     icon: ICONS.outbox     },
-  { to: '/admin',     exact: false, label: 'Admin',      icon: ICONS.admin      },
-  { to: '/cdcp',      exact: false, label: 'CDCP',       icon: ICONS.cdcp       },
+/** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
+const PLATFORM_DEV_BLOCKED_PREFIXES = [
+  '/balances',
+  '/patient-ar',
+  '/estimate',
+  '/outbox',
+  '/cdcp',
+  '/pay',
 ]
 
-// ── Dark-mode toggle button ───────────────────────────────────────────────
+const PLATFORM_DEV_NAV_PATHS = new Set([
+  '/',
+  '/guide',
+  '/work-queue',
+  '/insurance',
+  '/analytics',
+  '/admin',
+  '/admin/sync',
+])
+
+// ── Nav structure with section groupings ─────────────────────────────────
+const NAV_SECTIONS = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
+      { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
+    ],
+  },
+  {
+    label: 'Claims',
+    items: [
+      { to: '/work-queue', exact: false, label: 'Work Queue',    icon: ICONS.workqueue  },
+      { to: '/insurance',  exact: false, label: 'Insurance AR',  icon: ICONS.insurance  },
+      { to: '/balances',   exact: false, label: 'Outreach AR',   icon: ICONS.balances   },
+      { to: '/patient-ar', exact: false, label: 'Patient AR',    icon: ICONS.patientar  },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { to: '/estimate',  exact: false, label: 'Estimate',   icon: ICONS.estimate  },
+      { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics },
+      { to: '/outbox',    exact: false, label: 'Outbox',     icon: ICONS.outbox    },
+      { to: '/cdcp',      exact: false, label: 'CDCP',       icon: ICONS.cdcp      },
+    ],
+  },
+  {
+    label: 'Setup',
+    items: [
+      { to: '/admin', exact: false, label: 'Admin', icon: ICONS.admin },
+    ],
+  },
+]
+
+// ── Dark-mode toggle ──────────────────────────────────────────────────────
 function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme()
   return (
     <button
       onClick={toggleTheme}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
     >
       {isDark ? (
-        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.sun} /></svg>
+        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.sun} /></svg>
       ) : (
-        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.moon} /></svg>
+        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.moon} /></svg>
       )}
     </button>
   )
@@ -80,135 +122,178 @@ function ThemeToggle() {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
-  const { practices, practiceId, setPracticeId, logout } = usePractice()
+  const { practices, practiceId, setPracticeId, logout, isPlatformDev } = usePractice()
   const location = useLocation()
+
+  const navSections = isPlatformDev
+    ? NAV_SECTIONS.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => PLATFORM_DEV_NAV_PATHS.has(item.to)),
+      })).filter((section) => section.items.length > 0)
+    : NAV_SECTIONS
 
   return (
     <aside
-      className="fixed left-0 top-0 bottom-0 w-[228px] flex flex-col bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-r border-gray-200/80 dark:border-gray-800 shadow-sidebar z-30"
+      className="fixed left-0 top-0 bottom-0 w-[220px] flex flex-col bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800/70 z-30"
+      style={{ boxShadow: '1px 0 0 0 rgba(0,0,0,0.04)' }}
       aria-label="Main navigation"
     >
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-        <div className="w-7 h-7 rounded-lg bg-crx-500 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-          <svg className="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor">
-            <path d={ICONS.logo} />
-          </svg>
+      {/* ── Logo ── */}
+      <div className="flex items-center justify-between px-4 h-[52px] border-b border-gray-100 dark:border-gray-800/70 flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-[6px] bg-crx-500 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+            <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+              <path d={ICONS.logo} />
+            </svg>
+          </div>
+          <span className="font-semibold text-gray-900 dark:text-gray-50 text-sm tracking-tight">
+            Collect<span className="text-crx-500">Rx</span>
+          </span>
+          {isPlatformDev && (
+            <span className="text-2xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+              Dev
+            </span>
+          )}
         </div>
-        <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm tracking-tight">
-          Collect<span className="text-crx-500">Rx</span>
-        </span>
+        <span className="text-2xs text-gray-300 dark:text-gray-700 font-mono">v1.0</span>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto" role="navigation">
-        {NAV_ITEMS.map(item => {
-          const isActive = item.exact
-            ? location.pathname === item.to
-            : location.pathname.startsWith(item.to)
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.exact}
-              className={`nav-item ${isActive ? 'active' : ''}`}
-              aria-current={isActive ? 'page' : undefined}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d={item.icon} />
-              </svg>
-              {item.label}
-            </NavLink>
-          )
-        })}
+      {/* ── Nav sections ── */}
+      <nav className="flex-1 py-3 overflow-y-auto" role="navigation">
+        {navSections.map(section => (
+          <div key={section.label} className="mb-4">
+            <p className="px-4 mb-1 text-2xs font-semibold text-gray-300 dark:text-gray-700 uppercase tracking-wider">
+              {section.label}
+            </p>
+            <div className="px-2 space-y-0.5">
+              {section.items.map(item => {
+                const isActive = item.exact
+                  ? location.pathname === item.to
+                  : location.pathname.startsWith(item.to)
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.exact}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d={item.icon} />
+                    </svg>
+                    {item.label}
+                  </NavLink>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* Footer: practice + theme toggle */}
-      <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 flex-shrink-0">
-        <div className="px-1 space-y-1.5">
-          <p className="text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Resources</p>
-          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-2xs">
-            <Link to="/legal/terms" className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Terms</Link>
-            <Link to="/legal/privacy" className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Privacy</Link>
-            <Link to="/product" className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Product</Link>
-            <Link to="/changelog" className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Changelog</Link>
-            <Link to="/guide" className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Office guide</Link>
-          </div>
-        </div>
-
+      {/* ── Footer ── */}
+      <div className="border-t border-gray-100 dark:border-gray-800/70 flex-shrink-0">
+        {/* Practice selector */}
         {practices.length > 0 && (
-          <div className="px-1">
-            <p className="text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
-              Practice
-            </p>
-            {practices.length === 1 ? (
-              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                {practices[0]?.name}
+          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
+            {isPlatformDev && (
+              <p className="text-2xs text-amber-700 dark:text-amber-400 mb-1.5 leading-snug">
+                PHI-free session — pick a practice context for ops APIs.
               </p>
+            )}
+            {practices.length === 1 && !isPlatformDev ? (
+              <div>
+                <p className="text-2xs text-gray-400 dark:text-gray-600 mb-0.5">Practice</p>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate leading-tight">
+                  {practices[0]?.name}
+                </p>
+              </div>
             ) : (
-              <select
-                value={practiceId}
-                onChange={e => setPracticeId(e.target.value)}
-                className="w-full text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-crx-500"
-                aria-label="Select practice"
-              >
-                {practices.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <div>
+                <p className="text-2xs text-gray-400 dark:text-gray-600 mb-1">Practice</p>
+                <select
+                  value={practiceId}
+                  onChange={e => setPracticeId(e.target.value)}
+                  className="w-full text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-crx-500"
+                  aria-label="Select practice"
+                >
+                  {practices.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
         )}
 
-        <div className="flex items-center justify-between px-1 gap-2">
+        {/* Bottom row */}
+        <div className="px-3 py-2.5 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => void logout()}
-            className="text-2xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+            className="flex items-center gap-1.5 text-2xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
           >
+            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d={ICONS.signout} /></svg>
             Sign out
           </button>
-          <span className="text-2xs text-gray-400 dark:text-gray-500">v1.0.0</span>
-          <ThemeToggle />
+          <div className="flex items-center gap-1.5">
+            <Link to="/changelog" className="text-2xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              Log
+            </Link>
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </aside>
   )
 }
 
+function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
+  const { isPlatformDev } = usePractice()
+  const location = useLocation()
+  if (
+    isPlatformDev &&
+    PLATFORM_DEV_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
+  ) {
+    return <Navigate to="/" replace />
+  }
+  return <>{children}</>
+}
+
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-crx-50/40 dark:from-gray-950 dark:via-gray-950 dark:to-crx-950/15">
+    <div className="flex min-h-screen bg-gray-50/60 dark:bg-gray-950">
       <Sidebar />
       <main
-        className="flex-1 ml-[228px] min-h-screen flex flex-col"
+        className="flex-1 ml-[220px] min-h-screen flex flex-col"
         id="main-content"
       >
+        <PlatformDevRouteGuard>
         <Routes>
-          <Route path="/"             element={<Dashboard />} />
-          <Route path="/guide"        element={<OfficeGuide />} />
-          <Route path="/work-queue"   element={<WorkQueue />} />
-          <Route path="/insurance"    element={<InsuranceClaims />} />
+          <Route path="/"              element={<Dashboard />} />
+          <Route path="/guide"         element={<OfficeGuide />} />
+          <Route path="/work-queue"    element={<WorkQueue />} />
+          <Route path="/insurance"     element={<InsuranceClaims />} />
           <Route path="/insurance/:id" element={<InsuranceClaimDetail />} />
-          <Route path="/balances"     element={<Balances />} />
-          <Route path="/balances/:id" element={<BalanceDetail />} />
-          <Route path="/admin/sync"   element={<SyncOpsDashboard />} />
-          <Route path="/patient-ar"   element={<PatientAR />} />
-          <Route path="/estimate"     element={<PreTreatmentEstimate />} />
-          <Route path="/analytics"    element={<Analytics />} />
-          <Route path="/outbox"       element={<Outbox />} />
-          <Route path="/admin"        element={<Admin />} />
+          <Route path="/balances"      element={<Balances />} />
+          <Route path="/balances/:id"  element={<BalanceDetail />} />
+          <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
+          <Route path="/patient-ar"    element={<PatientAR />} />
+          <Route path="/estimate"      element={<PreTreatmentEstimate />} />
+          <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/outbox"        element={<Outbox />} />
+          <Route path="/admin"         element={<Admin />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
-          <Route path="/cdcp"           element={<Phase5Dashboard />} />
+          <Route path="/cdcp"          element={<Phase5Dashboard />} />
         </Routes>
+        </PlatformDevRouteGuard>
       </main>
     </div>
   )
 }
 
 function AuthGate() {
-  const { authState, loading, subscription } = usePractice()
+  const { authState, loading, subscription, isPlatformDev } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -222,7 +307,12 @@ function AuthGate() {
   if (authState === 'loading' || loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <p className="text-sm text-gray-600 dark:text-gray-300">Loading…</p>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-5 rounded-md bg-crx-500 flex items-center justify-center">
+            <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path d={ICONS.logo} /></svg>
+          </div>
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Loading…</p>
+        </div>
       </div>
     )
   }
@@ -234,7 +324,7 @@ function AuthGate() {
       </Routes>
     )
   }
-  if (subscription.enforce && !subscription.active) {
+  if (subscription.enforce && !subscription.active && !isPlatformDev) {
     return (
       <Routes>
         <Route path="/billing" element={<PracticeBillingPage />} />

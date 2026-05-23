@@ -1,5 +1,6 @@
 import { resolveApiUrl } from './resolveApiUrl'
 import { parseApiJson } from './parseApiJson'
+import { practiceScopedFetchInit, practiceScopedUrl } from './practiceScopedApi'
 
 function withApiOrigin(input: RequestInfo | URL): RequestInfo | URL {
   if (typeof input === 'string') {
@@ -20,11 +21,20 @@ function requestUrlString(input: RequestInfo | URL): string {
 }
 
 export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(withApiOrigin(input), { ...init, credentials: 'include' }).then((r) => {
+  const scopedInit = practiceScopedFetchInit(init)
+  let resolved = input
+  if (typeof input === 'string') {
+    const t = input.trim()
+    if (t.startsWith('/api')) resolved = practiceScopedUrl(t)
+  }
+  return fetch(withApiOrigin(resolved), { ...scopedInit, credentials: 'include' }).then((r) => {
     if (r.status === 401) {
       const url = requestUrlString(input)
       // Wrong-password login returns 401; must not clear an existing session.
       if (url.includes('/api/auth/login')) {
+        return r
+      }
+      if (url.includes('/api/auth/login/platform-dev')) {
         return r
       }
       try {
