@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
-import { isAuditor, isPlatformAdmin } from '../accessControl/types.js';
+import { isAuditor, isPlatformAdmin, authUserId } from '../accessControl/types.js';
 
 /** Auditor may only read practices they are granted. */
 export async function assertAuditorPracticeGrant(
@@ -9,10 +9,11 @@ export async function assertAuditorPracticeGrant(
   practiceId: string,
 ): Promise<boolean> {
   const auth = req.auth ?? req.practiceAuth;
-  if (!isAuditor(auth) || !auth?.userId) return true;
+  const userId = authUserId(auth);
+  if (!isAuditor(auth) || !userId) return true;
 
   const grants = await prisma.auditorGrant.findMany({
-    where: { auditorUserId: auth.userId },
+    where: { auditorUserId: userId },
   });
   if (grants.some((g) => g.practiceId === null)) return true;
   if (grants.some((g) => g.practiceId === practiceId)) return true;
@@ -28,11 +29,12 @@ export async function assertPlatformAdminClaimGrant(
   practiceId: string,
 ): Promise<boolean> {
   const auth = req.auth ?? req.practiceAuth;
-  if (!isPlatformAdmin(auth) || !auth?.userId) return true;
+  const userId = authUserId(auth);
+  if (!isPlatformAdmin(auth) || !userId) return true;
 
   const grant = await prisma.platformAdminPracticeGrant.findUnique({
     where: {
-      adminUserId_practiceId: { adminUserId: auth.userId, practiceId },
+      adminUserId_practiceId: { adminUserId: userId, practiceId },
     },
   });
   if (grant) return true;

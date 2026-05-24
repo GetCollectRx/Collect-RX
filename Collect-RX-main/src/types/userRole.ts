@@ -27,7 +27,7 @@ export function isCrossPracticeRole(role: UserRole): boolean {
 }
 
 export function isReadOnlyRole(role: UserRole): boolean {
-  return role === 'auditor';
+  return role === 'auditor' || role === 'practice_owner';
 }
 
 export function practiceScopedRole(role: UserRole): boolean {

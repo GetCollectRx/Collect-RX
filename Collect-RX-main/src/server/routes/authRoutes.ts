@@ -6,9 +6,13 @@ import {
   getUserRole,
   isCrossPracticeReader,
   isPlatformDev,
+  isUserSession,
   practiceRoleToBrief,
+  ROLE_LEVEL,
+  authPracticeId,
 } from '../accessControl/types.js';
 import type { UserRole } from '../../types/userRole.js';
+import type { UserAuthPayload } from '../accessControl/types.js';
 import {
   setUserAuthCookie,
   setPlatformDevAuthCookie,
@@ -28,8 +32,6 @@ import {
   changePasswordBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
-import { isPlatformDev, isUserSession, ROLE_LEVEL } from '../accessControl/types.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 
 const BCRYPT_ROUNDS = 12;
@@ -206,12 +208,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           select: { id: true, name: true, timezone: true },
         });
       }
-      const practices = isCrossPracticeReader({
+      const sessionAuth = {
+        role: userRole === 'auditor' ? 'accountant' as const : 'group_admin' as const,
         userRole,
         userId: user.id,
-        practiceId: user.practiceId,
+        practiceId: user.practiceId ?? '',
         phiAccess: userRole === 'auditor',
-      })
+      };
+      const practices = isCrossPracticeReader(sessionAuth)
         ? await prisma.practice.findMany({
             select: { id: true, name: true, timezone: true },
             orderBy: { name: 'asc' },
@@ -311,7 +315,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const auth = req.auth as UserAuthPayload;
       const practiceId = isPlatformDev(req.auth!)
         ? (practiceIdFromRequestHints(req) ?? '')
-        : auth.practiceId;
+        : (authPracticeId(req.auth!) ?? auth.practiceId);
 
       const users = await prisma.user.findMany({
         where: { practiceId },

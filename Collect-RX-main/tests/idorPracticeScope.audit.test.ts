@@ -46,7 +46,10 @@ describe('IDOR practice scope audit', () => {
   it('authenticated route files import session practice helpers', () => {
     for (const rel of AUTH_ROUTE_FILES) {
       const src = readFileSync(join(ROOT, rel), 'utf8');
-      expect(src, rel).toMatch(/authenticate/);
+      expect(
+        src.includes('authenticate') || src.includes('useOwnerPracticeApi'),
+        rel,
+      ).toBe(true);
       expect(
         src.includes('practiceIdFromSession') ||
           src.includes('practiceId(req)') ||

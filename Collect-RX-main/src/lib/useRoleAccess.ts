@@ -101,7 +101,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/',
+        homeRoute: '/reports/aging',
       }
 
     case 'front_desk':
@@ -125,7 +125,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/group-dashboard',
+        homeRoute: '/portfolio',
       }
 
     default:

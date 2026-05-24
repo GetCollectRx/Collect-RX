@@ -32,6 +32,8 @@ export type UserAuthPayload = {
 export type PlatformDevAuthPayload = {
   role: 'platform_dev';
   phiAccess: false;
+  userId: string;
+  practiceId: null;
 };
 
 /** JWT may also carry brief persona fields (platform users / legacy). */
@@ -67,10 +69,19 @@ export function getUserRole(auth: AuthJwtPayload | undefined): UserRole | null {
   if (!auth) return null;
   if (auth.userRole) return auth.userRole;
   if (auth.role === 'platform_dev') return 'platform_admin';
-  if (auth.role && auth.role !== 'platform_dev') {
-    return practiceRoleToBrief(auth.role as PracticeRole);
-  }
-  return null;
+  return practiceRoleToBrief(auth.role);
+}
+
+export function authUserId(auth: AuthJwtPayload | undefined): string | null {
+  if (!auth) return null;
+  if (auth.role === 'platform_dev') return auth.userId;
+  return auth.userId;
+}
+
+export function authPracticeId(auth: AuthJwtPayload | undefined): string | null {
+  if (!auth) return null;
+  if (auth.role === 'platform_dev') return null;
+  return auth.practiceId || null;
 }
 
 export function isPlatformDev(auth: AuthJwtPayload | undefined): auth is PlatformDevAuthPayload {
@@ -92,16 +103,13 @@ export function hasPhiAccess(auth: AuthJwtPayload | undefined): boolean {
 export function roleLevel(auth: AuthJwtPayload | undefined): number {
   if (!auth) return 0;
   if (auth.role === 'platform_dev') return ROLE_LEVEL.platform_dev;
-  if (auth.role && auth.role !== 'platform_dev') {
-    return ROLE_LEVEL[auth.role as PracticeRole] ?? 0;
-  }
   const brief = getUserRole(auth);
   if (brief === 'platform_admin') return ROLE_LEVEL.platform_dev;
   if (brief === 'billing_ops_manager') return ROLE_LEVEL.group_admin;
   if (brief === 'practice_owner') return ROLE_LEVEL.practice_owner;
   if (brief === 'front_desk') return ROLE_LEVEL.front_desk;
   if (brief === 'auditor') return ROLE_LEVEL.accountant;
-  return 0;
+  return ROLE_LEVEL[auth.role] ?? 0;
 }
 
 export function hasMinRole(auth: AuthJwtPayload | undefined, min: PracticeRole | 'platform_dev'): boolean {

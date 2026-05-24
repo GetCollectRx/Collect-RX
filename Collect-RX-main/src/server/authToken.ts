@@ -4,7 +4,7 @@ import type {
   AuthJwtPayload,
   PracticeRole,
   UserAuthPayload,
-  PlatformDevAuthPayload,
+  BriefAuthFields,
 } from './accessControl/types.js';
 import { practiceRoleToBrief } from './accessControl/types.js';
 import type { UserRole } from '../types/userRole.js';
@@ -130,8 +130,9 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
   }
 
   // All other roles are practice-layer user sessions.
-  const user = payload as UserAuthPayload;
-  if (!user.userId || !user.practiceId) {
+  const user = payload as UserAuthPayload & BriefAuthFields;
+  const crossPractice = user.userRole === 'billing_ops_manager';
+  if (!user.userId || (!user.practiceId && !crossPractice)) {
     throw new jwt.JsonWebTokenError('missing userId or practiceId');
   }
   const knownRoles: PracticeRole[] = [

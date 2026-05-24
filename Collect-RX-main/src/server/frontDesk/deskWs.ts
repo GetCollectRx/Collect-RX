@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyAuthToken, COOKIE_NAME } from '../authToken.js';
-import { getUserRole } from '../accessControl/types.js';
+import { getUserRole, authPracticeId } from '../accessControl/types.js';
 import type { WsEvent } from '../../types/ws.js';
 
 type Client = { ws: WebSocket; practiceId: string };
@@ -41,11 +41,11 @@ export function attachDeskWebSocket(server: Server): WebSocketServer {
         ws.close(4403, 'Forbidden');
         return;
       }
-      if (!auth.practiceId) {
+      if (!authPracticeId(auth)) {
         ws.close(4401, 'Unauthorized');
         return;
       }
-      practiceId = auth.practiceId;
+      practiceId = authPracticeId(auth)!;
     } catch {
       ws.close(4401, 'Unauthorized');
       return;

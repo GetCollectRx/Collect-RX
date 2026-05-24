@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { isCrossPracticeReader } from './types.js';
+import { authPracticeId, isCrossPracticeReader } from './types.js';
 import type { AuthJwtPayload } from './types.js';
 
 export const PRACTICE_CONTEXT_ERROR =
@@ -20,9 +20,9 @@ export function practiceIdFromRequestHints(req: Request): string | undefined {
 
 export function practiceIdFromAuth(auth: AuthJwtPayload, req: Request): string | null {
   if (isCrossPracticeReader(auth)) {
-    return practiceIdFromRequestHints(req) ?? auth.practiceId ?? null;
+    return practiceIdFromRequestHints(req) ?? authPracticeId(auth) ?? null;
   }
-  return auth.practiceId ?? null;
+  return authPracticeId(auth);
 }
 
 export function sessionRequiresPracticeHint(auth: AuthJwtPayload | undefined): boolean {
@@ -35,7 +35,7 @@ export function practiceScopeConflict(
   queryPracticeId: string | undefined,
 ): boolean {
   if (!auth || isCrossPracticeReader(auth)) return false;
-  const pid = auth.practiceId;
+  const pid = authPracticeId(auth);
   if (!pid) return false;
   return Boolean(queryPracticeId?.trim() && queryPracticeId.trim() !== pid);
 }

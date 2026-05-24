@@ -8,6 +8,7 @@ import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import { computeQueueStats } from '../services/platformReports.js';
 import type { UserRole } from '../../types/userRole.js';
+import { authPracticeId, authUserId, getUserRole } from '../accessControl/types.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
@@ -109,8 +110,9 @@ export function createPlatformPersonaAdminRouter(): Router {
     const reason = (req.body as { reason?: string }).reason?.trim();
     if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
     const auth = req.auth!;
+    const adminUserId = authUserId(auth) ?? 'platform-admin';
     await prisma.breakGlassAuditLog.create({
-      data: { adminUserId: auth.userId, action: 'build_queue', reason },
+      data: { adminUserId, action: 'build_queue', reason },
     });
     return res.json({ success: true, message: 'Queue build logged. Practice owners will be notified.' });
   });
@@ -119,8 +121,9 @@ export function createPlatformPersonaAdminRouter(): Router {
     const reason = (req.body as { reason?: string }).reason?.trim();
     if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
     const auth = req.auth!;
+    const adminUserId = authUserId(auth) ?? 'platform-admin';
     await prisma.breakGlassAuditLog.create({
-      data: { adminUserId: auth.userId, action: 'run_queue', reason },
+      data: { adminUserId, action: 'run_queue', reason },
     });
     return res.json({ success: true, message: 'Queue run logged. Practice owners will be notified.' });
   });
@@ -184,7 +187,8 @@ export function createOwnerGrantRouter(): Router {
 
   router.post('/:practiceId/grants', async (req: Request, res: Response) => {
     const auth = req.auth!;
-    if (auth.userRole !== 'practice_owner' || auth.practiceId !== req.params.practiceId) {
+    const ownerId = authUserId(auth);
+  if (getUserRole(auth) !== 'practice_owner' || authPracticeId(auth) !== req.params.practiceId) {
       return res.status(403).json({ success: false, error: 'Practice owner only' });
     }
     const { adminId } = req.body as { adminId?: string };
@@ -195,7 +199,7 @@ export function createOwnerGrantRouter(): Router {
       data: {
         adminUserId: adminId.trim(),
         practiceId: req.params.practiceId,
-        grantedByOwnerId: auth.userId,
+        grantedByOwnerId: ownerId ?? 'owner',
       },
     });
     return res.json({ success: true, data: grant });
