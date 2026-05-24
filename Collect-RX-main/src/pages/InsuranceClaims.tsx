@@ -34,6 +34,7 @@ function fmtMoney(v: string | number) {
 export default function InsuranceClaims() {
   const { practiceId, loading: practiceLoading } = usePractice()
   const [claims, setClaims] = useState<InsuranceClaimRow[]>([])
+  const [escalated, setEscalated] = useState<InsuranceClaimRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ carrier: '', status: '', aging: '' })
@@ -48,14 +49,18 @@ export default function InsuranceClaims() {
     if (filters.status) params.set('status', filters.status)
     if (filters.aging) params.set('aging', filters.aging)
 
+    const escalatedParams = new URLSearchParams({ limit: '50', status: 'ESCALATED' })
+
     Promise.all([
       apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?${params}`),
+      apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?${escalatedParams}`),
       apiFetchJson<{ success: boolean; data: { byCarrier: { carrierId: string; denialRate: number }[] } }>(
         '/api/insurance/analytics/denials',
       ),
     ])
-      .then(([listRes, denialRes]) => {
+      .then(([listRes, escalatedRes, denialRes]) => {
         setClaims(listRes.data ?? [])
+        setEscalated(escalatedRes.data ?? [])
         setDenialSummary(denialRes.data?.byCarrier?.slice(0, 5) ?? [])
       })
       .catch((e) => setError((e as Error).message))
@@ -74,6 +79,37 @@ export default function InsuranceClaims() {
             <Button variant="secondary" size="sm">Unified work queue</Button>
           </Link>
         </header>
+
+        {/* ── Escalation queue — prominent section ── */}
+        {escalated.length > 0 && (
+          <div className="rounded-2xl border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <h2 className="text-sm font-bold text-amber-900 dark:text-amber-300">
+                {escalated.length} claim{escalated.length !== 1 ? 's' : ''} need{escalated.length === 1 ? 's' : ''} your call
+              </h2>
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed">
+              The AI reached the carrier but couldn't resolve these — a supervisor, appeals department, or written dispute is required.
+              Open each claim to read the AI's call summary, then call the carrier directly to close it.
+            </p>
+            <div className="space-y-2">
+              {escalated.map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-xl border border-amber-200 dark:border-amber-800 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white font-mono">{c.claimNumber}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {CARRIER_LABELS[c.carrierId] ?? c.carrierId} · {fmtMoney(c.outstandingAmount)} outstanding · {c.daysOutstanding}d
+                    </p>
+                  </div>
+                  <Link to={`/insurance/${c.id}`}>
+                    <Button size="sm" variant="secondary">View call summary →</Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {denialSummary.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -137,7 +173,11 @@ export default function InsuranceClaims() {
                         {c.daysOutstanding}d
                       </Badge>
                     </Td>
-                    <Td><Badge>{c.status}</Badge></Td>
+                    <Td>
+                      <Badge color={c.status === 'ESCALATED' ? 'amber' : undefined}>
+                        {c.status}
+                      </Badge>
+                    </Td>
                     <Td>{c._count?.callAttempts ?? 0}</Td>
                     <Td>
                       <Link to={`/insurance/${c.id}`}>

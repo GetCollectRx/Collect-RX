@@ -198,6 +198,55 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/insurance/claims/:id/resolve-escalation
+// Body: { resolvedBy?: string, notes?: string }
+// Called when staff personally called the carrier and resolved an escalated claim.
+// Does NOT require a payment amount — this is human-resolution of an AI-escalated case.
+// ---------------------------------------------------------------------------
+router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { resolvedBy?: string; notes?: string };
+    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+
+    const resolutionNote = [
+      'Resolved via human call after AI escalation.',
+      body.resolvedBy ? `Resolved by: ${body.resolvedBy}.` : '',
+      body.notes ?? '',
+    ].filter(Boolean).join(' ');
+
+    const updated = await prisma.insuranceClaim.update({
+      where: { id },
+      data: { status: 'RESOLVED' },
+    });
+
+    try {
+      await enqueueEmrClaimEvent(prisma, {
+        practiceId: claim.practiceId,
+        claimId: id,
+        eventType: 'PAYMENT_CONFIRMED',
+        payload: {
+          notes: resolutionNote,
+          at: new Date().toISOString(),
+          resolvedByHuman: true,
+          outstandingAfter: 0,
+        },
+      });
+    } catch (emrErr) {
+      console.error('[resolve-escalation] EMR outbox:', emrErr);
+    }
+
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[POST /insurance/claims/:id/resolve-escalation]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.get('/claims/:id', async (req: Request, res: Response) => {
   try {
     const claim = await prisma.insuranceClaim.findUnique({
