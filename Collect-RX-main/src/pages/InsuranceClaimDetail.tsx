@@ -123,7 +123,25 @@ export default function InsuranceClaimDetail() {
     try {
       const r = await apiFetch(`/api/insurance/queue/trigger/${id}`, { method: 'POST' })
       const j = await r.json().catch(() => ({})) as { error?: string; success?: boolean }
-      if (!r.ok) throw new Error(j.error ?? 'Could not trigger call')
+      if (!r.ok) {
+        // Map backend guard messages to staff-friendly explanations
+        const raw = j.error ?? ''
+        let msg = raw
+        if (raw.includes('30 days') || raw.includes('too recent')) {
+          msg = 'This claim is less than 30 days old — AI calls are not placed until day 31.'
+        } else if (raw.includes('90 days') || raw.includes('escalate')) {
+          msg = 'This claim is over 90 days old — it has been escalated for human follow-up.'
+        } else if (raw.includes('3 attempt') || raw.includes('max attempt')) {
+          msg = 'Maximum 3 call attempts reached — this claim must be resolved manually.'
+        } else if (raw.includes('business hours') || raw.includes('outside')) {
+          msg = 'Calls can only be placed Mon–Fri 8am–5pm Eastern time.'
+        } else if (raw.includes('CARRIER_BLOCK') || raw.includes('blocked')) {
+          msg = 'This carrier is currently blocked — automation was detected on a previous call. Unblock in Admin → Carriers.'
+        } else if (raw.includes('already') || raw.includes('CALLING')) {
+          msg = 'A call is already in progress for this claim.'
+        }
+        throw new Error(msg)
+      }
       setActionMsg('Call queued')
       load()
     } catch (e) {

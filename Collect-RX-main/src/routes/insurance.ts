@@ -394,11 +394,18 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       outstandingAmount: Number(claim.outstandingAmount),
     });
 
-    // Update claim status and queue
+    // Update claim status, create CallAttempt row, and update queue atomically
     await prisma.$transaction([
       prisma.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },
+      }),
+      prisma.callAttempt.create({
+        data: {
+          claimId,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+        },
       }),
       prisma.callQueue.upsert({
         where: { claimId },

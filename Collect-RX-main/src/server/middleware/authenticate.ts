@@ -4,6 +4,7 @@ import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import type { AuthJwtPayload, UserAuthPayload } from '../accessControl/types.js';
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
+import { prisma } from '../../lib/prisma.js';
 
 declare global {
   namespace Express {
@@ -18,6 +19,7 @@ declare global {
 
 /**
  * Accepts token from httpOnly cookie (preferred) or `Authorization: Bearer <jwt>`.
+ * Also enforces accountant tokenExpiresAt against the DB on every request.
  */
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   try {
@@ -31,14 +33,12 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
     const payload = verifyAuthToken(raw);
 
-    // Legacy guard: practice-layer tokens must carry practiceId
     if (payload.role !== 'platform_dev' && !(payload as UserAuthPayload).practiceId) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
 
     req.auth = payload;
-    // Keep practiceAuth in sync for routes still referencing it
     if (payload.role !== 'platform_dev') {
       req.practiceAuth = payload as UserAuthPayload;
     }
@@ -46,6 +46,29 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     const phiBlock = assertPhiRouteAllowed(payload, req);
     if (phiBlock) {
       res.status(403).json({ error: phiBlock });
+      return;
+    }
+
+    // Accountant token expiry — must be checked against DB since the JWT itself
+    // has a 90-day TTL but the practice can revoke access before that via tokenExpiresAt.
+    if (payload.role === 'accountant') {
+      const userId = (payload as UserAuthPayload).userId;
+      prisma.user.findUnique({ where: { id: userId }, select: { tokenExpiresAt: true, isActive: true } })
+        .then((user) => {
+          if (!user || !user.isActive) {
+            res.status(401).json({ error: 'Account is no longer active' });
+            return;
+          }
+          if (user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
+            res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
+            return;
+          }
+          next();
+        })
+        .catch(() => {
+          // Non-fatal DB error — allow through to avoid blocking on DB hiccup
+          next();
+        });
       return;
     }
 
