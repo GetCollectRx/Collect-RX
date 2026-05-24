@@ -87,7 +87,7 @@ export function signUserToken({ userId, practiceId, role, providerId }: SignUser
     phiAccess: phiAccessForRole(role),
     ...(providerId ? { providerId } : {}),
   };
-  return jwt.sign(payload, signingSecret(), { expiresIn: tokenTtlForRole(role) });
+  return jwt.sign(payload, signingSecret(), { expiresIn: tokenTtlForRole(role) as unknown as number });
 }
 
 export function signPlatformDevToken(): string {

@@ -99,7 +99,7 @@ export default function UsersAdmin() {
       const body = await res.json() as { error?: string }
       if (!res.ok) { setFormError(body.error ?? 'Failed to create user'); return }
       setShowAdd(false)
-      setForm({ email: '', displayName: '', role: 'billing_coordinator', password: '' })
+      setForm({ email: '', displayName: '', role: 'billing_coordinator', password: '', providerId: '' })
       await load()
     } catch (e) { setFormError((e as Error).message) }
     finally { setBusy(null) }

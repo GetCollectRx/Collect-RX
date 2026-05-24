@@ -32,7 +32,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
             activeUsers,
           ] = await Promise.all([
             prisma.insuranceClaim.count({ where: { practiceId: p.id } }),
-            prisma.insuranceClaim.count({ where: { practiceId: p.id, status: { in: ['resolved', 'paid', 'closed'] } } }),
+            prisma.insuranceClaim.count({ where: { practiceId: p.id, status: { in: ['RESOLVED', 'APPROVED_PENDING_PAYMENT'] } } }),
             prisma.patientBalance.aggregate({
               where: { practiceId: p.id, paymentStatus: { in: ['outstanding', 'partial'] } },
               _sum: { patientOwes: true },

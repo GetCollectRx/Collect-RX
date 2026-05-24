@@ -12,15 +12,15 @@ interface CsvUploadOptions {
   maxBytes?: number;
 }
 
-interface CsvUploadError {
-  error: string;
-}
+export type CsvUploadResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string };
 
 export function validateCsvUploadFile(
   file: FileInfo | undefined,
   opts: CsvUploadOptions = {},
-): CsvUploadError | null {
-  if (!file) return { error: 'No file uploaded' };
+): CsvUploadResult {
+  if (!file) return { ok: false, status: 400, error: 'No file uploaded' };
 
   const { maxBytes = 10 * 1024 * 1024 } = opts;
 
@@ -28,13 +28,13 @@ export function validateCsvUploadFile(
   const name = file.originalname ?? '';
   const isCSV = name.toLowerCase().endsWith('.csv') || allowed.includes(file.mimetype ?? '');
   if (!isCSV) {
-    return { error: 'File must be a CSV (.csv)' };
+    return { ok: false, status: 400, error: 'File must be a CSV (.csv)' };
   }
 
   if (file.size !== undefined && file.size > maxBytes) {
     const mb = Math.round(maxBytes / (1024 * 1024));
-    return { error: `File exceeds maximum size of ${mb} MB` };
+    return { ok: false, status: 413, error: `File exceeds maximum size of ${mb} MB` };
   }
 
-  return null;
+  return { ok: true };
 }
