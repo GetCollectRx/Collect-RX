@@ -1,12 +1,11 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 import { prisma } from '../../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { parseSimpleCsv } from '../csv/parseSimple';
 import { runPmsImportPipeline, type PmsSource } from '../pms/pmsImportPipeline.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
@@ -19,8 +18,7 @@ const upload = multer({
 });
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 router.get('/runs', async (req: Request, res: Response) => {
   try {

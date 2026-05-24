@@ -17,13 +17,12 @@ import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
 import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
-import { authenticate } from '../server/middleware/authenticate';
 import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import {
   redactInsuranceClaim,
   redactInsuranceClaimsList,
@@ -31,8 +30,7 @@ import {
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/insurance/claims
@@ -387,6 +385,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const vapiResult = await vapiClient.initiateCall({
       claimId: claim.id,
       carrierId: claim.carrierId,
+      practiceId,
       patientToken: claim.patientToken,  // UUID from PIIVault — no real PHI
       carrierPhone: carrierConfig.phone,
       claimNumber: claim.claimNumber,
@@ -396,6 +395,15 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     // Update claim status, create CallAttempt row, and update queue atomically
     await prisma.$transaction([
+      prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+          liveState: 'dialing',
+          activeAgent: 'IVR_Navigator',
+        },
+      }),
       prisma.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },

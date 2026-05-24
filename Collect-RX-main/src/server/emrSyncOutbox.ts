@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { recordEmrOutbox } from './observability/metrics.js';
+import { assertEmrSyncWebhookUrlAllowed } from './emrWebhookUrl.js';
 
 export async function enqueueEmrClaimEvent(
   prisma: PrismaClient,
@@ -50,6 +51,15 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
 
   if (rows.length === 0) {
     return { pulled: 0, markedProcessed: 0, deliveryFailed: 0 };
+  }
+
+  if (webhookUrl) {
+    try {
+      assertEmrSyncWebhookUrlAllowed(webhookUrl);
+    } catch (e) {
+      console.error('[emrOutbox] invalid EMR_SYNC_WEBHOOK_URL — skipping batch:', (e as Error).message);
+      return { pulled: rows.length, markedProcessed: 0, deliveryFailed: rows.length };
+    }
   }
 
   if (!webhookUrl && !devAck) {

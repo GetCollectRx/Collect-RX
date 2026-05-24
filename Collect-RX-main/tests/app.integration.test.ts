@@ -79,15 +79,39 @@ describe('Practice-scoped APIs — require authentication', () => {
     const res = await request(app).get('/api/admin/sync/runs');
     expect(res.status).toBe(401);
   });
+
+  it('GET /api/analytics/phase5-kpis returns 401 without session', async () => {
+    const res = await request(app).get('/api/analytics/phase5-kpis');
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('Public patient pay — no auth', () => {
-  it('GET /api/public/pay/:token returns 404 JSON for unknown token', async () => {
+  it('GET /api/public/pay/:token returns 400 for malformed token', async () => {
     const res = await request(app).get('/api/public/pay/nonexistent-token-for-tests');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
     expect(res.headers['content-type']).toMatch(/json/i);
-    expect(res.body).toMatchObject({ error: expect.any(String) });
+    expect(res.body).toMatchObject({ error: 'Invalid link' });
   });
+
+  it.skipIf(!dbReady)(
+    'GET /api/public/pay/:token returns 404 JSON for unknown valid-format token',
+    async () => {
+      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
+      expect(res.status).toBe(404);
+      expect(res.headers['content-type']).toMatch(/json/i);
+      expect(res.body).toMatchObject({ error: expect.any(String) });
+    },
+  );
+
+  it.skipIf(dbReady)(
+    'GET /api/public/pay/:token returns 503 when database is unreachable',
+    async () => {
+      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
+      expect(res.status).toBe(503);
+      expect(res.body).toMatchObject({ error: expect.stringMatching(/temporarily unavailable/i) });
+    },
+  );
 });
 
 describe('Stripe Connect — onboard return URL must be signed or session', () => {
@@ -175,7 +199,12 @@ describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () =>
       .post('/api/auth/login')
       .send({ practiceId: p.id, password: FIXTURE_PRACTICE_PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.token).toBeDefined();
+    expect(res.body.token).toBeUndefined();
+    expect(res.body.practice?.id).toBe(p.id);
+    const setCookie = res.headers['set-cookie'];
+    expect(setCookie).toBeDefined();
+    const cookieHeader = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+    expect(cookieHeader).toMatch(/crx_access=/);
     await prisma.practice.delete({ where: { id: p.id } });
   });
 

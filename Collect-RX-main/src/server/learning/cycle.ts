@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   isLearningLoopEnabled,
   learningFeasibilityMin,
@@ -49,9 +50,9 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
     const items = await pullLearningBacklog(statuses);
     summary.pulled = items.length;
 
-    const researchByPage = new Map<string, ReturnType<typeof researchItem>>();
+    const researchByPage = new Map<string, Awaited<ReturnType<typeof researchItem>>>();
     for (const item of items) {
-      researchByPage.set(item.pageId, researchItem(item));
+      researchByPage.set(item.pageId, await researchItem(item));
     }
     summary.researched = researchByPage.size;
 
@@ -81,8 +82,10 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
             summary: r.research.summary,
             keywords: r.research.keywords,
             codebaseHits: r.research.codebaseHits,
+            sources: r.research.sources,
+            provider: r.research.provider,
             feasibilityReasons: r.feasibilityReasons,
-          },
+          } as Prisma.InputJsonValue,
         },
       });
 

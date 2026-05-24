@@ -41,6 +41,17 @@ export async function implementRankedItem(ranked: RankedItem): Promise<Implement
       '',
       research.summary,
       '',
+      ...(research.sources?.length
+        ? [
+            '## External sources',
+            '',
+            ...research.sources.map(
+              (s) =>
+                `- ${s.url ? `[${s.title}](${s.url})` : s.title}${s.snippet ? ` — ${s.snippet}` : ''}`,
+            ),
+            '',
+          ]
+        : []),
       '## Codebase signals',
       '',
       ...(research.codebaseHits.length
@@ -59,10 +70,16 @@ export async function implementRankedItem(ranked: RankedItem): Promise<Implement
 
     const notionMd = [
       '### Phase 6 — Research (auto)',
+      research.provider ? `_Provider: ${research.provider}_` : '',
       research.summary,
       '',
+      ...(research.sources?.length
+        ? ['**Sources:**', ...research.sources.map((s) => `- ${s.title}${s.url ? `: ${s.url}` : ''}`), '']
+        : []),
       `Bucket: ${bucket} | Rank: ${rankScore} | Feasibility: ${feasibilityScore}`,
-    ].join('\n');
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
     await appendResearchToNotionPage(item.pageId, notionMd);
     actions.push('appended research block to Notion');
 

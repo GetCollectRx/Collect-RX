@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
-import { ChangePasswordModal } from './components/ChangePasswordModal'
 import PublicPatientPay from './pages/PublicPatientPay'
 import PaymentThankYou  from './pages/PaymentThankYou'
 import LegalTerms from './pages/LegalTerms'
@@ -27,13 +26,23 @@ import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
-import PatientLookup         from './pages/PatientLookup'
-import UsersAdmin            from './pages/UsersAdmin'
-import ResetPasswordPage     from './pages/ResetPasswordPage'
-import GroupDashboard        from './pages/GroupDashboard'
-import { useRoleAccess }     from './lib/useRoleAccess'
-import { ROLE_LABELS }       from './lib/authTypes'
-import { useEffect, useState, type ReactNode } from 'react'
+import LiveConsole           from './pages/LiveConsole'
+import CallHistory           from './pages/CallHistory'
+import AgingReport           from './pages/AgingReport'
+import CarrierStats          from './pages/CarrierStats'
+import PracticeSettings      from './pages/PracticeSettings'
+import Escalations           from './pages/Escalations'
+import QueueStatsReport      from './pages/QueueStatsReport'
+import Portfolio             from './pages/Portfolio'
+import AdminPractices        from './pages/AdminPractices'
+import SystemHealth          from './pages/SystemHealth'
+import UserManagement        from './pages/UserManagement'
+import BreakGlass            from './pages/BreakGlass'
+import ResetPasswordPage       from './pages/ResetPasswordPage'
+import UsersAdmin              from './pages/UsersAdmin'
+import { ProtectedRoute }    from './components/ProtectedRoute'
+import { HOME_ROUTE } from './types/userRole'
+import { useEffect, type ReactNode } from 'react'
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -53,6 +62,117 @@ const ICONS = {
   logo:       'M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14.924a7.003 7.003 0 01-2 0V11a1 1 0 112 0v3.924zm1-5.924a1 1 0 11-2 0 1 1 0 012 0z',
   signout:    'M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z',
 }
+
+/** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
+const PLATFORM_DEV_BLOCKED_PREFIXES = [
+  '/balances',
+  '/patient-ar',
+  '/estimate',
+  '/outbox',
+  '/cdcp',
+  '/pay',
+]
+
+const PLATFORM_DEV_NAV_PATHS = new Set([
+  '/',
+  '/guide',
+  '/work-queue',
+  '/insurance',
+  '/analytics',
+  '/admin',
+  '/admin/sync',
+])
+
+const FRONT_DESK_NAV = [
+  { to: '/console', exact: true, label: 'Console', icon: ICONS.workqueue },
+  { to: '/history', exact: true, label: 'History', icon: ICONS.outbox },
+  { to: '/escalations', exact: true, label: 'Escalations', icon: ICONS.insurance },
+]
+
+const OWNER_NAV = [
+  { to: '/dashboard', exact: true, label: 'Dashboard', icon: ICONS.dashboard },
+  { to: '/work-queue', exact: false, label: 'Work Queue', icon: ICONS.workqueue },
+  { to: '/insurance', exact: false, label: 'Insurance AR', icon: ICONS.insurance },
+  { to: '/reports/aging', exact: false, label: 'Aging Report', icon: ICONS.analytics },
+  { to: '/reports/carriers', exact: false, label: 'Carrier Stats', icon: ICONS.insurance },
+  { to: '/escalations', exact: true, label: 'Escalations', icon: ICONS.outbox },
+  { to: '/settings', exact: true, label: 'Settings', icon: ICONS.admin },
+]
+
+const AUDITOR_NAV = [
+  { to: '/reports/aging', exact: false, label: 'Aging Report', icon: ICONS.analytics },
+  { to: '/reports/carriers', exact: false, label: 'Carrier Stats', icon: ICONS.insurance },
+  { to: '/reports/queue', exact: true, label: 'Queue Stats', icon: ICONS.workqueue },
+]
+
+const BILLING_OPS_NAV = [
+  { to: '/portfolio', exact: true, label: 'Portfolio', icon: ICONS.dashboard },
+  { to: '/reports/aging', exact: false, label: 'Aging (All)', icon: ICONS.analytics },
+  { to: '/reports/carriers', exact: false, label: 'Carrier Intel', icon: ICONS.insurance },
+  { to: '/escalations', exact: true, label: 'Escalations', icon: ICONS.workqueue },
+]
+
+const PLATFORM_ADMIN_NAV = [
+  { to: '/admin', exact: true, label: 'Practices', icon: ICONS.admin },
+  { to: '/admin/health', exact: true, label: 'System Health', icon: ICONS.analytics },
+  { to: '/admin/users', exact: true, label: 'Users', icon: ICONS.guide },
+  { to: '/admin/break-glass', exact: true, label: 'Break-Glass', icon: ICONS.workqueue },
+]
+
+const FRONT_DESK_BLOCKED_PREFIXES = [
+  '/dashboard',
+  '/reports',
+  '/settings',
+  '/',
+  '/guide',
+  '/work-queue',
+  '/insurance',
+  '/balances',
+  '/patient-ar',
+  '/estimate',
+  '/analytics',
+  '/outbox',
+  '/cdcp',
+  '/admin',
+  '/portfolio',
+]
+
+const PRACTICE_OWNER_BLOCKED_PREFIXES = ['/console', '/history']
+
+// ── Nav structure with section groupings ─────────────────────────────────
+const NAV_SECTIONS = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
+      { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
+    ],
+  },
+  {
+    label: 'Claims',
+    items: [
+      { to: '/work-queue', exact: false, label: 'Work Queue',    icon: ICONS.workqueue  },
+      { to: '/insurance',  exact: false, label: 'Insurance AR',  icon: ICONS.insurance  },
+      { to: '/balances',   exact: false, label: 'Outreach AR',   icon: ICONS.balances   },
+      { to: '/patient-ar', exact: false, label: 'Patient AR',    icon: ICONS.patientar  },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { to: '/estimate',  exact: false, label: 'Estimate',   icon: ICONS.estimate  },
+      { to: '/analytics', exact: false, label: 'Analytics',  icon: ICONS.analytics },
+      { to: '/outbox',    exact: false, label: 'Outbox',     icon: ICONS.outbox    },
+      { to: '/cdcp',      exact: false, label: 'CDCP',       icon: ICONS.cdcp      },
+    ],
+  },
+  {
+    label: 'Setup',
+    items: [
+      { to: '/admin', exact: false, label: 'Admin', icon: ICONS.admin },
+    ],
+  },
+]
 
 // ── Dark-mode toggle ──────────────────────────────────────────────────────
 function ThemeToggle() {
@@ -74,52 +194,58 @@ function ThemeToggle() {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
-  const { practices, practiceId, setPracticeId, logout, isPlatformDev, sessionUser } = usePractice()
-  const access = useRoleAccess()
+  const {
+    practices, practiceId, setPracticeId, logout,
+    isPlatformDev, isFrontDesk, isPracticeOwner, userRole,
+  } = usePractice()
   const location = useLocation()
-  const [showChangePw, setShowChangePw] = useState(false)
 
-  // Build nav sections filtered by role access
-  const allSections = [
-  {
-    label: 'Overview',
-    items: [
-      access.canViewDashboard      && { to: '/',                 exact: true,  label: 'Dashboard',       icon: ICONS.dashboard },
-      access.canViewGroupDashboard && { to: '/group-dashboard',  exact: true,  label: 'Group overview',  icon: ICONS.analytics },
-      access.canViewGuide          && { to: '/guide',            exact: true,  label: 'How it works',    icon: ICONS.guide    },
-    ],
-  },
-    {
-      label: 'Claims',
-      items: [
-        access.canViewWorkQueue  && { to: '/work-queue', exact: false, label: 'Work Queue',   icon: ICONS.workqueue },
-        access.canViewInsurance  && { to: '/insurance',  exact: false, label: 'Insurance AR', icon: ICONS.insurance },
-        access.canViewBalances   && { to: '/balances',   exact: false, label: 'Outreach AR',  icon: ICONS.balances  },
-        access.canViewPatientAR  && { to: '/patient-ar', exact: false, label: 'Patient AR',   icon: ICONS.patientar },
-      ],
-    },
-    {
-      label: 'Tools',
-      items: [
-        access.canViewEstimate   && { to: '/estimate',  exact: false, label: 'Estimate',  icon: ICONS.estimate  },
-        access.canViewAnalytics  && { to: '/analytics', exact: false, label: 'Analytics', icon: ICONS.analytics },
-        access.canViewOutbox     && { to: '/outbox',    exact: false, label: 'Outbox',    icon: ICONS.outbox    },
-        access.canViewCdcp       && { to: '/cdcp',      exact: false, label: 'CDCP',      icon: ICONS.cdcp      },
-      ],
-    },
-    {
-      label: 'Setup',
-      items: [
-        access.canViewAdmin   && { to: '/admin',        exact: false, label: 'Admin',    icon: ICONS.admin   },
-        access.canManageUsers && { to: '/admin/users',  exact: false, label: 'Staff',    icon: ICONS.patientar },
-        access.canViewBilling && { to: '/billing',      exact: false, label: 'Billing',  icon: ICONS.balances },
-      ],
-    },
-  ]
+  if (isFrontDesk) {
+    return (
+      <aside
+        className="fixed left-0 top-0 bottom-0 w-[220px] flex flex-col bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800/70 z-30"
+        aria-label="Front desk navigation"
+      >
+        <div className="flex items-center px-4 h-[52px] border-b border-gray-100 dark:border-gray-800/70">
+          <span className="font-semibold text-sm">Collect<span className="text-crx-500">Rx</span> Desk</span>
+        </div>
+        <nav className="flex-1 py-3 px-2 space-y-0.5">
+          {FRONT_DESK_NAV.map((item) => {
+            const isActive = location.pathname === item.to
+            return (
+              <NavLink key={item.to} to={item.to} end={item.exact} className={`nav-item ${isActive ? 'active' : ''}`}>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d={item.icon} /></svg>
+                {item.label}
+              </NavLink>
+            )
+          })}
+        </nav>
+        <div className="px-3 py-2.5 border-t border-gray-100 dark:border-gray-800/70">
+          <button type="button" onClick={() => void logout()} className="text-2xs text-gray-500 hover:text-gray-800">
+            Sign out
+          </button>
+        </div>
+      </aside>
+    )
+  }
 
-  const navSections = allSections
-    .map(s => ({ ...s, items: s.items.filter(Boolean) as { to: string; exact: boolean; label: string; icon: string }[] }))
-    .filter(s => s.items.length > 0)
+  const personaNav =
+    userRole === 'auditor'
+      ? [{ label: 'Reports', items: AUDITOR_NAV }]
+      : userRole === 'billing_ops_manager'
+        ? [{ label: 'Operations', items: BILLING_OPS_NAV }]
+        : userRole === 'platform_admin' || isPlatformDev
+          ? [{ label: 'Platform', items: PLATFORM_ADMIN_NAV }]
+          : isPracticeOwner
+            ? [{ label: 'Practice', items: OWNER_NAV }]
+            : NAV_SECTIONS
+
+  const navSections = isPlatformDev && userRole !== 'platform_admin'
+    ? NAV_SECTIONS.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => PLATFORM_DEV_NAV_PATHS.has(item.to)),
+      })).filter((section) => section.items.length > 0)
+    : personaNav
 
   return (
     <aside
@@ -181,26 +307,6 @@ function Sidebar() {
 
       {/* ── Footer ── */}
       <div className="border-t border-gray-100 dark:border-gray-800/70 flex-shrink-0">
-        {/* Logged-in user */}
-        {sessionUser && (
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
-            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate leading-tight">
-              {sessionUser.displayName}
-            </p>
-            <p className="text-2xs text-gray-400 dark:text-gray-600 mt-0.5">
-              {ROLE_LABELS[sessionUser.role] ?? sessionUser.role}
-            </p>
-            <button
-              onClick={() => setShowChangePw(true)}
-              className="mt-1 text-2xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400 transition-colors"
-            >
-              Change password
-            </button>
-          </div>
-        )}
-
-        {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
-
         {/* Practice selector */}
         {practices.length > 0 && (
           <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
@@ -256,54 +362,35 @@ function Sidebar() {
   )
 }
 
-// ── Route guard — redirects role to its allowed home if accessing a blocked path ──
-function RoleRouteGuard({ children }: { children: ReactNode }) {
-  const access = useRoleAccess()
+function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
+  const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole } = usePractice()
   const location = useLocation()
-
-  // Map paths to the access flag that permits them
-  const routeAccess: [string, boolean][] = [
-    ['/work-queue',       access.canViewWorkQueue],
-    ['/insurance',        access.canViewInsurance],
-    ['/balances',         access.canViewBalances],
-    ['/patient-ar',       access.canViewPatientAR],
-    ['/estimate',         access.canViewEstimate],
-    ['/analytics',        access.canViewAnalytics],
-    ['/outbox',           access.canViewOutbox],
-    ['/cdcp',             access.canViewCdcp],
-    ['/admin/users',      access.canManageUsers],
-    ['/admin',            access.canViewAdmin],
-    ['/billing',          access.canViewBilling],
-    ['/group-dashboard',  access.canViewGroupDashboard],
-    ['/',                 access.canViewDashboard],
-    ['/guide',            access.canViewGuide],
-  ]
-
-  const blocked = routeAccess.find(([prefix, allowed]) => {
-    const matches = prefix === '/'
-      ? location.pathname === '/'
-      : location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
-    return matches && !allowed
-  })
-
-  if (blocked) return <Navigate to={access.homeRoute} replace />
+  if (
+    isPlatformDev &&
+    PLATFORM_DEV_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
+  ) {
+    return <Navigate to="/" replace />
+  }
+  if (
+    isFrontDesk &&
+    FRONT_DESK_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
+  ) {
+    return <Navigate to="/console" replace />
+  }
+  if (
+    isPracticeOwner &&
+    PRACTICE_OWNER_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
+  ) {
+    return <Navigate to="/dashboard" replace />
+  }
+  if (userRole === 'auditor' && location.pathname.startsWith('/settings')) {
+    return <Navigate to="/reports/aging" replace />
+  }
   return <>{children}</>
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
-  const access = useRoleAccess()
-
-  // Front desk gets their own minimal shell (no sidebar)
-  if (access.isPatientLookupOnly) {
-    return (
-      <Routes>
-        <Route path="/patient-lookup" element={<PatientLookup />} />
-        <Route path="*" element={<Navigate to="/patient-lookup" replace />} />
-      </Routes>
-    )
-  }
-
   return (
     <div className="flex min-h-screen bg-gray-50/60 dark:bg-gray-950">
       <Sidebar />
@@ -311,38 +398,68 @@ function AppShell() {
         className="flex-1 ml-[220px] min-h-screen flex flex-col"
         id="main-content"
       >
-        <RoleRouteGuard>
-          <Routes>
-            <Route path="/"              element={<Dashboard />} />
-            <Route path="/guide"         element={<OfficeGuide />} />
-            <Route path="/work-queue"    element={<WorkQueue />} />
-            <Route path="/insurance"     element={<InsuranceClaims />} />
-            <Route path="/insurance/:id" element={<InsuranceClaimDetail />} />
-            <Route path="/balances"      element={<Balances />} />
-            <Route path="/balances/:id"  element={<BalanceDetail />} />
-            <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-            <Route path="/admin/users"   element={<UsersAdmin />} />
-            <Route path="/group-dashboard" element={<GroupDashboard />} />
-            <Route path="/patient-ar"    element={<PatientAR />} />
-            <Route path="/estimate"      element={<PreTreatmentEstimate />} />
-            <Route path="/analytics"     element={<Analytics />} />
-            <Route path="/outbox"        element={<Outbox />} />
-            <Route path="/admin"         element={<Admin />} />
-            <Route path="/billing"       element={<PracticeBillingPage />} />
-            <Route path="/pay/:balanceId" element={<PaymentPage />} />
-            <Route path="/cdcp"          element={<Phase5Dashboard />} />
-            <Route path="*"              element={<Navigate to={access.homeRoute} replace />} />
-          </Routes>
-        </RoleRouteGuard>
+        <PlatformDevRouteGuard>
+        <Routes>
+          <Route path="/console" element={<ProtectedRoute allowedRoles={['front_desk']}><LiveConsole /></ProtectedRoute>} />
+          <Route path="/history" element={<ProtectedRoute allowedRoles={['front_desk']}><CallHistory /></ProtectedRoute>} />
+          <Route path="/console/history" element={<Navigate to="/history" replace />} />
+          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/reports/aging" element={<ProtectedRoute allowedRoles={['practice_owner', 'auditor', 'billing_ops_manager', 'platform_admin']}><AgingReport /></ProtectedRoute>} />
+          <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
+          <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
+          <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
+          <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
+          <Route path="/admin/health" element={<ProtectedRoute allowedRoles={['platform_admin']}><SystemHealth /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['platform_admin']}><UserManagement /></ProtectedRoute>} />
+          <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />
+          <Route path="/admin/staff" element={<ProtectedRoute allowedRoles={['practice_owner']}><UsersAdmin /></ProtectedRoute>} />
+          <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/guide" element={<OfficeGuide />} />
+          <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
+          <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
+          <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
+          <Route path="/balances"      element={<Balances />} />
+          <Route path="/balances/:id"  element={<BalanceDetail />} />
+          <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
+          <Route path="/patient-ar"    element={<PatientAR />} />
+          <Route path="/estimate"      element={<PreTreatmentEstimate />} />
+          <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/outbox"        element={<Outbox />} />
+          <Route path="/pay/:balanceId" element={<PaymentPage />} />
+          <Route path="/cdcp"          element={<Phase5Dashboard />} />
+        </Routes>
+        </PlatformDevRouteGuard>
       </main>
     </div>
   )
 }
 
 function AuthGate() {
-  const { authState, loading, subscription, isPlatformDev } = usePractice()
+  const { authState, loading, subscription, isPlatformDev, isFrontDesk, userRole } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (loading || authState !== 'ready' || !userRole) return
+    const home = HOME_ROUTE[userRole]
+    if (userRole === 'front_desk' && (location.pathname === '/' || location.pathname === '/dashboard')) {
+      navigate('/console', { replace: true })
+      return
+    }
+    if (userRole === 'practice_owner' && location.pathname === '/') {
+      navigate('/dashboard', { replace: true })
+      return
+    }
+    if (
+      (userRole === 'auditor' || userRole === 'billing_ops_manager' || userRole === 'platform_admin') &&
+      (location.pathname === '/' || location.pathname === '')
+    ) {
+      navigate(home, { replace: true })
+    }
+  }, [loading, authState, isFrontDesk, isPlatformDev, userRole, location.pathname, navigate])
 
   useEffect(() => {
     if (loading || authState !== 'anon') return

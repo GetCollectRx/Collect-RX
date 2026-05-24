@@ -2,6 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import type { AuthJwtPayload, UserAuthPayload } from '../accessControl/types.js';
+import { getUserRole } from '../accessControl/types.js';
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 import { prisma } from '../../lib/prisma.js';
@@ -32,8 +33,10 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
     const payload = verifyAuthToken(raw);
+    const briefRole = getUserRole(payload);
+    const crossPractice = briefRole === 'billing_ops_manager' || briefRole === 'platform_admin';
 
-    if (payload.role !== 'platform_dev' && !(payload as UserAuthPayload).practiceId) {
+    if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }

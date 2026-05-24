@@ -3,8 +3,16 @@ import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import {
+  getUserRole,
+  isCrossPracticeReader,
+  isPlatformDev,
+  practiceRoleToBrief,
+} from '../accessControl/types.js';
+import type { UserRole } from '../../types/userRole.js';
+import {
   setUserAuthCookie,
   setPlatformDevAuthCookie,
+  setBriefAuthCookie,
   clearAuthCookie,
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
@@ -113,6 +121,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({
         role: user.role,
+        userRole: practiceRoleToBrief(user.role),
+        deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
         phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
         practice,
         subscription,
@@ -147,6 +157,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
       return res.json({
         role: 'platform_dev' as const,
+        userRole: 'platform_admin' as const,
         phiAccess: false,
         practices,
         subscription: {
@@ -160,6 +171,67 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
     } catch (e) {
       console.error('Platform dev login error:', e);
+      return res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  /** POST /api/auth/login/platform-user — auditor / billing ops (PlatformUser table) */
+  r.post('/login/platform-user', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body as { email?: string; password?: string };
+      if (!email?.trim() || !password) {
+        return res.status(400).json({ error: 'email and password required' });
+      }
+      const user = await prisma.platformUser.findUnique({
+        where: { email: email.trim().toLowerCase() },
+      });
+      if (!user?.active) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+
+      const userRole = user.userRole as UserRole;
+      setBriefAuthCookie(res, {
+        userRole,
+        userId: user.id,
+        practiceId: user.practiceId,
+        phiAccess: userRole === 'auditor',
+      });
+
+      let practice = null;
+      if (user.practiceId) {
+        practice = await prisma.practice.findUnique({
+          where: { id: user.practiceId },
+          select: { id: true, name: true, timezone: true },
+        });
+      }
+      const practices = isCrossPracticeReader({
+        userRole,
+        userId: user.id,
+        practiceId: user.practiceId,
+        phiAccess: userRole === 'auditor',
+      })
+        ? await prisma.practice.findMany({
+            select: { id: true, name: true, timezone: true },
+            orderBy: { name: 'asc' },
+          })
+        : practice
+          ? [practice]
+          : [];
+
+      return res.json({
+        userRole,
+        role: userRole === 'auditor' ? 'accountant' : userRole === 'billing_ops_manager' ? 'group_admin' : 'platform_dev',
+        phiAccess: userRole === 'auditor',
+        practice: practice ?? practices[0] ?? null,
+        practices,
+        subscription: {
+          enforce: false, active: true, status: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
+        },
+      });
+    } catch (e) {
+      console.error('Platform user login error:', e);
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -189,6 +261,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           : null;
         return res.json({
           role: 'platform_dev',
+          userRole: 'platform_admin',
           phiAccess: false,
           practices,
           practice,
@@ -216,6 +289,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
       return res.json({
         role: user.role,
+        userRole: getUserRole(auth) ?? practiceRoleToBrief(user.role),
+        deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
         phiAccess: auth.phiAccess,
         practice,
         subscription,

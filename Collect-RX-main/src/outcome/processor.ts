@@ -6,9 +6,9 @@
 // operational event. If a block is detected, `carrierBlockDetected: true`
 // is returned and the caller MUST fire the CARRIER_BLOCK suspension protocol.
 //
-// Block detection strategy: scan transcript + summary for carrier-side
-// phrases that indicate automation detection. This list is carrier-specific
-// and should be tuned over time as signals are observed in production.
+// Transcript classification mirrors `processor.legacy.cjs` keyword ladder
+// (same substring checks and order), then falls back to regex buckets for
+// outcomes the legacy list does not cover.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CallOutcome } from '@prisma/client';
@@ -30,11 +30,10 @@ export interface ProcessedOutcome {
 }
 
 // ---------------------------------------------------------------------------
-// Block signal patterns
+// Block signal patterns (regex)
 //
 // These are phrases carriers use when they detect automated/bot behaviour.
 // Add to this list as new signals are observed in production transcripts.
-// Each pattern is tested case-insensitively against the call transcript.
 // ---------------------------------------------------------------------------
 
 const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
@@ -50,6 +49,18 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /bot\s+activity(\s+detected)?/i,
   /detected\s+bot\s+activity/i,
 ];
+
+/** Literal phrases from `processor.legacy.cjs` (carrier_block branch). */
+const LEGACY_CARRIER_BLOCK_INCLUDES = [
+  'carrier_block',
+  'your calls are being blocked',
+  'automated calling is not permitted',
+  'this number has been flagged',
+  'call blocking',
+  'number is blocked',
+  'please do not call again',
+  'calls from this number will not be accepted',
+] as const;
 
 // Resolution indicator phrases
 const RESOLUTION_PATTERNS: RegExp[] = [
@@ -78,13 +89,220 @@ const PENDING_PATTERNS: RegExp[] = [
   /not\s+(yet\s+)?received/i,
 ];
 
-// Escalation triggers
+// Escalation triggers (regex — supplements legacy `appeal_required` keywords)
 const ESCALATION_PATTERNS: RegExp[] = [
   /speak\s+(with\s+)?a\s+supervisor/i,
   /dispute\s+(this\s+)?claim/i,
   /appeals\s+(department|process)/i,
   /formal\s+complaint/i,
 ];
+
+// ---------------------------------------------------------------------------
+// Legacy mirror — same order as `processor.legacy.cjs` classifyOutcome()
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a legacy outcome code, or `null` when the legacy classifier would
+ * return `"unknown"`.
+ */
+function matchLegacyTranscript(fullText: string): string | null {
+  if (!fullText.trim()) return null;
+
+  if (
+    fullText.includes('payment issued') ||
+    fullText.includes('cheque has been sent') ||
+    fullText.includes('eft processed') ||
+    fullText.includes('payment was processed') ||
+    fullText.includes('payment sent')
+  ) {
+    return 'paid';
+  }
+
+  if (
+    fullText.includes('still processing') ||
+    fullText.includes('under review') ||
+    fullText.includes('in adjudication') ||
+    fullText.includes('being processed') ||
+    fullText.includes('processing time') ||
+    fullText.includes('5 to 10 business days') ||
+    fullText.includes('7 to 10 business days')
+  ) {
+    return 'processing';
+  }
+
+  if (
+    fullText.includes('not on file') ||
+    fullText.includes('no claim found') ||
+    fullText.includes('not received') ||
+    fullText.includes('please resubmit') ||
+    fullText.includes('not in our system')
+  ) {
+    return 'resubmit_required';
+  }
+
+  if (
+    fullText.includes('x-ray') ||
+    fullText.includes('xray') ||
+    fullText.includes('radiograph') ||
+    fullText.includes('imaging required') ||
+    (fullText.includes('supporting documentation') && fullText.includes('radiograph'))
+  ) {
+    return 'xray_required';
+  }
+
+  if (
+    fullText.includes('clinical notes') ||
+    fullText.includes('chart notes') ||
+    fullText.includes('treatment notes required') ||
+    fullText.includes('documentation required') ||
+    fullText.includes('predetermination required')
+  ) {
+    return 'docs_required';
+  }
+
+  if (
+    fullText.includes('maximum benefit') ||
+    fullText.includes('annual maximum') ||
+    fullText.includes('benefit limit') ||
+    fullText.includes('maximum has been reached') ||
+    fullText.includes('no remaining benefit')
+  ) {
+    return 'coverage_maxed';
+  }
+
+  if (
+    fullText.includes('not a covered') ||
+    fullText.includes('not covered') ||
+    fullText.includes('excluded procedure') ||
+    fullText.includes('not eligible') ||
+    fullText.includes('not a benefit')
+  ) {
+    return 'not_covered';
+  }
+
+  if (
+    fullText.includes('appeal') ||
+    fullText.includes('reconsideration') ||
+    fullText.includes('dispute') ||
+    fullText.includes('internal review')
+  ) {
+    return 'appeal_required';
+  }
+
+  if (
+    fullText.includes('no answer') ||
+    fullText.includes('busy signal') ||
+    fullText.includes('hold timeout') ||
+    fullText.includes('call dropped') ||
+    fullText.includes('could not connect')
+  ) {
+    return 'no_answer';
+  }
+
+  for (const phrase of LEGACY_CARRIER_BLOCK_INCLUDES) {
+    if (fullText.includes(phrase)) return 'carrier_block';
+  }
+
+  return null;
+}
+
+function legacyCodeToProcessedOutcome(
+  code: string,
+  rawText: string,
+  fullText: string,
+  transcriptUrl: string | null,
+  durationSeconds: number | null,
+): ProcessedOutcome {
+  const base = {
+    repName: extractRepName(rawText),
+    referenceNumber: extractReferenceNumber(fullText),
+    transcriptUrl,
+    durationSeconds,
+  };
+
+  switch (code) {
+    case 'paid':
+      return {
+        ...base,
+        outcome: 'RESOLVED',
+        outcomeDetail: 'Payment confirmed by carrier (legacy: paid)',
+        carrierBlockDetected: false,
+      };
+    case 'processing':
+      return {
+        ...base,
+        outcome: 'PENDING',
+        outcomeDetail: 'Claim still processing (legacy: processing)',
+        carrierBlockDetected: false,
+      };
+    case 'resubmit_required':
+      return {
+        ...base,
+        outcome: 'ESCALATED',
+        outcomeDetail:
+          'Claim not on file or not received — resubmission required (legacy: resubmit_required)',
+        carrierBlockDetected: false,
+      };
+    case 'xray_required':
+      return {
+        ...base,
+        outcome: 'ESCALATED',
+        outcomeDetail:
+          'Carrier requires radiographic / imaging documentation — clinic staff action (legacy: xray_required)',
+        carrierBlockDetected: false,
+      };
+    case 'docs_required':
+      return {
+        ...base,
+        outcome: 'ESCALATED',
+        outcomeDetail:
+          'Carrier requires additional clinical documentation (legacy: docs_required)',
+        carrierBlockDetected: false,
+      };
+    case 'coverage_maxed':
+      return {
+        ...base,
+        outcome: 'DENIED',
+        outcomeDetail: 'Annual maximum or benefit limit reached (legacy: coverage_maxed)',
+        carrierBlockDetected: false,
+      };
+    case 'not_covered':
+      return {
+        ...base,
+        outcome: 'DENIED',
+        outcomeDetail: 'Procedure not covered or not eligible (legacy: not_covered)',
+        carrierBlockDetected: false,
+      };
+    case 'appeal_required':
+      return {
+        ...base,
+        outcome: 'ESCALATED',
+        outcomeDetail: 'Appeal, dispute, or internal review path (legacy: appeal_required)',
+        carrierBlockDetected: false,
+      };
+    case 'no_answer':
+      return {
+        ...base,
+        outcome: 'NO_ANSWER',
+        outcomeDetail: 'IVR / connection issue noted in transcript (legacy: no_answer)',
+        carrierBlockDetected: false,
+      };
+    case 'carrier_block':
+      return {
+        ...base,
+        outcome: 'BLOCK_DETECTED',
+        outcomeDetail: 'Carrier blocking or rejecting calls (legacy: carrier_block)',
+        carrierBlockDetected: true,
+      };
+    default:
+      return {
+        ...base,
+        outcome: 'HUNG_UP',
+        outcomeDetail: 'Call ended without clear resolution — manual review recommended',
+        carrierBlockDetected: false,
+      };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -101,19 +319,19 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const summary = payload.analysis?.summary ?? '';
   const successEval = payload.analysis?.successEvaluation ?? '';
   /** Original casing — used for name extraction and pattern display */
-  const rawText  = `${transcript} ${summary} ${successEval}`;
+  const rawText = `${transcript} ${summary} ${successEval}`;
   /** Lowercased — used for all pattern matching */
   const fullText = rawText.toLowerCase();
 
   const durationSeconds = payload.call.durationSeconds ?? null;
   const transcriptUrl = payload.recordingUrl ?? null;
 
-  // ── Carrier block detection (highest priority — check first) ──────────────
-  const carrierBlockDetected = BLOCK_SIGNAL_PATTERNS.some((p) => p.test(fullText));
-  if (carrierBlockDetected) {
+  // ── Automation / bot block (regex only — not in legacy substring list) ───
+  if (BLOCK_SIGNAL_PATTERNS.some((p) => p.test(fullText))) {
     return {
       outcome: 'BLOCK_DETECTED',
-      outcomeDetail: 'Carrier detected automation — CARRIER_BLOCK protocol must fire immediately',
+      outcomeDetail:
+        'Carrier detected automation — CARRIER_BLOCK protocol must fire immediately',
       repName: null,
       referenceNumber: extractReferenceNumber(fullText),
       transcriptUrl,
@@ -123,10 +341,11 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   }
 
   // ── Failed / no connection ────────────────────────────────────────────────
-  if (payload.call.status === 'failed' || !transcript || durationSeconds === 0) {
+  if (payload.call.status === 'failed' || durationSeconds === 0) {
     return {
       outcome: 'FAILED',
-      outcomeDetail: payload.call.status === 'failed' ? 'Call failed to connect' : 'No transcript produced',
+      outcomeDetail:
+        payload.call.status === 'failed' ? 'Call failed to connect' : 'Zero-duration call',
       repName: null,
       referenceNumber: null,
       transcriptUrl,
@@ -148,7 +367,25 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     };
   }
 
-  // ── Escalation ────────────────────────────────────────────────────────────
+  // ── Legacy keyword ladder (mirrors processor.legacy.cjs) ─────────────────
+  const legacyCode = matchLegacyTranscript(fullText);
+  if (legacyCode !== null) {
+    return legacyCodeToProcessedOutcome(legacyCode, rawText, fullText, transcriptUrl, durationSeconds);
+  }
+
+  // ── Regex fallbacks (legacy: unknown) ─────────────────────────────────────
+  if (!fullText.trim()) {
+    return {
+      outcome: 'HUNG_UP',
+      outcomeDetail: 'No transcript or summary — manual review (legacy: unknown)',
+      repName: null,
+      referenceNumber: null,
+      transcriptUrl,
+      durationSeconds,
+      carrierBlockDetected: false,
+    };
+  }
+
   if (ESCALATION_PATTERNS.some((p) => p.test(fullText))) {
     return {
       outcome: 'ESCALATED',
@@ -161,7 +398,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     };
   }
 
-  // ── Resolved ─────────────────────────────────────────────────────────────
   if (RESOLUTION_PATTERNS.some((p) => p.test(fullText))) {
     return {
       outcome: 'RESOLVED',
@@ -174,7 +410,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     };
   }
 
-  // ── Denied ────────────────────────────────────────────────────────────────
   if (DENIAL_PATTERNS.some((p) => p.test(fullText))) {
     return {
       outcome: 'DENIED',
@@ -187,7 +422,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     };
   }
 
-  // ── Still pending ─────────────────────────────────────────────────────────
   if (PENDING_PATTERNS.some((p) => p.test(fullText))) {
     return {
       outcome: 'PENDING',
@@ -200,7 +434,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     };
   }
 
-  // ── Hung up / unclear ────────────────────────────────────────────────────
   return {
     outcome: 'HUNG_UP',
     outcomeDetail: 'Call ended without clear resolution — manual review recommended',
@@ -239,7 +472,7 @@ function extractRepName(text: string): string | null {
 function extractReferenceNumber(text: string): string | null {
   const patterns = [
     /(?:reference|confirmation|case|ticket)\s+(?:number\s+)?(?:is\s+)?([A-Z0-9]{5,15})/i,
-    /\b([A-Z]{2,4}\d{6,12})\b/,  // e.g. SL20241234, REF2024ABC
+    /\b([A-Z]{2,4}\d{6,12})\b/, // e.g. SL20241234, REF2024ABC
   ];
   for (const p of patterns) {
     const m = text.match(p);

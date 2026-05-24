@@ -1,20 +1,18 @@
 import { Router, type Request, type Response } from 'express';
 import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../middleware/requirePracticeSession';
 import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
+import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 const OPEN_STATUSES: ClaimStatus[] = [
   'PENDING',

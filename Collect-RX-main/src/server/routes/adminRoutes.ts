@@ -14,6 +14,7 @@ import type { Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { isPlatformDev } from '../accessControl/types.js';
+import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,6 +24,10 @@ const upload = multer({
 const router = Router();
 router.use(authenticate);
 router.use(requirePracticeContext);
+router.use((req, res, next) => {
+  if (isPlatformDev(req.auth)) return next();
+  return requirePracticeOwner(req, res, next);
+});
 
 function integrationPayload() {
   const sk = process.env.STRIPE_SECRET_KEY?.trim() ?? '';

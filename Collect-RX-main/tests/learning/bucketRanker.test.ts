@@ -30,6 +30,25 @@ describe('assignBucket', () => {
 });
 
 describe('scoreFeasibility', () => {
+  it('scores higher when external research citations exist', () => {
+    const { score: withSrc } = scoreFeasibility(
+      item({ priority: 'P1', description: 'Detailed acceptance criteria here.' }),
+      {
+        keywords: [],
+        codebaseHits: [],
+        summary: '',
+        sources: [{ title: 'Carrier guide', url: 'https://example.com' }],
+      },
+      'ENGINEERING',
+    );
+    const { score: noSrc } = scoreFeasibility(
+      item({ priority: 'P1', description: 'Detailed acceptance criteria here.' }),
+      { keywords: [], codebaseHits: [], summary: '' },
+      'ENGINEERING',
+    );
+    expect(withSrc).toBeGreaterThan(noSrc);
+  });
+
   it('scores higher for P0 with description', () => {
     const { score: p0 } = scoreFeasibility(
       item({ priority: 'P0', description: 'Detailed acceptance criteria here.' }),

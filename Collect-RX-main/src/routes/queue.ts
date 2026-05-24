@@ -5,12 +5,11 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { buildPriorityQueue } from '../server/services/priorityEngine';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { redactPriorityScoreRow } from '../server/accessControl/redaction.js';
 
@@ -36,8 +35,7 @@ function parseCarrierOrderJson(raw: string): string[] {
 }
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // GET /api/queue/carrier-order?practiceId=… — persisted drag order for CarrierPriorityPanel
 router.get('/carrier-order', async (req: Request, res: Response) => {

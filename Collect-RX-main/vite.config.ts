@@ -48,6 +48,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: apiProxyTarget.startsWith('https'),
         },
+        '/ws': {
+          target: apiProxyTarget,
+          ws: true,
+          changeOrigin: true,
+          secure: apiProxyTarget.startsWith('https'),
+        },
       },
     },
   }

@@ -22,8 +22,9 @@ import {
 } from '../services/eligibility/types';
 import { prisma } from '../lib/prisma';
 import type { CarrierId } from '@prisma/client';
-import { authenticate } from '../server/middleware/authenticate';
 import { practiceIdFromSession } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApiAuthOnly } from '../server/middleware/ownerPracticeApi.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 // ---------------------------------------------------------------------------
 // Engine + reconciliation; snapshots and reconcile results persist via Prisma.
@@ -32,7 +33,7 @@ import { practiceIdFromSession } from '../server/middleware/requirePracticeSessi
 // ---------------------------------------------------------------------------
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApiAuthOnly(router);
 
 type EligibilitySnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.eligibilitySnapshot.findFirst>>>;
 
@@ -117,7 +118,7 @@ router.post('/estimate', async (req: Request, res: Response) => {
     console.error('[eligibility/estimate]', err);
     return res.status(500).json({
       success: false,
-      error: (err as Error).message ?? 'Internal server error',
+      error: apiErrorMessageForResponse(err),
     });
   }
 });
@@ -155,7 +156,7 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
     return res.status(200).json(response);
   } catch (err) {
     console.error('[eligibility/status]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -196,7 +197,7 @@ router.post('/reconcile', async (req: Request, res: Response) => {
     return res.status(200).json(response);
   } catch (err) {
     console.error('[eligibility/reconcile]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -220,7 +221,7 @@ router.post('/telus-tpa', async (req: Request, res: Response) => {
     return res.status(200).json({ success: true, identification });
   } catch (err) {
     console.error('[eligibility/telus-tpa]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

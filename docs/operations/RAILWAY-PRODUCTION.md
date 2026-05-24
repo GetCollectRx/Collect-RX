@@ -104,6 +104,9 @@ PRACTICE_EMAIL=...
 | `LEARNING_CRON` | `0 6 * * *` (daily 6:00 UTC — adjust as needed) |
 | `LEARNING_FEASIBILITY_MIN` | `65` |
 | `LEARNING_MAX_IMPLEMENT_PER_CYCLE` | `3` |
+| `GEMINI_API_KEY` | **Recommended on Railway** — Gemini + Google Search grounding (fallback if NotebookLM fails). Also accepts `GOOGLE_API_KEY`. |
+| `LEARNING_RESEARCH_PROVIDER` | `notebooklm` (default) or `gemini` or `local` — see [PHASE6-LEARNING-LOOP.md](./PHASE6-LEARNING-LOOP.md) |
+| `NOTEBOOKLM_NOTEBOOK_ID` | Optional — if set + session cookies, runs NotebookLM **Research** first (unofficial SDK; harder to keep alive on servers) |
 
 SMS summaries use the same Twilio vars as `ALERT_SMS_TO`.
 

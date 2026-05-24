@@ -28,6 +28,10 @@ export default function SyncOpsDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
+  const [runDetail, setRunDetail] = useState<{
+    validationMessages: string[]
+    rowErrors: { row?: number; message?: string }[]
+  } | null>(null)
 
   const load = () => {
     if (!practiceId) return
@@ -126,11 +130,12 @@ export default function SyncOpsDashboard() {
                 <Th>Failed</Th>
                 <Th>Drift</Th>
                 <Th>Valid</Th>
+                <Th />
               </Tr>
             </Thead>
             <Tbody>
               {runs.length === 0 ? (
-                <TableEmpty colSpan={7} message="No import runs yet." />
+                <TableEmpty colSpan={8} message="No import runs yet." />
               ) : (
                 runs.map((run) => (
                   <Tr key={run.id}>
@@ -141,12 +146,54 @@ export default function SyncOpsDashboard() {
                     <Td>{run.recordsFailed}</Td>
                     <Td>{run.driftPct != null ? `${(run.driftPct * 100).toFixed(2)}%` : '—'}</Td>
                     <Td>{run.validationPassed == null ? '—' : run.validationPassed ? '✓' : '✗'}</Td>
+                    <Td>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          void apiFetchJson<{
+                            success: boolean
+                            data: { validationMessages?: string[]; rowErrors?: { row?: number; message?: string }[] }
+                          }>(`/api/admin/sync/runs/${run.id}`).then((res) => {
+                            setRunDetail({
+                              validationMessages: res.data?.validationMessages ?? [],
+                              rowErrors: res.data?.rowErrors ?? [],
+                            })
+                          })
+                        }}
+                      >
+                        Details
+                      </Button>
+                    </Td>
                   </Tr>
                 ))
               )}
             </Tbody>
           </Table>
         </TableContainer>
+
+        {runDetail && (
+          <Card>
+            <CardHeader title="Import run details" />
+            <div className="px-4 pb-4 text-sm space-y-2">
+              {runDetail.validationMessages.length > 0 && (
+                <ul className="list-disc list-inside text-amber-700">
+                  {runDetail.validationMessages.map((m) => <li key={m}>{m}</li>)}
+                </ul>
+              )}
+              {runDetail.rowErrors.length > 0 ? (
+                <ul className="text-xs text-gray-600 max-h-48 overflow-y-auto">
+                  {runDetail.rowErrors.slice(0, 20).map((e, i) => (
+                    <li key={i}>Row {e.row ?? '?'}: {e.message ?? 'error'}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-500">No row-level errors recorded.</p>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setRunDetail(null)}>Close</Button>
+            </div>
+          </Card>
+        )}
       </div>
     </DataState>
   )

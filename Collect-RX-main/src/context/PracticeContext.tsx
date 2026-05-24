@@ -1,8 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import type { AuthRole, PracticeRole } from '../lib/authTypes'
 import { isPracticeRole } from '../lib/authTypes'
+import { authRoleToBriefPersona } from '../lib/personaRole'
+import type { UserRole } from '../types/userRole'
+import { isReadOnlyRole } from '../types/userRole'
 import { configureApiSession } from '../lib/practiceScopedApi'
 
 interface Practice {
@@ -46,10 +49,14 @@ interface PracticeContextValue {
   loading: boolean
   authState: AuthState
   role: AuthRole | null
+  userRole: UserRole | null
+  deskRole: 'owner' | 'front_desk' | null
+  isReadOnly: boolean
   phiAccess: boolean
   isPlatformDev: boolean
+  isFrontDesk: boolean
+  isPracticeOwner: boolean
   subscription: SubscriptionGate
-  /** Current logged-in user (null for platform_dev sessions). */
   sessionUser: SessionUser | null
   login: (email: string, password: string) => Promise<void>
   loginPlatformDev: (password: string) => Promise<void>
@@ -61,6 +68,8 @@ const PracticeContext = createContext<PracticeContextValue | null>(null)
 
 type MeResponse = {
   role?: AuthRole
+  userRole?: UserRole
+  deskRole?: 'owner' | 'front_desk'
   phiAccess?: boolean
   practice?: Practice
   practices?: Practice[]
@@ -104,7 +113,12 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
 
   const loading = authState === 'loading'
+  const userRole = authRoleToBriefPersona(role)
   const isPlatformDevFlag = role === 'platform_dev'
+  const isFrontDesk = userRole === 'front_desk'
+  const isPracticeOwner = userRole === 'practice_owner'
+  const isReadOnly = userRole ? isReadOnlyRole(userRole) || role === 'practice_owner' || role === 'associate_dentist' || role === 'accountant' : false
+  const deskRole: 'owner' | 'front_desk' | null = userRole === 'front_desk' ? 'front_desk' : userRole === 'practice_owner' ? 'owner' : null
 
   const stateSetters = { setPractices, setPracticeId, setRole, setPhiAccess, setSessionUser, setSubscription, setAuthState }
 
@@ -130,7 +144,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     }
     if (!r.ok) { clearState(stateSetters); return }
 
-    const sessionRole = data.role ?? null
+    const sessionRole = data.role ?? (data.userRole === 'platform_admin' ? 'platform_dev' : null)
     setRole(sessionRole)
     setPhiAccess(data.phiAccess === true)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
@@ -151,7 +165,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
 
     if (!data.practice?.id) { setAuthState('anon'); return }
     try { localStorage.setItem('crx_last_practice_id', data.practice.id) } catch { /* ignore */ }
-    setPractices([data.practice])
+    setPractices(data.practices?.length ? data.practices : [data.practice])
     setPracticeId(data.practice.id)
     applySessionConfig(sessionRole, data.practice.id)
     setSessionUser(data.user ?? null)
@@ -192,7 +206,8 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     try {
       data = await parseApiJson<MeResponse>(r)
     } catch {
-      throw new Error('Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.')
+      throw new Error('Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
+      )
     }
     if (!data?.practice?.id) throw new Error('Invalid login response')
 
@@ -249,26 +264,38 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
 
   const practice = practices.find((p) => p.id === practiceId) ?? null
 
+  const value = useMemo(
+    () => ({
+      practices,
+      practiceId,
+      practice,
+      setPracticeId,
+      loading,
+      authState,
+      role,
+      userRole,
+      deskRole,
+      isReadOnly,
+      phiAccess,
+      isPlatformDev: isPlatformDevFlag,
+      isFrontDesk,
+      isPracticeOwner,
+      subscription,
+      sessionUser,
+      login,
+      loginPlatformDev,
+      logout,
+      refreshSession,
+    }),
+    [
+      practices, practiceId, practice, loading, authState, role, userRole, deskRole,
+      isReadOnly, phiAccess, isPlatformDevFlag, isFrontDesk, isPracticeOwner,
+      subscription, sessionUser, logout, refreshSession,
+    ],
+  )
+
   return (
-    <PracticeContext.Provider
-      value={{
-        practices,
-        practiceId,
-        practice,
-        setPracticeId,
-        loading,
-        authState,
-        role,
-        phiAccess,
-        isPlatformDev: isPlatformDevFlag,
-        subscription,
-        sessionUser,
-        login,
-        loginPlatformDev,
-        logout,
-        refreshSession,
-      }}
-    >
+    <PracticeContext.Provider value={value}>
       {children}
     </PracticeContext.Provider>
   )

@@ -1,20 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { NotionLearningItem, ResearchResult } from './types.js';
-import { learningRepoRoot } from './config.js';
+import { learningRepoRoot, learningResearchProvider, learningResearchTimeoutMs } from './config.js';
+import { externalResearchProviders } from './providers/registry.js';
+import { toProviderResearchInput, withTimeout } from './providers/util.js';
 
 const SRC_SCAN_ROOTS = ['src', 'docs', 'Product Requirement Document'];
 const MAX_HITS = 8;
 const MAX_FILES_SCANNED = 120;
 
 function tokenize(text: string): string[] {
-  return [...new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s/_-]/g, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length >= 4),
-  )].slice(0, 12);
+  return [
+    ...new Set(
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s/_-]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 4),
+    ),
+  ].slice(0, 12);
 }
 
 function walkFiles(dir: string, acc: string[], limit: number): void {
@@ -71,18 +75,70 @@ function searchCodebase(keywords: string[], root: string): ResearchResult['codeb
   return hits;
 }
 
-export function researchItem(item: NotionLearningItem): ResearchResult {
-  const keywords = tokenize(`${item.title} ${item.description} ${item.phase}`);
-  const root = learningRepoRoot();
-  const codebaseHits = searchCodebase(keywords, root);
-
-  const summary =
+function localOnlySummary(
+  item: NotionLearningItem,
+  keywords: string[],
+  codebaseHits: ResearchResult['codebaseHits'],
+): string {
+  return (
     `Researched "${item.title}" (${item.priority}, ${item.status}). ` +
     `Keywords: ${keywords.slice(0, 6).join(', ') || 'n/a'}. ` +
     `Codebase hits: ${codebaseHits.length}. ` +
     (item.description
       ? `Context: ${item.description.slice(0, 200)}`
-      : 'No extended description in Notion.');
+      : 'No extended description in Notion.')
+  );
+}
 
-  return { keywords, codebaseHits, summary };
+export async function researchItem(item: NotionLearningItem): Promise<ResearchResult> {
+  const keywords = tokenize(`${item.title} ${item.description} ${item.phase}`);
+  const root = learningRepoRoot();
+  const codebaseHits = searchCodebase(keywords, root);
+  const fallbackSummary = localOnlySummary(item, keywords, codebaseHits);
+
+  const input = toProviderResearchInput(item, keywords);
+  const timeoutMs = learningResearchTimeoutMs();
+  const primary = learningResearchProvider();
+
+  let externalSummary: string | null = null;
+  let externalSources: ResearchResult['sources'];
+  let provider: string | undefined;
+
+  for (const p of externalResearchProviders(primary)) {
+    try {
+      const out = await withTimeout(timeoutMs, p.research(input));
+      if (out?.summary?.trim()) {
+        externalSummary = out.summary.trim();
+        externalSources = out.sources;
+        provider = p.name;
+        break;
+      }
+    } catch (err) {
+      console.warn(`[learning] research provider ${p.name}`, (err as Error).message);
+    }
+  }
+
+  const summary = externalSummary
+    ? [
+        `## External research (${provider ?? 'unknown'})`,
+        '',
+        externalSummary,
+        '',
+        '---',
+        '',
+        `**Local codebase anchors:** ${codebaseHits.length} file hit(s).`,
+        `**Keywords:** ${keywords.slice(0, 10).join(', ') || 'n/a'}.`,
+        item.description.trim()
+          ? `\n**Notion context:** ${item.description.trim().slice(0, 400)}`
+          : '',
+      ].join('\n')
+    : fallbackSummary;
+
+  return {
+    keywords,
+    codebaseHits,
+    summary,
+    sources: externalSources,
+    provider,
+  };
 }

@@ -1,40 +1,51 @@
 /**
- * Validation helpers for CSV file uploads (multipart/form-data via multer).
+ * CSV upload guards — MIME/extension allowlist and size caps (multer limits are necessary but not sufficient).
  */
 
-interface FileInfo {
+export type CsvUploadCheck = { ok: true } | { ok: false; status: number; error: string };
+
+const DEFAULT_ALLOWED_EXT = new Set(['.csv', '.txt']);
+const DEFAULT_ALLOWED_MIME = new Set([
+  'text/csv',
+  'text/plain',
+  'application/csv',
+  'application/vnd.ms-excel',
+]);
+
+export type CsvUploadOptions = {
+  maxBytes?: number;
+  allowedExtensions?: Set<string>;
+  allowedMimeTypes?: Set<string>;
+};
+
+export type UploadedCsvFile = {
+  buffer?: Buffer;
+  size: number;
   originalname?: string;
   mimetype?: string;
-  size?: number;
-}
-
-interface CsvUploadOptions {
-  maxBytes?: number;
-}
-
-export type CsvUploadResult =
-  | { ok: true }
-  | { ok: false; status: number; error: string };
+};
 
 export function validateCsvUploadFile(
-  file: FileInfo | undefined,
+  file: UploadedCsvFile | undefined,
   opts: CsvUploadOptions = {},
-): CsvUploadResult {
-  if (!file) return { ok: false, status: 400, error: 'No file uploaded' };
-
-  const { maxBytes = 10 * 1024 * 1024 } = opts;
-
-  const allowed = ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/csv'];
-  const name = file.originalname ?? '';
-  const isCSV = name.toLowerCase().endsWith('.csv') || allowed.includes(file.mimetype ?? '');
-  if (!isCSV) {
-    return { ok: false, status: 400, error: 'File must be a CSV (.csv)' };
+): CsvUploadCheck {
+  if (!file?.buffer?.length) {
+    return { ok: false, status: 400, error: 'CSV file required (field name: file)' };
   }
-
-  if (file.size !== undefined && file.size > maxBytes) {
-    const mb = Math.round(maxBytes / (1024 * 1024));
-    return { ok: false, status: 413, error: `File exceeds maximum size of ${mb} MB` };
+  const maxBytes = opts.maxBytes ?? 12 * 1024 * 1024;
+  if (file.size > maxBytes || file.buffer.length > maxBytes) {
+    return { ok: false, status: 400, error: `File exceeds maximum size (${maxBytes} bytes)` };
   }
-
+  const extSet = opts.allowedExtensions ?? DEFAULT_ALLOWED_EXT;
+  const mimeSet = opts.allowedMimeTypes ?? DEFAULT_ALLOWED_MIME;
+  const name = (file.originalname || '').toLowerCase();
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+  if (ext && !extSet.has(ext)) {
+    return { ok: false, status: 400, error: 'Only .csv or .txt uploads are allowed' };
+  }
+  const mime = (file.mimetype || '').toLowerCase().split(';')[0]!.trim();
+  if (mime && !mimeSet.has(mime)) {
+    return { ok: false, status: 400, error: 'Invalid file type — upload a CSV file' };
+  }
   return { ok: true };
 }

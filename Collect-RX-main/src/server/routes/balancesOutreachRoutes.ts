@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { authenticate } from '../middleware/authenticate';
+import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
@@ -13,7 +13,7 @@ function daysOutstanding(dueDate: Date): number {
 /** Insurance `Balance` list + detail + outreach (UI: Balances, BalanceDetail, Outbox). */
 export function createBalancesOutreachRouter(prisma: PrismaClient): Router {
   const r = Router();
-  r.use(authenticate);
+  useOwnerPracticeApiAuthOnly(r);
 
   r.get('/balances', async (req: Request, res: Response) => {
     try {

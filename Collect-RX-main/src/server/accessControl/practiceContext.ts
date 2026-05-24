@@ -1,11 +1,10 @@
 import type { Request } from 'express';
-import type { AuthJwtPayload, UserAuthPayload } from './types.js';
-import { isPlatformDev, isUserSession } from './types.js';
+import { isCrossPracticeReader } from './types.js';
+import type { AuthJwtPayload } from './types.js';
 
 export const PRACTICE_CONTEXT_ERROR =
-  'practiceId query parameter (or X-Practice-Id header) is required for platform developer sessions';
+  'practiceId query parameter (or X-Practice-Id header) is required for cross-practice sessions';
 
-/** Practice id from query, body, or header — used for platform_dev context only. */
 export function practiceIdFromRequestHints(req: Request): string | undefined {
   const q = typeof req.query.practiceId === 'string' ? req.query.practiceId.trim() : '';
   if (q) return q;
@@ -14,12 +13,29 @@ export function practiceIdFromRequestHints(req: Request): string | undefined {
   if (b) return b;
   const h = req.headers['x-practice-id'];
   if (typeof h === 'string' && h.trim()) return h.trim();
+  const param = req.params?.practiceId;
+  if (typeof param === 'string' && param.trim()) return param.trim();
   return undefined;
 }
 
 export function practiceIdFromAuth(auth: AuthJwtPayload, req: Request): string | null {
-  if (isUserSession(auth)) return (auth as UserAuthPayload).practiceId;
-  // platform_dev: must supply practice context via query/body/header
-  if (isPlatformDev(auth)) return practiceIdFromRequestHints(req) ?? null;
-  return null;
+  if (isCrossPracticeReader(auth)) {
+    return practiceIdFromRequestHints(req) ?? auth.practiceId ?? null;
+  }
+  return auth.practiceId ?? null;
+}
+
+export function sessionRequiresPracticeHint(auth: AuthJwtPayload | undefined): boolean {
+  if (!auth) return false;
+  return isCrossPracticeReader(auth);
+}
+
+export function practiceScopeConflict(
+  auth: AuthJwtPayload | undefined,
+  queryPracticeId: string | undefined,
+): boolean {
+  if (!auth || isCrossPracticeReader(auth)) return false;
+  const pid = auth.practiceId;
+  if (!pid) return false;
+  return Boolean(queryPracticeId?.trim() && queryPracticeId.trim() !== pid);
 }

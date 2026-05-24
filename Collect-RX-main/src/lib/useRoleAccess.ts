@@ -110,10 +110,10 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
         canViewAnalytics: false, canViewOutbox: false, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: true,
+        canInitiateCalls: false, canEscalateCalls: true, canSendReminders: true,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
-        isPatientLookupOnly: true, isReadOnly: true,
-        homeRoute: '/patient-lookup',
+        isPatientLookupOnly: false, isReadOnly: false,
+        homeRoute: '/console',
       }
 
     case 'group_admin':

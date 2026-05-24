@@ -16,7 +16,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { authenticate } from '../middleware/authenticate.js';
+import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
 import {
   validateAdjudicatorRotation,
   triageReconsiderationQueue,
@@ -41,8 +41,7 @@ function generateId(): string {
 export function createCdcpRouter(prisma: PrismaClient): Router {
   const router = Router();
 
-  // All CDCP routes require authentication
-  router.use(authenticate);
+  useOwnerPracticeApiAuthOnly(router);
 
   // ── POST /api/cdcp/denied-claims ────────────────────────────────────────────
   // Called by Abeldent sync when Transaction 11 denials are detected

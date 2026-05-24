@@ -16,6 +16,8 @@ const PRACTICE_ROLES = [
 export const loginBodySchema = z.object({
   email: z.string().email('email must be a valid email address').toLowerCase(),
   password: z.string().min(1, 'password is required').max(256),
+  /** When true, issues a front-desk-only session (live console + history). */
+  deskMode: z.boolean().optional(),
 });
 
 export const platformDevLoginBodySchema = z.object({

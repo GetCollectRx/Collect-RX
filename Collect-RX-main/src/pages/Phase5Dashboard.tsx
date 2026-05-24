@@ -267,47 +267,63 @@ export default function Phase5Dashboard() {
 
   useEffect(() => {
     if (!practiceId) return;
-    const { from, to } = { from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) };
-    apiFetchJson<{
-      success: boolean;
-      data: {
-        resolutionByCarrier: { resolutionRate: number }[];
-        timeSaved: { timeSavedHours: number; completedCalls: number };
-        callVolume: { date: string; calls: number; resolved: number }[];
-      };
-    }>(`/api/analytics/insurance?from=${from}&to=${to}`)
-      .then((res) => {
-        const d = res.data;
-        if (!d) return;
-        const avgResolution =
-          d.resolutionByCarrier.length > 0
-            ? Math.round(
-                d.resolutionByCarrier.reduce((s, c) => s + c.resolutionRate, 0) /
-                  d.resolutionByCarrier.length,
-              )
-            : MOCK_KPI_DIMENSIONS[0].value;
-        const avgCallMin =
-          d.timeSaved.completedCalls > 0
-            ? Math.round((d.timeSaved.timeSavedHours * 60) / d.timeSaved.completedCalls * 10) / 10
-            : MOCK_KPI_DIMENSIONS[7].value;
-        setDims((prev) =>
-          prev.map((dim) => {
-            if (dim.id === 1) return { ...dim, value: avgResolution };
-            if (dim.id === 8) return { ...dim, value: avgCallMin };
-            return dim;
-          }),
-        );
-        if (d.callVolume.length > 0) {
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const to = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      apiFetchJson<{
+        success: boolean;
+        data: {
+          reconsiderationSuccessRate: number;
+          ivrNavigationSuccessRate: number;
+          authenticationSuccessRate: number;
+          statusRetrievalAccuracy: number;
+          denialTaxonomyMappingAccuracy: number;
+          zeroHallucinationRate: number;
+          disclosureComplianceRate: number;
+          medianCallDurationMinutes: number;
+          totalCalls: number;
+          source: 'live' | 'insufficient_data';
+        };
+      }>(`/api/analytics/phase5-kpis?days=30`),
+      apiFetchJson<{
+        success: boolean;
+        data: {
+          callVolume: { date: string; calls: number; resolved: number }[];
+        };
+      }>(`/api/analytics/insurance?from=${from}&to=${to}`),
+    ])
+      .then(([kpiRes, insRes]) => {
+        const k = kpiRes.data;
+        if (k && k.source === 'live') {
+          setDims((prev) =>
+            prev.map((dim) => {
+              switch (dim.id) {
+                case 1: return { ...dim, value: k.reconsiderationSuccessRate };
+                case 2: return { ...dim, value: k.ivrNavigationSuccessRate };
+                case 3: return { ...dim, value: k.authenticationSuccessRate };
+                case 4: return { ...dim, value: k.statusRetrievalAccuracy };
+                case 5: return { ...dim, value: k.denialTaxonomyMappingAccuracy };
+                case 6: return { ...dim, value: k.zeroHallucinationRate };
+                case 7: return { ...dim, value: k.disclosureComplianceRate };
+                case 8: return { ...dim, value: k.medianCallDurationMinutes };
+                default: return dim;
+              }
+            }),
+          );
+          setKpiSource('live');
+        }
+        const vol = insRes.data?.callVolume ?? [];
+        if (vol.length > 0) {
+          const avgCallMin = k?.medianCallDurationMinutes ?? MOCK_KPI_DIMENSIONS[7].value;
           setTrend(
-            d.callVolume.slice(-5).map((p, i) => ({
+            vol.slice(-5).map((p, i) => ({
               week: `W${i + 1}`,
               successRate: p.calls > 0 ? Math.round((p.resolved / p.calls) * 100) : 0,
               callDuration: avgCallMin,
-              hallucinationFree: 99.5,
+              hallucinationFree: k?.zeroHallucinationRate ?? 99.5,
             })),
           );
         }
-        setKpiSource('live');
       })
       .catch(() => setKpiSource('mock'));
   }, [practiceId]);

@@ -81,6 +81,11 @@ export function scoreFeasibility(
     reasons.push('codebase anchor +8');
   }
 
+  if (research.sources && research.sources.length > 0) {
+    score += 6;
+    reasons.push(`external citations +6 (${research.sources.length})`);
+  }
+
   if (bucket === 'COMPLIANCE') {
     score -= 10;
     reasons.push('compliance bucket gate -10');

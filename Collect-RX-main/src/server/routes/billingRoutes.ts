@@ -1,14 +1,15 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import { authenticate } from '../middleware/authenticate';
 import { requirePracticeContext, practiceIdFromSession } from '../middleware/requirePracticeSession';
+import { authenticate } from '../middleware/authenticate';
+import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { createBillingCheckoutSession, createBillingPortalSession } from '../stripe/billing';
 import { apiClientErrorMessage } from '../apiErrorMessage.js';
 
 export function createBillingRouter(prisma: PrismaClient): Router {
   const r = Router();
 
-  r.post('/checkout', authenticate, requirePracticeContext, async (req: Request, res: Response) => {
+  r.post('/checkout', authenticate, requirePracticeContext, requirePracticeOwner, async (req: Request, res: Response) => {
     try {
       const practiceId = practiceIdFromSession(req);
       const { url } = await createBillingCheckoutSession(practiceId, prisma);
@@ -19,7 +20,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.post('/portal', authenticate, requirePracticeContext, async (req: Request, res: Response) => {
+  r.post('/portal', authenticate, requirePracticeContext, requirePracticeOwner, async (req: Request, res: Response) => {
     try {
       const practiceId = practiceIdFromSession(req);
       const { url } = await createBillingPortalSession(practiceId, prisma);

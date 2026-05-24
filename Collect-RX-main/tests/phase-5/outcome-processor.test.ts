@@ -107,4 +107,55 @@ describe('OutcomeProcessor.classifyOutcome', () => {
     expect(result.carrierBlockDetected).toBe(true);
     expect(result.outcome).toBe('BLOCK_DETECTED');
   });
+
+  it('detects ESCALATED for x-ray requirement (legacy: xray_required)', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'The claim is on hold until we receive pre-operative x-rays.',
+    }));
+    expect(result.outcome).toBe('ESCALATED');
+    expect(result.outcomeDetail).toContain('xray_required');
+  });
+
+  it('detects ESCALATED for documentation required (legacy: docs_required)', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'We need clinical notes before we can adjudicate this claim.',
+    }));
+    expect(result.outcome).toBe('ESCALATED');
+    expect(result.outcomeDetail).toContain('docs_required');
+  });
+
+  it('detects ESCALATED when claim not in system (legacy: resubmit_required)', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'That claim is not in our system. You may need to resubmit.',
+    }));
+    expect(result.outcome).toBe('ESCALATED');
+    expect(result.outcomeDetail).toContain('resubmit_required');
+  });
+
+  it('detects DENIED for annual maximum (legacy: coverage_maxed)', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'Benefits show the annual maximum has been reached for this patient.',
+    }));
+    expect(result.outcome).toBe('DENIED');
+    expect(result.outcomeDetail).toContain('coverage_maxed');
+  });
+
+  it('detects BLOCK_DETECTED for legacy carrier block phrase', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'Please do not call again from this number.',
+    }));
+    expect(result.outcome).toBe('BLOCK_DETECTED');
+    expect(result.carrierBlockDetected).toBe(true);
+    expect(result.outcomeDetail).toContain('carrier_block');
+  });
+
+  it('classifies from summary when transcript is empty (legacy uses both)', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: '',
+      analysis: { summary: 'Carrier requires radiographs before payment.' },
+      call: { id: 'vapi-call-001', status: 'completed', durationSeconds: 120 },
+    }));
+    expect(result.outcome).toBe('ESCALATED');
+    expect(result.outcomeDetail).toContain('xray_required');
+  });
 });

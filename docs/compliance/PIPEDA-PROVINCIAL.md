@@ -2,6 +2,8 @@
 
 **Not legal advice.** Healthcare and the private sector may be covered by **PIPEDA** or a **provincial** statute (e.g. Alberta PIPA, BC PIPA, Quebec Law 25). You must name your regime with counsel.
 
+For a **Canada + US launch** map (technical controls vs legal artifacts), see [LAUNCH-DATA-PROTECTION-CA-US.md](LAUNCH-DATA-PROTECTION-CA-US.md).
+
 **Minimum program artifacts**
 
 1. Jurisdiction and legal basis (which law(s) apply to your processing).

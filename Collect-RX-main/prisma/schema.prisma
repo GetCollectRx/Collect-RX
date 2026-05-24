@@ -470,6 +470,13 @@ model CallAttempt {
   transcriptUrl        String?     @map("transcript_url")
   /// True if this call triggered the CARRIER_BLOCK protocol.
   carrierBlockDetected Boolean     @default(false) @map("carrier_block_detected")
+  /// Live console state while call is in progress (cleared on completion).
+  liveState            String?     @map("live_state")
+  activeAgent          String?     @map("active_agent")
+  pausedByStaffAt      DateTime?   @map("paused_by_staff_at")
+  pausedByStaffId      String?     @map("paused_by_staff_id")
+  takenOverByStaffAt   DateTime?   @map("taken_over_by_staff_at")
+  takenOverByStaffId   String?     @map("taken_over_by_staff_id")
   createdAt            DateTime    @default(now()) @map("created_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
@@ -479,6 +486,30 @@ model CallAttempt {
   @@index([outcome])
   @@index([initiatedAt(sort: Desc)])
   @@map("call_attempts")
+}
+
+/// Real-time transcript lines for the front desk live console (practice-scoped).
+model CallTranscriptLine {
+  id         String   @id @default(uuid())
+  practiceId String   @map("practice_id")
+  vapiCallId String   @map("vapi_call_id")
+  speaker    String
+  agentName  String?  @map("agent_name")
+  text       String
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  @@index([vapiCallId, recordedAt])
+  @@index([practiceId, vapiCallId])
+  @@map("call_transcript_lines")
+}
+
+/// Per-practice front desk queue controls (pause/resume).
+model PracticeDeskState {
+  practiceId  String   @id @map("practice_id")
+  queuePaused Boolean  @default(false) @map("queue_paused")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("practice_desk_state")
 }
 
 /// Written when a carrier detects automation. Triggers practice-wide suspension
@@ -798,3 +829,126 @@ model PasswordResetToken {
   @@index([userId])
   @@index([token])
 }
+
+// ─── Platform personas (build brief) ─────────────────────────────────────────
+
+model PlatformUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  userRole     String   @map("user_role")
+  practiceId   String?  @map("practice_id")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userRole])
+  @@map("platform_users")
+}
+
+model CallEscalation {
+  id                 String    @id @default(uuid())
+  practiceId         String    @map("practice_id")
+  callAttemptId      String?   @map("call_attempt_id")
+  claimId            String    @map("claim_id")
+  claimRef           String    @map("claim_ref")
+  carrierId          CarrierId @map("carrier_id")
+  amountClaimedCents Int       @map("amount_claimed_cents")
+  reason             String
+  status             String    @default("open")
+  resolution         String?
+  resolvedByStaffId  String?   @map("resolved_by_staff_id")
+  resolvedAt         DateTime? @map("resolved_at")
+  resolutionNotes    String?   @map("resolution_notes")
+  attemptNumber      Int?      @map("attempt_number")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, status])
+  @@map("call_escalations")
+}
+
+model AuditorGrant {
+  id            String   @id @default(uuid())
+  auditorUserId String   @map("auditor_user_id")
+  practiceId    String?  @map("practice_id")
+  grantedAt     DateTime @default(now()) @map("granted_at")
+
+  @@unique([auditorUserId, practiceId])
+  @@map("auditor_grants")
+}
+
+model PlatformAdminPracticeGrant {
+  id               String   @id @default(uuid())
+  adminUserId      String   @map("admin_user_id")
+  practiceId       String   @map("practice_id")
+  grantedByOwnerId String   @map("granted_by_owner_id")
+  grantedAt        DateTime @default(now()) @map("granted_at")
+
+  @@unique([adminUserId, practiceId])
+  @@map("platform_admin_practice_grants")
+}
+
+model BreakGlassAuditLog {
+  id          String   @id @default(uuid())
+  adminUserId String   @map("admin_user_id")
+  action      String
+  reason      String
+  performedAt DateTime @default(now()) @map("performed_at")
+
+  @@index([performedAt(sort: Desc)])
+  @@map("break_glass_audit_logs")
+}
+
+model PmsWritebackLog {
+  id                String    @id @default(uuid())
+  practiceId        String    @map("practiceId")
+  source            String
+  claimRef          String    @map("claimRef")
+  abeldentPatientId String?   @map("abeldentPatientId")
+  payload           Json
+  processedAt       DateTime? @map("processedAt")
+  processError      String?   @map("processError")
+  createdAt         DateTime  @default(now()) @map("createdAt")
+
+  @@index([practiceId, createdAt])
+  @@index([claimRef])
+  @@index([practiceId, processedAt])
+  @@map("PmsWritebackLog")
+}
+
+model CdcpReconsiderationCase {
+  id                        String   @id @default(uuid())
+  practiceId                String   @map("practiceId")
+  patientToken              String   @map("patientToken")
+  claimRef                  String   @map("claimRef")
+  carrierCode               String   @default("cdcp_sunlife") @map("carrierCode")
+  procedureCode             String?  @map("procedureCode")
+  denialDate                DateTime @map("denialDate")
+  status                    String   @default("open")
+  exclusionReason           String?  @map("exclusionReason")
+  clinicalEvidenceSummary   String?  @map("clinicalEvidenceSummary")
+  originalAdjudicatorHint   String?  @map("originalAdjudicatorHint")
+  createdAt                 DateTime @default(now()) @map("createdAt")
+  updatedAt                 DateTime @updatedAt @map("updatedAt")
+
+  @@unique([practiceId, claimRef])
+  @@index([practiceId, denialDate])
+  @@index([practiceId, status])
+  @@index([patientToken])
+  @@map("CdcpReconsiderationCase")
+}
+
+model FeeGuideEntry {
+  id            String   @id @default(uuid())
+  scope         String
+  effectiveDate DateTime @map("effectiveDate")
+  cdtCode       String   @map("cdtCode")
+  feeCad        Float    @map("feeCad")
+  source        String?
+  notes         String?
+  createdAt     DateTime @default(now()) @map("createdAt")
+
+  @@unique([scope, effectiveDate, cdtCode])
+  @@index([scope, cdtCode])
+  @@map("FeeGuideEntry")
+}
+

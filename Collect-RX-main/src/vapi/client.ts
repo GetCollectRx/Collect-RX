@@ -22,6 +22,7 @@ import { CarrierId } from '@prisma/client';
 export interface VapiCallParams {
   claimId: string;
   carrierId: CarrierId;
+  practiceId: string;
   /** UUID from PIIVault — the only patient identifier sent to Vapi */
   patientToken: string;
   carrierPhone: string;
@@ -165,6 +166,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
   const {
     claimId,
     carrierId,
+    practiceId,
     patientToken,
     carrierPhone,
     claimNumber,
@@ -178,7 +180,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     claimId,
     carrierId,
     patientToken,   // UUID only — no real PHI
-    practiceId: process.env.PRACTICE_ID ?? 'unknown',
+    practiceId,
   };
 
   const payload = {
@@ -218,10 +220,24 @@ export async function listCalls(limit = 20): Promise<VapiCallStatus[]> {
   return vapiRequest<VapiCallStatus[]>('GET', `/call?limit=${limit}`);
 }
 
+/** End an in-progress Vapi call (CARRIER_BLOCK / staff end). */
+export async function endVapiCall(vapiCallId: string): Promise<void> {
+  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/end`);
+}
+
+/** Warm transfer to front desk phone (human takeover). */
+export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string): Promise<void> {
+  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/transfer`, {
+    destination: { type: 'number', number: toPhoneNumber },
+  });
+}
+
 export const vapiClient = {
   initiateCall,
   getCallStatus,
   listCalls,
+  endVapiCall,
+  transferVapiCall,
   CARRIER_PHONE_MAP,
 } as const;
 

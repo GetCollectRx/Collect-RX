@@ -1,0 +1,228 @@
+/**
+ * Ops alert definitions — impact + suggested fixes for operators.
+ * Used by diagnosis scripts, live smoke, runtime monitor, and CI notifications.
+ */
+
+export type AlertSeverity = 'critical' | 'high' | 'medium';
+
+export interface AlertDefinition {
+  id: string;
+  title: string;
+  severity: AlertSeverity;
+  /** Plain-language user/business impact */
+  impact: string[];
+  /** Ordered remediation steps */
+  suggestedFixes: string[];
+  /** Subsystems affected (for routing to the right on-call skill) */
+  affectedSystems: string[];
+}
+
+export const ALERT_CATALOG: Record<string, AlertDefinition> = {
+  typescript: {
+    id: 'typescript',
+    title: 'TypeScript compile failure',
+    severity: 'high',
+    affectedSystems: ['API', 'build', 'deploy'],
+    impact: [
+      'New deploys may fail or ship broken server code',
+      'Developers cannot safely merge until types pass',
+    ],
+    suggestedFixes: [
+      'Run: npm run typecheck',
+      'Fix errors shown in the tsc output, then re-run npm run diagnose',
+    ],
+  },
+  env: {
+    id: 'env',
+    title: 'Environment configuration invalid',
+    severity: 'critical',
+    affectedSystems: ['API', 'auth', 'webhooks', 'integrations'],
+    impact: [
+      'Server may refuse to start or reject webhooks in production',
+      'Login, Stripe, Vapi, or SendGrid may fail silently or return 401',
+    ],
+    suggestedFixes: [
+      'Run: npm run check:env',
+      'Set missing variables in Railway/host (see ✗ lines)',
+      'Compare with Collect-RX-main/.env.example',
+    ],
+  },
+  database: {
+    id: 'database',
+    title: 'Database schema or connectivity failure',
+    severity: 'critical',
+    affectedSystems: ['PostgreSQL', 'Prisma', 'all practice data'],
+    impact: [
+      'Practices cannot log in reliably or see claims/balances',
+      'Call queue, reminders, EMR sync, and CDCP workflows are blocked',
+      '/api/health/ready will return 503',
+    ],
+    suggestedFixes: [
+      'Confirm Postgres is up (Railway plugin / host console)',
+      'Run: npm run db:migrate',
+      'Run: npm run db:verify-tables',
+      'Verify DATABASE_URL uses TLS in production (sslmode=require)',
+    ],
+  },
+  tests: {
+    id: 'tests',
+    title: 'Automated test failures',
+    severity: 'high',
+    affectedSystems: ['CI', 'regression safety'],
+    impact: [
+      'A recent change may have broken auth, billing, Canadian expansion, or PHI handling',
+      'Deploying without fixing tests risks production regressions',
+    ],
+    suggestedFixes: [
+      'Run: npm test -- --reporter=verbose',
+      'See test-results/failures.txt after npm run diagnose',
+      'Fix failing tests before merging to main',
+    ],
+  },
+  live: {
+    id: 'live',
+    title: 'Live API smoke failure',
+    severity: 'critical',
+    affectedSystems: ['API', 'UI', 'production traffic'],
+    impact: [
+      'End users may see errors, blank dashboards, or failed logins',
+      'Uptime monitors may already be firing',
+    ],
+    suggestedFixes: [
+      'Run: npm run smoke:live',
+      'Check Railway deploy logs and recent migrations',
+      'curl /api/health/ready on the public URL',
+    ],
+  },
+  liveness: {
+    id: 'liveness',
+    title: 'API process not responding',
+    severity: 'critical',
+    affectedSystems: ['API', 'all HTTP traffic'],
+    impact: [
+      'CollectRx is down — browsers and desktop app cannot reach the server',
+      'No webhooks (Stripe, Vapi, SendGrid) are being processed',
+    ],
+    suggestedFixes: [
+      'Check Railway service status / restart collectrx-web',
+      'Review deploy logs for crash on boot',
+      'Verify PORT and healthcheckPath in railway.toml',
+    ],
+  },
+  readiness: {
+    id: 'readiness',
+    title: 'Database not ready',
+    severity: 'critical',
+    affectedSystems: ['PostgreSQL', 'Prisma'],
+    impact: [
+      'Load balancers should mark the instance unhealthy',
+      'Authenticated routes that need DB will fail',
+    ],
+    suggestedFixes: [
+      'Test: curl $HOST/api/health/ready',
+      'Restore Postgres connectivity; run prisma migrate deploy',
+      'Check connection pool limits and DATABASE_URL',
+    ],
+  },
+  metrics: {
+    id: 'metrics',
+    title: 'Health metrics endpoint failure',
+    severity: 'medium',
+    affectedSystems: ['observability', 'ops dashboards'],
+    impact: [
+      'Operators cannot see in-process error counters or deployment flags',
+      'Does not usually block practices directly',
+    ],
+    suggestedFixes: [
+      'curl /api/health/metrics (add HEALTH_METRICS_TOKEN Bearer in prod)',
+      'Check API logs for errors on metrics route',
+    ],
+  },
+  'auth-guard': {
+    id: 'auth-guard',
+    title: 'API auth guard misconfigured',
+    severity: 'high',
+    affectedSystems: ['auth', 'insurance API'],
+    impact: [
+      'Protected claim/queue routes might be exposed without login (security risk)',
+      'Or all routes may incorrectly return 500 instead of 401',
+    ],
+    suggestedFixes: [
+      'Verify JWT middleware on /api/insurance/* and /api/work-queue',
+      'Run integration test: tests/app.integration.test.ts',
+    ],
+  },
+  database_readiness: {
+    id: 'database_readiness',
+    title: 'Runtime database check failed',
+    severity: 'critical',
+    affectedSystems: ['PostgreSQL', 'background jobs'],
+    impact: [
+      'Server process is up but cannot query Postgres',
+      'Rules engine, reminders, and sync will fail on next tick',
+    ],
+    suggestedFixes: [
+      'Check Postgres CPU/connections on host',
+      'Restart API after fixing DATABASE_URL',
+      'Review Prisma connection errors in logs',
+    ],
+  },
+  high_5xx_rate: {
+    id: 'high_5xx_rate',
+    title: 'Elevated HTTP 5xx error rate',
+    severity: 'high',
+    affectedSystems: ['API', 'user requests'],
+    impact: [
+      'Practices may see intermittent errors in the dashboard or during API calls',
+      'Webhook partners may receive retries or failures',
+    ],
+    suggestedFixes: [
+      'Open Sentry (SENTRY_DSN) for stack traces',
+      'Check GET /api/health/metrics errors5xx vs requests',
+      'Roll back last deploy if spike started after release',
+    ],
+  },
+  ci_failure: {
+    id: 'ci_failure',
+    title: 'GitHub CI pipeline failed',
+    severity: 'high',
+    affectedSystems: ['CI', 'deploy safety'],
+    impact: [
+      'Merges to main may be blocked or unsafe',
+      'Production deploy assuming green CI is invalid',
+    ],
+    suggestedFixes: [
+      'Open the failed GitHub Actions run',
+      'Run locally: npm run diagnose',
+      'Fix failing tests or typecheck before merge',
+    ],
+  },
+  emr_outbox_failures: {
+    id: 'emr_outbox_failures',
+    title: 'EMR sync outbox delivery failures',
+    severity: 'high',
+    affectedSystems: ['EMR sync', 'PMS writeback'],
+    impact: [
+      'Claim/payment updates may not reach the practice EMR',
+      'Staff may need manual reconciliation in AbelDent/Dentrix',
+    ],
+    suggestedFixes: [
+      'Verify EMR_SYNC_WEBHOOK_URL is HTTPS and reachable',
+      'Check emr_sync_outbox rows with failed status in admin sync UI',
+      'Review worker logs: npm run worker',
+    ],
+  },
+};
+
+export function getAlertDefinition(alertId: string): AlertDefinition {
+  return (
+    ALERT_CATALOG[alertId] ?? {
+      id: alertId,
+      title: `Unknown issue (${alertId})`,
+      severity: 'medium',
+      affectedSystems: ['unknown'],
+      impact: ['CollectRx reported an issue that is not in the alert catalog yet.'],
+      suggestedFixes: ['Run npm run diagnose and inspect logs'],
+    }
+  );
+}

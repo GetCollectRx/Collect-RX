@@ -14,17 +14,15 @@ import {
   getResolutionRateByCarrier,
   getCallVolumeOverTime,
 } from '../services/insurance-analytics';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/analytics/insurance

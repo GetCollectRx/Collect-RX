@@ -1,12 +1,21 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { verifyUnsubscribeRequest } from '../email/unsubscribeUrl';
+import { publicLimiter } from '../middleware/rateLimiter';
+import {
+  isDatabaseUnavailableError,
+  isReasonableUnsubscribeEmail,
+  isValidPatientBalanceId,
+  isValidPublicPayToken,
+  publicPayJsonError,
+} from '../publicApiHelpers';
 
 /**
  * Unauthenticated public routes: patient pay token page + signed email unsubscribe.
  */
 export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
   const r = Router();
+  r.use(publicLimiter);
 
   /**
    * P4-02 — List-unsubscribe from reminder emails (`buildEmailUnsubscribeUrl`).
@@ -16,7 +25,10 @@ export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
     const balanceId = typeof req.query.b === 'string' ? req.query.b.trim() : '';
     const email = typeof req.query.e === 'string' ? req.query.e.trim() : '';
     const sig = typeof req.query.s === 'string' ? req.query.s : undefined;
-    if (!balanceId || !email || !sig) {
+    if (!balanceId || !email || !sig || sig.length > 256) {
+      return res.status(400).type('html').send('<p>Invalid unsubscribe link.</p>');
+    }
+    if (!isValidPatientBalanceId(balanceId) || !isReasonableUnsubscribeEmail(email)) {
       return res.status(400).type('html').send('<p>Invalid unsubscribe link.</p>');
     }
     let ok = false;
@@ -56,13 +68,19 @@ export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
         );
     } catch (e) {
       console.error('[GET /public/email-unsubscribe]', e);
+      if (isDatabaseUnavailableError(e)) {
+        return res
+          .status(503)
+          .type('html')
+          .send('<p>Service is temporarily unavailable. Please try again later.</p>');
+      }
       return res.status(500).type('html').send('<p>Something went wrong. Please try again later.</p>');
     }
   });
 
   r.get('/public/pay/:publicToken', async (req: Request, res: Response) => {
     const publicToken = req.params.publicToken?.trim() ?? '';
-    if (!publicToken) {
+    if (!publicToken || !isValidPublicPayToken(publicToken)) {
       return res.status(400).json({ error: 'Invalid link' });
     }
 
@@ -109,7 +127,8 @@ export function createPublicPatientPayRouter(prisma: PrismaClient): Router {
         return res.status(404).json({ error: 'Not found' });
       }
       console.error('GET /public/pay/:publicToken error', e);
-      return res.status(500).json({ error: 'Failed to load payment' });
+      const mapped = publicPayJsonError(e);
+      return res.status(mapped.status).json(mapped.body);
     }
   });
 

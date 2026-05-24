@@ -16,16 +16,11 @@ import { sendEmailWithRetry, sendSMSWithRetry } from '../patients/messaging';
 import { generatePaymentLink } from '../stripe/connect';
 import { appendAuditLog } from '../audit/auditLog.js';
 
-import { authenticate } from '../middleware/authenticate';
-import { authorizeRole, scopeToProvider } from '../middleware/authorizeRole';
-import { isUserSession } from '../accessControl/types.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
+import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
+import { practiceIdFromSession } from '../middleware/requirePracticeSession.js';
 
 function practiceId(req: Request): string {
-  const auth = req.auth ?? req.practiceAuth;
-  if (auth && isUserSession(auth)) return (auth as UserAuthPayload).practiceId;
-  // fallback for practiceAuth (legacy)
-  return req.practiceAuth!.practiceId;
+  return practiceIdFromSession(req);
 }
 
 function nextReminderStatus(current: string): string {
@@ -35,18 +30,15 @@ function nextReminderStatus(current: string): string {
 
 export function createPatientArApiRouter(prisma: PrismaClient): Router {
   const r = Router();
-  r.use(authenticate);
-  r.use(scopeToProvider);
+  useOwnerPracticeApiAuthOnly(r);
 
   r.get('/patients/balances', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const ps = (req.query.payment_status as string) || '';
-      const provId = typeof req.query.providerId === 'string' ? req.query.providerId : undefined;
       const rows = await listBalances({
         practiceId: pid,
         paymentStatus: ps || undefined,
-        providerId: provId,
         limit: 500,
       });
       return res.json({
@@ -176,62 +168,6 @@ export function createPatientArApiRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('write-off error', e);
       return res.status(500).json({ error: 'Failed to write off' });
-    }
-  });
-
-  /**
-   * GET /api/patients/lookup?name=<search>
-   *
-   * Slim endpoint for Front Desk staff — returns ONLY balance, claim_status, and
-   * last_reminder_sent per the RBAC spec. Never returns full patient records.
-   * Accessible to front_desk and all higher roles.
-   */
-  r.get('/patients/lookup', authorizeRole('front_desk'), async (req: Request, res: Response) => {
-    try {
-      const auth = req.auth!;
-      const pid = isUserSession(auth)
-        ? (auth as UserAuthPayload).practiceId
-        : practiceId(req);
-
-      const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
-      if (!name || name.length < 2) {
-        return res.status(400).json({ error: 'name query parameter must be at least 2 characters' });
-      }
-
-      const rows = await prisma.patientBalance.findMany({
-        where: {
-          practiceId: pid,
-          OR: [
-            { patientFirstName: { contains: name, mode: 'insensitive' } },
-            { patientLastName: { contains: name, mode: 'insensitive' } },
-          ],
-        },
-        select: {
-          id: true,
-          patientFirstName: true,
-          patientLastName: true,
-          patientOwes: true,
-          paymentStatus: true,
-          reminderStatus: true,
-          lastReminderEmailAt: true,
-          lastReminderSmsAt: true,
-        },
-        take: 20,
-        orderBy: { patientLastName: 'asc' },
-      });
-
-      return res.json({
-        results: rows.map((r) => ({
-          id: r.id,
-          name: `${r.patientFirstName} ${r.patientLastName}`,
-          balance: r.patientOwes,
-          claim_status: r.paymentStatus,
-          last_reminder_sent: r.lastReminderEmailAt ?? r.lastReminderSmsAt ?? null,
-        })),
-      });
-    } catch (e) {
-      console.error('patient lookup error', e);
-      return res.status(500).json({ error: 'Lookup failed' });
     }
   });
 

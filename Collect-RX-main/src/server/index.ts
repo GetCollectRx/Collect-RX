@@ -16,7 +16,7 @@
 //   /api/eligibility/*     eligibility.ts
 //   /api/cdcp/*            cdcp.ts (Phase 5: CDCP reconsideration, evidence gap, fee ceiling)
 //   /api/queue/*          queue.ts (priority scores + carrier-order persistence)
-//   /api/public/*        publicPatientPayRoutes.ts (public pay token, email unsubscribe — no auth)
+//   /api/public/*        publicPatientPayRoutes.ts (pay token + unsubscribe; publicLimiter 60/min)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
 //   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (raw JSON body)
 //   /api/twilio/sms        twilio/inboundSms.ts (urlencoded — after body parsers)
@@ -34,19 +34,33 @@
 //   - VAPI_WEBHOOK_SECRET required in production — server refuses to start without it
 //   - SendGrid: SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY required in production (401 otherwise)
 //   - Stripe Connect onboard refresh/complete: ?v= HMAC (or same-practice JWT); see STRIPE_ONBOARD_RETURN_SECRET
+//   - PostgreSQL: in production DATABASE_URL must require TLS (sslmode=require or stricter); see databaseTls.ts
+//   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
+//   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
+//   - GET /api/health/metrics: deployment fingerprint redacted in production unless HEALTH_METRICS_TOKEN + Bearer header
+//   - EMR_SYNC_WEBHOOK_URL validated at boot (prod) and each outbox batch — https + non-internal host in production
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
 import fs from 'node:fs';
+import https from 'node:https';
 import { pathToFileURL } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
+import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertPhiEncryptionAtRestConfigured } from './crypto/phiEncryptionKey.js';
+import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
+import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
+import { startOpsMonitor } from './observability/opsMonitor.js';
+import { runStartupScanOnBoot } from './observability/runStartupScan.js';
+import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
   standardLimiter,
   webhookLimiter,
@@ -72,14 +86,19 @@ import adminRouter from './routes/adminRoutes';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
+import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { isLearningLoopEnabled } from './learning/config.js';
-import { getMetrics } from './observability/metrics.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
+import { createFrontDeskRouter } from './routes/frontDeskApi.js';
+import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
+import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
+import { attachDeskWebSocket } from './frontDesk/deskWs.js';
+import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -91,6 +110,16 @@ if (
 ) {
   app.set('trust proxy', 1);
 }
+
+app.use(
+  helmet({
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 31536000, includeSubDomains: true, preload: false }
+        : false,
+    contentSecurityPolicy: false,
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VAPI_WEBHOOK_SECRET guard
@@ -117,6 +146,10 @@ try {
   console.error('[server] FATAL:', (e as Error).message);
   process.exit(1);
 }
+
+assertPostgresTlsInProduction();
+assertPhiEncryptionAtRestConfigured();
+assertEmrSyncWebhookUrlConfiguredAtBoot();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CORS — see corsAllowedOrigins.ts (collectrx.ca apex ↔ www mirrored when one is set)
@@ -186,8 +219,8 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
 });
 
-app.get('/api/health/metrics', healthLimiter, (_req: Request, res: Response) => {
-  res.json({ success: true, metrics: getMetrics() });
+app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
+  res.json(buildPublicHealthMetricsBody(req));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +237,11 @@ app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/stripe',     createStripeConnectRouter(prisma));
 app.use('/api/insurance',  insuranceRouter);
+app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
+app.use('/api/desk',       createFrontDeskRouter());
+app.use('/api/practices',  createPracticeReportsRouter());
+app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/eligibility', eligibilityRouter);
@@ -214,11 +251,13 @@ app.use('/api',            createBalancesOutreachRouter(prisma));
 app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
+app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
+app.use('/api',            createCanadianExpansionRouter(prisma));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)
@@ -269,7 +308,6 @@ app.use((_req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Global error handler
 // ─────────────────────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[server] Unhandled error:', err);
   res.status(500).json({
@@ -314,9 +352,30 @@ async function boot() {
     startLearningLoopInProcess(prisma);
   }
 
-  const server = app.listen(PORT, () => {
-    console.log(`[server] CollectRx API listening on port ${PORT}`);
-  });
+  const tlsKey = process.env.TLS_KEY_PATH?.trim();
+  const tlsCert = process.env.TLS_CERT_PATH?.trim();
+  const onListen = () => {
+    const mode = tlsKey && tlsCert ? 'https' : 'http';
+    console.log(`[server] CollectRx API listening on port ${PORT} (${mode})`);
+    startOpsMonitor(prisma);
+    void runStartupScanOnBoot(prisma, PORT);
+  };
+
+  let server: ReturnType<typeof app.listen> | https.Server;
+  try {
+    if (tlsKey && tlsCert) {
+      const opts = loadTlsCredentialsForNodeServer(tlsKey, tlsCert);
+      server = https.createServer(opts, app).listen(PORT, onListen);
+    } else {
+      server = app.listen(PORT, onListen);
+    }
+    attachDeskWebSocket(server);
+    startDeskQueueEngine(prisma);
+  } catch (err) {
+    console.error('[server] Failed to bind listen socket:', err);
+    process.exit(1);
+  }
+
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(

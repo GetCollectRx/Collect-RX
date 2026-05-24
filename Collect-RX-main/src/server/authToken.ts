@@ -6,6 +6,8 @@ import type {
   UserAuthPayload,
   PlatformDevAuthPayload,
 } from './accessControl/types.js';
+import { practiceRoleToBrief } from './accessControl/types.js';
+import type { UserRole } from '../types/userRole.js';
 
 export const COOKIE_NAME = 'crx_access';
 
@@ -80,18 +82,25 @@ export interface SignUserTokenOptions {
 }
 
 export function signUserToken({ userId, practiceId, role, providerId }: SignUserTokenOptions): string {
-  const payload: Omit<UserAuthPayload, never> = {
+  const payload = {
     role,
     userId,
     practiceId,
     phiAccess: phiAccessForRole(role),
+    userRole: practiceRoleToBrief(role),
     ...(providerId ? { providerId } : {}),
   };
   return jwt.sign(payload, signingSecret(), { expiresIn: tokenTtlForRole(role) as unknown as number });
 }
 
 export function signPlatformDevToken(): string {
-  const payload: PlatformDevAuthPayload = { role: 'platform_dev', phiAccess: false };
+  const payload = {
+    role: 'platform_dev' as const,
+    phiAccess: false as const,
+    userRole: 'platform_admin' as const,
+    userId: 'platform-dev',
+    practiceId: null,
+  };
   return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
 }
 
@@ -111,7 +120,13 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
   const payload = jwt.verify(token, signingSecret()) as AuthJwtPayload;
 
   if (payload.role === 'platform_dev') {
-    return { role: 'platform_dev', phiAccess: false };
+    return {
+      role: 'platform_dev',
+      phiAccess: false,
+      userRole: 'platform_admin',
+      userId: (payload as { userId?: string }).userId ?? 'platform-dev',
+      practiceId: null,
+    };
   }
 
   // All other roles are practice-layer user sessions.
@@ -131,6 +146,7 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
     userId: user.userId,
     practiceId: user.practiceId,
     phiAccess: phiAccessForRole(user.role),
+    userRole: practiceRoleToBrief(user.role),
     ...(user.providerId ? { providerId: user.providerId } : {}),
   };
 }
@@ -156,9 +172,50 @@ export function setAuthCookie(res: Response, practiceId: string): void {
   setUserAuthCookie(res, { userId: `legacy-${practiceId}`, practiceId, role: 'practice_owner' });
 }
 
+export function signBriefSessionToken(input: {
+  userRole: UserRole;
+  userId: string;
+  practiceId: string | null;
+  phiAccess: boolean;
+}): string {
+  const practiceRoleMap: Partial<Record<UserRole, PracticeRole | 'platform_dev'>> = {
+    front_desk: 'front_desk',
+    practice_owner: 'practice_owner',
+    auditor: 'accountant',
+    billing_ops_manager: 'group_admin',
+    platform_admin: 'platform_dev',
+  };
+  const mapped = practiceRoleMap[input.userRole];
+  const payload =
+    mapped === 'platform_dev'
+      ? {
+          role: 'platform_dev' as const,
+          phiAccess: false as const,
+          userRole: input.userRole,
+          userId: input.userId,
+          practiceId: null,
+        }
+      : {
+          role: mapped ?? 'practice_owner',
+          userId: input.userId,
+          practiceId: input.practiceId ?? '',
+          phiAccess: input.phiAccess,
+          userRole: input.userRole,
+        };
+  return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
+}
+
 export function setPlatformDevAuthCookie(res: Response): void {
   res.cookie(COOKIE_NAME, signPlatformDevToken(), cookieOptions());
 }
+
+export function setBriefAuthCookie(
+  res: Response,
+  input: { userRole: UserRole; userId: string; practiceId: string | null; phiAccess: boolean },
+): void {
+  res.cookie(COOKIE_NAME, signBriefSessionToken(input), cookieOptions());
+}
+
 
 export function clearAuthCookie(res: Response): void {
   if (crossSiteAuthCookie()) {

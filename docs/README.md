@@ -8,6 +8,8 @@
 | [adr/0001-primary-application-stack.md](./adr/0001-primary-application-stack.md) | ADR: canonical app vs root prototype (P1-02) |
 | [product/SCREENS-API-DATA-MAP.md](./product/SCREENS-API-DATA-MAP.md) | Screens, APIs, and data stores (P1-03) |
 | [ENVIRONMENT-MATRIX.md](./ENVIRONMENT-MATRIX.md) | local / staging / prod matrix (P1-04) |
+| [operations/BREAKAGE-DIAGNOSIS.md](./operations/BREAKAGE-DIAGNOSIS.md) | `npm run diagnose` — what broke (typecheck, env, DB, tests, live smoke) |
+| [operations/OPS-ALERTS.md](./operations/OPS-ALERTS.md) | Ops alerts with impact + suggested fixes (SMS, email, Slack, monitor) |
 | [DATABASE.md](./DATABASE.md) | PostgreSQL, Prisma migrate, local Docker (P2-05, P2-06, P2-08) |
 | [RELEASING.md](./RELEASING.md) | Version tags and changelog process (P2-10) |
 | [NPM-AUDIT.md](./NPM-AUDIT.md) | `npm audit` triage notes (P2-11) |

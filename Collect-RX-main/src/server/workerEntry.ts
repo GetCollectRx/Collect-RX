@@ -3,6 +3,7 @@
  * Start: `npm run worker` (same env as API: DATABASE_URL, REDIS_URL, STRIPE_*, etc.)
  */
 import 'dotenv/config';
+import { assertPostgresTlsInProduction } from './databaseTls.js';
 import { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
 import express from 'express';
@@ -11,6 +12,8 @@ import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
+
+assertPostgresTlsInProduction();
 
 if (!process.env.REDIS_URL) {
   console.error(

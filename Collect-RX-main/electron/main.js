@@ -336,12 +336,41 @@ function setupAutoUpdater() {
   setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 4 * 60 * 60 * 1000);
 }
 
+// ── Startup health scan (smoke + email on failure) ───────────────────────────
+function resolveApiOriginForScan() {
+  const fromUserData = readApiOriginFromUserData();
+  if (fromUserData) return fromUserData;
+  const env = process.env.COLLECTRX_API_ORIGIN?.trim();
+  if (env && /^https?:\/\//i.test(env)) return env.replace(/\/$/, '');
+  if (isDev) return 'http://127.0.0.1:3000';
+  return DEFAULT_PROD_DASHBOARD.replace(/\/$/, '');
+}
+
+function runStartupHealthScan() {
+  if (['0', 'false', 'no'].includes(String(process.env.STARTUP_HEALTH_SCAN_ENABLED || '').toLowerCase())) {
+    return;
+  }
+  const script = path.join(__dirname, '..', 'scripts', 'startup-scan.mjs');
+  if (!fs.existsSync(script)) return;
+  const apiOrigin = resolveApiOriginForScan();
+  const child = spawn(process.execPath, [script], {
+    env: { ...process.env, COLLECTRX_API_ORIGIN: apiOrigin },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    detached: true,
+  });
+  child.stdout?.on('data', (d) => console.log('[startup-scan]', d.toString().trim()));
+  child.stderr?.on('data', (d) => console.error('[startup-scan]', d.toString().trim()));
+  child.unref();
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createTray();
   createWindow();
   spawnSyncService();
   setupAutoUpdater();
+  runStartupHealthScan();
 });
 
 app.on('second-instance', () => {

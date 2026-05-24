@@ -117,6 +117,18 @@ export const webhookLimiter: RateLimitRequestHandler = makeLimiter({
 });
 
 /**
+ * publicLimiter — unauthenticated patient pay + email unsubscribe.
+ * Tighter than standardLimiter to slow token / UUID enumeration.
+ */
+export const publicLimiter: RateLimitRequestHandler = makeLimiter({
+  windowMs: 60 * 1000,
+  max: 60,
+  handler: makeHandler(
+    'Too many requests — please slow down and try again shortly.',
+  ),
+});
+
+/**
  * healthLimiter — cheap endpoints still need a ceiling (metrics + DB ping abuse).
  * Applied to /health and /api/health/* only.
  */
