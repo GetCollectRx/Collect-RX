@@ -21,7 +21,7 @@ export function redactInsuranceClaim<T extends Record<string, unknown>>(
     ...rest,
     claimNumber: maskClaimNumber(String(claim.claimNumber ?? '')),
     patientToken: null,
-  } as T;
+  } as unknown as T;
 }
 
 export function redactInsuranceClaimsList<T extends Record<string, unknown>>(

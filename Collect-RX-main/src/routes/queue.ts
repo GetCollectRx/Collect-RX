@@ -129,7 +129,7 @@ router.get('/priority-scores', async (req: Request, res: Response) => {
     const practiceId = practiceIdFromSession(req);
 
     const ranked = await buildPriorityQueue(prisma, practiceId);
-    const data = ranked.map((row) => redactPriorityScoreRow(row as Record<string, unknown>, req.auth));
+    const data = ranked.map((row) => redactPriorityScoreRow(row as unknown as Record<string, unknown>, req.auth));
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /queue/priority-scores]', err);

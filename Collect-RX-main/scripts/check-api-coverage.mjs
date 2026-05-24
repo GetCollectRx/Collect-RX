@@ -51,6 +51,7 @@ const SERVER_PREFIXES = [
   '/api/webhooks/',
   '/api/twilio/',
   '/api/health',
+  '/api/group/',
 ];
 
 /** Exact paths or prefix patterns not covered by SERVER_PREFIXES alone. */

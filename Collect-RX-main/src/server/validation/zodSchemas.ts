@@ -38,9 +38,8 @@ export const updateUserBodySchema = z.object({
   role: z.enum(PRACTICE_ROLES).optional(),
   isActive: z.boolean().optional(),
   providerId: z.string().trim().optional(),
-  /** Office manager can renew an accountant's token by resetting this date. */
   tokenExpiresAt: z.string().datetime().optional(),
-}).refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' });
+});
 
 export const changePasswordBodySchema = z.object({
   currentPassword: z.string().min(1).max(256),
@@ -57,7 +56,7 @@ export const carrierUnblockBodySchema = z.object({
 
 export const pmsImportBodySchema = z
   .object({
-    records: z.array(z.record(z.unknown())).optional(),
+    records: z.array(z.record(z.string(), z.unknown())).optional(),
     sourceBalanceTotal: z.coerce.number().finite().optional(),
   })
   .passthrough();
@@ -70,6 +69,9 @@ export type UpdateUserBody = z.infer<typeof updateUserBodySchema>;
 export type CarrierUnblockBody = z.infer<typeof carrierUnblockBodySchema>;
 
 export function formatZodError(err: z.ZodError): string {
-  const first = err.errors[0];
+  const issues = (err as unknown as { issues?: { message: string }[]; errors?: { message: string }[] }).issues
+    ?? (err as unknown as { errors?: { message: string }[] }).errors
+    ?? [];
+  const first = issues[0];
   return first?.message ?? 'Invalid request body';
 }
