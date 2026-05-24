@@ -35,6 +35,8 @@ export default function InsuranceClaims() {
   const { practiceId, loading: practiceLoading } = usePractice()
   const [claims, setClaims] = useState<InsuranceClaimRow[]>([])
   const [escalated, setEscalated] = useState<InsuranceClaimRow[]>([])
+  const [denied, setDenied] = useState<InsuranceClaimRow[]>([])
+  const [blockedCarriers, setBlockedCarriers] = useState<{ code: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ carrier: '', status: '', aging: '' })
@@ -49,19 +51,23 @@ export default function InsuranceClaims() {
     if (filters.status) params.set('status', filters.status)
     if (filters.aging) params.set('aging', filters.aging)
 
-    const escalatedParams = new URLSearchParams({ limit: '50', status: 'ESCALATED' })
-
     Promise.all([
       apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?${params}`),
-      apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?${escalatedParams}`),
+      apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?limit=50&status=ESCALATED`),
+      apiFetchJson<{ success: boolean; data: InsuranceClaimRow[] }>(`/api/insurance/claims?limit=50&status=DENIED`),
       apiFetchJson<{ success: boolean; data: { byCarrier: { carrierId: string; denialRate: number }[] } }>(
         '/api/insurance/analytics/denials',
       ),
+      apiFetchJson<{ totalOpenAR: number; operationalAlerts?: { blockedCarriers: { code: string; name: string }[] } }>(
+        `/api/dashboard/stats?practiceId=${practiceId}`,
+      ),
     ])
-      .then(([listRes, escalatedRes, denialRes]) => {
+      .then(([listRes, escalatedRes, deniedRes, denialRes, dashRes]) => {
         setClaims(listRes.data ?? [])
         setEscalated(escalatedRes.data ?? [])
+        setDenied(deniedRes.data ?? [])
         setDenialSummary(denialRes.data?.byCarrier?.slice(0, 5) ?? [])
+        setBlockedCarriers(dashRes.operationalAlerts?.blockedCarriers ?? [])
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -80,7 +86,30 @@ export default function InsuranceClaims() {
           </Link>
         </header>
 
-        {/* ── Escalation queue — prominent section ── */}
+        {/* ── Carrier block alert — highest severity ── */}
+        {blockedCarriers.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-red-500 font-bold text-lg leading-none">🚨</span>
+              <h2 className="text-sm font-bold text-red-900 dark:text-red-300">
+                Carrier block active — AI calls suspended
+              </h2>
+            </div>
+            <p className="text-xs text-red-800 dark:text-red-400 leading-relaxed">
+              One or more carriers detected automation on a recent call. All AI calls to these carriers are suspended
+              until manually reviewed and unblocked in Admin → Carriers.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {blockedCarriers.map((c) => (
+                <span key={c.code} className="text-xs font-semibold px-2 py-1 rounded-full bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800">
+                  {c.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Escalation queue — needs human call ── */}
         {escalated.length > 0 && (
           <div className="rounded-2xl border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-3">
             <div className="flex items-center gap-2">
@@ -104,6 +133,37 @@ export default function InsuranceClaims() {
                   </div>
                   <Link to={`/insurance/${c.id}`}>
                     <Button size="sm" variant="secondary">View call summary →</Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Denied claims — need appeal/write-off decision ── */}
+        {denied.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              <h2 className="text-sm font-bold text-red-900 dark:text-red-300">
+                {denied.length} denied claim{denied.length !== 1 ? 's' : ''} — decision required
+              </h2>
+            </div>
+            <p className="text-xs text-red-800 dark:text-red-400 leading-relaxed">
+              These claims were denied by the carrier. Each one needs a decision: appeal, resubmit with corrections, or write off.
+              Open the claim to read the denial reason from the AI's call, then take action.
+            </p>
+            <div className="space-y-2">
+              {denied.map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-xl border border-red-200 dark:border-red-800 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white font-mono">{c.claimNumber}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {CARRIER_LABELS[c.carrierId] ?? c.carrierId} · {fmtMoney(c.outstandingAmount)} · {c.daysOutstanding}d
+                    </p>
+                  </div>
+                  <Link to={`/insurance/${c.id}`}>
+                    <Button size="sm" variant="secondary">Review denial →</Button>
                   </Link>
                 </div>
               ))}
