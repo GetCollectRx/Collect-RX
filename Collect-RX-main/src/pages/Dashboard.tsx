@@ -63,7 +63,7 @@ function DashboardBody({ stats: s, platform, practiceName, isPracticeOwner }: Da
   )
 
   return (
-    <div className="page-enter living-dashboard-bg relative z-[1] p-6 space-y-6 max-w-[1400px]">
+    <div className="page-enter living-dashboard-bg relative z-[1] p-4 space-y-4 max-w-[1400px]">
       <header className="flex flex-wrap items-start justify-between gap-4 relative z-10">
         <div>
           <p className="crx-section-label mb-1 flex items-center gap-2">
