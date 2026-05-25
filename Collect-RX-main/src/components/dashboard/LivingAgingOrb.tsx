@@ -70,7 +70,7 @@ export function LivingAgingOrb({ segments, totalAmount, amountUnit = 'dollars' }
         <div className="relative mx-auto w-full max-w-[280px] aspect-square">
           <div className="living-orb-glow" aria-hidden />
           <svg viewBox="0 0 240 240" className="w-full h-full living-orb-svg">
-            <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--crx-bg4)" strokeWidth={stroke} opacity={0.5} />
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--crx-ring)" strokeWidth={stroke} opacity={0.85} />
             {arcs.map((a, i) => {
               const isOn = active === null || active === a.id
               return (

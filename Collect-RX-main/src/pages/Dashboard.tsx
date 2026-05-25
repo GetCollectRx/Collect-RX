@@ -70,7 +70,7 @@ function DashboardBody({ stats: s, platform, practiceName, isPracticeOwner }: Da
             Practice command center
             {activeNow > 0 && <span className="living-live-chip">Live calls</span>}
           </p>
-          <h1 className="crx-h1 living-hero-title">{practiceName ?? 'Your practice'}</h1>
+          <h1 className="crx-h1">{practiceName ?? 'Your practice'}</h1>
           <p className="crx-sub mt-1">
             {new Date().toLocaleDateString('en-CA', {
               weekday: 'long',

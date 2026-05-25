@@ -3,10 +3,12 @@
 
 .crx-app {
   --crx-bg0: #0c1f16;
-  --crx-bg1: #f8f6f1;
-  --crx-bg2: #fffef9;
-  --crx-bg3: #f3f0e8;
-  --crx-bg4: #e8e4da;
+  --crx-cream: #faf8f4;
+  --crx-bg1: var(--crx-cream);
+  --crx-bg2: #fffffe;
+  --crx-bg3: #f5f2eb;
+  --crx-bg4: #ebe6dd;
+  --crx-ring: #e3ddd2;
   --crx-green: #0f9d58;
   --crx-green-bright: #12c96d;
   --crx-green-lo: rgba(15, 157, 88, 0.1);
@@ -78,9 +80,7 @@
 }
 
 .crx-app #main-content {
-  background:
-    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(15, 157, 88, 0.06), transparent),
-    linear-gradient(180deg, var(--crx-bg2) 0%, var(--crx-bg1) 100%);
+  background: var(--crx-cream);
 }
 
 .crx-app .crx-sidebar {
@@ -145,7 +145,7 @@
   font-family: var(--crx-fd);
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--crx-t0);
+  color: var(--crx-bg0);
   letter-spacing: -0.03em;
 }
 
@@ -325,32 +325,35 @@
 
 .crx-app .living-dashboard-bg {
   position: relative;
+  min-height: 100%;
+  background: var(--crx-cream);
 }
 
+/* Soft green wash — stays inside the dashboard, not full viewport */
 .crx-app .living-dashboard-bg::before,
 .crx-app .living-dashboard-bg::after {
   content: '';
-  position: fixed;
+  position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
+  filter: blur(72px);
   pointer-events: none;
   z-index: 0;
 }
 
 .crx-app .living-dashboard-bg::before {
-  width: 420px;
-  height: 420px;
-  top: -120px;
-  right: 10%;
-  background: rgba(15, 157, 88, 0.08);
+  width: 360px;
+  height: 360px;
+  top: -80px;
+  right: 8%;
+  background: rgba(15, 157, 88, 0.07);
   animation: crx-orb-breathe 8s ease-in-out infinite;
 }
 
 .crx-app .living-dashboard-bg::after {
-  width: 320px;
-  height: 320px;
-  bottom: 10%;
-  left: 5%;
+  width: 280px;
+  height: 280px;
+  bottom: 12%;
+  left: 4%;
   background: rgba(15, 157, 88, 0.04);
   animation: crx-orb-breathe 11s ease-in-out infinite reverse;
 }
@@ -422,16 +425,21 @@
 }
 
 .crx-app .living-chart-panel {
-  background: linear-gradient(165deg, rgba(15, 157, 88, 0.05) 0%, var(--crx-bg2) 35%, #ffffff 100%);
+  background: var(--crx-bg2);
   border: 1px solid var(--crx-bdr);
+  border-top: 3px solid var(--crx-green);
   border-radius: 16px;
   box-shadow: var(--crx-shadow-panel);
   animation: crx-rise-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: border-color 0.25s ease;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .crx-app .living-chart-panel:hover {
   border-color: var(--crx-bdr2);
+  border-top-color: var(--crx-green-bright);
+  box-shadow: var(--crx-shadow-lift);
 }
 
 .crx-app .living-chart-title {
@@ -569,7 +577,7 @@
 .crx-app .living-flow-detail {
   padding: 0.75rem 1rem;
   border-radius: 10px;
-  background: var(--crx-bg3);
+  background: var(--crx-cream);
   border: 1px solid var(--crx-bdr);
 }
 

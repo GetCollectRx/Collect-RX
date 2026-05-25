@@ -7,7 +7,7 @@ import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
 import Changelog from './pages/Changelog'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
-import { ThemeProvider } from './context/ThemeContext'
+import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Balances              from './pages/Balances'
 import BalanceDetail         from './pages/BalanceDetail'
@@ -397,12 +397,20 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
-/** Logged-in UI: creamy white shell with green accents (not marketing dark). */
+/** Logged-in UI: creamy white `.crx-app` — never Tailwind html.dark. */
 function useBrandAppShellTheme() {
+  const { setTheme } = useTheme()
   useEffect(() => {
-    document.documentElement.classList.remove('dark')
-    localStorage.setItem('crx-theme', 'light')
-  }, [])
+    setTheme('light')
+  }, [setTheme])
+}
+
+/** Login and other public Tailwind pages: light card on cream (not dark gray). */
+function usePublicPortalTheme() {
+  const { setTheme } = useTheme()
+  useEffect(() => {
+    setTheme('light')
+  }, [setTheme])
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
@@ -454,6 +462,16 @@ function AppShell() {
   )
 }
 
+function AnonRoutes() {
+  usePublicPortalTheme()
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="*" element={<LandingPage />} />
+    </Routes>
+  )
+}
+
 function AuthGate() {
   const { authState, loading, subscription, isPlatformDev, userRole } = usePractice()
   const location = useLocation()
@@ -497,12 +515,7 @@ function AuthGate() {
     )
   }
   if (authState === 'anon') {
-    return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*"      element={<LandingPage />} />
-      </Routes>
-    )
+    return <AnonRoutes />
   }
   if (subscription.enforce && !subscription.active && !isPlatformDev) {
     return (

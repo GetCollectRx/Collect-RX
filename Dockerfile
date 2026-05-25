@@ -17,7 +17,8 @@ COPY Collect-RX-main/prisma ./Collect-RX-main/prisma/
 # hoists shared deps into /app/node_modules, which is what tsc/vite expect.
 # --ignore-scripts skips electron-builder and similar GUI-only postinstalls
 # that fail in a slim container.
-RUN npm ci --ignore-scripts
+# Install devDependencies too (tsx, typescript, vite were required for build; tsx for `npm run start`).
+RUN npm ci --ignore-scripts --include=dev
 
 # Generate the Prisma client inside the workspace package.
 WORKDIR /app/Collect-RX-main
