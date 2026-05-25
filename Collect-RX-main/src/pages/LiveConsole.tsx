@@ -173,6 +173,36 @@ export default function LiveConsole() {
     await loadSnapshot()
   }
 
+  async function setQueuePriority(entry: DeskQueueEntry, priority: number) {
+    await post(`/queue/${entry.id}/priority`, { priority })
+  }
+
+  async function reorderQueue(draggedId: string, targetId: string) {
+    const from = queue.findIndex((q) => q.id === draggedId)
+    const to = queue.findIndex((q) => q.id === targetId)
+    if (from < 0 || to < 0 || from === to) return
+    const next = [...queue]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
+    setQueue(next)
+    await Promise.all(
+      next.map((e, i) => setQueuePriority(e, Math.max(10, (next.length - i) * 10))),
+    )
+    await loadSnapshot()
+  }
+
+  async function removeFromQueue(id: string) {
+    const res = await fetch(resolveApiUrl(`${deskBase}/queue/${id}`), {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error((j as { error?: string }).error ?? 'Remove failed')
+    }
+    await loadSnapshot()
+  }
+
   const activeAgentIndex = activeCall?.activeAgent
     ? AGENTS.indexOf(activeCall.activeAgent as (typeof AGENTS)[number])
     : 0
@@ -180,7 +210,10 @@ export default function LiveConsole() {
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-52px)]">
       {blockAlert && (
-        <div className="bg-red-600 text-white px-4 py-3 flex items-center justify-between gap-4">
+        <div
+          className="px-4 py-3 flex items-center justify-between gap-4"
+          style={{ background: 'var(--crx-red)', color: 'var(--crx-t0)' }}
+        >
           <div>
             <p className="font-semibold text-sm">
               {CARRIER_LABELS[blockAlert.carrierId] ?? blockAlert.carrierId} — all calls suspended
@@ -204,15 +237,16 @@ export default function LiveConsole() {
       )}
 
       <div className="flex flex-1 min-h-0">
-        <aside className="w-[220px] border-r border-gray-200 dark:border-gray-800 p-3 flex flex-col gap-4 overflow-y-auto">
+        <aside className="crx-console-aside w-[240px] border-r p-3 flex flex-col gap-4 overflow-y-auto">
           <section>
-            <h2 className="text-2xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Carriers</h2>
+            <h2 className="crx-section-label mb-2">Carriers</h2>
             <ul className="space-y-1">
               {carriers.map((c) => (
                 <li key={c.carrierId}>
                   <button
                     type="button"
-                    className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="w-full text-left text-xs px-2 py-1.5 rounded hover:opacity-90"
+                    style={{ color: 'var(--crx-t1)' }}
                     onClick={() => c.status === 'blocked' && c.block && setModalBlock({
                       id: c.block.id,
                       carrierId: c.carrierId as DeskCarrierBlock['carrierId'],
@@ -234,29 +268,65 @@ export default function LiveConsole() {
 
           <section className="flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-2xs font-semibold text-gray-400 uppercase tracking-wider">Queue</h2>
-              {queuePaused && (
-                <span className="text-2xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-1.5 py-0.5 rounded">
-                  Paused
-                </span>
-              )}
+              <h2 className="crx-section-label">Queue</h2>
+              {queuePaused && <span className="crx-badge crx-badge-amber">Paused</span>}
             </div>
             <button
               type="button"
-              className="text-xs mb-2 text-crx-600 hover:underline"
+              className="crx-btn-ghost text-xs mb-2 w-full"
               onClick={() => void toggleQueue().catch((e) => setError((e as Error).message))}
             >
               {queuePaused ? 'Resume queue' : 'Pause queue'}
             </button>
-            <ul className="space-y-1 overflow-y-auto flex-1">
+            <p className="text-2xs mb-2" style={{ color: 'var(--crx-t3)' }}>
+              Drag to reorder priority
+            </p>
+            <ul className="space-y-1.5 overflow-y-auto flex-1">
               {queue.map((e) => (
-                <li key={e.id} className="text-xs border border-gray-100 dark:border-gray-800 rounded p-2">
-                  <p className="font-medium">{e.claimRef}</p>
-                  <p className="text-gray-500">{CARRIER_LABELS[e.carrierId] ?? e.carrierId}</p>
-                  <p className="text-gray-500">{formatMoney(e.amountClaimedCents)}</p>
-                  <div className="flex gap-1 mt-1">
-                    <button type="button" className="text-2xs text-crx-600" onClick={() => void bumpPriority(e, -10)}>↑</button>
-                    <button type="button" className="text-2xs text-crx-600" onClick={() => void bumpPriority(e, 10)}>↓</button>
+                <li
+                  key={e.id}
+                  draggable
+                  onDragStart={(ev) => {
+                    ev.dataTransfer.setData('text/plain', e.id)
+                    ev.currentTarget.classList.add('dragging')
+                  }}
+                  onDragEnd={(ev) => ev.currentTarget.classList.remove('dragging')}
+                  onDragOver={(ev) => ev.preventDefault()}
+                  onDrop={(ev) => {
+                    ev.preventDefault()
+                    const draggedId = ev.dataTransfer.getData('text/plain')
+                    if (draggedId && draggedId !== e.id) {
+                      void reorderQueue(draggedId, e.id).catch((err) => setError((err as Error).message))
+                    }
+                  }}
+                  className="crx-queue-item text-xs p-2 cursor-grab active:cursor-grabbing"
+                >
+                  <p className="font-medium" style={{ color: 'var(--crx-t0)' }}>{e.claimRef}</p>
+                  <p style={{ color: 'var(--crx-t3)' }}>{CARRIER_LABELS[e.carrierId] ?? e.carrierId}</p>
+                  <p style={{ color: 'var(--crx-t2)' }}>{formatMoney(e.amountClaimedCents)}</p>
+                  <div className="flex gap-1 mt-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="crx-btn-ghost text-2xs py-0.5 px-1"
+                      onClick={() => void bumpPriority(e, -10).catch((err) => setError((err as Error).message))}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="crx-btn-ghost text-2xs py-0.5 px-1"
+                      onClick={() => void bumpPriority(e, 10).catch((err) => setError((err as Error).message))}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="crx-btn-ghost text-2xs py-0.5 px-1"
+                      style={{ color: 'var(--crx-red)' }}
+                      onClick={() => void removeFromQueue(e.id).catch((err) => setError((err as Error).message))}
+                    >
+                      Remove
+                    </button>
                   </div>
                 </li>
               ))}

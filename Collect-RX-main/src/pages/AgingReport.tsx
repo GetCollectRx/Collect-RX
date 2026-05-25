@@ -5,6 +5,8 @@ import {
   Card, CardHeader, StatTile, DataState, Button,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
+import { AgingStackedBarChart } from '../components/AgingStackedBarChart'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
 import type { AgingBucket, CarrierAgingRow } from '../types/practiceSettings'
 
 type Timeframe = '30d' | '90d' | 'all'
@@ -57,6 +59,24 @@ export default function AgingReport() {
   const totalClaims = useMemo(() => buckets.reduce((s, b) => s + b.claimCount, 0), [buckets])
   const busy = practiceLoading || (loading && buckets.length === 0)
 
+  async function downloadReport(format: 'html' | 'pdf') {
+    if (!practiceId) return
+    const res = await fetch(resolveApiUrl(`/api/practices/${practiceId}/reports/export`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportType: 'aging', format }),
+    })
+    if (!res.ok) throw new Error('Export failed')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `aging-report.${format === 'pdf' ? 'pdf' : 'html'}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <DataState loading={busy} error={error} isEmpty={!busy && buckets.length === 0} emptyTitle="No aging data">
       <div className="page-enter p-6 space-y-6 max-w-[1400px]">
@@ -86,8 +106,26 @@ export default function AgingReport() {
             >
               Export CSV
             </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void downloadReport('html').catch((e) => setError((e as Error).message))}
+              disabled={buckets.length === 0}
+            >
+              Export HTML
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void downloadReport('pdf').catch((e) => setError((e as Error).message))}
+              disabled={buckets.length === 0}
+            >
+              Export PDF
+            </Button>
           </div>
         </div>
+
+        {carrierRows.length > 0 && <AgingStackedBarChart rows={carrierRows} />}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {buckets.map((b) => (

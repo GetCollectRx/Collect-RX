@@ -23,12 +23,27 @@ export interface RoleAccess {
   canEditCarrierConfig: boolean
   canManageUsers: boolean
   canEditAdmin: boolean
+  canPauseClaims: boolean
+  canResolveEscalations: boolean
+  canTakeOverCall: boolean
   // Special modes
   isPatientLookupOnly: boolean  // front_desk
   isReadOnly: boolean           // practice_owner, accountant
   // Default landing route after login
   homeRoute: string
 }
+
+const deskOperator = {
+  canPauseClaims: true,
+  canResolveEscalations: true,
+  canTakeOverCall: true,
+} as const
+
+const noDeskOps = {
+  canPauseClaims: false,
+  canResolveEscalations: false,
+  canTakeOverCall: false,
+} as const
 
 function accessForRole(role: AuthRole | null): RoleAccess {
   switch (role) {
@@ -40,8 +55,9 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: true, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: true,
         canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: true, canManageUsers: false, canEditAdmin: true,
+        ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: false,
-        homeRoute: '/',
+        homeRoute: '/admin',
       }
 
     case 'practice_owner':
@@ -52,8 +68,10 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: true, canEditAdmin: false,
+        ...noDeskOps,
+        canResolveEscalations: true,
         isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/',
+        homeRoute: '/dashboard',
       }
 
     case 'office_manager':
@@ -64,8 +82,10 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
         canInitiateCalls: true, canEscalateCalls: true, canSendReminders: true,
         canEditCarrierConfig: true, canManageUsers: true, canEditAdmin: true,
+        ...noDeskOps,
+        canResolveEscalations: true,
         isPatientLookupOnly: false, isReadOnly: false,
-        homeRoute: '/',
+        homeRoute: '/dashboard',
       }
 
     case 'billing_coordinator':
@@ -76,8 +96,9 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
         canInitiateCalls: true, canEscalateCalls: true, canSendReminders: true,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: false,
-        homeRoute: '/',
+        homeRoute: '/dashboard',
       }
 
     case 'associate_dentist':
@@ -88,8 +109,9 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/',
+        homeRoute: '/dashboard',
       }
 
     case 'accountant':
@@ -100,6 +122,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: false, canViewBilling: true, canViewGroupDashboard: true,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/reports/aging',
       }
@@ -112,6 +135,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: true, canSendReminders: true,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...deskOperator,
         isPatientLookupOnly: false, isReadOnly: false,
         homeRoute: '/console',
       }
@@ -124,6 +148,8 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: false, canViewBilling: true, canViewGroupDashboard: true,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...noDeskOps,
+        canResolveEscalations: true,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/portfolio',
       }
@@ -136,6 +162,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
+        ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/login',
       }

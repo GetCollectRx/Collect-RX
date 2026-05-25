@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
 import {
   Card, CardHeader, Badge, DataState,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td, Button,
@@ -42,6 +43,24 @@ export default function CarrierStats() {
 
   const busy = practiceLoading || (loading && stats.length === 0)
 
+  async function downloadReport(format: 'html' | 'pdf') {
+    if (!practiceId) return
+    const res = await fetch(resolveApiUrl(`/api/practices/${practiceId}/reports/export`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportType: 'carriers', format }),
+    })
+    if (!res.ok) throw new Error('Export failed')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `carrier-stats.${format === 'pdf' ? 'pdf' : 'html'}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <DataState loading={busy} error={error} isEmpty={!busy && stats.length === 0} emptyTitle="No carrier stats">
       <div className="page-enter p-6 space-y-6 max-w-[1400px]">
@@ -63,6 +82,22 @@ export default function CarrierStats() {
                 {tf === 'all' ? 'All time' : tf}
               </Button>
             ))}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void downloadReport('html').catch((e) => setError((e as Error).message))}
+              disabled={stats.length === 0}
+            >
+              Export HTML
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void downloadReport('pdf').catch((e) => setError((e as Error).message))}
+              disabled={stats.length === 0}
+            >
+              Export PDF
+            </Button>
           </div>
         </div>
 

@@ -20,6 +20,7 @@ import {
 import { blockFrontDeskReports, blockAuditorWrites, requireBillingOps } from '../middleware/requireUserRole.js';
 import { withGrantChecks } from '../middleware/grantChecks.js';
 import { getUserRole, isPracticeOwner, isPlatformAdmin } from '../accessControl/types.js';
+import { buildSimpleReportPdf } from '../lib/simpleReportPdf.js';
 
 function reportHtml(title: string, rows: string[][]): string {
   const head = rows[0]?.map((h) => `<th>${h}</th>`).join('') ?? '';
@@ -104,7 +105,9 @@ export function createPracticeReportsRouter(): Router {
           return;
         }
         const practiceId = practiceIdFromSession(req);
-        const reportType = (req.body as { reportType?: string }).reportType ?? 'aging';
+        const body = req.body as { reportType?: string; format?: string };
+        const reportType = body.reportType ?? 'aging';
+        const format = (body.format ?? 'html').toLowerCase();
         const practice = await prisma.practice.findUnique({
           where: { id: practiceId },
           select: { name: true },
@@ -121,7 +124,15 @@ export function createPracticeReportsRouter(): Router {
               s.trend,
             ]),
           ];
-          const html = reportHtml(`${practice?.name ?? 'Practice'} — Carrier Stats`, rows);
+          const title = `${practice?.name ?? 'Practice'} — Carrier Stats`;
+          if (format === 'pdf') {
+            const pdf = buildSimpleReportPdf(title, rows);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="carrier-stats-${practiceId}.pdf"`);
+            res.send(pdf);
+            return;
+          }
+          const html = reportHtml(title, rows);
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.setHeader('Content-Disposition', `attachment; filename="carrier-stats-${practiceId}.html"`);
           res.send(html);
@@ -137,7 +148,15 @@ export function createPracticeReportsRouter(): Router {
             b.percentOfTotal.toFixed(1),
           ]),
         ];
-        const html = reportHtml(`${practice?.name ?? 'Practice'} — Aging Report`, rows);
+        const title = `${practice?.name ?? 'Practice'} — Aging Report`;
+        if (format === 'pdf') {
+          const pdf = buildSimpleReportPdf(title, rows);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="aging-report-${practiceId}.pdf"`);
+          res.send(pdf);
+          return;
+        }
+        const html = reportHtml(title, rows);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="aging-report-${practiceId}.html"`);
         res.send(html);

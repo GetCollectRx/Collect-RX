@@ -43,6 +43,7 @@ import UsersAdmin              from './pages/UsersAdmin'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { HOME_ROUTE } from './types/userRole'
 import { useEffect, type ReactNode } from 'react'
+import './styles/collectrxAppTheme.css'
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -75,6 +76,7 @@ const PLATFORM_DEV_BLOCKED_PREFIXES = [
 
 const PLATFORM_DEV_NAV_PATHS = new Set([
   '/',
+  '/dashboard',
   '/guide',
   '/work-queue',
   '/insurance',
@@ -90,7 +92,7 @@ const FRONT_DESK_NAV = [
 ]
 
 const OWNER_NAV = [
-  { to: '/dashboard', exact: true, label: 'Dashboard', icon: ICONS.dashboard },
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: ICONS.dashboard },
   { to: '/work-queue', exact: false, label: 'Work Queue', icon: ICONS.workqueue },
   { to: '/insurance', exact: false, label: 'Insurance AR', icon: ICONS.insurance },
   { to: '/reports/aging', exact: false, label: 'Aging Report', icon: ICONS.analytics },
@@ -144,7 +146,7 @@ const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
-      { to: '/',      exact: true,  label: 'Dashboard',    icon: ICONS.dashboard },
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: ICONS.dashboard },
       { to: '/guide', exact: true,  label: 'How it works', icon: ICONS.guide    },
     ],
   },
@@ -203,11 +205,13 @@ function Sidebar() {
   if (isFrontDesk) {
     return (
       <aside
-        className="fixed left-0 top-0 bottom-0 w-[220px] flex flex-col bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800/70 z-30"
+        className="crx-sidebar fixed left-0 top-0 bottom-0 w-[220px] flex flex-col z-30"
         aria-label="Front desk navigation"
       >
-        <div className="flex items-center px-4 h-[52px] border-b border-gray-100 dark:border-gray-800/70">
-          <span className="font-semibold text-sm">Collect<span className="text-crx-500">Rx</span> Desk</span>
+        <div className="flex items-center px-4 h-[52px] border-b border-[var(--crx-bdr)]">
+          <span className="crx-sidebar-logo text-sm">
+            Collect<span>Rx</span> Desk
+          </span>
         </div>
         <nav className="flex-1 py-3 px-2 space-y-0.5">
           {FRONT_DESK_NAV.map((item) => {
@@ -249,20 +253,23 @@ function Sidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 bottom-0 w-[220px] flex flex-col bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800/70 z-30"
-      style={{ boxShadow: '1px 0 0 0 rgba(0,0,0,0.04)' }}
+      className="crx-sidebar fixed left-0 top-0 bottom-0 w-[220px] flex flex-col z-30"
       aria-label="Main navigation"
     >
       {/* ── Logo ── */}
-      <div className="flex items-center justify-between px-4 h-[52px] border-b border-gray-100 dark:border-gray-800/70 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 h-[52px] border-b border-[var(--crx-bdr)] flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-[6px] bg-crx-500 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-            <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+          <div
+            className="w-6 h-6 rounded-[6px] flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--crx-green)' }}
+            aria-hidden="true"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style={{ color: 'var(--crx-bg0)' }}>
               <path d={ICONS.logo} />
             </svg>
           </div>
-          <span className="font-semibold text-gray-900 dark:text-gray-50 text-sm tracking-tight">
-            Collect<span className="text-crx-500">Rx</span>
+          <span className="crx-sidebar-logo text-sm">
+            Collect<span>Rx</span>
           </span>
           {isPlatformDev && (
             <span className="text-2xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
@@ -277,7 +284,7 @@ function Sidebar() {
       <nav className="flex-1 py-3 overflow-y-auto" role="navigation">
         {navSections.map(section => (
           <div key={section.label} className="mb-4">
-            <p className="px-4 mb-1 text-2xs font-semibold text-gray-300 dark:text-gray-700 uppercase tracking-wider">
+            <p className="crx-section-label px-4 mb-1">
               {section.label}
             </p>
             <div className="px-2 space-y-0.5">
@@ -392,7 +399,7 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
   return (
-    <div className="flex min-h-screen bg-gray-50/60 dark:bg-gray-950">
+    <div className="crx-app flex min-h-screen">
       <Sidebar />
       <main
         className="flex-1 ml-[220px] min-h-screen flex flex-col"
@@ -438,28 +445,17 @@ function AppShell() {
 }
 
 function AuthGate() {
-  const { authState, loading, subscription, isPlatformDev, isFrontDesk, userRole } = usePractice()
+  const { authState, loading, subscription, isPlatformDev, userRole } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
     const home = HOME_ROUTE[userRole]
-    if (userRole === 'front_desk' && (location.pathname === '/' || location.pathname === '/dashboard')) {
-      navigate('/console', { replace: true })
-      return
-    }
-    if (userRole === 'practice_owner' && location.pathname === '/') {
-      navigate('/dashboard', { replace: true })
-      return
-    }
-    if (
-      (userRole === 'auditor' || userRole === 'billing_ops_manager' || userRole === 'platform_admin') &&
-      (location.pathname === '/' || location.pathname === '')
-    ) {
+    if (location.pathname === '/' || location.pathname === '') {
       navigate(home, { replace: true })
     }
-  }, [loading, authState, isFrontDesk, isPlatformDev, userRole, location.pathname, navigate])
+  }, [loading, authState, userRole, location.pathname, navigate])
 
   useEffect(() => {
     if (loading || authState !== 'anon') return
@@ -470,12 +466,22 @@ function AuthGate() {
 
   if (authState === 'loading' || loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div
+        className="crx-app min-h-screen flex flex-col items-center justify-center"
+        style={{ background: 'var(--crx-bg1)' }}
+      >
         <div className="flex items-center gap-2.5">
-          <div className="w-5 h-5 rounded-md bg-crx-500 flex items-center justify-center">
-            <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path d={ICONS.logo} /></svg>
+          <div
+            className="w-5 h-5 rounded-md flex items-center justify-center"
+            style={{ background: 'var(--crx-green)' }}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor" style={{ color: 'var(--crx-bg0)' }}>
+              <path d={ICONS.logo} />
+            </svg>
           </div>
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Loading…</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--crx-t2)' }}>
+            Loading…
+          </p>
         </div>
       </div>
     )
