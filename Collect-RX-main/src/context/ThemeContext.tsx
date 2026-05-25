@@ -9,16 +9,16 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'light',
+  theme: 'dark',
   toggleTheme: () => {},
-  isDark: false,
+  isDark: true,
 })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem('crx-theme') as Theme | null
-    if (stored) return stored
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    if (stored === 'dark' || stored === 'light') return stored
+    return 'dark'
   })
 
   useEffect(() => {

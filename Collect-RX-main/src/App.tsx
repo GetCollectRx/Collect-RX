@@ -7,7 +7,7 @@ import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
 import Changelog from './pages/Changelog'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
-import { ThemeProvider, useTheme }        from './context/ThemeContext'
+import { ThemeProvider } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Balances              from './pages/Balances'
 import BalanceDetail         from './pages/BalanceDetail'
@@ -176,24 +176,6 @@ const NAV_SECTIONS = [
   },
 ]
 
-// ── Dark-mode toggle ──────────────────────────────────────────────────────
-function ThemeToggle() {
-  const { isDark, toggleTheme } = useTheme()
-  return (
-    <button
-      onClick={toggleTheme}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
-    >
-      {isDark ? (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.sun} /></svg>
-      ) : (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d={ICONS.moon} /></svg>
-      )}
-    </button>
-  )
-}
-
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
   const {
@@ -224,8 +206,13 @@ function Sidebar() {
             )
           })}
         </nav>
-        <div className="px-3 py-2.5 border-t border-gray-100 dark:border-gray-800/70">
-          <button type="button" onClick={() => void logout()} className="text-2xs text-gray-500 hover:text-gray-800">
+        <div className="px-3 py-2.5 border-t" style={{ borderColor: 'var(--crx-bdr)' }}>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="text-2xs transition-colors"
+            style={{ color: 'var(--crx-t3)' }}
+          >
             Sign out
           </button>
         </div>
@@ -277,7 +264,9 @@ function Sidebar() {
             </span>
           )}
         </div>
-        <span className="text-2xs text-gray-300 dark:text-gray-700 font-mono">v1.0</span>
+        <span className="text-2xs font-mono" style={{ color: 'var(--crx-t4)' }}>
+          v1.0
+        </span>
       </div>
 
       {/* ── Nav sections ── */}
@@ -313,10 +302,10 @@ function Sidebar() {
       </nav>
 
       {/* ── Footer ── */}
-      <div className="border-t border-gray-100 dark:border-gray-800/70 flex-shrink-0">
+      <div className="border-t flex-shrink-0" style={{ borderColor: 'var(--crx-bdr)' }}>
         {/* Practice selector */}
         {practices.length > 0 && (
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800/70">
+          <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--crx-bdr)' }}>
             {isPlatformDev && (
               <p className="text-2xs text-amber-700 dark:text-amber-400 mb-1.5 leading-snug">
                 PHI-free session — pick a practice context for ops APIs.
@@ -324,18 +313,27 @@ function Sidebar() {
             )}
             {practices.length === 1 && !isPlatformDev ? (
               <div>
-                <p className="text-2xs text-gray-400 dark:text-gray-600 mb-0.5">Practice</p>
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate leading-tight">
+                <p className="text-2xs mb-0.5" style={{ color: 'var(--crx-t3)' }}>
+                  Practice
+                </p>
+                <p className="text-xs font-medium truncate leading-tight" style={{ color: 'var(--crx-t1)' }}>
                   {practices[0]?.name}
                 </p>
               </div>
             ) : (
               <div>
-                <p className="text-2xs text-gray-400 dark:text-gray-600 mb-1">Practice</p>
+                <p className="text-2xs mb-1" style={{ color: 'var(--crx-t3)' }}>
+                  Practice
+                </p>
                 <select
                   value={practiceId}
                   onChange={e => setPracticeId(e.target.value)}
-                  className="w-full text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-crx-500"
+                  className="w-full text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[var(--crx-green)]"
+                  style={{
+                    border: '1px solid var(--crx-bdr2)',
+                    background: 'var(--crx-bg3)',
+                    color: 'var(--crx-t1)',
+                  }}
                   aria-label="Select practice"
                 >
                   {practices.map(p => (
@@ -352,17 +350,19 @@ function Sidebar() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="flex items-center gap-1.5 text-2xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            className="flex items-center gap-1.5 text-2xs transition-colors hover:opacity-90"
+            style={{ color: 'var(--crx-t3)' }}
           >
             <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d={ICONS.signout} /></svg>
             Sign out
           </button>
-          <div className="flex items-center gap-1.5">
-            <Link to="/changelog" className="text-2xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-              Log
-            </Link>
-            <ThemeToggle />
-          </div>
+          <Link
+            to="/changelog"
+            className="text-2xs transition-colors hover:opacity-90"
+            style={{ color: 'var(--crx-t3)' }}
+          >
+            Log
+          </Link>
         </div>
       </div>
     </aside>
@@ -397,7 +397,17 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
+/** Logged-in UI always uses marketing-site dark tokens (Tailwind `dark:` + crx-app). */
+function useBrandAppShellTheme() {
+  useEffect(() => {
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('crx-theme', 'dark')
+  }, [])
+}
+
+// ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
+  useBrandAppShellTheme()
   return (
     <div className="crx-app flex min-h-screen">
       <Sidebar />

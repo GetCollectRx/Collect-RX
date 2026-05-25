@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
 import {
-  Card, CardHeader, StatTile, DataState, Button,
+  Card, CardHeader, DataState, Button,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
-import { AgingStackedBarChart } from '../components/AgingStackedBarChart'
+import { LivingCarrierRiver } from '../components/dashboard/LivingCarrierRiver'
+import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import type { AgingBucket, CarrierAgingRow } from '../types/practiceSettings'
 
@@ -79,13 +80,12 @@ export default function AgingReport() {
 
   return (
     <DataState loading={busy} error={error} isEmpty={!busy && buckets.length === 0} emptyTitle="No aging data">
-      <div className="page-enter p-6 space-y-6 max-w-[1400px]">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="page-enter living-dashboard-bg p-6 space-y-6 max-w-[1400px] relative z-[1]">
+        <div className="flex items-start justify-between gap-4 flex-wrap relative z-10">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Aging Report</h1>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-              Open claims by age bucket and carrier
-            </p>
+            <p className="crx-section-label mb-1">Reports</p>
+            <h1 className="crx-h1 living-hero-title">Aging report</h1>
+            <p className="crx-sub mt-0.5">Open claims by age bucket and carrier</p>
           </div>
           <div className="flex items-center gap-2">
             {(['30d', '90d', 'all'] as Timeframe[]).map((tf) => (
@@ -125,16 +125,19 @@ export default function AgingReport() {
           </div>
         </div>
 
-        {carrierRows.length > 0 && <AgingStackedBarChart rows={carrierRows} />}
+        {carrierRows.length > 0 && <LivingCarrierRiver rows={carrierRows} />}
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {buckets.map((b) => (
-            <StatTile
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+          {buckets.map((b, i) => (
+            <LivingStatCard
               key={b.label}
               label={b.label}
-              value={fmtMoney(b.totalAmount)}
+              displayValue={fmtMoney(b.totalAmount)}
+              countUp={b.totalAmount}
+              formatCount={fmtMoney}
               sub={`${b.claimCount} claims · ${b.percentOfTotal.toFixed(1)}%`}
-              accent={b.label === '90+' ? 'red' : b.label === '61–90' ? 'amber' : 'default'}
+              tone={b.label === '90+' ? 'red' : b.label === '61–90' ? 'amber' : 'green'}
+              delayMs={i * 50}
             />
           ))}
         </div>
