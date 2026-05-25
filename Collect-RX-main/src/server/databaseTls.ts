@@ -40,9 +40,34 @@ export function postgresUrlUsesStrictSsl(databaseUrl: string): boolean {
   }
 }
 
+/**
+ * Append sslmode=require when missing so Railway's default DATABASE_URL works unchanged.
+ * Still uses TLS in transit; you do not need to edit the variable in the dashboard.
+ */
+export function withPostgresTlsDefault(databaseUrl: string): string {
+  const trimmed = (databaseUrl || '').trim();
+  if (!trimmed || !isPostgresConnectionString(trimmed)) return trimmed;
+  if (postgresUrlUsesStrictSsl(trimmed)) return trimmed;
+  const sep = trimmed.includes('?') ? '&' : '?';
+  return `${trimmed}${sep}sslmode=require`;
+}
+
+/** Mutate process.env.DATABASE_URL before Prisma reads it. */
+export function applyPostgresTlsToProcessEnv(): void {
+  const url = process.env.DATABASE_URL || '';
+  if (!url) return;
+  const next = withPostgresTlsDefault(url);
+  if (next === url) return;
+  process.env.DATABASE_URL = next;
+  if (process.env.NODE_ENV === 'production') {
+    console.log('[server] DATABASE_URL: auto-enabled TLS (sslmode=require)');
+  }
+}
+
 /** Exit the process in production when Postgres TLS is not configured. */
 export function assertPostgresTlsInProduction(): void {
   if (process.env.NODE_ENV !== 'production') return;
+  applyPostgresTlsToProcessEnv();
   const url = process.env.DATABASE_URL || '';
   if (!isPostgresConnectionString(url)) return;
   if (postgresUrlUsesStrictSsl(url)) return;

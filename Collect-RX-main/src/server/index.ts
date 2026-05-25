@@ -42,9 +42,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
+import { applyPostgresTlsToProcessEnv } from './databaseTls.js';
+
+// Before Prisma reads DATABASE_URL (Railway URLs often omit ?sslmode=require).
+applyPostgresTlsToProcessEnv();
+
 import fs from 'node:fs';
 import https from 'node:https';
-import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -319,17 +325,20 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot (only when this file is the process entry — not when imported by tests)
 // ─────────────────────────────────────────────────────────────────────────────
+/** True when started via `tsx src/server/index.ts` / `npm run start` (argv may be relative). */
 function isMainModule(): boolean {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return import.meta.url === pathToFileURL(entry).href;
-  } catch {
-    return false;
-  }
+  const self = fileURLToPath(import.meta.url);
+  return process.argv.slice(1).some((arg) => {
+    if (!arg || arg.startsWith('-')) return false;
+    try {
+      return path.resolve(arg) === self;
+    } catch {
+      return false;
+    }
+  });
 }
 
-async function boot() {
+async function connectDatabaseOrExit(): Promise<void> {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log('[server] Database connected');
@@ -337,6 +346,10 @@ async function boot() {
     console.error('[server] Database connection failed:', err);
     process.exit(1);
   }
+}
+
+async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
+  await connectDatabaseOrExit();
 
   piiVault.purgeExpired();
   setInterval(() => {
@@ -352,13 +365,19 @@ async function boot() {
     startLearningLoopInProcess(prisma);
   }
 
+  attachDeskWebSocket(server);
+  startDeskQueueEngine(prisma);
+  startOpsMonitor(prisma);
+  void runStartupScanOnBoot(prisma, PORT);
+}
+
+async function boot() {
   const tlsKey = process.env.TLS_KEY_PATH?.trim();
   const tlsCert = process.env.TLS_CERT_PATH?.trim();
   const onListen = () => {
     const mode = tlsKey && tlsCert ? 'https' : 'http';
     console.log(`[server] CollectRx API listening on port ${PORT} (${mode})`);
-    startOpsMonitor(prisma);
-    void runStartupScanOnBoot(prisma, PORT);
+    console.log('[server] Liveness: GET /api/health — readiness: GET /api/health/ready');
   };
 
   let server: ReturnType<typeof app.listen> | https.Server;
@@ -369,8 +388,6 @@ async function boot() {
     } else {
       server = app.listen(PORT, onListen);
     }
-    attachDeskWebSocket(server);
-    startDeskQueueEngine(prisma);
   } catch (err) {
     console.error('[server] Failed to bind listen socket:', err);
     process.exit(1);
@@ -386,6 +403,11 @@ async function boot() {
       process.exit(1);
     }
     throw err;
+  });
+
+  void afterListen(server).catch((err) => {
+    console.error('[server] Post-listen startup failed:', err);
+    process.exit(1);
   });
 }
 

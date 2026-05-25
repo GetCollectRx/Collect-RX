@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isPostgresConnectionString,
   postgresUrlUsesStrictSsl,
+  withPostgresTlsDefault,
 } from '../src/server/databaseTls';
 
 describe('databaseTls', () => {
@@ -42,5 +43,11 @@ describe('databaseTls', () => {
 
   it('treats non-postgres URLs as vacuously OK for ssl helper', () => {
     expect(postgresUrlUsesStrictSsl('file:./dev.db')).toBe(true);
+  });
+
+  it('withPostgresTlsDefault appends sslmode=require when missing', () => {
+    const base = 'postgresql://u:p@switchyard.proxy.rlwy.net:57765/railway';
+    expect(withPostgresTlsDefault(base)).toBe(`${base}?sslmode=require`);
+    expect(withPostgresTlsDefault(`${base}?sslmode=require`)).toBe(`${base}?sslmode=require`);
   });
 });

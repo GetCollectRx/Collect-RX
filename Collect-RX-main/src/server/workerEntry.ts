@@ -3,7 +3,10 @@
  * Start: `npm run worker` (same env as API: DATABASE_URL, REDIS_URL, STRIPE_*, etc.)
  */
 import 'dotenv/config';
-import { assertPostgresTlsInProduction } from './databaseTls.js';
+import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+
+applyPostgresTlsToProcessEnv();
+
 import { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
 import express from 'express';
