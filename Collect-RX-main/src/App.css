@@ -15,10 +15,13 @@
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 :root {
   scrollbar-width: thin;
-  scrollbar-color: #e5e7eb transparent;
+  scrollbar-color: #d4ddd6 transparent;
 }
 :root.dark {
   scrollbar-color: #1f2937 transparent;
+}
+.crx-app {
+  scrollbar-color: #c5d4cb transparent;
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -32,8 +35,7 @@
   border-radius: 4px;
 }
 
-/* ── Sidebar nav item ───────────────────────────────────────────────────── */
-/* Left-accent active style — cleaner than background fill */
+/* ── Sidebar nav item (public/marketing pages; .crx-app overrides in collectrxAppTheme.css) */
 .nav-item {
   position: relative;
   display: flex;

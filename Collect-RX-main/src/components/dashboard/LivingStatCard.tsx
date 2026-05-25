@@ -3,10 +3,10 @@ import { useCountUp } from '../../hooks/useCountUp'
 type Tone = 'green' | 'amber' | 'red' | 'blue'
 
 const toneVars: Record<Tone, { accent: string; glow: string }> = {
-  green: { accent: 'var(--crx-green)', glow: 'rgba(18,201,109,0.35)' },
-  amber: { accent: 'var(--crx-gold)', glow: 'rgba(240,180,41,0.35)' },
-  red: { accent: 'var(--crx-red)', glow: 'rgba(255,92,92,0.35)' },
-  blue: { accent: 'var(--crx-blue)', glow: 'rgba(92,154,255,0.35)' },
+  green: { accent: 'var(--crx-green)', glow: 'rgba(15,157,88,0.18)' },
+  amber: { accent: 'var(--crx-gold)', glow: 'rgba(201,143,18,0.2)' },
+  red: { accent: 'var(--crx-red)', glow: 'rgba(214,69,69,0.18)' },
+  blue: { accent: 'var(--crx-blue)', glow: 'rgba(59,127,212,0.18)' },
 }
 
 type Props = {

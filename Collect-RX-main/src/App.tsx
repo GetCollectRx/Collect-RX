@@ -397,11 +397,11 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
 }
 
 // ── App shell ─────────────────────────────────────────────────────────────
-/** Logged-in UI always uses marketing-site dark tokens (Tailwind `dark:` + crx-app). */
+/** Logged-in UI: creamy white shell with green accents (not marketing dark). */
 function useBrandAppShellTheme() {
   useEffect(() => {
-    document.documentElement.classList.add('dark')
-    localStorage.setItem('crx-theme', 'dark')
+    document.documentElement.classList.remove('dark')
+    localStorage.setItem('crx-theme', 'light')
   }, [])
 }
 
