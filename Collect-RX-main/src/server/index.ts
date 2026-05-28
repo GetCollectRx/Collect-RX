@@ -8,6 +8,7 @@
 //   /api/calls/*           calls.ts
 //   /api/carriers/*        carriers.ts
 //   /api/analytics/*       analytics.ts (insurance + patient AR KPIs)
+//   /api/telemetry/*       productTelemetry.ts (ClickHouse usage SDK — optional)
 //   /api/balances*        balancesOutreachRoutes.ts (insurance Balance + outreach + POST /pay sim)
 //   /api/benefits/*       benefitsApi.ts (pre-treatment benefits + estimate)
 //   /api/patients/*        patientArApi.ts (patient balances, reminders, pay links)
@@ -71,7 +72,11 @@ import {
   standardLimiter,
   webhookLimiter,
   healthLimiter,
+  telemetryEventsLimiter,
 } from './middleware/rateLimiter';
+import productTelemetryRouter from './routes/productTelemetry.js';
+import { runTelemetryMigrations } from './productAnalytics/schema.js';
+import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickhouse.js';
 
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
@@ -212,8 +217,14 @@ app.get('/health', healthLimiter, (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
 
-app.get('/api/health', healthLimiter, (_req: Request, res: Response) => {
-  res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
+app.get('/api/health', healthLimiter, async (_req: Request, res: Response) => {
+  const chOk = await pingClickHouse();
+  res.json({
+    status: 'ok',
+    ts: new Date().toISOString(),
+    service: 'collectrx-api',
+    clickhouse: chOk ? 'connected' : isClickHouseMockMode() ? 'mock' : 'unavailable',
+  });
 });
 
 app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response) => {
@@ -228,6 +239,9 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
 app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
   res.json(buildPublicHealthMetricsBody(req));
 });
+
+// Product telemetry ingestion — higher limit than standard /api (SDK batches every 5 s).
+app.use('/api/telemetry/events', telemetryEventsLimiter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiting — baseline for all /api/* routes.
@@ -250,6 +264,7 @@ app.use('/api/practices',  createPracticeReportsRouter());
 app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
+app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createPublicPatientPayRouter(prisma));
@@ -350,6 +365,10 @@ async function connectDatabaseOrExit(): Promise<void> {
 
 async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
   await connectDatabaseOrExit();
+
+  void runTelemetryMigrations().catch((err) => {
+    console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
+  });
 
   piiVault.purgeExpired();
   setInterval(() => {

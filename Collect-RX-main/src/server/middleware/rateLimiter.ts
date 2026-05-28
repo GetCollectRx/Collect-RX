@@ -139,3 +139,13 @@ export const healthLimiter: RateLimitRequestHandler = makeLimiter({
     'Too many health or metrics requests — please slow down and try again shortly.',
   ),
 });
+
+/**
+ * telemetryEventsLimiter — product analytics SDK batches (5 s per tab).
+ * Applied only to POST /api/telemetry/events before the global /api limiter.
+ */
+export const telemetryEventsLimiter: RateLimitRequestHandler = makeLimiter({
+  windowMs: 60 * 1000,
+  max: 1000,
+  handler: makeHandler('Telemetry rate limit exceeded — please slow down.'),
+});

@@ -8,7 +8,7 @@
     "Collect-RX-main"
   ],
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
+    "start": "npm run start -w dental-ar-system",
     "dev": "npm run dev:collectrx",
     "dev:collectrx": "npm run dev -w dental-ar-system",
     "dev:electron": "npm run dev:electron -w dental-ar-system",

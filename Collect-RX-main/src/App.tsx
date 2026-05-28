@@ -45,6 +45,8 @@ import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
 import { HOME_ROUTE } from './types/userRole'
 import { useEffect, type ReactNode } from 'react'
+import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
+import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
 import './styles/collectrxAppTheme.css'
 
 type NavItem = { to: string; exact: boolean; label: string; icon: NavIconName }
@@ -70,6 +72,7 @@ const PLATFORM_DEV_NAV_PATHS = new Set([
   '/work-queue',
   '/insurance',
   '/analytics',
+  '/usage-insights',
   '/admin',
   '/admin/sync',
 ])
@@ -84,6 +87,7 @@ const OWNER_NAV: NavItem[] = [
   { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
   { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
   { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
+  { to: '/usage-insights', exact: true, label: 'Usage insights', icon: 'analytics' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
@@ -106,6 +110,7 @@ const BILLING_OPS_NAV: NavItem[] = [
 const PLATFORM_ADMIN_NAV: NavItem[] = [
   { to: '/admin', exact: true, label: 'Practices', icon: 'admin' },
   { to: '/admin/health', exact: true, label: 'System health', icon: 'health' },
+  { to: '/usage-insights', exact: true, label: 'Usage insights', icon: 'analytics' },
   { to: '/admin/users', exact: true, label: 'Users', icon: 'users' },
   { to: '/admin/break-glass', exact: true, label: 'Break-glass', icon: 'breakglass' },
 ]
@@ -330,6 +335,7 @@ function AppShell() {
           <Route path="/patient-ar"    element={<PatientAR />} />
           <Route path="/estimate"      element={<PreTreatmentEstimate />} />
           <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/outbox"        element={<Outbox />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
@@ -413,6 +419,7 @@ function App() {
       <ThemeProvider>
         <CookieBanner />
         <PracticeProvider>
+          <AnalyticsSessionBridge>
           <Routes>
             <Route path="/pay/p/:publicToken" element={<PublicPatientPay />} />
             <Route path="/payment/thank-you" element={<PaymentThankYou />} />
@@ -423,6 +430,7 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>
+          </AnalyticsSessionBridge>
         </PracticeProvider>
       </ThemeProvider>
     </BrowserRouter>

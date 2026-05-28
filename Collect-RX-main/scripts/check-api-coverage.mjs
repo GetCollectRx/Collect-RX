@@ -40,6 +40,7 @@ const SERVER_PREFIXES = [
   '/api/canadian/',
   '/api/carriers/',
   '/api/analytics/',
+  '/api/telemetry/',
   '/api/eligibility/',
   '/api/queue/',
   '/api/dashboard/',
@@ -74,6 +75,8 @@ const SERVER_EXTRA = [
   /^\/api\/work-queue$/,
   /^\/api\/work-queue\//,
   /^\/api\/admin\/sync\//,
+  /^\/api\/telemetry$/,
+  /^\/api\/telemetry\//,
 ];
 
 function walkFiles(absDir, acc) {
