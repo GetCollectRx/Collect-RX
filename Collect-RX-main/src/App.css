@@ -178,3 +178,48 @@
   aside { display: none !important; }
   main  { margin-left: 0 !important; }
 }
+
+/* ── Live Console waveform ───────────────────────────────────────────────── */
+@keyframes crx-wave {
+  0%, 100% { transform: scaleY(0.12); }
+  50%       { transform: scaleY(1); }
+}
+.crx-wave-bar {
+  width: 3px;
+  background: linear-gradient(to top, #0F6E56, #12C96D);
+  border-radius: 2px;
+  transform-origin: bottom center;
+  animation: crx-wave 0.85s ease-in-out infinite;
+  filter: drop-shadow(0 0 5px rgba(18, 201, 109, 0.55));
+}
+.dark .crx-wave-bar {
+  filter: drop-shadow(0 0 7px rgba(18, 201, 109, 0.7));
+}
+
+/* ── Sidebar live-call pulse badge ──────────────────────────────────────── */
+@keyframes crx-live-ping {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.crx-live-dot {
+  position: relative;
+  display: inline-flex;
+  width: 7px;
+  height: 7px;
+}
+.crx-live-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #12C96D;
+  animation: crx-live-ping 1.4s ease-out infinite;
+}
+.crx-live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #12C96D;
+}
