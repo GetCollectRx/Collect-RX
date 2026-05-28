@@ -40,6 +40,8 @@ export type PlatformDevAuthPayload = {
 export type BriefAuthFields = {
   userRole?: UserRole;
   deskRole?: 'owner' | 'front_desk';
+  /** Set for PlatformUser table logins (auditor, billing ops, platform admin). */
+  platformUserSession?: boolean;
 };
 
 export type AuthJwtPayload = (UserAuthPayload | PlatformDevAuthPayload) & BriefAuthFields;
@@ -84,8 +86,13 @@ export function authPracticeId(auth: AuthJwtPayload | undefined): string | null 
   return auth.practiceId || null;
 }
 
+/** Technical platform developer login (PHI-free, redacted aggregates). */
 export function isPlatformDev(auth: AuthJwtPayload | undefined): auth is PlatformDevAuthPayload {
-  return auth?.role === 'platform_dev' || getUserRole(auth) === 'platform_admin';
+  return auth?.role === 'platform_dev' && auth.platformUserSession !== true;
+}
+
+export function isPlatformUserSession(auth: AuthJwtPayload | undefined): boolean {
+  return auth?.platformUserSession === true;
 }
 
 export function isPlatformAdmin(auth: AuthJwtPayload | undefined): boolean {

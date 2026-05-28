@@ -6,6 +6,7 @@ import {
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { requireClaimScope } from '../server/middleware/requireClaimScope.js';
 import { redactWorkItem } from '../server/accessControl/redaction.js';
 import {
   listWorkItems,
@@ -16,6 +17,7 @@ import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
+router.use(requireClaimScope('list_claims'));
 
 router.get('/', async (req: Request, res: Response) => {
   try {

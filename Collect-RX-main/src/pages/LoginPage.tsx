@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 
 export function LoginPage() {
-  const { login, loginPlatformDev } = usePractice()
+  const { login, loginPlatformUser, loginPlatformDev } = usePractice()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [devPassword, setDevPassword] = useState('')
+  const [platformEmail, setPlatformEmail] = useState('')
+  const [platformPassword, setPlatformPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sessionInfo, setSessionInfo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [platformBusy, setPlatformBusy] = useState(false)
   const [devBusy, setDevBusy] = useState(false)
 
   useEffect(() => {
@@ -33,6 +36,19 @@ export function LoginPage() {
       setError((err as Error).message || 'Invalid email or password')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function onPlatformUserSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setPlatformBusy(true)
+    try {
+      await loginPlatformUser(platformEmail.trim().toLowerCase(), platformPassword)
+    } catch (err) {
+      setError((err as Error).message || 'Invalid email or password')
+    } finally {
+      setPlatformBusy(false)
     }
   }
 
@@ -144,6 +160,43 @@ export function LoginPage() {
               ) : 'Sign in'}
             </button>
           </form>
+
+          <details className="border-t border-gray-100 dark:border-gray-800 pt-4 group">
+            <summary className="text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide cursor-pointer list-none flex items-center justify-between">
+              Auditor / billing ops / platform admin
+              <span className="text-gray-300 dark:text-gray-600 group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <p className="text-2xs text-gray-400 dark:text-gray-600 mt-2 mb-3 leading-relaxed">
+              Cross-practice roles provisioned in Admin → Users. Practice staff use the form above.
+            </p>
+            <form onSubmit={onPlatformUserSubmit} className="space-y-3">
+              <input
+                type="email"
+                className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="ops@collectrx.ca"
+                value={platformEmail}
+                onChange={(e) => setPlatformEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+              <input
+                type="password"
+                className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                placeholder="Password"
+                value={platformPassword}
+                onChange={(e) => setPlatformPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="submit"
+                disabled={platformBusy}
+                className="w-full py-2.5 text-sm font-semibold rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {platformBusy ? 'Signing in…' : 'Sign in (platform role)'}
+              </button>
+            </form>
+          </details>
 
           <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
             <p className="text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">

@@ -276,6 +276,52 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         });
       }
 
+      const platformUser = await prisma.platformUser.findUnique({
+        where: { id: auth.userId },
+      });
+      if (platformUser?.active) {
+        const userRole = platformUser.userRole as UserRole;
+        const practices = isCrossPracticeReader(auth)
+          ? await prisma.practice.findMany({
+              select: { id: true, name: true, timezone: true },
+              orderBy: { name: 'asc' },
+            })
+          : platformUser.practiceId
+            ? await prisma.practice.findMany({
+                where: { id: platformUser.practiceId },
+                select: { id: true, name: true, timezone: true },
+              })
+            : [];
+        const ctx = practiceIdFromRequestHints(req) ?? platformUser.practiceId ?? practices[0]?.id;
+        const practice = ctx
+          ? await prisma.practice.findUnique({
+              where: { id: ctx },
+              select: { id: true, name: true, timezone: true },
+            })
+          : null;
+        const legacyRole =
+          userRole === 'auditor'
+            ? ('accountant' as const)
+            : userRole === 'billing_ops_manager' || userRole === 'platform_admin'
+              ? ('group_admin' as const)
+              : ('practice_owner' as const);
+        return res.json({
+          role: legacyRole,
+          userRole,
+          phiAccess: userRole === 'auditor',
+          practices,
+          practice,
+          subscription: {
+            enforce: false,
+            active: true,
+            status: null,
+            currentPeriodEnd: null,
+            priceConfigured: false,
+            skipped: true,
+          },
+        });
+      }
+
       const user = auth as UserAuthPayload;
       const [dbUser, practice] = await Promise.all([
         prisma.user.findUnique({

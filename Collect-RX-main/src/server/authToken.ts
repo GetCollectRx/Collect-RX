@@ -131,7 +131,8 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
 
   // All other roles are practice-layer user sessions.
   const user = payload as UserAuthPayload & BriefAuthFields;
-  const crossPractice = user.userRole === 'billing_ops_manager';
+  const crossPractice =
+    user.userRole === 'billing_ops_manager' || user.userRole === 'platform_admin';
   if (!user.userId || (!user.practiceId && !crossPractice)) {
     throw new jwt.JsonWebTokenError('missing userId or practiceId');
   }
@@ -146,9 +147,10 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
     role: user.role,
     userId: user.userId,
     practiceId: user.practiceId,
-    phiAccess: phiAccessForRole(user.role),
-    userRole: practiceRoleToBrief(user.role),
+    phiAccess: user.phiAccess ?? phiAccessForRole(user.role),
+    userRole: user.userRole ?? practiceRoleToBrief(user.role),
     ...(user.providerId ? { providerId: user.providerId } : {}),
+    ...(user.platformUserSession ? { platformUserSession: true } : {}),
   };
 }
 
@@ -179,30 +181,22 @@ export function signBriefSessionToken(input: {
   practiceId: string | null;
   phiAccess: boolean;
 }): string {
-  const practiceRoleMap: Partial<Record<UserRole, PracticeRole | 'platform_dev'>> = {
+  const practiceRoleMap: Partial<Record<UserRole, PracticeRole>> = {
     front_desk: 'front_desk',
     practice_owner: 'practice_owner',
     auditor: 'accountant',
     billing_ops_manager: 'group_admin',
-    platform_admin: 'platform_dev',
+    platform_admin: 'group_admin',
   };
-  const mapped = practiceRoleMap[input.userRole];
-  const payload =
-    mapped === 'platform_dev'
-      ? {
-          role: 'platform_dev' as const,
-          phiAccess: false as const,
-          userRole: input.userRole,
-          userId: input.userId,
-          practiceId: null,
-        }
-      : {
-          role: mapped ?? 'practice_owner',
-          userId: input.userId,
-          practiceId: input.practiceId ?? '',
-          phiAccess: input.phiAccess,
-          userRole: input.userRole,
-        };
+  const mapped = practiceRoleMap[input.userRole] ?? 'practice_owner';
+  const payload = {
+    role: mapped,
+    userId: input.userId,
+    practiceId: input.practiceId ?? '',
+    phiAccess: input.phiAccess,
+    userRole: input.userRole,
+    platformUserSession: true as const,
+  };
   return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
 }
 

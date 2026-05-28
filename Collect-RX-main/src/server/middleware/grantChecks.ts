@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
-import { isAuditor, isPlatformAdmin, authUserId } from '../accessControl/types.js';
+import { isAuditor, isPlatformAdmin, isPlatformDev, authUserId } from '../accessControl/types.js';
 
 /** Auditor may only read practices they are granted. */
 export async function assertAuditorPracticeGrant(
@@ -30,7 +30,7 @@ export async function assertPlatformAdminClaimGrant(
 ): Promise<boolean> {
   const auth = req.auth ?? req.practiceAuth;
   const userId = authUserId(auth);
-  if (!isPlatformAdmin(auth) || !userId) return true;
+  if (!isPlatformAdmin(auth) || isPlatformDev(auth) || !userId) return true;
 
   const grant = await prisma.platformAdminPracticeGrant.findUnique({
     where: {

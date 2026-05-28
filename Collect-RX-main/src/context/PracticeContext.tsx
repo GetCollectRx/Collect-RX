@@ -59,6 +59,7 @@ interface PracticeContextValue {
   subscription: SubscriptionGate
   sessionUser: SessionUser | null
   login: (email: string, password: string) => Promise<void>
+  loginPlatformUser: (email: string, password: string) => Promise<void>
   loginPlatformDev: (password: string) => Promise<void>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -163,11 +164,18 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (!data.practice?.id) { setAuthState('anon'); return }
-    try { localStorage.setItem('crx_last_practice_id', data.practice.id) } catch { /* ignore */ }
-    setPractices(data.practices?.length ? data.practices : [data.practice])
-    setPracticeId(data.practice.id)
-    applySessionConfig(sessionRole, data.practice.id)
+    const list = data.practices?.length ? data.practices : data.practice ? [data.practice] : []
+    const pid = data.practice?.id ?? list[0]?.id ?? ''
+    if (!pid && data.userRole !== 'billing_ops_manager' && data.userRole !== 'platform_admin') {
+      setAuthState('anon')
+      return
+    }
+    if (pid) {
+      try { localStorage.setItem('crx_last_practice_id', pid) } catch { /* ignore */ }
+    }
+    setPractices(list)
+    setPracticeId(pid)
+    applySessionConfig(sessionRole, pid)
     setSessionUser(data.user ?? null)
     setAuthState('ready')
   }, [])
@@ -219,6 +227,42 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     setPracticeId(data.practice.id)
     setSessionUser(data.user ?? null)
     applySessionConfig(sessionRole, data.practice.id)
+    setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
+    setAuthState('ready')
+  }
+
+  async function loginPlatformUser(email: string, password: string) {
+    const r = await fetch(resolveApiUrl('/api/auth/login/platform-user'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!r.ok) {
+      let message = 'Invalid email or password'
+      try {
+        const errBody = await parseApiJson<{ error?: string }>(r)
+        if (typeof errBody === 'object' && errBody !== null && typeof errBody.error === 'string') {
+          message = errBody.error
+        }
+      } catch {
+        message = 'Server returned a non-JSON response — check COLLECTRX_API_ORIGIN / Vite proxy / PORT.'
+      }
+      throw new Error(message)
+    }
+    const data = await parseApiJson<MeResponse>(r)
+    const sessionRole: AuthRole =
+      data.role === 'accountant' || data.role === 'group_admin'
+        ? data.role
+        : 'group_admin'
+    const list = data.practices?.length ? data.practices : data.practice ? [data.practice] : []
+    const pid = data.practice?.id ?? list[0]?.id ?? ''
+    setRole(sessionRole)
+    setPhiAccess(data.phiAccess === true)
+    setPractices(list)
+    setPracticeId(pid)
+    setSessionUser(null)
+    applySessionConfig(sessionRole, pid)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
     setAuthState('ready')
   }
@@ -283,6 +327,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       subscription,
       sessionUser,
       login,
+      loginPlatformUser,
       loginPlatformDev,
       logout,
       refreshSession,

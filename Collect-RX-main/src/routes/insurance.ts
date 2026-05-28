@@ -23,6 +23,7 @@ import {
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { requireClaimScope } from '../server/middleware/requireClaimScope.js';
 import {
   redactInsuranceClaim,
   redactInsuranceClaimsList,
@@ -31,6 +32,7 @@ import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
+router.use(requireClaimScope('list_claims'));
 
 // ---------------------------------------------------------------------------
 // GET /api/insurance/claims

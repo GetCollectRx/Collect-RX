@@ -34,7 +34,10 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
     const payload = verifyAuthToken(raw);
     const briefRole = getUserRole(payload);
-    const crossPractice = briefRole === 'billing_ops_manager' || briefRole === 'platform_admin';
+    const crossPractice =
+      briefRole === 'billing_ops_manager' ||
+      briefRole === 'platform_admin' ||
+      payload.role === 'platform_dev';
 
     if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
       res.status(401).json({ error: 'Invalid token' });
