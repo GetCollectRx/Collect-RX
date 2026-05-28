@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 /**
- * Set (or create) one test user per practice role with a shared password.
- * Usage (production): railway run node scripts/set-persona-test-passwords.mjs
- * Password from PERSONA_TEST_PASSWORD env, else SEED_PRACTICE_PASSWORD, else exits.
+ * Set (or create) test logins for every CollectRx persona.
+ *
+ * Practice staff → `users` table (main login form).
+ * Auditor / billing ops / platform admin → `platform_users` (collapsible platform login).
+ * Platform developer → PLATFORM_DEV_PASSWORD in .env (not stored in DB).
+ *
+ * Usage:
+ *   node scripts/set-persona-test-passwords.mjs
+ *   railway run node scripts/set-persona-test-passwords.mjs
+ *
+ * Password: PERSONA_TEST_PASSWORD or SEED_PRACTICE_PASSWORD (min 8 chars).
  */
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
@@ -19,7 +28,8 @@ if (!TEST_PASSWORD || TEST_PASSWORD.length < 8) {
   process.exit(1);
 }
 
-const PERSONAS = [
+/** Practice-layer roles (email login on main form). */
+const PRACTICE_PERSONAS = [
   { email: 'tenthlinefd@collectrx.ca', role: 'practice_owner', displayName: 'Tenth Line Owner' },
   { email: 'managertfd@collectrx.ca', role: 'office_manager', displayName: 'Office Manager' },
   { email: 'billingtfd@collectrx.ca', role: 'billing_coordinator', displayName: 'Billing Coordinator' },
@@ -29,22 +39,23 @@ const PERSONAS = [
   { email: 'groupadmintfd@collectrx.ca', role: 'group_admin', displayName: 'Group Admin' },
 ];
 
+/** Brief personas (platform-user login — second form on login page). */
+const PLATFORM_PERSONAS = [
+  { email: 'auditor@collectrx.ca', userRole: 'auditor', grantAllPractices: true },
+  { email: 'billingops@collectrx.ca', userRole: 'billing_ops_manager', grantAllPractices: false },
+  { email: 'platformadmin@collectrx.ca', userRole: 'platform_admin', grantAllPractices: false },
+];
+
 const prisma = new PrismaClient();
 
-async function main() {
-  const practice = await prisma.practice.findFirst({ orderBy: { name: 'asc' } });
-  if (!practice) {
-    throw new Error('No practice in database — run db:seed first.');
-  }
-
-  const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
+async function upsertPracticeUsers(practiceId, passwordHash) {
   const accountantExpiry = new Date();
   accountantExpiry.setFullYear(accountantExpiry.getFullYear() + 1);
 
-  for (const persona of PERSONAS) {
+  for (const persona of PRACTICE_PERSONAS) {
     const existing = await prisma.user.findUnique({ where: { email: persona.email } });
     const data = {
-      practiceId: practice.id,
+      practiceId,
       email: persona.email,
       passwordHash,
       role: persona.role,
@@ -66,15 +77,102 @@ async function main() {
           ...(persona.role === 'accountant' ? { tokenExpiresAt: accountantExpiry } : { tokenExpiresAt: null }),
         },
       });
-      console.log(`updated  ${persona.role.padEnd(22)} ${persona.email}`);
+      console.log(`updated  practice.${persona.role.padEnd(22)} ${persona.email}`);
     } else {
       await prisma.user.create({ data });
-      console.log(`created  ${persona.role.padEnd(22)} ${persona.email}`);
+      console.log(`created  practice.${persona.role.padEnd(22)} ${persona.email}`);
     }
   }
+}
 
-  console.log('\nShared password set for all practice personas (see PERSONA_TEST_PASSWORD / SEED_PRACTICE_PASSWORD).');
-  console.log('Platform developer: use PLATFORM_DEV_PASSWORD on the login page (separate, not in User table).');
+async function upsertPlatformUsers(practiceId, passwordHash) {
+  for (const persona of PLATFORM_PERSONAS) {
+    const existing = await prisma.platformUser.findUnique({ where: { email: persona.email } });
+    const practiceIdForUser =
+      persona.userRole === 'billing_ops_manager' ? practiceId : null;
+
+    if (existing) {
+      await prisma.platformUser.update({
+        where: { email: persona.email },
+        data: {
+          passwordHash,
+          userRole: persona.userRole,
+          practiceId: practiceIdForUser,
+          active: true,
+        },
+      });
+      console.log(`updated  platform.${persona.userRole.padEnd(18)} ${persona.email}`);
+    } else {
+      await prisma.platformUser.create({
+        data: {
+          id: randomUUID(),
+          email: persona.email,
+          passwordHash,
+          userRole: persona.userRole,
+          practiceId: practiceIdForUser,
+          active: true,
+        },
+      });
+      console.log(`created  platform.${persona.userRole.padEnd(18)} ${persona.email}`);
+    }
+
+    if (persona.userRole === 'auditor' && persona.grantAllPractices) {
+      const auditor = await prisma.platformUser.findUnique({ where: { email: persona.email } });
+      if (auditor) {
+        const existingGrant = await prisma.auditorGrant.findFirst({
+          where: { auditorUserId: auditor.id, practiceId: null },
+        });
+        if (!existingGrant) {
+          await prisma.auditorGrant.create({
+            data: { auditorUserId: auditor.id, practiceId: null },
+          });
+          console.log('         auditor grant: all practices');
+        }
+      }
+    }
+
+    if (persona.userRole === 'platform_admin') {
+      const admin = await prisma.platformUser.findUnique({ where: { email: persona.email } });
+      const owner = await prisma.user.findFirst({
+        where: { practiceId, role: 'practice_owner', isActive: true },
+      });
+      if (admin && owner) {
+        await prisma.platformAdminPracticeGrant.upsert({
+          where: {
+            adminUserId_practiceId: { adminUserId: admin.id, practiceId },
+          },
+          create: {
+            adminUserId: admin.id,
+            practiceId,
+            grantedByOwnerId: owner.id,
+          },
+          update: {},
+        });
+        console.log(`         platform_admin claim grant for practice ${practiceId.slice(0, 8)}…`);
+      }
+    }
+  }
+}
+
+async function main() {
+  const practice = await prisma.practice.findFirst({ orderBy: { name: 'asc' } });
+  if (!practice) {
+    throw new Error('No practice in database — run db:seed first.');
+  }
+
+  const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
+
+  console.log(`Practice: ${practice.name} (${practice.id})`);
+  console.log(`Password: (from SEED_PRACTICE_PASSWORD / PERSONA_TEST_PASSWORD)\n`);
+
+  await upsertPracticeUsers(practice.id, passwordHash);
+  console.log('');
+  await upsertPlatformUsers(practice.id, passwordHash);
+
+  console.log('\n── Login cheat sheet ──');
+  console.log('Main form (email + password): all *@collectrx.ca practice emails above');
+  console.log('Platform roles form: auditor@, billingops@, platformadmin@collectrx.ca');
+  console.log('Platform developer: PLATFORM_DEV_PASSWORD (login page footer — not this script)');
 }
 
 main()
