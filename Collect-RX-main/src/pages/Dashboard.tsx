@@ -7,6 +7,7 @@ import { QueueOverview } from '../components/QueueOverview'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
 import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 
 interface DashboardStats {
   totalOpenAR: number
@@ -115,6 +116,8 @@ function DashboardBody({ stats: s, platform, practiceName, isPracticeOwner }: Da
           {arCloseMsg}
         </p>
       )}
+
+      <SubscriptionUsageCard compact className="relative z-10" />
 
       {(blocked.length > 0 || s.operationalAlerts?.patientPaymentsReady === false) && (
         <div className="crx-alert px-4 py-3 text-sm relative z-10">

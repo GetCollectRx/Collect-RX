@@ -31,6 +31,10 @@ model Practice {
   stripeSubscriptionId         String?   @unique
   /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
   subscriptionStatus           String?
+  /// Stripe Price and CollectRx plan snapshot used for usage limits.
+  subscriptionPriceId          String?
+  subscriptionPlanId           String?
+  subscriptionCurrentPeriodStart DateTime?
   subscriptionCurrentPeriodEnd DateTime?
   patients              Patient[]
   balances              Balance[]

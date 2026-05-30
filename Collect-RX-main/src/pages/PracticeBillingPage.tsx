@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 
 export default function PracticeBillingPage() {
   const { practice, logout, refreshSession } = usePractice()
@@ -63,7 +64,7 @@ export default function PracticeBillingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-crx-50/50 dark:from-gray-950 dark:via-gray-950 dark:to-crx-950/20 px-4">
-      <main className="w-full max-w-md space-y-6 p-8 rounded-2xl border border-gray-200/90 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-card">
+      <main className="w-full max-w-xl space-y-6 p-8 rounded-2xl border border-gray-200/90 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-card">
         <div>
           <h1 className="text-lg font-semibold text-gray-900 dark:text-white">CollectRx subscription</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -91,6 +92,8 @@ export default function PracticeBillingPage() {
             {error}
           </p>
         )}
+
+        <SubscriptionUsageCard alwaysShow />
 
         <div className="space-y-3">
           <button

@@ -2,13 +2,34 @@
 // CollectRx — Carrier Adapter Unit Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import { isWithinCallWindow, CARRIER_CONFIGS, validateDispatch } from '../../src/carriers/adapter';
 
 const prismaNoBlock = {
   carrierBlockEvent: { findFirst: async () => null },
+  practice: { findUnique: async () => null },
+  callAttempt: {
+    findMany: async () => [],
+    findFirst: async () => null,
+  },
 } as unknown as PrismaClient;
+
+const originalPlanEnv = {
+  STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID: process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
+  SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT: process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT,
+  SUBSCRIPTION_CLAIM_LIMIT_ENFORCE: process.env.SUBSCRIPTION_CLAIM_LIMIT_ENFORCE,
+};
+
+afterEach(() => {
+  for (const [key, value] of Object.entries(originalPlanEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+});
 
 describe('CarrierAdapter', () => {
   describe('CARRIER_CONFIGS', () => {
@@ -102,6 +123,74 @@ describe('CarrierAdapter', () => {
         scheduledFor: new Date('2026-05-11T14:00:00Z'),
         claimStatus: 'PENDING',
       });
+      expect(r.allowed).toBe(true);
+    });
+
+    it('rejects a new claim when the monthly subscription claim limit is reached', async () => {
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
+      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
+      const prismaAtLimit = {
+        carrierBlockEvent: { findFirst: async () => null },
+        practice: {
+          findUnique: async () => ({
+            subscriptionStatus: 'active',
+            subscriptionPriceId: 'price_standard',
+            subscriptionPlanId: 'standard',
+            subscriptionCurrentPeriodStart: new Date('2026-05-01T00:00:00Z'),
+            subscriptionCurrentPeriodEnd: new Date('2026-06-01T00:00:00Z'),
+          }),
+        },
+        callAttempt: {
+          findMany: async () => [{ claimId: 'claim-already-addressed' }],
+          findFirst: async () => null,
+        },
+      } as unknown as PrismaClient;
+
+      const r = await validateDispatch(prismaAtLimit, {
+        practiceId: 'practice-1',
+        claimId: 'claim-new',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+
+      expect(r.allowed).toBe(false);
+      expect(r.code).toBe('SUBSCRIPTION_CLAIM_LIMIT_REACHED');
+      expect(r.reason).toMatch(/monthly claim limit reached/i);
+    });
+
+    it('allows a retry for a claim already counted in the current claim period', async () => {
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
+      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
+      const prismaAtLimit = {
+        carrierBlockEvent: { findFirst: async () => null },
+        practice: {
+          findUnique: async () => ({
+            subscriptionStatus: 'active',
+            subscriptionPriceId: 'price_standard',
+            subscriptionPlanId: 'standard',
+            subscriptionCurrentPeriodStart: new Date('2026-05-01T00:00:00Z'),
+            subscriptionCurrentPeriodEnd: new Date('2026-06-01T00:00:00Z'),
+          }),
+        },
+        callAttempt: {
+          findMany: async () => [{ claimId: 'claim-already-addressed' }],
+          findFirst: async () => ({ id: 'attempt-1' }),
+        },
+      } as unknown as PrismaClient;
+
+      const r = await validateDispatch(prismaAtLimit, {
+        practiceId: 'practice-1',
+        claimId: 'claim-already-addressed',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 1,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+
       expect(r.allowed).toBe(true);
     });
   });

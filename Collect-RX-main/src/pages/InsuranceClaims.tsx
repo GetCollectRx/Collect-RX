@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import {
   Button, Select, DataState,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty, Badge,
@@ -42,10 +43,13 @@ export default function InsuranceClaims() {
 
   const triggerCall = async (claimId: string) => {
     setTriggeringId(claimId)
+    setError(null)
     try {
       const r = await apiFetch(`/api/insurance/queue/trigger/${claimId}`, { method: 'POST' })
       const j = await r.json().catch(() => ({})) as { error?: string }
       if (!r.ok) throw new Error(j.error ?? 'Could not queue call')
+    } catch (e) {
+      setError((e as Error).message)
     } finally {
       setTriggeringId(null)
     }
@@ -97,6 +101,7 @@ export default function InsuranceClaims() {
         </div>
 
         <div className="p-6 space-y-5 max-w-6xl">
+          <SubscriptionUsageCard compact />
 
           {/* ── Denial rate cards ── */}
           {denialSummary.length > 0 && (

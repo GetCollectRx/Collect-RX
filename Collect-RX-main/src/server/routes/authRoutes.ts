@@ -166,6 +166,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           enforce: false,
           active: true,
           status: null,
+          plan: null,
+          usage: null,
           currentPeriodEnd: null,
           priceConfigured: false,
           skipped: true,
@@ -231,7 +233,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         practice: practice ?? practices[0] ?? null,
         practices,
         subscription: {
-          enforce: false, active: true, status: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
+          enforce: false, active: true, status: null, plan: null, usage: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
         },
       });
     } catch (e) {
@@ -271,6 +273,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           practice,
           subscription: {
             enforce: false, active: true, status: null,
+            plan: null,
+            usage: null,
             currentPeriodEnd: null, priceConfigured: false, skipped: true,
           },
         });
@@ -315,6 +319,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
             enforce: false,
             active: true,
             status: null,
+            plan: null,
+            usage: null,
             currentPeriodEnd: null,
             priceConfigured: false,
             skipped: true,

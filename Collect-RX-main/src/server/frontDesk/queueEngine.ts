@@ -86,6 +86,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
       practiceId,
+      claimId: next.claimId,
       carrierId: next.claim.carrierId,
       daysOutstanding: next.claim.daysOutstanding,
       attemptsSoFar,

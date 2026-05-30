@@ -15,6 +15,7 @@
 import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
+import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +38,7 @@ export interface CarrierConfig {
 
 export interface DispatchGuard {
   allowed: boolean;
+  code?: string;
   reason?: string;
 }
 
@@ -149,12 +151,14 @@ export async function checkCarrierBlock(
  *   3. Days outstanding (< 30 → reject, > 90 → escalate)
  *   4. TELUS-specific minimum days (when applicable)
  *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   6. Subscription monthly claim limit
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
   params: {
     practiceId: string;
+    claimId?: string;
     carrierId: CarrierId;
     daysOutstanding: number;
     attemptsSoFar: number;
@@ -163,7 +167,7 @@ export async function validateDispatch(
     claimStatus: ClaimStatus;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -199,7 +203,21 @@ export async function validateDispatch(
     return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Subscription monthly claim limit
+  const subscriptionGuard = await validateSubscriptionClaimCapacity(prisma, {
+    practiceId,
+    claimId,
+    now: scheduledFor ?? new Date(),
+  });
+  if (!subscriptionGuard.allowed) {
+    return {
+      allowed: false,
+      code: subscriptionGuard.code,
+      reason: subscriptionGuard.reason,
+    };
+  }
+
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   const easternHour = getEasternHour(callTime);
   const dayOfWeek = getEasternDayOfWeek(callTime);

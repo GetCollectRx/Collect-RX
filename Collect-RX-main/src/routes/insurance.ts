@@ -357,6 +357,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // Validate all dispatch rules
     const guard = await validateDispatch(prisma, {
       practiceId,
+      claimId,
       carrierId: claim.carrierId,
       daysOutstanding: claim.daysOutstanding,
       attemptsSoFar,
@@ -378,7 +379,8 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
           });
         }
       }
-      return res.status(422).json({ success: false, error: guard.reason });
+      const statusCode = guard.code === 'SUBSCRIPTION_CLAIM_LIMIT_REACHED' ? 402 : 422;
+      return res.status(statusCode).json({ success: false, error: guard.reason, code: guard.code });
     }
 
     const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
@@ -409,13 +411,6 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       prisma.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },
-      }),
-      prisma.callAttempt.create({
-        data: {
-          claimId,
-          vapiCallId: vapiResult.vapiCallId,
-          initiatedAt: new Date(),
-        },
       }),
       prisma.callQueue.upsert({
         where: { claimId },
