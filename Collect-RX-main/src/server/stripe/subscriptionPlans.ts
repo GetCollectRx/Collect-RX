@@ -20,7 +20,7 @@ export type SubscriptionCapacityGuard = {
   allowed: boolean;
   code?: string;
   reason?: string;
-  usage?: SubscriptionUsageState;
+  usage?: SubscriptionUsageState | null;
   plan?: SubscriptionPlanSnapshot | null;
 };
 
