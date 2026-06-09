@@ -3,20 +3,21 @@ import { useState, useEffect } from 'react'
 // ─── Brand tokens ────────────────────────────────────────────────────────────
 
 const B = {
-  bg:        '#F7F4EF',   // cream page background
-  surface:   '#FFFFFF',   // card surface
-  border:    '#E8E2D8',   // card border
-  borderMd:  '#D4CEC4',   // medium border
+  bg:        '#F0ECE4',   // warm cream
+  surface:   '#FFFFFF',
+  border:    '#DDD7CC',
+  borderMd:  '#C8C0B4',
   green:     '#0F6E56',   // CollectRx green
-  greenLt:   '#E6F2EE',   // light green tint
-  greenMd:   '#1A8A6A',   // mid green
-  red:       '#C0392B',
-  redLt:     '#FDECEA',
-  amber:     '#B45309',
-  amberLt:   '#FEF3C7',
-  text:      '#1C1C1E',
-  textMd:    '#4A4A4A',
-  textMuted: '#8A8A8A',
+  greenDk:   '#0A5240',   // deep green (header, fills)
+  greenLt:   '#D6EDE6',
+  greenMd:   '#158A6A',
+  red:       '#B91C1C',
+  redLt:     '#FEE2E2',
+  amber:     '#92400E',
+  amberLt:   '#FDE68A',
+  text:      '#111111',
+  textMd:    '#3D3D3D',
+  textMuted: '#777777',
   mono:      "'JetBrains Mono', 'Fira Code', monospace",
 }
 
@@ -99,9 +100,9 @@ function ActProblem({ onNext }: { onNext: () => void }) {
   }, [])
 
   const stats = [
-    { value: '$107,510', label: 'Owed by carriers', sub: 'for work already done', icon: 'dollar' as IconName, color: B.green, bg: B.greenLt },
-    { value: '22 claims', label: 'Over 30 days old', sub: 'no one has called yet', icon: 'clock' as IconName, color: B.amber, bg: B.amberLt },
-    { value: '3 claims', label: 'Near deadline', sub: 'appeal window closing', icon: 'warning' as IconName, color: B.red, bg: B.redLt },
+    { value: '$107,510', label: 'Owed by carriers', sub: 'for work already done', icon: 'dollar' as IconName, color: '#fff', bg: B.green, iconBg: 'rgba(255,255,255,0.18)' },
+    { value: '22 claims', label: 'Over 30 days old', sub: 'no one has called yet', icon: 'clock' as IconName, color: '#fff', bg: '#92400E', iconBg: 'rgba(255,255,255,0.18)' },
+    { value: '3 claims', label: 'Near deadline', sub: 'appeal window closing', icon: 'warning' as IconName, color: '#fff', bg: B.red, iconBg: 'rgba(255,255,255,0.18)' },
   ]
 
   return (
@@ -112,19 +113,21 @@ function ActProblem({ onNext }: { onNext: () => void }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, maxWidth: 540, width: '100%', marginBottom: 28 }}>
         {stats.map((s, i) => (
-          <Card key={s.label} style={{
-            padding: '18px 14px',
-            opacity: step > i ? 1 : 0, transform: step > i ? 'none' : 'translateY(8px)',
+          <div key={s.label} style={{
+            padding: '20px 16px', borderRadius: 14,
+            opacity: step > i ? 1 : 0, transform: step > i ? 'none' : 'translateY(10px)',
             transition: 'opacity 0.5s ease, transform 0.5s ease',
-            background: s.bg, border: `1px solid ${s.color}33`,
+            background: s.bg, boxShadow: `0 6px 24px ${s.bg}88`,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-              <Icon name={s.icon} size={22} color={s.color} />
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+              <div style={{ background: s.iconBg, borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={s.icon} size={20} color={s.color} />
+              </div>
             </div>
-            <div style={{ fontSize: 'clamp(16px, 2.5vw, 22px)', fontWeight: 800, color: s.color, fontFamily: B.mono, marginBottom: 5 }}>{s.value}</div>
-            <div style={{ color: B.textMd, fontSize: 12, fontWeight: 600 }}>{s.label}</div>
-            <div style={{ color: B.textMuted, fontSize: 11, marginTop: 2 }}>{s.sub}</div>
-          </Card>
+            <div style={{ fontSize: 'clamp(18px, 2.8vw, 24px)', fontWeight: 900, color: s.color, fontFamily: B.mono, marginBottom: 6, letterSpacing: '-0.5px' }}>{s.value}</div>
+            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 600 }}>{s.label}</div>
+            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>{s.sub}</div>
+          </div>
         ))}
       </div>
 
@@ -433,25 +436,25 @@ const VALUE_ROWS: { icon: IconName; headline: string; detail: string; color: str
     icon: 'dollar',
     headline: '$18,580 recovered',
     detail: "10 claims resolved. Money you'd already earned — sitting at the carrier until today.",
-    color: B.green, bg: B.greenLt,
+    color: '#fff', bg: B.green,
   },
   {
     icon: 'clock',
     headline: '3.5 hours back to Sarah',
     detail: 'She checked in 34 patients, scheduled 12 follow-ups, quoted 8 treatment plans.',
-    color: B.amber, bg: B.amberLt,
+    color: '#fff', bg: '#92400E',
   },
   {
     icon: 'shield',
     headline: '$5,400 saved from expiry',
     detail: '2 claims were within 3 weeks of their appeal deadline. Both caught and resolved.',
-    color: '#7C3AED', bg: '#F5F0FF',
+    color: '#fff', bg: '#5B21B6',
   },
   {
     icon: 'eye',
     headline: '58 claims — nothing in the dark',
     detail: "Every claim tracked, every status known. You're not relying on memory anymore.",
-    color: '#0369A1', bg: '#EFF6FF',
+    color: '#fff', bg: '#0369A1',
   },
 ]
 
@@ -471,21 +474,21 @@ function ActSummary() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', minHeight: 0 }}>
         {VALUE_ROWS.map((row, i) => (
-          <Card key={i} style={{
-            flexShrink: 0, padding: '14px 16px',
+          <div key={i} style={{
+            flexShrink: 0, padding: '14px 18px', borderRadius: 12,
             opacity: step >= i + 2 ? 1 : 0, transform: step >= i + 2 ? 'none' : 'translateY(8px)',
             transition: 'opacity 0.5s ease, transform 0.5s ease',
-            background: row.bg, border: `1px solid ${row.color}22`,
+            background: row.bg, boxShadow: `0 4px 18px ${row.bg}66`,
             display: 'flex', gap: 14, alignItems: 'flex-start',
           }}>
-            <div style={{ background: '#fff', border: `1.5px solid ${row.color}33`, borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ background: 'rgba(255,255,255,0.18)', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
               <Icon name={row.icon} size={18} color={row.color} />
             </div>
             <div>
-              <div style={{ color: B.text, fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{row.headline}</div>
-              <div style={{ color: B.textMd, fontSize: 12, lineHeight: 1.55 }}>{row.detail}</div>
+              <div style={{ color: row.color, fontWeight: 800, fontSize: 15, marginBottom: 3 }}>{row.headline}</div>
+              <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.55 }}>{row.detail}</div>
             </div>
-          </Card>
+          </div>
         ))}
       </div>
 
@@ -529,19 +532,19 @@ export default function PilotDemo() {
     }}>
       {/* Header */}
       <header style={{
-        background: B.surface, borderBottom: `1px solid ${B.border}`,
-        padding: '11px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: B.greenDk,
+        padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 6, background: B.green, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="white">
+          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="white">
               <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
             </svg>
           </div>
-          <span style={{ fontWeight: 700, fontSize: 14, color: B.text }}>CollectRx</span>
-          <span style={{ color: B.border, fontSize: 16 }}>·</span>
-          <span style={{ color: B.textMuted, fontSize: 13 }}>Hasan Family Dental</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>CollectRx</span>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>·</span>
+          <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>Hasan Family Dental</span>
         </div>
 
         {act !== 'idle' && (
@@ -549,14 +552,14 @@ export default function PilotDemo() {
             <div style={{ display: 'flex', gap: 5 }}>
               {ACTS.map((s, i) => (
                 <div key={s} style={{
-                  height: 6, borderRadius: 3, transition: 'all 0.3s ease',
-                  width: i === idx ? 22 : 6,
-                  background: i < idx ? B.green : i === idx ? B.green : B.border,
+                  height: 5, borderRadius: 3, transition: 'all 0.3s ease',
+                  width: i === idx ? 24 : 5,
+                  background: i < idx ? '#6EE7B7' : i === idx ? '#fff' : 'rgba(255,255,255,0.2)',
                 }} />
               ))}
             </div>
-            <button onClick={() => setAct('idle')} style={{ background: 'none', border: `1px solid ${B.border}`, color: B.textMuted, borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <Icon name="refresh" size={11} color={B.textMuted} /> Restart
+            <button onClick={() => setAct('idle')} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon name="refresh" size={11} color="rgba(255,255,255,0.7)" /> Restart
             </button>
           </div>
         )}
@@ -564,8 +567,8 @@ export default function PilotDemo() {
 
       {/* Act label */}
       {act !== 'idle' && (
-        <div style={{ padding: '7px 20px', background: B.surface, borderBottom: `1px solid ${B.border}`, flexShrink: 0 }}>
-          <span style={{ color: B.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500 }}>
+        <div style={{ padding: '6px 20px', background: B.greenDk, borderBottom: `3px solid ${B.green}`, flexShrink: 0 }}>
+          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
             {ACT_LABELS[act]}
           </span>
         </div>
@@ -573,21 +576,24 @@ export default function PilotDemo() {
 
       {/* Idle */}
       {act === 'idle' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', gap: 24 }}>
-          <div>
-            <h1 style={{ fontSize: 'clamp(22px, 4vw, 38px)', fontWeight: 800, letterSpacing: '-0.8px', color: B.text, lineHeight: 1.2, marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center', gap: 28, background: `linear-gradient(160deg, ${B.greenDk} 0%, #1A4A3A 55%, ${B.bg} 55%)` }}>
+          <div style={{ background: B.surface, borderRadius: 20, padding: '40px 48px', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: `1px solid ${B.border}` }}>
+            <div style={{ display: 'inline-flex', background: B.greenLt, borderRadius: 20, padding: '4px 14px', marginBottom: 20 }}>
+              <span style={{ color: B.green, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Pilot Demo · Hasan Family Dental</span>
+            </div>
+            <h1 style={{ fontSize: 'clamp(22px, 4vw, 34px)', fontWeight: 800, letterSpacing: '-0.8px', color: B.text, lineHeight: 1.2, marginBottom: 14 }}>
               Your AR is already earned.<br />You just haven't collected it yet.
             </h1>
-            <p style={{ color: B.textMuted, fontSize: 15, maxWidth: 400, margin: '0 auto' }}>
-              A walkthrough of exactly how CollectRx fixes that — for your practice, in your numbers.
+            <p style={{ color: B.textMuted, fontSize: 14, maxWidth: 360, margin: '0 auto 28px', lineHeight: 1.65 }}>
+              See exactly how CollectRx fixes that — using your practice's numbers.
             </p>
+            <button
+              onClick={() => setAct('problem')}
+              style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}
+            >
+              Show me <Icon name="arrow-right" size={16} color="#fff" />
+            </button>
           </div>
-          <button
-            onClick={() => setAct('problem')}
-            style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '13px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto' }}
-          >
-            <Icon name="arrow-right" size={16} color="#fff" /> Show me
-          </button>
         </div>
       )}
 
