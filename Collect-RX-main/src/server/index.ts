@@ -115,6 +115,14 @@ import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
+// Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.hostname === 'collectrx.ca') {
+    return res.redirect(301, `https://www.collectrx.ca${req.url}`);
+  }
+  next();
+});
+
 // Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
 if (
   process.env.TRUST_PROXY === '1' ||
