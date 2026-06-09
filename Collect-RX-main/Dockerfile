@@ -11,7 +11,7 @@ COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm install --include=dev
+RUN npm install --include=dev --ignore-scripts
 
 # Generate Prisma client
 RUN npx prisma generate
