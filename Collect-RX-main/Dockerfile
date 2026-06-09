@@ -1,29 +1,27 @@
-FROM node:20-slim
+FROM node:22-slim
 
-# Install OpenSSL for Prisma
-RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+  && apt-get install -y openssl ca-certificates python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+# Bump when Railway keeps serving a stale cached layer.
+ARG CACHEBUST=20260609a
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
-# Install dependencies
+# npm install (not ci) — avoids lock-file sync failures across npm versions.
 RUN npm install --include=dev --ignore-scripts
 
-# Generate Prisma client
 RUN npx prisma generate
 
-# Copy source code
 COPY . .
 
-# Build the app
 RUN npm run build
 
-# Expose port
 EXPOSE 3000
 
-# Start the web API by default; Railway worker service sets SERVICE_ROLE=worker.
 CMD ["sh", "-c", "if [ \"$SERVICE_ROLE\" = \"worker\" ]; then npm run worker; else npm run start; fi"]
