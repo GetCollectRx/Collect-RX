@@ -7,7 +7,9 @@ import {
 } from '../middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { parseSimpleCsv } from '../csv/parseSimple';
-import { runPmsImportPipeline, type PmsSource } from '../pms/pmsImportPipeline.js';
+import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
+import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
@@ -66,14 +68,17 @@ router.get('/runs/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/import/:pmsSource', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, res: Response) => {
   try {
-    const pmsSource = req.params.pmsSource as PmsSource;
-    if (pmsSource !== 'dentrix' && pmsSource !== 'abeldent') {
-      return res.status(400).json({ success: false, error: 'pmsSource must be dentrix or abeldent' });
-    }
-
     const practiceId = practiceIdFromSession(req);
+    const slug = req.params.pmsVendor;
+    const vendorParam = normalizePmsVendorId(slug);
+    if (!vendorParam && slug !== 'auto') {
+      return res.status(400).json({
+        success: false,
+        error: `Unknown PMS vendor "${slug}". Use a catalog id or "auto" for practice default.`,
+      });
+    }
     let rows: Record<string, unknown>[] = [];
     let sourceBalanceTotal: number | undefined;
 
@@ -99,9 +104,14 @@ router.post('/import/:pmsSource', upload.single('file'), async (req: Request, re
       sourceBalanceTotal = bodyParsed.data.sourceBalanceTotal;
     }
 
+    const resolved =
+      slug === 'auto'
+        ? await resolvePmsImport(prisma, practiceId, null)
+        : { vendorId: vendorParam! };
+
     const result = await runPmsImportPipeline(prisma, {
       practiceId,
-      pmsSource,
+      pmsSource: resolved.vendorId,
       rows,
       sourceRecordCount: rows.length,
       sourceBalanceTotal,

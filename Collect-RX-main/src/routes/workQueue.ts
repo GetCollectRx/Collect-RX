@@ -35,11 +35,12 @@ router.get('/', async (req: Request, res: Response) => {
       aging: req.query.aging as WorkQueueFilters['aging'],
       assignedRep: req.query.assignedRep as string | undefined,
       status: (req.query.status as string) || 'open',
+      gatesDueToday: req.query.gatesDueToday === 'true' || req.query.gatesDueToday === '1',
     };
 
     const result = await listWorkItems(prisma, practiceId, filters, page, limit);
     const items = result.items.map((row) =>
-      redactWorkItem(row as Record<string, unknown>, req.auth),
+      redactWorkItem(row as unknown as Record<string, unknown>, req.auth),
     );
     return res.json({ success: true, ...result, items });
   } catch (err) {

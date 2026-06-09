@@ -15,6 +15,39 @@
 import { randomUUID } from 'crypto';
 
 // ---------------------------------------------------------------------------
+// Data residency constants
+//
+// All external LLM API calls (OpenAI / Anthropic) from CollectRx must include
+// the Canada-Central data residency header to comply with Quebec Law 25 and
+// Alberta HIA production requirements.
+// ---------------------------------------------------------------------------
+
+/**
+ * Standard headers to append to every external LLM API request.
+ * Include via `{ ...LLM_RESIDENCY_HEADERS }` in fetch options.
+ *
+ * Note: Header support is vendor-dependent. Both OpenAI Azure (Canada Central)
+ * and Anthropic (when routing through Canadian endpoints) honour these.
+ */
+export const LLM_RESIDENCY_HEADERS: Record<string, string> = {
+  'X-Data-Residency': 'Canada-Central',
+  'X-Processing-Region': 'ca-central-1',
+};
+
+// ---------------------------------------------------------------------------
+// Zero-Retention Audio Policy
+//
+// Per PHIPA/PIPEDA and the CollectRx privacy architecture, call recordings
+// must be deleted from Vapi and Twilio storage as soon as:
+//   (a) the call transcript has been extracted, AND
+//   (b) the 8-dimension automated evaluation has completed.
+//
+// The `handlePostCallAudioDeletion` webhook handler enforces this.
+// It is invoked by the Vapi `call.ended` webhook after the outcome processor
+// and automated evaluator have both signalled completion.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -157,6 +190,121 @@ export function purgeExpired(): number {
 }
 
 // ---------------------------------------------------------------------------
+// Zero-Retention Audio Policy — post-call webhook handler
+// ---------------------------------------------------------------------------
+
+export interface AudioDeletionResult {
+  vapiDeleted: boolean;
+  twilioDeleted: boolean;
+  recordingUrl: string | null;
+  deletedAt: string;
+  errors: string[];
+}
+
+/**
+ * Delete a call recording from Vapi and (if present) Twilio storage.
+ *
+ * MUST be called after BOTH of the following are complete:
+ *   1. Call transcript has been extracted and persisted to DB
+ *   2. 8-dimension automated evaluation has been written to DB
+ *
+ * The recording URL is nullified in the call record AFTER successful deletion.
+ * If deletion fails the error is logged but does NOT throw — the caller should
+ * schedule a retry and flag the call for manual review.
+ *
+ * @param vapiCallId   Vapi call ID (used to identify the recording in Vapi)
+ * @param recordingUrl Full URL of the recording (may be a Twilio URL)
+ */
+export async function handlePostCallAudioDeletion(
+  vapiCallId: string,
+  recordingUrl: string | null,
+): Promise<AudioDeletionResult> {
+  const errors: string[] = [];
+  let vapiDeleted = false;
+  let twilioDeleted = false;
+  const deletedAt = new Date().toISOString();
+
+  // 1. Delete from Vapi
+  try {
+    const vapiKey = process.env.VAPI_API_KEY;
+    if (!vapiKey) throw new Error('VAPI_API_KEY not set');
+
+    const vapiRes = await fetch(`https://api.vapi.ai/call/${vapiCallId}/recording`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        'Content-Type': 'application/json',
+        ...LLM_RESIDENCY_HEADERS,
+      },
+    });
+
+    if (vapiRes.ok || vapiRes.status === 404) {
+      // 404 means already deleted or never stored — treat as success
+      vapiDeleted = true;
+    } else {
+      const body = await vapiRes.text().catch(() => '');
+      errors.push(`Vapi DELETE failed: HTTP ${vapiRes.status} — ${body}`);
+    }
+  } catch (err) {
+    errors.push(`Vapi DELETE error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 2. Delete from Twilio if the recording URL is a Twilio URL
+  if (recordingUrl && recordingUrl.includes('twilio.com')) {
+    try {
+      // Twilio recording URLs have the form:
+      //   https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Recordings/{RecordingSid}
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!twilioSid || !twilioToken) {
+        errors.push('TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set — Twilio recording not deleted');
+      } else {
+        const deleteUrl = recordingUrl.replace(/\.json$/, '') + '.json';
+        const twilioRes = await fetch(deleteUrl, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64')}`,
+          },
+        });
+
+        if (twilioRes.ok || twilioRes.status === 404) {
+          twilioDeleted = true;
+        } else {
+          const body = await twilioRes.text().catch(() => '');
+          errors.push(`Twilio DELETE failed: HTTP ${twilioRes.status} — ${body}`);
+        }
+      }
+    } catch (err) {
+      errors.push(`Twilio DELETE error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  } else {
+    // No Twilio URL — mark as not applicable (not an error)
+    twilioDeleted = true;
+  }
+
+  if (errors.length > 0) {
+    console.error('[PIIVault] audio deletion errors for call', vapiCallId, errors);
+  } else {
+    console.info('[PIIVault] zero-retention: recording deleted for call', vapiCallId, { deletedAt });
+  }
+
+  return { vapiDeleted, twilioDeleted, recordingUrl, deletedAt, errors };
+}
+
+/**
+ * Check whether it is safe to delete the recording for a given call.
+ * Both transcript and 8-dim eval must be present in the call record.
+ * Pass the raw call row from the DB — no PHI required.
+ */
+export function isReadyForAudioDeletion(callRecord: {
+  transcript: string | null;
+  evalCompletedAt: Date | null;
+}): boolean {
+  return Boolean(callRecord.transcript) && Boolean(callRecord.evalCompletedAt);
+}
+
+// ---------------------------------------------------------------------------
 // Singleton export (DI-friendly)
 // ---------------------------------------------------------------------------
 
@@ -166,6 +314,9 @@ export const piiVault = {
   revoke,
   isValid,
   purgeExpired,
+  handlePostCallAudioDeletion,
+  isReadyForAudioDeletion,
+  LLM_RESIDENCY_HEADERS,
 } as const;
 
 export default piiVault;

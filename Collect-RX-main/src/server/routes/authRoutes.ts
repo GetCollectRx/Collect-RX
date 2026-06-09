@@ -33,8 +33,17 @@ import {
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
+import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 
 const BCRYPT_ROUNDS = 12;
+
+async function buildSessionHealth(prisma: PrismaClient) {
+  const health = await runSessionHealthCheck(prisma);
+  if (!health.ok) {
+    console.warn('[sessionHealth] Login health check failed:', health.checks.filter((c) => !c.ok && !c.skipped));
+  }
+  return health;
+}
 
 // ─── Platform dev password ────────────────────────────────────────────────────
 
@@ -120,6 +129,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         select: { id: true, name: true, timezone: true },
       });
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+      const health = await buildSessionHealth(prisma);
 
       return res.json({
         role: user.role,
@@ -129,6 +139,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         practice,
         subscription,
         user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
+        health,
       });
     } catch (e) {
       console.error('Login error:', e);
@@ -157,6 +168,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         select: { id: true, name: true, timezone: true },
         orderBy: { name: 'asc' },
       });
+      const health = await buildSessionHealth(prisma);
       return res.json({
         role: 'platform_dev' as const,
         userRole: 'platform_admin' as const,
@@ -170,6 +182,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           priceConfigured: false,
           skipped: true,
         },
+        health,
       });
     } catch (e) {
       console.error('Platform dev login error:', e);
@@ -233,6 +246,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         subscription: {
           enforce: false, active: true, status: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
         },
+        health: await buildSessionHealth(prisma),
       });
     } catch (e) {
       console.error('Platform user login error:', e);
@@ -244,6 +258,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   r.post('/logout', (_req, res) => {
     clearAuthCookie(res);
     res.json({ ok: true });
+  });
+
+  /** GET /api/auth/session-health — runtime health check for restored sessions */
+  r.get('/session-health', authenticate, async (_req, res) => {
+    try {
+      const health = await buildSessionHealth(prisma);
+      return res.json(health);
+    } catch (e) {
+      console.error('session-health error:', e);
+      return res.status(500).json({ error: 'Health check failed' });
+    }
   });
 
   /** GET /api/auth/me */

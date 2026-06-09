@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePractice } from '../context/PracticeContext';
 import { apiFetchJson } from '../lib/apiFetch';
 import {
@@ -217,7 +218,10 @@ function KpiCard({ dim }: { dim: KpiDimension }) {
 
 export default function Phase5Dashboard() {
   const { practiceId } = usePractice();
+  const [searchParams] = useSearchParams();
+  const deepLinkCaseId = searchParams.get('case');
   const [activeTab, setActiveTab] = useState<'overview' | 'queue' | 'trends'>('overview');
+  const [highlightClaimRef, setHighlightClaimRef] = useState<string | null>(null);
   const [dims, setDims] = useState<KpiDimension[]>(MOCK_KPI_DIMENSIONS);
   const [queue, setQueue] = useState<ReconsiderationRow[]>(MOCK_RECONSIDERATIONS);
   const [queueSource, setQueueSource] = useState<'live' | 'mock'>('mock');
@@ -264,6 +268,21 @@ export default function Phase5Dashboard() {
       })
       .catch(() => setQueueSource('mock'));
   }, [practiceId]);
+
+  useEffect(() => {
+    if (!deepLinkCaseId || !practiceId) return;
+    apiFetchJson<{ cases?: Array<{ id: string; claimRef: string }> }>(
+      '/api/canadian/cdcp/reconsiderations',
+    )
+      .then((res) => {
+        const found = res.cases?.find((c) => c.id === deepLinkCaseId);
+        if (found) {
+          setHighlightClaimRef(found.claimRef);
+          setActiveTab('queue');
+        }
+      })
+      .catch(() => undefined);
+  }, [deepLinkCaseId, practiceId]);
 
   useEffect(() => {
     if (!practiceId) return;
@@ -408,7 +427,12 @@ export default function Phase5Dashboard() {
                 {queue
                   .sort((a, b) => a.daysRemaining - b.daysRemaining)
                   .map(row => (
-                    <tr key={row.claimId} className={`hover:bg-gray-50 ${row.status === 'urgent' ? 'bg-red-50' : ''}`}>
+                    <tr
+                      key={row.claimId}
+                      className={`hover:bg-gray-50 ${
+                        row.status === 'urgent' ? 'bg-red-50' : ''
+                      } ${highlightClaimRef === row.claimId ? 'ring-2 ring-emerald-500 ring-inset' : ''}`}
+                    >
                       <td className="px-4 py-3 font-mono text-xs text-gray-600">{row.claimId}</td>
                       <td className="px-4 py-3 text-gray-700 max-w-[200px] truncate">{row.procedure}</td>
                       <td className="px-4 py-3">

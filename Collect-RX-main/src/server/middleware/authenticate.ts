@@ -72,8 +72,9 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
           next();
         })
         .catch(() => {
-          // Non-fatal DB error — allow through to avoid blocking on DB hiccup
-          next();
+          // Fail CLOSED: if we cannot confirm the accountant's access is still valid
+          // (active + not expired), deny rather than grant PHI access on a DB hiccup.
+          res.status(503).json({ error: 'Unable to verify access right now. Please retry.' });
         });
       return;
     }

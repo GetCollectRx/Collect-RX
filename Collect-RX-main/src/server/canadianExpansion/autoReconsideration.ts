@@ -18,7 +18,7 @@ interface VapiEndOfCallMessage {
   };
 }
 
-interface DenialSignal {
+export interface DenialSignal {
   practiceId: string;
   patientToken: string;
   claimRef: string;

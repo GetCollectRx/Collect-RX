@@ -45,6 +45,11 @@ interface InsuranceAnalytics {
     dollarsRecovered: number
     currency: 'CAD'
   }
+  callOutcomeRecovery?: {
+    resolvedClaimsCount: number
+    dollarsRecovered: number
+    currency: 'CAD'
+  }
   carrierRates: Array<{
     carrierId: string
     displayName: string
@@ -60,6 +65,16 @@ interface InsuranceAnalytics {
     resolved: number
     failed: number
   }>
+  syncVerifiedRecovery?: {
+    dollarsRecoveredSyncVerified: number
+    dollarsRecoveredSyncVerifiedLast30Days: number
+    paymentsVerifiedBySync: number
+    cohortRecoveryRatePct: number | null
+    medianTimeToSyncVerifyHours: number | null
+    medianGateClearanceHours: number | null
+    blockingGatesOpen: number
+    awaitingSyncVerification: number
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,9 +193,19 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
     const { from, to } = dateRange(rangeDays)
     apiFetch(`/api/analytics/insurance?practiceId=${practiceId}&from=${from}&to=${to}`)
       .then(async (r) => {
-        const body = await parseApiJson<InsuranceAnalytics & { error?: string }>(r)
+        const body = await parseApiJson<{
+          success?: boolean
+          data?: InsuranceAnalytics
+          error?: string
+        }>(r)
         if (!r.ok) throw new Error(body.error ?? 'Failed to load insurance analytics')
-        return body
+        if (!body.data) throw new Error('Missing analytics payload')
+        const d = body.data
+        return {
+          ...d,
+          dollarsRecovered: d.callOutcomeRecovery ?? d.dollarsRecovered,
+          carrierRates: d.carrierRates ?? (d as { resolutionByCarrier?: InsuranceAnalytics['carrierRates'] }).resolutionByCarrier ?? [],
+        } satisfies InsuranceAnalytics
       })
       .then(setData)
       .catch((e) => setError((e as Error).message))
@@ -266,13 +291,23 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
               trend={{ value: 'vs. manual calling', dir: 'up' }}
             />
             <StatTile
-              label="Dollars Recovered"
+              label="Call outcome recovery"
               value={`$${data.dollarsRecovered.dollarsRecovered.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
-              sub={`${data.dollarsRecovered.resolvedClaimsCount} claims resolved · CAD`}
-              icon="💰"
-              accent="green"
-              trend={{ value: 'outstanding claims paid', dir: 'up' }}
+              sub={`${data.dollarsRecovered.resolvedClaimsCount} claims marked resolved on call · CAD`}
+              icon="📞"
+              accent="blue"
+              trend={{ value: 'carrier-reported', dir: 'neutral' }}
             />
+            {data.syncVerifiedRecovery && (
+              <StatTile
+                label="PMS sync-verified recovery"
+                value={`$${data.syncVerifiedRecovery.dollarsRecoveredSyncVerifiedLast30Days.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
+                sub={`${data.syncVerifiedRecovery.paymentsVerifiedBySync} all-time · balance confirmed in PMS`}
+                icon="💰"
+                accent="green"
+                trend={{ value: 'source of truth', dir: 'up' }}
+              />
+            )}
             <StatTile
               label="AI Calls Made"
               value={data.timeSaved.completedCalls}
@@ -281,13 +316,60 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
               accent="blue"
             />
             <StatTile
-              label="Avg Resolution Rate"
+              label="Avg call resolution rate"
               value={avgRate !== null ? `${avgRate}%` : '—'}
-              sub="across all 6 carriers"
+              sub="call outcomes only — not sync verified"
               icon="✓"
               accent={avgRate === null ? 'default' : avgRate >= 70 ? 'green' : avgRate >= 50 ? 'amber' : 'red'}
             />
           </div>
+
+          {data.syncVerifiedRecovery && (
+            <Card className="mb-6">
+              <CardHeader
+                title="Recovery loop — sync truth"
+                subtitle="North-star metrics from PAYMENT_VERIFIED_SYNC events (PMS balance drop), separate from call status."
+              />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-4 pb-4">
+                <StatTile
+                  label="Cohort recovery rate (30d)"
+                  value={
+                    data.syncVerifiedRecovery.cohortRecoveryRatePct != null
+                      ? `${data.syncVerifiedRecovery.cohortRecoveryRatePct}%`
+                      : '—'
+                  }
+                  sub="verified $ / (verified + still open)"
+                  accent="green"
+                />
+                <StatTile
+                  label="Median time to sync verify"
+                  value={
+                    data.syncVerifiedRecovery.medianTimeToSyncVerifyHours != null
+                      ? `${data.syncVerifiedRecovery.medianTimeToSyncVerifyHours}h`
+                      : '—'
+                  }
+                  sub="WAIT_SYNC → PAYMENT_VERIFIED_SYNC"
+                  accent="blue"
+                />
+                <StatTile
+                  label="Gate clearance SLA"
+                  value={
+                    data.syncVerifiedRecovery.medianGateClearanceHours != null
+                      ? `${data.syncVerifiedRecovery.medianGateClearanceHours}h`
+                      : '—'
+                  }
+                  sub="blocking gate → cleared"
+                  accent="amber"
+                />
+                <StatTile
+                  label="Awaiting PMS sync"
+                  value={data.syncVerifiedRecovery.awaitingSyncVerification}
+                  sub={`${data.syncVerifiedRecovery.blockingGatesOpen} practice gates open`}
+                  accent={data.syncVerifiedRecovery.blockingGatesOpen > 0 ? 'amber' : 'default'}
+                />
+              </div>
+            </Card>
+          )}
 
           {/* Charts */}
           {!noData && (
@@ -311,8 +393,8 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
 
               <Card>
                 <CardHeader
-                  title="Resolution Rate by Carrier"
-                  subtitle="% of AI calls that resolved the claim"
+                  title="Call resolution rate by carrier"
+                  subtitle="% of AI calls marked resolved — not PMS-verified payment"
                 />
                 {carrierBarData.length > 0 ? (
                   <BarChart

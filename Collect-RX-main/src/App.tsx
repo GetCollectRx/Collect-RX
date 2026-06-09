@@ -6,7 +6,9 @@ import LegalTerms from './pages/LegalTerms'
 import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
 import Changelog from './pages/Changelog'
+import PilotDemo  from './pages/PilotDemo'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
+import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Balances              from './pages/Balances'
@@ -24,6 +26,7 @@ import PracticeBillingPage   from './pages/PracticeBillingPage'
 import Phase5Dashboard       from './pages/Phase5Dashboard'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
+import RecoveryGatesInbox    from './pages/RecoveryGatesInbox'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
 import LiveConsole           from './pages/LiveConsole'
@@ -43,7 +46,7 @@ import UsersAdmin              from './pages/UsersAdmin'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
-import { HOME_ROUTE } from './types/userRole'
+import { HOME_ROUTE, type UserRole } from './types/userRole'
 import { useEffect, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
@@ -87,10 +90,12 @@ const OWNER_NAV: NavItem[] = [
   { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
   { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
   { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
+  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
   { to: '/usage-insights', exact: true, label: 'Usage insights', icon: 'analytics' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
   { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
 ]
 
@@ -149,6 +154,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
       { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
+      { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
       { to: '/balances', exact: false, label: 'Outreach AR', icon: 'balances' },
       { to: '/patient-ar', exact: false, label: 'Patient AR', icon: 'patientar' },
     ],
@@ -300,11 +306,16 @@ function usePublicPortalTheme() {
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
   useBrandAppShellTheme()
+  const { sessionHealth, userRole } = usePractice()
   return (
     <div className="crx-app flex min-h-screen">
       <Sidebar />
       <div className="crx-app-main">
         <AppTopBar />
+        <SessionHealthBanner
+          health={sessionHealth}
+          isPlatformAdmin={userRole === 'platform_admin'}
+        />
         <main className="crx-app-content" id="main-content">
         <PlatformDevRouteGuard>
         <Routes>
@@ -327,6 +338,7 @@ function AppShell() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
           <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
+          <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/balances"      element={<Balances />} />
@@ -336,6 +348,7 @@ function AppShell() {
           <Route path="/estimate"      element={<PreTreatmentEstimate />} />
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
+          <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/outbox"        element={<Outbox />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
@@ -428,6 +441,7 @@ function App() {
             <Route path="/product" element={<ProductOnePager />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/demo" element={<PilotDemo />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>
           </AnalyticsSessionBridge>

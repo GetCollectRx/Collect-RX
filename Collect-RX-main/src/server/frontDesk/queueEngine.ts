@@ -5,6 +5,7 @@ import { isWithinCallWindow } from '../../carriers/adapter.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
+import { canMakeCall } from '../plans/planBridge.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -83,9 +84,19 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     if (!next) continue;
 
+    const planGate = await canMakeCall(practiceId);
+    if (!planGate.allowed && planGate.reason !== 'OVERAGE') {
+      console.warn('[deskQueueEngine] plan gate blocked dispatch', {
+        practiceId,
+        reason: planGate.reason,
+      });
+      continue;
+    }
+
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
       practiceId,
+      claimId: next.claimId,
       carrierId: next.claim.carrierId,
       daysOutstanding: next.claim.daysOutstanding,
       attemptsSoFar,

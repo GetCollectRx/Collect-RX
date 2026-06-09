@@ -23,7 +23,7 @@ if (!process.env.REDIS_URL) {
     'worker: REDIS_URL is required.\n' +
       '  Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env:\n' +
       '    REDIS_URL=redis://127.0.0.1:6379\n' +
-      '  Without Redis: background jobs run in the API process when you `npm run dev` or `npm run start`.\n' +
+      '  Without Redis: rules + reminders run in-process inside `npm run dev` (no worker process).\n' +
       '  One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
   );
   process.exit(1);

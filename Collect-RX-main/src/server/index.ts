@@ -95,6 +95,7 @@ import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
+import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
@@ -102,6 +103,7 @@ import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripe
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
+import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 import { handleTwilioInboundSms } from './twilio/inboundSms.js';
@@ -203,12 +205,20 @@ app.post(
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.post('/api/twilio/sms', webhookLimiter, (req, res, next) => {
-  handleTwilioInboundSms(req, res, prisma).catch(next);
-});
+// urlencoded is intentionally NOT global: only Twilio's signature-verified webhook posts
+// form-encoded bodies. Keeping it off everywhere else shrinks the CSRF surface for the
+// cookie-authenticated JSON API (browsers cannot send cross-site application/json without a
+// CORS preflight, but they CAN send simple cross-site form posts).
+app.post(
+  '/api/twilio/sms',
+  webhookLimiter,
+  express.urlencoded({ extended: false }),
+  (req, res, next) => {
+    handleTwilioInboundSms(req, res, prisma).catch(next);
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — excluded from /api rate limiting (tests + probes)
@@ -275,6 +285,7 @@ app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
+app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
@@ -380,8 +391,11 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     registerArJobSchedulers().catch((err) => {
       console.error('[server] registerArJobSchedulers failed:', (err as Error).message);
     });
-  } else if (isLearningLoopEnabled()) {
-    startLearningLoopInProcess(prisma);
+  } else {
+    startRulesEngine(prisma);
+    if (isLearningLoopEnabled()) {
+      startLearningLoopInProcess(prisma);
+    }
   }
 
   attachDeskWebSocket(server);

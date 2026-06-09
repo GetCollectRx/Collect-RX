@@ -50,20 +50,28 @@ router.get('/insurance', async (req: Request, res: Response) => {
 
     const dateRange = { from, to };
 
-    const [timeSaved, dollarsRecovered, resolutionByCarrier, callVolume] = await Promise.all([
+    const [timeSaved, dollarsRecovered, resolutionByCarrier, callVolume, syncVerifiedRecovery] =
+      await Promise.all([
       getTimeSaved(prisma, practiceId, dateRange),
       getDollarsRecovered(prisma, practiceId, dateRange),
       getResolutionRateByCarrier(prisma, practiceId),
       getCallVolumeOverTime(prisma, practiceId, dateRange, bucket),
+      import('../server/recovery/recoveryMetrics.js').then((m) =>
+        m.computeRecoveryMetrics(prisma, practiceId),
+      ),
     ]);
 
     return res.json({
       success: true,
       data: {
         timeSaved,
+        /** Call-outcome based — may differ from PMS sync verification */
+        callOutcomeRecovery: dollarsRecovered,
         dollarsRecovered,
+        carrierRates: resolutionByCarrier,
         resolutionByCarrier,
         callVolume,
+        syncVerifiedRecovery,
         window: { from: from.toISOString(), to: to.toISOString() },
       },
     });
@@ -431,6 +439,110 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /analytics/practice-performance]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/analytics/insurance/eval-scores
+// 8-dimension automated call evaluation scores for the F-003 Pilot Report.
+//
+// Query params:
+//   days  — lookback window in days (default 30, max 365)
+//   limit — max calls to evaluate (default 50, max 200)
+// ---------------------------------------------------------------------------
+router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const days = Math.min(365, parseInt(String(req.query.days ?? '30'), 10) || 30);
+    const limit = Math.min(200, parseInt(String(req.query.limit ?? '50'), 10) || 50);
+    const since = new Date(Date.now() - days * 86_400_000);
+
+    // Fetch completed calls that have a transcript URL, joined to their claim
+    // for carrierId. Split into already-evaluated (cached) and pending.
+    const completedCalls = await prisma.callAttempt.findMany({
+      where: {
+        claim: { practiceId },
+        outcome: { not: null },
+        transcriptUrl: { not: null },
+        completedAt: { gte: since },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        transcriptUrl: true,
+        completedAt: true,
+        evalCompletedAt: true,
+        evalScores: true,
+        claim: { select: { carrierId: true } },
+      },
+    });
+
+    const { evaluateCallTranscript, aggregateEvalResults } = await import(
+      '../services/analytics/automated-eval.js'
+    );
+
+    // Calls that already have cached scores — parse and return directly.
+    const cachedResults = completedCalls
+      .filter((c) => c.evalCompletedAt && c.evalScores)
+      .map((c) => {
+        try { return JSON.parse(c.evalScores!); } catch { return null; }
+      })
+      .filter(Boolean);
+
+    // Calls not yet evaluated — process up to 10 per request to respect rate limits.
+    const needsEval = completedCalls.filter((c) => !c.evalCompletedAt).slice(0, 10);
+    const freshResults = [];
+
+    for (const call of needsEval) {
+      try {
+        const transcriptText = call.transcriptUrl ?? '';
+        if (transcriptText.length < 50) continue;
+
+        const result = await evaluateCallTranscript(
+          call.id,
+          transcriptText,
+          call.claim?.carrierId ?? 'unknown',
+        );
+
+        // Persist scores to DB (fire-and-forget — do not block the response).
+        prisma.callAttempt
+          .update({
+            where: { id: call.id },
+            data: {
+              evalCompletedAt: new Date(result.evaluatedAt),
+              evalScores: JSON.stringify(result.dimensions),
+            },
+          })
+          .catch((e: Error) => console.error('[eval-scores] DB persist error', call.id, e));
+
+        freshResults.push(result);
+      } catch (e) {
+        console.error('[eval-scores] eval failed for call', call.id, e);
+      }
+    }
+
+    const allResults = [...cachedResults, ...freshResults];
+    const summary = aggregateEvalResults(freshResults.length > 0 ? freshResults : cachedResults);
+
+    return res.json({
+      success: true,
+      data: {
+        summary,
+        callCount: completedCalls.length,
+        cachedCount: cachedResults.length,
+        freshlyEvaluated: freshResults.length,
+        evaluatedCount: allResults.length,
+        window: { from: since.toISOString(), to: new Date().toISOString(), days },
+      },
+    });
+  } catch (err) {
+    console.error('[GET /analytics/insurance/eval-scores]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

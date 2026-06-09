@@ -1,6 +1,7 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter.js';
 import type { CarrierConfig, PracticeSettings } from '../../types/practiceSettings.js';
+import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 
 const DEFAULT_CARRIER_IDS = Object.keys(CARRIER_CONFIGS) as CarrierId[];
 
@@ -22,6 +23,9 @@ export function defaultPracticeSettings(): PracticeSettings {
     automationEnabled: true,
     sendFromPracticeEmail: false,
     voiceAgentEnabled: false,
+    usageVisibleToOfficeManager: false,
+    usageVisibleToBillingCoordinator: false,
+    usageAlertEmailsEnabled: true,
     carrierConfigs: defaultCarrierConfigs(),
     callWindowStart: '08:00',
     callWindowEnd: '17:00',
@@ -42,6 +46,21 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
       ? { sendFromPracticeEmail: o.sendFromPracticeEmail }
       : {}),
     ...(typeof o.voiceAgentEnabled === 'boolean' ? { voiceAgentEnabled: o.voiceAgentEnabled } : {}),
+    ...(typeof o.usageVisibleToOfficeManager === 'boolean'
+      ? { usageVisibleToOfficeManager: o.usageVisibleToOfficeManager }
+      : {}),
+    ...(typeof o.usageVisibleToBillingCoordinator === 'boolean'
+      ? { usageVisibleToBillingCoordinator: o.usageVisibleToBillingCoordinator }
+      : {}),
+    ...(typeof o.usageAlertEmailsEnabled === 'boolean'
+      ? { usageAlertEmailsEnabled: o.usageAlertEmailsEnabled }
+      : {}),
+    ...(typeof o.planUsageAlertCycleKey === 'string'
+      ? { planUsageAlertCycleKey: o.planUsageAlertCycleKey }
+      : {}),
+    ...(o.planUsageAlertsSent && typeof o.planUsageAlertsSent === 'object'
+      ? { planUsageAlertsSent: o.planUsageAlertsSent as Record<string, boolean> }
+      : {}),
     ...(typeof o.callWindowStart === 'string' ? { callWindowStart: o.callWindowStart } : {}),
     ...(typeof o.callWindowEnd === 'string' ? { callWindowEnd: o.callWindowEnd } : {}),
     ...(typeof o.escalationPhoneNumber === 'string'
@@ -52,6 +71,17 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
       : {}),
     ...(Array.isArray(o.carrierConfigs)
       ? { carrierConfigs: o.carrierConfigs as CarrierConfig[] }
+      : {}),
+    ...(typeof o.pmsVendor === 'string'
+      ? (() => {
+          const v = normalizePmsVendorId(o.pmsVendor);
+          return v ? { pmsVendor: v } : {};
+        })()
+      : {}),
+    ...(o.pmsIngestMode === 'csv' ||
+    o.pmsIngestMode === 'desktop_connector' ||
+    o.pmsIngestMode === 'unknown'
+      ? { pmsIngestMode: o.pmsIngestMode }
       : {}),
   };
 }
@@ -87,6 +117,17 @@ export function validatePracticeSettingsUpdate(
   if (body.escalationPhoneNumber && body.escalationPhoneNumber.trim()) {
     if (!E164.test(body.escalationPhoneNumber.trim())) {
       return 'escalationPhoneNumber must be valid E.164 (+1...)';
+    }
+  }
+  if (body.pmsVendor !== undefined) {
+    if (!normalizePmsVendorId(body.pmsVendor)) {
+      return 'pmsVendor is not a supported practice management system';
+    }
+  }
+  if (body.pmsIngestMode !== undefined) {
+    const modes = ['csv', 'desktop_connector', 'unknown'] as const;
+    if (!modes.includes(body.pmsIngestMode as (typeof modes)[number])) {
+      return 'pmsIngestMode must be csv, desktop_connector, or unknown';
     }
   }
   if (body.carrierConfigs) {

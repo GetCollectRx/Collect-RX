@@ -3,6 +3,8 @@ import { generateMessageBody } from './messageTemplates.js';
 import { syncCallQueueSchedulingFromPriority } from './services/priorityEngine.js';
 import { syncWorkItemsForPractice } from './services/workQueueService.js';
 import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
+import { processPaymentTraceDue } from './recovery/recoveryLoopService.js';
+import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 
 /**
@@ -33,15 +35,25 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     console.error('[rulesEngine] EMR outbox batch failed:', (err as Error).message);
   }
 
+  try {
+    const traced = await processPaymentTraceDue(prisma);
+    if (traced > 0) {
+      console.log(`[rulesEngine] payment trace recalls scheduled: ${traced}`);
+    }
+  } catch (err) {
+    console.error('[rulesEngine] payment trace due failed:', (err as Error).message);
+  }
+
   const now = new Date();
   if (now.getUTCMinutes() === 0) {
     try {
       const practices = await prisma.practice.findMany({ select: { id: true } });
       for (const p of practices) {
         await syncWorkItemsForPractice(prisma, p.id);
+        await dispatchRecoveryPracticeAlerts(prisma, p.id);
       }
     } catch (err) {
-      console.error('[rulesEngine] hourly work queue sync failed:', (err as Error).message);
+      console.error('[rulesEngine] hourly work queue / recovery alerts failed:', err);
     }
   }
 

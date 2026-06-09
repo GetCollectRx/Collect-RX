@@ -2,8 +2,6 @@ import type { PrismaClient } from '@prisma/client';
 import type { VapiWebhookPayload } from '../../vapi/client.js';
 import { resolveOutcomeFromWebhookPayload } from '../../outcome/webhookOutcomeResolver.js';
 import { recordVapiWebhook } from '../observability/metrics.js';
-import { enqueueEmrClaimEvent } from '../emrSyncOutbox.js';
-import { claimStatusFromCallOutcome } from '../claimStatusFromCallOutcome.js';
 import type { CarrierId } from '@prisma/client';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall, mapTranscriptLine } from './deskMappers.js';
@@ -14,7 +12,10 @@ import {
 import { applyCarrierBlock } from './carrierBlockService.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
-import { extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver.js';
+import { callOutcomeToUsageCode } from '../plans/outcomeToUsageCode.js';
+import { recordCallUsage } from '../plans/planBridge.js';
+import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
+import { processRecoveryCallEnded } from '../vapi/vapiWebhook.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
   message?: { toolCalls?: Array<{ function?: { name?: string } }> };
@@ -35,6 +36,7 @@ function agentFromPayload(payload: VapiWebhookPayload): ActiveAgent | null {
 export async function processVapiDeskWebhook(
   prisma: PrismaClient,
   payload: VapiWebhookPayload,
+  ctx?: { rawBody?: unknown },
 ): Promise<void> {
   const vapiCallId = payload.call?.id;
   if (!vapiCallId) return;
@@ -151,18 +153,19 @@ export async function processVapiDeskWebhook(
     eventType === 'call.failed' ||
     (payload as { type: string }).type === 'hang'
   ) {
-    await processCallEnded(prisma, payload, vapiCallId);
+    await processCallEndedDesk(prisma, payload, vapiCallId, ctx);
   }
 }
 
-async function processCallEnded(
+async function processCallEndedDesk(
   prisma: PrismaClient,
   payload: VapiWebhookPayload,
   vapiCallId: string,
+  ctx?: { rawBody?: unknown },
 ): Promise<void> {
   const existing = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    select: { id: true, completedAt: true },
+    select: { id: true, completedAt: true, claimId: true },
   });
 
   if (existing?.completedAt) {
@@ -178,23 +181,13 @@ async function processCallEnded(
 
   const claim = await prisma.insuranceClaim.findUnique({
     where: { id: metadata.claimId },
-    select: {
-      claimNumber: true,
-      id: true,
-      practiceId: true,
-      carrierId: true,
-      patientToken: true,
-      status: true,
-      outstandingAmount: true,
-    },
+    select: { practiceId: true, id: true, carrierId: true },
   });
-
   if (!claim) return;
 
   recordVapiWebhook('call_ended');
 
   const processed = resolveOutcomeFromWebhookPayload(payload);
-  const structuredClaimStatus = extractStructuredClaimStatus(payload);
 
   if (processed.carrierBlockDetected) {
     await applyCarrierBlock(prisma, {
@@ -207,119 +200,49 @@ async function processCallEnded(
     return;
   }
 
-  try {
-    if (existing) {
-      await prisma.callAttempt.update({
-        where: { vapiCallId },
-        data: {
-          completedAt: payload.call.endedAt ? new Date(payload.call.endedAt) : new Date(),
-          durationSeconds: processed.durationSeconds,
-          outcome: processed.outcome,
-          outcomeDetail: processed.outcomeDetail,
-          repName: processed.repName,
-          referenceNumber: processed.referenceNumber,
-          transcriptUrl: processed.transcriptUrl,
-          carrierBlockDetected: false,
-          liveState: 'completed',
-        },
-      });
-    } else {
-      await prisma.callAttempt.create({
-        data: {
-          claimId: claim.id,
-          vapiCallId,
-          initiatedAt: payload.call.startedAt ? new Date(payload.call.startedAt) : new Date(),
-          completedAt: payload.call.endedAt ? new Date(payload.call.endedAt) : new Date(),
-          durationSeconds: processed.durationSeconds,
-          outcome: processed.outcome,
-          outcomeDetail: processed.outcomeDetail,
-          repName: processed.repName,
-          referenceNumber: processed.referenceNumber,
-          transcriptUrl: processed.transcriptUrl,
-          carrierBlockDetected: false,
-          liveState: 'completed',
-        },
-      });
-    }
-  } catch (err: unknown) {
-    if ((err as { code?: string }).code === 'P2002') return;
-    throw err;
-  }
+  await processRecoveryCallEnded(payload, prisma, ctx?.rawBody ?? payload);
 
-  const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
-  const newClaimStatus = claimStatusFromCallOutcome(
-    processed.outcome,
-    processed.outcomeDetail,
-    outstandingCents,
-    structuredClaimStatus,
-  );
-
-  const newQueueStatus =
-    newClaimStatus === 'RESOLVED' ||
-    newClaimStatus === 'DENIED' ||
-    newClaimStatus === 'APPROVED_PENDING_PAYMENT'
-      ? 'COMPLETED'
-      : newClaimStatus === 'ESCALATED' || processed.outcome === 'ESCALATED'
-        ? 'ESCALATED'
-        : 'PENDING';
-
-  await prisma.callQueue.updateMany({
-    where: { claimId: claim.id },
-    data: { status: newQueueStatus, lastAttemptAt: new Date() },
+  const attemptAfter = await prisma.callAttempt.findUnique({
+    where: { vapiCallId },
+    select: { id: true, outcome: true },
   });
-
-  await prisma.insuranceClaim.update({
-    where: { id: claim.id },
-    data: { status: newClaimStatus },
-  });
-
-  if (processed.outcome) {
-    const attemptCount = await prisma.callAttempt.count({ where: { claimId: claim.id } });
-    const { shouldAutoEscalate } = await import('../services/outcomeClassifier.js');
-    const { createEscalation } = await import('../services/escalationService.js');
-    if (shouldAutoEscalate(processed.outcome, attemptCount)) {
-      try {
-        await createEscalation(prisma, {
-          practiceId: claim.practiceId,
-          claimId: claim.id,
-          claimRef: claim.claimNumber,
-          carrierId: claim.carrierId,
-          amountClaimedCents: outstandingCents,
-          reason: processed.outcomeDetail ?? `Auto-escalation after ${processed.outcome}`,
-          callAttemptId: existing?.id,
-          attemptNumber: attemptCount,
-        });
-      } catch (escErr) {
-        console.error('[vapi-webhook] escalation create failed:', escErr);
-      }
-    }
-  }
 
   broadcastDesk(claim.practiceId, {
     type: 'call.ended',
     data: {
-      callId: existing?.id ?? vapiCallId,
+      callId: attemptAfter?.id ?? existing?.id ?? vapiCallId,
       outcome: processed.outcome,
       notes: processed.outcomeDetail,
     },
   });
 
-  await refreshDeskQueueBroadcast(prisma, claim.practiceId);
-
-  if (newClaimStatus === 'RESOLVED') {
-    try {
-      await enqueueEmrClaimEvent(prisma, {
+  try {
+    const updatedClaim = await prisma.insuranceClaim.findUnique({
+      where: { id: claim.id },
+      select: { status: true, outstandingAmount: true },
+    });
+    const usageCode = updatedClaim?.status
+      ? callOutcomeToUsageCode(processed.outcome, updatedClaim.status, processed.outcomeDetail)
+      : null;
+    if (usageCode) {
+      const amountCents =
+        usageCode === 'paid'
+          ? Math.round(Number(updatedClaim?.outstandingAmount ?? 0) * 100)
+          : 0;
+      const usageResult = await recordCallUsage({
         practiceId: claim.practiceId,
         claimId: claim.id,
-        eventType: 'CLAIM_RESOLVED',
-        payload: {
-          vapiCallId,
-          resolvedAt: new Date().toISOString(),
-          outcomeDetail: processed.outcomeDetail,
-        },
+        vapiCallId,
+        outcomeCode: usageCode,
+        amountCents,
       });
-    } catch (emrErr) {
-      console.error('[vapi-webhook] EMR outbox enqueue failed:', emrErr);
+      if (usageResult.recorded) {
+        await maybeSendPlanUsageAlertEmails(prisma, claim.practiceId);
+      }
     }
+  } catch (usageErr) {
+    console.error('[vapi-webhook] usage recording failed (non-fatal):', usageErr);
   }
+
+  await refreshDeskQueueBroadcast(prisma, claim.practiceId);
 }

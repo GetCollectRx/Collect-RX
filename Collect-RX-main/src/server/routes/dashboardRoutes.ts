@@ -8,8 +8,11 @@ import {
 import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { getPracticePmsContext } from '../pms/practicePmsContext.js';
+import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -47,16 +50,22 @@ router.get('/stats', async (req: Request, res: Response) => {
       _count: true,
     });
 
-    const lastImport = await prisma.pmsImportRun.findFirst({
-      where: { practiceId },
-      orderBy: { startedAt: 'desc' },
-      select: {
-        startedAt: true,
-        status: true,
-        pmsSource: true,
-        validationPassed: true,
-      },
-    });
+    const [lastImport, pms] = await Promise.all([
+      prisma.pmsImportRun.findFirst({
+        where: { practiceId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          startedAt: true,
+          status: true,
+          pmsSource: true,
+          validationPassed: true,
+          recordsImported: true,
+          recordsTotal: true,
+          recordsFailed: true,
+        },
+      }),
+      getPracticePmsContext(prisma, practiceId),
+    ]);
 
     const claims = await prisma.insuranceClaim.findMany({
       where: { practiceId, status: { in: OPEN_STATUSES } },
@@ -169,6 +178,13 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
 
+    let recoveryMetrics = null;
+    try {
+      recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
+    } catch (recoveryErr) {
+      console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
+    }
+
     return res.json({
       totalOpenAR: useUnifiedAr ? unifiedOpenAR : totalOpenAR,
       aging,
@@ -177,12 +193,20 @@ router.get('/stats', async (req: Request, res: Response) => {
       openWorkItemCount: workAgg._count,
       insuranceOpenAR: totalOpenAR,
       unifiedAr: useUnifiedAr,
+      recoveryMetrics,
+      pms,
       lastPmsImport: lastImport
         ? {
             at: lastImport.startedAt.toISOString(),
             status: lastImport.status,
             source: lastImport.pmsSource,
+            sourceDisplayName: vendorDisplayName(
+              normalizePmsVendorId(lastImport.pmsSource) ?? 'other',
+            ),
             validationPassed: lastImport.validationPassed,
+            recordsImported: lastImport.recordsImported,
+            recordsTotal: lastImport.recordsTotal,
+            recordsFailed: lastImport.recordsFailed,
           }
         : null,
       claimsResolvedToday,

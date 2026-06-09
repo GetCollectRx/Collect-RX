@@ -8,6 +8,14 @@ import { isWithinCallWindow, CARRIER_CONFIGS, validateDispatch } from '../../src
 
 const prismaNoBlock = {
   carrierBlockEvent: { findFirst: async () => null },
+  insuranceClaim: {
+    findUnique: async () => ({
+      recoveryRoute: 'CALL_CARRIER',
+      status: 'IN_QUEUE',
+      queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
+    }),
+  },
+  claimRecoveryAction: { findFirst: async () => null },
 } as unknown as PrismaClient;
 
 describe('CarrierAdapter', () => {
@@ -83,6 +91,7 @@ describe('CarrierAdapter', () => {
     it('rejects carrier dispatch when claim is APPROVED_PENDING_PAYMENT', async () => {
       const r = await validateDispatch(prismaNoBlock, {
         practiceId: 'practice-1',
+        claimId: 'claim-test-1',
         carrierId: 'sun_life',
         daysOutstanding: 45,
         attemptsSoFar: 0,
@@ -96,6 +105,7 @@ describe('CarrierAdapter', () => {
     it('allows PENDING claims during the carrier call window', async () => {
       const r = await validateDispatch(prismaNoBlock, {
         practiceId: 'practice-1',
+        claimId: 'claim-test-1',
         carrierId: 'sun_life',
         daysOutstanding: 45,
         attemptsSoFar: 0,

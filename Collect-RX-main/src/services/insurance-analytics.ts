@@ -102,33 +102,29 @@ export async function getTimeSaved(
 // ---------------------------------------------------------------------------
 
 /**
- * Sum of outstanding amounts for claims resolved in the given window.
- *
- * "Resolved" = claim status is RESOLVED and the resolution happened
- * (updatedAt) within the date range.
+ * Sum of sync-verified recovery dollars in the given window (PMS-confirmed).
+ * Falls back to zero when no PAYMENT_VERIFIED_SYNC events exist in range.
  */
 export async function getDollarsRecovered(
   prisma: PrismaClient,
   practiceId: string,
   dateRange: DateRange,
 ): Promise<DollarsRecoveredResult> {
-  const resolved = await prisma.insuranceClaim.findMany({
+  const verified = await prisma.claimRecoveryEvent.aggregate({
     where: {
       practiceId,
-      status: 'RESOLVED',
-      updatedAt: { gte: dateRange.from, lte: dateRange.to },
+      eventType: 'PAYMENT_VERIFIED_SYNC',
+      createdAt: { gte: dateRange.from, lte: dateRange.to },
     },
-    select: { outstandingAmount: true },
+    _sum: { amountRecoveredCents: true },
+    _count: true,
   });
 
-  const dollarsRecovered = resolved.reduce(
-    (sum, c) => sum + Number(c.outstandingAmount),
-    0,
-  );
+  const dollarsRecovered = Math.round((verified._sum.amountRecoveredCents ?? 0)) / 100;
 
   return {
-    resolvedClaimsCount: resolved.length,
-    dollarsRecovered: Math.round(dollarsRecovered * 100) / 100,
+    resolvedClaimsCount: verified._count,
+    dollarsRecovered,
     currency: 'CAD',
   };
 }

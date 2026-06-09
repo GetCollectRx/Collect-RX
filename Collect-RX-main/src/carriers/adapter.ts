@@ -33,6 +33,27 @@ export interface CarrierConfig {
   isClearinghouse: boolean;
   /** IVR navigation hints for IVR_Navigator agent */
   ivrHints: string[];
+  /**
+   * Maximum age (days) of a claim that can still be electronically submitted/corrected.
+   * Sun Life updated to 365 days (electronic) effective 2026.
+   */
+  maxRecoverableAgeDays?: number;
+  /**
+   * Display alias used by IVR_Navigator and Claims_Agent in voice interactions.
+   * When set, agents use this name instead of displayName (e.g. Beneva vs La Capitale).
+   */
+  ivrAlias?: string;
+  /**
+   * CDAnet Transaction 23 (PreDetermination EOB) support.
+   * When true, the system can request an instant electronic adjudication bypass
+   * via Tx23 rather than initiating a full IVR call for status.
+   */
+  supportsTransaction23?: boolean;
+  /**
+   * When true, the CallQueue must attempt a portal-based status check
+   * (e.g. providerConnect) before dispatching a Vapi voice call.
+   */
+  portalFirstDispatch?: boolean;
 }
 
 export interface DispatchGuard {
@@ -52,6 +73,8 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
     minWaitDays: 32,
     avgHoldMinutes: 18,
     isClearinghouse: false,
+    // Updated 2026: electronic claim age limit extended from 30 to 365 days (carrier ID 000016)
+    maxRecoverableAgeDays: 365,
     ivrHints: ['Press 2 for dental claims', 'Enter group number, then member ID'],
   },
   canada_life: {
@@ -61,6 +84,8 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
     minWaitDays: 32,
     avgHoldMinutes: 22,
     isClearinghouse: false,
+    // Portal-first: attempt providerConnect EOB/status lookup before Vapi dispatch (carrier ID 000011)
+    portalFirstDispatch: true,
     ivrHints: ['Press 3 for claim status', 'Enter plan number followed by pound'],
   },
   manulife: {
@@ -103,6 +128,78 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
     ],
   },
 };
+
+// ---------------------------------------------------------------------------
+// TELUS TPA supplementary configs
+//
+// These are the underlying TPAs accessed via TELUS AdjudiCare (clearinghouse).
+// Carrier IDs match the numeric IDs used in CDAnet/ITRANS.
+// ---------------------------------------------------------------------------
+
+export interface TelusTpaConfig {
+  /** CDAnet carrier numeric ID */
+  carrierId: string;
+  /** Official current name */
+  displayName: string;
+  /**
+   * Display alias used by IVR_Navigator / Claims_Agent in voice interactions.
+   * Set when the carrier recently rebranded (e.g. La Capitale → Beneva).
+   */
+  ivrAlias?: string;
+  /**
+   * CDAnet Transaction 23 (PreDetermination EOB) support for instant
+   * electronic adjudication bypass — no IVR call needed.
+   */
+  supportsTransaction23?: boolean;
+}
+
+/**
+ * TPA-level overrides for carriers accessed through TELUS AdjudiCare.
+ * Keyed by CDAnet carrier numeric ID string.
+ */
+export const TELUS_TPA_CONFIGS: Record<string, TelusTpaConfig> = {
+  // Beneva (ID 600502) — rebranded from La Capitale in 2023.
+  // IVR_Navigator and Claims_Agent must use "Beneva" in all interactions.
+  '600502': {
+    carrierId: '600502',
+    displayName: 'Beneva',
+    ivrAlias: 'Beneva',   // Never say "La Capitale" — brand name is now Beneva
+  },
+
+  // Industrial Alliance (ID 000060) — supports Tx23 PreDetermination EOB.
+  // Use electronic adjudication bypass before falling back to IVR.
+  '000060': {
+    carrierId: '000060',
+    displayName: 'Industrial Alliance',
+    supportsTransaction23: true,
+  },
+
+  // Saskatchewan Blue Cross (ID 000096) — supports Tx23 PreDetermination EOB.
+  '000096': {
+    carrierId: '000096',
+    displayName: 'Saskatchewan Blue Cross',
+    supportsTransaction23: true,
+  },
+};
+
+/**
+ * Resolve the IVR display name for a TPA carrier.
+ * Returns the ivrAlias if set, otherwise displayName.
+ * Use this in all voice agent prompts — never hardcode carrier names.
+ */
+export function getTpaDisplayName(cdanetCarrierId: string): string {
+  const cfg = TELUS_TPA_CONFIGS[cdanetCarrierId];
+  if (!cfg) return cdanetCarrierId;
+  return cfg.ivrAlias ?? cfg.displayName;
+}
+
+/**
+ * Check whether a TPA supports Tx23 electronic adjudication bypass.
+ * When true, attempt Tx23 before queuing a Vapi voice call.
+ */
+export function tpaSupportsTransaction23(cdanetCarrierId: string): boolean {
+  return TELUS_TPA_CONFIGS[cdanetCarrierId]?.supportsTransaction23 === true;
+}
 
 // ---------------------------------------------------------------------------
 // CARRIER_BLOCK pre-dispatch check
@@ -155,6 +252,7 @@ export async function validateDispatch(
   prisma: PrismaClient,
   params: {
     practiceId: string;
+    claimId: string;
     carrierId: CarrierId;
     daysOutstanding: number;
     attemptsSoFar: number;
@@ -163,7 +261,7 @@ export async function validateDispatch(
     claimStatus: ClaimStatus;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -176,6 +274,12 @@ export async function validateDispatch(
       reason:
         'Claim is APPROVED_PENDING_PAYMENT — payment follow-up belongs in practice AR, not another carrier call.',
     };
+  }
+
+  const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
+  const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
+  if (!recoveryGate.allowed) {
+    return recoveryGate;
   }
 
   // 3. Claims under 30 days old — do not queue
@@ -260,9 +364,12 @@ export function isWithinCallWindow(date = new Date()): boolean {
 
 export const carrierAdapter = {
   CARRIER_CONFIGS,
+  TELUS_TPA_CONFIGS,
   checkCarrierBlock,
   validateDispatch,
   getTelusTpa,
+  getTpaDisplayName,
+  tpaSupportsTransaction23,
   isWithinCallWindow,
 } as const;
 

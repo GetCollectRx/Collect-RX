@@ -1,4 +1,5 @@
 import type { CarrierId } from '@prisma/client';
+import type { PmsIngestMode, PmsVendorId } from './pms.js';
 
 export interface CarrierConfig {
   carrierId: CarrierId;
@@ -11,10 +12,23 @@ export interface CarrierConfig {
 }
 
 export interface PracticeSettings {
+  /** Canonical PMS vendor — drives import mapping only; phone logic is PMS-agnostic. */
+  pmsVendor?: PmsVendorId;
+  /** How claim/balance data reaches CollectRx for this practice. */
+  pmsIngestMode?: PmsIngestMode;
   emailsEnabled: boolean;
   automationEnabled: boolean;
   sendFromPracticeEmail: boolean;
   voiceAgentEnabled: boolean;
+  /** Owner-only toggles: grant plan/usage visibility to office manager. */
+  usageVisibleToOfficeManager: boolean;
+  /** Owner-only toggles: grant plan/usage visibility to billing coordinator. */
+  usageVisibleToBillingCoordinator: boolean;
+  /** Email owners (and opted-in roles) at 80% / 95% / 100% usage thresholds. */
+  usageAlertEmailsEnabled: boolean;
+  /** Internal — dedupe usage alert emails per billing cycle. */
+  planUsageAlertCycleKey?: string;
+  planUsageAlertsSent?: Record<string, boolean>;
   carrierConfigs: CarrierConfig[];
   callWindowStart: string;
   callWindowEnd: string;

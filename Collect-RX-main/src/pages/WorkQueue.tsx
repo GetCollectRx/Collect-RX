@@ -20,6 +20,9 @@ interface WorkItemRow {
   followUpAt: string | null
   notes: string | null
   rankScore: number
+  recoveryRoute?: string | null
+  blockingGateTitle?: string | null
+  gateDueToday?: boolean
 }
 
 export default function WorkQueue() {
@@ -28,7 +31,7 @@ export default function WorkQueue() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState({ itemType: '', aging: '' })
+  const [filters, setFilters] = useState({ itemType: '', aging: '', gatesDueToday: false })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingRepId, setEditingRepId] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
@@ -40,6 +43,7 @@ export default function WorkQueue() {
     const params = new URLSearchParams({ limit: '100' })
     if (filters.itemType) params.set('itemType', filters.itemType)
     if (filters.aging) params.set('aging', filters.aging)
+    if (filters.gatesDueToday) params.set('gatesDueToday', 'true')
     apiFetchJson<{ success: boolean; items: WorkItemRow[] }>(`/api/work-queue?${params}`)
       .then((res) => setItems(res.items ?? []))
       .catch((e) => setError((e as Error).message))
@@ -128,6 +132,14 @@ export default function WorkQueue() {
               <option value="90">90–119 days</option>
               <option value="120+">120+ days</option>
             </Select>
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.gatesDueToday}
+                onChange={(e) => setFilters((f) => ({ ...f, gatesDueToday: e.target.checked }))}
+              />
+              Gates due today
+            </label>
             {items.length > 0 && (
               <span className="ml-auto text-xs text-gray-400 dark:text-gray-600 font-medium">
                 {items.length} item{items.length !== 1 ? 's' : ''}
@@ -143,6 +155,7 @@ export default function WorkQueue() {
                   <Th>Priority</Th>
                   <Th>Item</Th>
                   <Th>Type</Th>
+                  <Th>Recovery</Th>
                   <Th align="right">At Risk</Th>
                   <Th>Age</Th>
                   <Th>Rep</Th>
@@ -152,22 +165,37 @@ export default function WorkQueue() {
               </Thead>
               <Tbody>
                 {items.length === 0 ? (
-                  <TableEmpty colSpan={8} message="Queue is empty — run Refresh from sources after a PMS import." />
+                  <TableEmpty colSpan={9} message="Queue is empty — run Refresh from sources after a PMS import." />
                 ) : (
                   items.map((row) => {
                     const { label, color } = scoreLabel(row.rankScore)
                     return (
-                      <Tr key={row.id} highlight={row.daysOutstanding > 90}>
+                      <Tr key={row.id} highlight={row.gateDueToday || row.daysOutstanding > 90}>
                         <Td>
                           <span className={`inline-flex px-1.5 py-0.5 rounded text-2xs font-bold ${color}`}>
                             {label}
                           </span>
+                          {row.gateDueToday && (
+                            <Badge color="amber" className="ml-1">Gate</Badge>
+                          )}
                         </Td>
                         <Td bold>{row.title ?? row.sourceId.slice(0, 8)}</Td>
                         <Td>
                           <Badge color={typeColor(row.itemType)} dot>
                             {row.itemType.replace('_', ' ')}
                           </Badge>
+                        </Td>
+                        <Td className="text-xs max-w-[140px]">
+                          {row.recoveryRoute ? (
+                            <span className="font-mono text-gray-500">{row.recoveryRoute}</span>
+                          ) : (
+                            '—'
+                          )}
+                          {row.blockingGateTitle && (
+                            <p className="text-amber-700 dark:text-amber-400 truncate mt-0.5" title={row.blockingGateTitle}>
+                              {row.blockingGateTitle}
+                            </p>
+                          )}
                         </Td>
                         <Td align="right" bold>
                           ${Number(row.dollarsAtRisk).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}

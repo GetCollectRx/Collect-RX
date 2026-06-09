@@ -361,30 +361,55 @@ export async function syncCallQueueSchedulingFromPriority(
 
     const pending = await prisma.callQueue.findMany({
       where: { practiceId: pid, status: 'PENDING' },
-      select: { id: true, claimId: true },
+      select: { id: true, claimId: true, scheduledFor: true },
     });
     if (pending.length === 0) continue;
 
-    pending.sort((a, b) => {
+    const claimIds = pending.map((p) => p.claimId);
+    const [claims, blockingActions] = await Promise.all([
+      prisma.insuranceClaim.findMany({
+        where: { id: { in: claimIds } },
+        select: { id: true, recoveryRoute: true },
+      }),
+      prisma.claimRecoveryAction.findMany({
+        where: { claimId: { in: claimIds }, status: 'BLOCKING', clearedAt: null },
+        select: { claimId: true },
+      }),
+    ]);
+    const routeByClaimId = new Map(claims.map((c) => [c.id, c.recoveryRoute]));
+    const blockingClaimIds = new Set(blockingActions.map((b) => b.claimId));
+
+    const schedulable = pending.filter((row) => {
+      const route = routeByClaimId.get(row.claimId);
+      if (route && route !== 'CALL_CARRIER') return false;
+      if (blockingClaimIds.has(row.claimId)) return false;
+      return true;
+    });
+    if (schedulable.length === 0) continue;
+
+    schedulable.sort((a, b) => {
       const ra = rankByClaimId.has(a.claimId) ? rankByClaimId.get(a.claimId)! : Number.MAX_SAFE_INTEGER;
       const rb = rankByClaimId.has(b.claimId) ? rankByClaimId.get(b.claimId)! : Number.MAX_SAFE_INTEGER;
       if (ra !== rb) return ra - rb;
       return a.claimId.localeCompare(b.claimId);
     });
 
-    const totals = pending.map((p) => scoreByClaimId.get(p.claimId) ?? 0);
+    const totals = schedulable.map((p) => scoreByClaimId.get(p.claimId) ?? 0);
     const maxScore = Math.max(...totals, 1);
 
+    const { mergeRecoveryRecallWithPrioritySlot } = await import('./priorityScheduleMerge.js');
+
     const baseMs = referenceDate.getTime();
-    const updates = pending.map((row, i) =>
-      prisma.callQueue.update({
+    const updates = schedulable.map((row, i) => {
+      const prioritySlot = new Date(baseMs + i * slotMs);
+      return prisma.callQueue.update({
         where: { id: row.id },
         data: {
-          scheduledFor: new Date(baseMs + i * slotMs),
+          scheduledFor: mergeRecoveryRecallWithPrioritySlot(row.scheduledFor, prioritySlot),
           priority: scoreToClaimPriority(scoreByClaimId.get(row.claimId) ?? 0, maxScore),
         },
-      }),
-    );
+      });
+    });
 
     const chunk = 40;
     for (let i = 0; i < updates.length; i += chunk) {

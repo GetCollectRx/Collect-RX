@@ -292,8 +292,9 @@ export default function Admin() {
             finish onboarding and webhooks.
           </li>
           <li>
-            <strong className="text-gray-800 dark:text-gray-200">Sync / stale balances:</strong> Tray icon shows error
-            or data does not match Abeldent — note the message and contact support; staff should not edit the database.
+            <strong className="text-gray-800 dark:text-gray-200">Sync / stale balances:</strong> The{' '}
+            <Link to="/" className="text-crx-600 dark:text-crx-400 underline">Dashboard</Link> PMS banner shows your
+            last import time; tray icon errors mean data may not match your PMS — note the message and contact support.
           </li>
           <li>
             <strong className="text-gray-800 dark:text-gray-200">Carrier block:</strong> The{' '}

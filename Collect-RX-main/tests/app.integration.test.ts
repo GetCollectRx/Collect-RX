@@ -10,7 +10,7 @@ import request from 'supertest';
 import Stripe from 'stripe';
 import { handleWebhook, signOnboardReturn } from '../src/server/stripe/connect.js';
 import { app, prisma } from '../src/server/index.js';
-import { createPracticeForTests, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
+import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 const TEST_STRIPE_SECRET = 'whsec_test_00000000000000000000000000000000';
 const TEST_STRIPE_KEY = 'sk_test_4eC39HqLyjWDarjtT1zdp7dc';
@@ -186,26 +186,39 @@ describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () =>
     expect(res.status).toBe(400);
   });
 
-  it('POST /api/auth/login returns 401 for unknown practice', async () => {
+  it('POST /api/auth/login returns 401 for unknown user', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ practiceId: '00000000-0000-4000-8000-00000000dead', password: 'nope' });
+      .send({ email: 'nobody-unknown@fixture.test', password: 'nope' });
     expect(res.status).toBe(401);
   });
 
-  it('POST /api/auth/login returns 200 for factory practice', async () => {
-    const p = await createPracticeForTests(prisma);
+  it('POST /api/auth/login returns 200 for a valid user', async () => {
+    const { practice, email, password } = await createPracticeWithOwnerForTests(prisma);
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ practiceId: p.id, password: FIXTURE_PRACTICE_PASSWORD });
+      .send({ email, password });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeUndefined();
-    expect(res.body.practice?.id).toBe(p.id);
+    expect(res.body.practice?.id).toBe(practice.id);
     const setCookie = res.headers['set-cookie'];
     expect(setCookie).toBeDefined();
     const cookieHeader = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
     expect(cookieHeader).toMatch(/crx_access=/);
-    await prisma.practice.delete({ where: { id: p.id } });
+    expect(res.body.health).toBeDefined();
+    expect(res.body.health.ok).toBe(true);
+    expect(Array.isArray(res.body.health.checks)).toBe(true);
+    const sessionHealth = await request(app)
+      .get('/api/auth/session-health')
+      .set('Cookie', cookieHeader);
+    expect(sessionHealth.status).toBe(200);
+    expect(sessionHealth.body.ok).toBe(true);
+    await cleanupPracticeWithUsers(prisma, practice.id);
+  });
+
+  it('GET /api/auth/session-health is 401 without session', async () => {
+    const res = await request(app).get('/api/auth/session-health');
+    expect(res.status).toBe(401);
   });
 
   it('GET /api/auth/me is 401 without session', async () => {

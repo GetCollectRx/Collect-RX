@@ -1,5 +1,6 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { createHash } from 'crypto';
+import type { PmsImportFamily } from '../../types/pms.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { piiVault } from '../../services/pii-vault.js';
@@ -10,6 +11,8 @@ export interface PrismaImportResult {
   failed: number;
   errors: { claimNumber?: string; error: string }[];
   importedBalanceTotal: number;
+  paymentsVerified: number;
+  dollarsRecoveredSyncVerified: number;
 }
 
 function stablePatientId(practiceId: string, row: NormalizedPmsClaimRow): string {
@@ -26,8 +29,37 @@ async function upsertInsuranceClaim(
   practiceId: string,
   row: NormalizedPmsClaimRow,
   carrierId: CarrierId,
-): Promise<'imported' | 'skipped'> {
-  if (row.outstandingAmount <= 0) return 'skipped';
+): Promise<
+  | { outcome: 'imported'; claimId: string; previousOutstanding: number; newOutstanding: number }
+  | { outcome: 'skipped' }
+> {
+  const existing = await prisma.insuranceClaim.findUnique({
+    where: {
+      practiceId_claimNumber: { practiceId, claimNumber: row.claimNumber },
+    },
+    select: { id: true, outstandingAmount: true },
+  });
+
+  if (row.outstandingAmount <= 0) {
+    if (!existing || Number(existing.outstandingAmount) <= 0) {
+      return { outcome: 'skipped' };
+    }
+    await prisma.insuranceClaim.update({
+      where: { id: existing.id },
+      data: {
+        outstandingAmount: 0,
+        daysOutstanding: row.daysOutstanding > 0 ? row.daysOutstanding : undefined,
+      },
+    });
+    return {
+      outcome: 'imported',
+      claimId: existing.id,
+      previousOutstanding: Number(existing.outstandingAmount),
+      newOutstanding: 0,
+    };
+  }
+
+  const previousOutstanding = existing ? Number(existing.outstandingAmount) : row.outstandingAmount;
 
   const patientToken = patientTokenForRow(practiceId, row);
   const daysOutstanding =
@@ -37,7 +69,7 @@ async function upsertInsuranceClaim(
         ? Math.max(0, Math.floor((Date.now() - row.servicedAt.getTime()) / 86400000))
         : 0;
 
-  await prisma.insuranceClaim.upsert({
+  const upserted = await prisma.insuranceClaim.upsert({
     where: {
       practiceId_claimNumber: { practiceId, claimNumber: row.claimNumber },
     },
@@ -62,14 +94,19 @@ async function upsertInsuranceClaim(
     },
   });
 
-  return 'imported';
+  return {
+    outcome: 'imported',
+    claimId: upserted.id,
+    previousOutstanding,
+    newOutstanding: row.outstandingAmount,
+  };
 }
 
 export async function importPmsClaimsToPrisma(
   prisma: PrismaClient,
   rows: Record<string, unknown>[],
   practiceId: string,
-  pmsSource: 'dentrix' | 'abeldent',
+  importFamily: PmsImportFamily,
 ): Promise<PrismaImportResult> {
   const result: PrismaImportResult = {
     imported: 0,
@@ -77,18 +114,64 @@ export async function importPmsClaimsToPrisma(
     failed: 0,
     errors: [],
     importedBalanceTotal: 0,
+    paymentsVerified: 0,
+    dollarsRecoveredSyncVerified: 0,
   };
+
+  const { runPaymentVerificationBatch } = await import('../recovery/paymentVerification.js');
+  const { buildPmsT11DenialSignal, linkRecoveryActionToCdcpCase } = await import(
+    '../recovery/cdcpRecoveryBridge.js'
+  );
+  const { upsertReconsiderationFromSignal } = await import(
+    '../canadianExpansion/autoReconsideration.js'
+  );
+  const syncUpdates: Array<{
+    claimId: string;
+    previousOutstanding: number;
+    newOutstanding: number;
+  }> = [];
 
   for (const raw of rows) {
     try {
-      const row = normalizePmsClaimRow(raw, pmsSource);
+      const row = normalizePmsClaimRow(raw, importFamily);
       const carrierId = mapToCarrierId(row.carrierName);
       const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId);
-      if (outcome === 'skipped') {
+      if (outcome.outcome === 'skipped') {
         result.skipped += 1;
       } else {
         result.imported += 1;
         result.importedBalanceTotal += row.outstandingAmount;
+        syncUpdates.push({
+          claimId: outcome.claimId,
+          previousOutstanding: outcome.previousOutstanding,
+          newOutstanding: outcome.newOutstanding,
+        });
+
+        const isT11 =
+          row.transactionType?.toUpperCase() === 'T11' ||
+          Boolean(row.denialReasonCode?.trim());
+        const isCdcpCarrier =
+          row.carrierName.toLowerCase().includes('cdcp') ||
+          row.carrierName.toLowerCase().includes('canadian dental care');
+        if (isT11 && isCdcpCarrier) {
+          try {
+            const patientToken = patientTokenForRow(practiceId, row);
+            const signal = buildPmsT11DenialSignal({
+              practiceId,
+              patientToken,
+              claimRef: row.claimNumber,
+              procedureCode: row.procedureCode || null,
+              reasonCode: row.denialReasonCode,
+            });
+            const cdcp = await upsertReconsiderationFromSignal(prisma, signal);
+            await linkRecoveryActionToCdcpCase(prisma, outcome.claimId, cdcp.id);
+          } catch (cdcpErr) {
+            result.errors.push({
+              claimNumber: row.claimNumber,
+              error: `CDCP auto-post: ${(cdcpErr as Error).message}`,
+            });
+          }
+        }
       }
     } catch (err) {
       result.failed += 1;
@@ -98,6 +181,11 @@ export async function importPmsClaimsToPrisma(
       });
     }
   }
+
+  const verified = await runPaymentVerificationBatch(prisma, practiceId, syncUpdates);
+  result.paymentsVerified = verified.filter((v) => v.verified).length;
+  result.dollarsRecoveredSyncVerified =
+    verified.reduce((s, v) => s + v.amountRecoveredCents, 0) / 100;
 
   return result;
 }

@@ -37,6 +37,7 @@ model Practice {
   ruleSets              RuleSet[]
   eligibilitySnapshots  EligibilitySnapshot[]
   users                 User[]
+  plan                  Plan?
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -398,6 +399,37 @@ enum ClaimPriority {
   @@map("claim_priority")
 }
 
+/// How the platform routes a claim after a call outcome or sync event.
+enum RecoveryRoute {
+  CALL_CARRIER
+  WAIT_SYNC
+  OPEN_CDCP
+  PRACTICE_GATE
+  STOP
+
+  @@map("recovery_route")
+}
+
+enum RecoveryActionType {
+  PROCESSING_RECALL
+  PAYMENT_TRACE
+  PAYMENT_VERIFY_SYNC
+  PRACTICE_RESUBMIT
+  PRACTICE_DOCS
+  CDCP_RECONSIDERATION
+  HUMAN_ESCALATION
+
+  @@map("recovery_action_type")
+}
+
+enum RecoveryActionStatus {
+  OPEN
+  BLOCKING
+  CLEARED
+
+  @@map("recovery_action_status")
+}
+
 enum CallOutcome {
   RESOLVED
   PENDING
@@ -441,17 +473,69 @@ model InsuranceClaim {
   servicedAt        DateTime?     @map("serviced_at")
   status            ClaimStatus   @default(PENDING)
   priority          ClaimPriority @default(NORMAL)
+  /// Active recovery routing — set by claim router after calls/sync.
+  recoveryRoute     RecoveryRoute? @map("recovery_route")
+  /// When carrier confirmed payment but PMS sync has not yet verified balance drop.
+  paymentExpectedBy DateTime?     @map("payment_expected_by")
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
-  callAttempts CallAttempt[]
-  queueEntry   CallQueue?
+  callAttempts     CallAttempt[]
+  queueEntry       CallQueue?
+  recoveryActions  ClaimRecoveryAction[]
+  recoveryEvents   ClaimRecoveryEvent[]
 
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
   @@index([practiceId, status])
   @@index([carrierId, daysOutstanding])
   @@map("insurance_claims")
+}
+
+/// Open recovery work item — gates re-calls until cleared (resubmit, docs, etc.).
+model ClaimRecoveryAction {
+  id                String               @id @default(uuid())
+  practiceId        String               @map("practice_id")
+  claimId           String               @map("claim_id")
+  actionType        RecoveryActionType   @map("action_type")
+  status            RecoveryActionStatus @default(BLOCKING)
+  route             RecoveryRoute
+  title             String
+  detail            String?
+  scheduledRecallAt DateTime?            @map("scheduled_recall_at")
+  callAttemptId     String?              @map("call_attempt_id")
+  cdcpCaseId        String?              @map("cdcp_case_id")
+  metadata          Json?
+  clearedAt         DateTime?            @map("cleared_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  cdcpCase CdcpReconsiderationCase? @relation(fields: [cdcpCaseId], references: [id], onDelete: SetNull)
+
+  @@index([claimId, status])
+  @@index([practiceId, status])
+  @@index([actionType, status, scheduledRecallAt])
+  @@map("claim_recovery_actions")
+}
+
+/// Audit trail for sync-verified recovery and routing decisions.
+model ClaimRecoveryEvent {
+  id                   String   @id @default(uuid())
+  practiceId           String   @map("practice_id")
+  claimId              String   @map("claim_id")
+  eventType            String   @map("event_type")
+  amountRecoveredCents Int?     @map("amount_recovered_cents")
+  previousOutstanding  Decimal? @map("previous_outstanding") @db.Decimal(10, 2)
+  newOutstanding       Decimal? @map("new_outstanding") @db.Decimal(10, 2)
+  metadata             Json?
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  claim InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([claimId, createdAt(sort: Desc)])
+  @@map("claim_recovery_events")
 }
 
 /// One row per Vapi call attempt. vapiCallId is unique — used for idempotency.
@@ -468,6 +552,13 @@ model CallAttempt {
   repName              String?     @map("rep_name")
   referenceNumber      String?     @map("reference_number")
   transcriptUrl        String?     @map("transcript_url")
+  /// ISO timestamp set once the 8-dimension automated evaluation has been written.
+  /// Null means the call has not yet been evaluated. Used by the zero-retention
+  /// audio deletion gate (pii-vault.ts) and the eval-scores analytics endpoint.
+  evalCompletedAt      DateTime?   @map("eval_completed_at")
+  /// JSON-serialised DimensionScore[] from automated-eval.ts.
+  /// Null until evalCompletedAt is set. No PHI — scores and rationale only.
+  evalScores           String?     @map("eval_scores")
   /// True if this call triggered the CARRIER_BLOCK protocol.
   carrierBlockDetected Boolean     @default(false) @map("carrier_block_detected")
   /// Live console state while call is in progress (cleared on completion).
@@ -927,8 +1018,12 @@ model CdcpReconsiderationCase {
   exclusionReason           String?  @map("exclusionReason")
   clinicalEvidenceSummary   String?  @map("clinicalEvidenceSummary")
   originalAdjudicatorHint   String?  @map("originalAdjudicatorHint")
+  /// Submission details: assignedAdjudicatorId, confirmationNumber, submissionMethod, submittedAt, notes
+  metadata                  Json?
   createdAt                 DateTime @default(now()) @map("createdAt")
   updatedAt                 DateTime @updatedAt @map("updatedAt")
+
+  recoveryActions           ClaimRecoveryAction[]
 
   @@unique([practiceId, claimRef])
   @@index([practiceId, denialDate])
@@ -952,3 +1047,74 @@ model FeeGuideEntry {
   @@map("FeeGuideEntry")
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan / monetization layer  (collectrx-tiering-strategy.md §7 — P0)
+//
+// One Plan row per Practice. Tracks tier, trial state, and cumulative usage
+// counters (resolved status calls, resolved claims, recovered cents). The
+// queue dispatcher consults planService.canMakeCall(practiceId) before every
+// dispatch; the outcome processor calls usageService.recordOutcome on every
+// terminal, value-bearing call. UsageEvent.vapiCallId is UNIQUE — it is the
+// idempotency key for webhook redelivery.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PlanTier {
+  basic
+  professional
+  enterprise
+}
+
+enum PlanStatus {
+  trial
+  active
+  past_due
+  canceled
+}
+
+enum UsageEventType {
+  resolved_status_call
+  resolved_claim
+  recovered_dollars
+}
+
+model Plan {
+  practiceId          String     @id @map("practice_id")
+  tier                PlanTier   @default(professional)
+  status              PlanStatus @default(trial)
+  /// Trial is outcome-gated (strategy doc §3.1): full Pro feature set until
+  /// trialRecoveredCents reaches trialThresholdCents (default $2,500 = 250000).
+  trialRecoveredCents BigInt     @default(0)      @map("trial_recovered_cents")
+  trialThresholdCents BigInt     @default(250000) @map("trial_threshold_cents")
+  trialStartedAt      DateTime   @default(now())  @map("trial_started_at")
+  trialConvertedAt    DateTime?                   @map("trial_converted_at")
+  /// Billing-cycle counters — reset by usageService.startNewCycle().
+  cycleStartedAt      DateTime   @default(now())  @map("cycle_started_at")
+  statusCallsUsed     Int        @default(0)      @map("status_calls_used")
+  resolvedClaimsUsed  Int        @default(0)      @map("resolved_claims_used")
+  /// Lifetime recovered total (cents). Survives cycle resets; used for Enterprise %-of-recovery.
+  recoveredCentsTotal BigInt     @default(0)      @map("recovered_cents_total")
+  createdAt           DateTime   @default(now())  @map("created_at")
+  updatedAt           DateTime   @updatedAt       @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id])
+
+  @@map("plans")
+}
+
+/// One row per value-bearing terminal outcome. vapiCallId UNIQUE prevents
+/// double-counting on webhook redelivery.
+model UsageEvent {
+  id           String         @id @default(uuid())
+  practiceId   String         @map("practice_id")
+  claimId      String?        @map("claim_id")
+  vapiCallId   String?        @unique @map("vapi_call_id")
+  eventType    UsageEventType @map("event_type")
+  amountCents  BigInt         @default(0) @map("amount_cents")
+  occurredAt   DateTime       @default(now()) @map("occurred_at")
+  metadata     Json?
+
+  @@index([practiceId, occurredAt(sort: Desc)])
+  @@index([eventType])
+  @@map("usage_events")
+}

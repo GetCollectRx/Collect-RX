@@ -115,7 +115,7 @@ export default function PatientAR() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Patient AR</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Post-insurance balances — synced from Abeldent</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Post-insurance balances — synced from your practice management system</p>
         </div>
         <Button variant="secondary" size="sm" onClick={load} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -174,7 +174,7 @@ export default function PatientAR() {
             </Thead>
             <Tbody>
               {balances.length === 0 ? (
-                <TableEmpty message="No patient balances found. Balances sync automatically from Abeldent." colSpan={10} />
+                <TableEmpty message="No patient balances found. Balances sync from your PMS export or connector." colSpan={10} />
               ) : (
                 balances.map(b => {
                   const fullName   = `${b.patientFirstName} ${b.patientLastName}`

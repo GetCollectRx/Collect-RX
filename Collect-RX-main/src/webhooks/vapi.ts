@@ -22,6 +22,11 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
+import {
+  hashWebhookBody,
+  isWebhookDuplicate,
+  markWebhookProcessed,
+} from '../server/vapi/vapiWebhook.js';
 
 const router = Router();
 
@@ -74,6 +79,11 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
+  const bodyHash = hashWebhookBody(rawBody);
+  if (await isWebhookDuplicate(prisma, bodyHash)) {
+    return res.status(200).json({ received: true, duplicate: true });
+  }
+
   // ── 2. Parse payload ─────────────────────────────────────────────────────
   let payload: VapiWebhookPayload;
   try {
@@ -86,7 +96,8 @@ router.post('/', async (req: Request, res: Response) => {
   res.status(200).json({ received: true });
 
   try {
-    await processVapiDeskWebhook(prisma, payload);
+    await processVapiDeskWebhook(prisma, payload, { rawBody });
+    await markWebhookProcessed(prisma, bodyHash);
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);
   }

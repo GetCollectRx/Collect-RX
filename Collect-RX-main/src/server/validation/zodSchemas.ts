@@ -60,6 +60,9 @@ export const pmsImportBodySchema = z
   .object({
     records: z.array(z.record(z.string(), z.unknown())).optional(),
     sourceBalanceTotal: z.coerce.number().finite().optional(),
+    pmsVendor: z.string().trim().optional(),
+    /** @deprecated Use pmsVendor */
+    pmsSource: z.string().trim().optional(),
   })
   .passthrough();
 

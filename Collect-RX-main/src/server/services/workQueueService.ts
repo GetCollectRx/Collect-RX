@@ -200,6 +200,74 @@ export interface WorkQueueFilters {
   aging?: '30' | '60' | '90' | '120+';
   assignedRep?: string;
   status?: string;
+  gatesDueToday?: boolean;
+}
+
+export interface WorkItemRecoveryFields {
+  recoveryRoute: string | null;
+  blockingGateTitle: string | null;
+  gateDueToday: boolean;
+}
+
+async function enrichWorkItemsWithRecovery(
+  prisma: PrismaClient,
+  items: Awaited<ReturnType<typeof prisma.workItem.findMany>>,
+): Promise<Array<(typeof items)[number] & WorkItemRecoveryFields>> {
+  const claimIds = items
+    .filter((i) => i.sourceType === 'insurance_claim')
+    .map((i) => i.sourceId);
+  if (claimIds.length === 0) {
+    return items.map((i) => ({
+      ...i,
+      recoveryRoute: null,
+      blockingGateTitle: null,
+      gateDueToday: false,
+    }));
+  }
+
+  const startOfUtcDay = new Date();
+  startOfUtcDay.setUTCHours(0, 0, 0, 0);
+  const endOfUtcDay = new Date(startOfUtcDay);
+  endOfUtcDay.setUTCDate(endOfUtcDay.getUTCDate() + 1);
+
+  const [claims, gates, traces] = await Promise.all([
+    prisma.insuranceClaim.findMany({
+      where: { id: { in: claimIds } },
+      select: { id: true, recoveryRoute: true },
+    }),
+    prisma.claimRecoveryAction.findMany({
+      where: { claimId: { in: claimIds }, status: 'BLOCKING', clearedAt: null },
+      select: { claimId: true, title: true, createdAt: true },
+    }),
+    prisma.claimRecoveryAction.findMany({
+      where: {
+        claimId: { in: claimIds },
+        actionType: 'PAYMENT_VERIFY_SYNC',
+        status: 'OPEN',
+        clearedAt: null,
+        scheduledRecallAt: { lte: endOfUtcDay },
+      },
+      select: { claimId: true, scheduledRecallAt: true },
+    }),
+  ]);
+
+  const routeByClaim = new Map(claims.map((c) => [c.id, c.recoveryRoute]));
+  const gateByClaim = new Map(gates.map((g) => [g.claimId, g]));
+  const traceDueClaimIds = new Set(traces.map((t) => t.claimId));
+
+  return items.map((item) => {
+    if (item.sourceType !== 'insurance_claim') {
+      return { ...item, recoveryRoute: null, blockingGateTitle: null, gateDueToday: false };
+    }
+    const gate = gateByClaim.get(item.sourceId);
+    const gateDueToday = Boolean(gate) || traceDueClaimIds.has(item.sourceId);
+    return {
+      ...item,
+      recoveryRoute: routeByClaim.get(item.sourceId) ?? null,
+      blockingGateTitle: gate?.title ?? null,
+      gateDueToday,
+    };
+  });
 }
 
 export async function listWorkItems(
@@ -228,15 +296,25 @@ export async function listWorkItems(
   }
 
   const skip = (page - 1) * limit;
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     prisma.workItem.findMany({
       where,
       orderBy: [{ rankScore: 'desc' }, { dollarsAtRisk: 'desc' }],
-      skip,
-      take: limit,
+      skip: 0,
+      take: Math.min(500, skip + limit + 50),
     }),
     prisma.workItem.count({ where }),
   ]);
 
-  return { items, total, page, limit, pages: Math.ceil(total / limit) };
+  let enriched = await enrichWorkItemsWithRecovery(prisma, rawItems);
+  if (filters.gatesDueToday) {
+    enriched = enriched.filter((i) => i.gateDueToday);
+  }
+  enriched.sort((a, b) => {
+    if (a.gateDueToday !== b.gateDueToday) return a.gateDueToday ? -1 : 1;
+    return b.rankScore - a.rankScore;
+  });
+  const items = enriched.slice(skip, skip + limit);
+
+  return { items, total: filters.gatesDueToday ? enriched.length : total, page, limit, pages: Math.ceil((filters.gatesDueToday ? enriched.length : total) / limit) };
 }
