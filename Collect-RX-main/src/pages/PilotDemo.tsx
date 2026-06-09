@@ -107,33 +107,33 @@ function ActOldWay({ onNext }: { onNext: () => void }) {
   }, [])
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 20px', maxWidth: 600, margin: '0 auto', width: '100%' }}>
-      <div style={{ marginBottom: 20, flexShrink: 0 }}>
-        <p style={{ color: '#ef4444', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>The old way</p>
-        <h2 style={{ fontSize: 'clamp(18px, 3vw, 26px)', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.5px' }}>Sarah's Monday morning</h2>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 20px', maxWidth: 600, margin: '0 auto', width: '100%', minHeight: 0 }}>
+      <div style={{ marginBottom: 14, flexShrink: 0 }}>
+        <p style={{ color: '#ef4444', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>The old way</p>
+        <h2 style={{ fontSize: 'clamp(16px, 2.5vw, 22px)', fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.5px' }}>Sarah's Monday morning</h2>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'hidden', justifyContent: 'flex-start' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', minHeight: 0 }}>
         {OLD_WAY_EVENTS.map((e, i) => (
           <div key={i} style={{
             opacity: i < visible ? 1 : 0, transform: i < visible ? 'none' : 'translateX(-12px)',
             transition: 'opacity 0.4s ease, transform 0.4s ease',
             background: e.kind === 'loss' ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)',
             border: `1px solid ${e.kind === 'loss' ? 'rgba(239,68,68,0.25)' : e.kind === 'bad' ? '#1e2a3a' : '#1e2a3a'}`,
-            borderRadius: 10, padding: '12px 14px',
+            borderRadius: 9, padding: '9px 12px',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 16 }}>{e.icon}</span>
-              <span style={{ color: '#64748b', fontSize: 11, fontFamily: 'monospace', minWidth: 72 }}>{e.time}</span>
-              <span style={{ color: '#94a3b8', fontSize: 13, flex: 1 }}>{e.text}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>{e.icon}</span>
+              <span style={{ color: '#64748b', fontSize: 10, fontFamily: 'monospace', minWidth: 64 }}>{e.time}</span>
+              <span style={{ color: '#94a3b8', fontSize: 12, flex: 1 }}>{e.text}</span>
             </div>
             {e.hold && (
-              <div style={{ marginTop: 6, marginLeft: 36, color: '#475569', fontSize: 12 }}>⏱ {e.hold}</div>
+              <div style={{ marginTop: 4, marginLeft: 30, color: '#475569', fontSize: 11 }}>⏱ {e.hold}</div>
             )}
             {e.detail && (
-              <div style={{ marginTop: 4, marginLeft: 36, color: '#64748b', fontSize: 12 }}>{e.detail}</div>
+              <div style={{ marginTop: 3, marginLeft: 30, color: '#64748b', fontSize: 11 }}>{e.detail}</div>
             )}
-            <div style={{ marginTop: 6, marginLeft: 36, color: e.kind === 'loss' ? '#f87171' : e.kind === 'bad' ? '#64748b' : '#64748b', fontSize: 12, fontWeight: e.kind === 'loss' ? 700 : 400 }}>
+            <div style={{ marginTop: 4, marginLeft: 30, color: e.kind === 'loss' ? '#f87171' : '#64748b', fontSize: 11, fontWeight: e.kind === 'loss' ? 700 : 400 }}>
               → {e.outcome}
             </div>
           </div>
@@ -222,7 +222,7 @@ function ActPipeline({ onNext }: { onNext: () => void }) {
   }, [])
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 20px', maxWidth: 640, margin: '0 auto', width: '100%' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', maxWidth: 640, margin: '0 auto', width: '100%', minHeight: 0 }}>
 
       {/* Claim card */}
       <div style={{
@@ -252,7 +252,7 @@ function ActPipeline({ onNext }: { onNext: () => void }) {
       </div>
 
       {/* Agent pipeline */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflowY: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {PIPELINE_STEPS.map((agent, ai) => {
           const isActive = agentIdx === ai
           const isDone = agentIdx > ai || resolved
@@ -341,8 +341,8 @@ function ActScale({ onNext }: { onNext: () => void }) {
   const display = useCountUp(totalRecovered, true)
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 20px', maxWidth: 640, margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', maxWidth: 640, margin: '0 auto', width: '100%', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
         <div>
           <p style={{ color: '#22c55e', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Simultaneously</p>
           <h3 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 16 }}>9 other calls running in parallel</h3>
@@ -353,7 +353,7 @@ function ActScale({ onNext }: { onNext: () => void }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', minHeight: 0 }}>
         {SCALE_CALLS.map((c, i) => (
           <div key={i} style={{
             opacity: i < visible ? 1 : 0, transform: i < visible ? 'none' : 'translateX(12px)',
@@ -428,13 +428,13 @@ function ActSummary() {
   ]
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 20px', maxWidth: 640, margin: '0 auto', width: '100%' }}>
-      <div style={{ marginBottom: 20, flexShrink: 0, opacity: step >= 1 ? 1 : 0, transition: 'opacity 0.5s ease' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', maxWidth: 640, margin: '0 auto', width: '100%', minHeight: 0 }}>
+      <div style={{ marginBottom: 14, flexShrink: 0, opacity: step >= 1 ? 1 : 0, transition: 'opacity 0.5s ease' }}>
         <p style={{ color: '#475569', fontSize: 13, marginBottom: 4 }}>5:00 PM · Your day.</p>
         <p style={{ color: '#64748b', fontSize: 12 }}>While you saw 34 patients. <span style={{ color: '#22c55e' }}>Staff calls to carriers: 0.</span></p>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', minHeight: 0 }}>
         {VALUE_ROWS.map((row, i) => (
           <div key={i} style={{
             opacity: step >= i + 2 ? 1 : 0, transform: step >= i + 2 ? 'none' : 'translateY(10px)',
@@ -571,7 +571,7 @@ export default function PilotDemo() {
       {act === 'scale'    && <ActScale    onNext={() => setAct('summary')} />}
       {act === 'summary'  && <ActSummary />}
 
-      <style>{`* { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+      <style>{`* { box-sizing: border-box; margin: 0; padding: 0; } ::-webkit-scrollbar { width: 0; height: 0; }`}</style>
     </div>
   )
 }
