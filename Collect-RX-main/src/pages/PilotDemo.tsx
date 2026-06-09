@@ -72,21 +72,22 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 
 // ─── Acts ─────────────────────────────────────────────────────────────────────
 
-type Act = 'idle' | 'problem' | 'oldway' | 'pipeline' | 'scale' | 'summary'
+type Act = 'idle' | 'problem' | 'oldway' | 'pipeline' | 'scale' | 'summary' | 'close'
 
-const ACTS: Act[] = ['problem', 'oldway', 'pipeline', 'scale', 'summary']
+const ACTS: Act[] = ['problem', 'oldway', 'pipeline', 'scale', 'summary', 'close']
 const ACT_LABELS: Record<Act, string> = {
   idle: '', problem: 'The situation', oldway: 'Without CollectRx',
   pipeline: 'How it works', scale: 'At scale', summary: 'Your outcome',
+  close: 'The ask',
 }
 
-// Duration (ms) before auto-advancing to next act
 const ACT_DURATION: Partial<Record<Act, number>> = {
   problem:  8500,
   oldway:   14500,
   pipeline: 15500,
   scale:    11500,
-  // summary stays
+  summary:  11000,
+  // close stays
 }
 
 // ─── Progress bar (CSS animation) ────────────────────────────────────────────
@@ -402,16 +403,24 @@ function ActScale({ onComplete, paused }: { onComplete: () => void; paused: bool
 const VALUE_ROWS = [
   { icon: 'dollar' as IconName, headline: '$18,580 recovered',               detail: "10 claims resolved. Money already earned — sitting at the carrier until today.", color: '#fff', bg: B.green    },
   { icon: 'clock'  as IconName, headline: '3.5 hours back to Sarah',         detail: 'She checked in 34 patients, scheduled 12 follow-ups, quoted 8 treatment plans.', color: '#fff', bg: '#92400E' },
-  { icon: 'shield' as IconName, headline: '$5,400 saved from expiry',        detail: '2 claims within 3 weeks of their appeal deadline. Both caught and resolved.',    color: '#fff', bg: '#5B21B6' },
-  { icon: 'eye'    as IconName, headline: '58 claims — nothing in the dark', detail: "Every claim tracked, every status known. No longer relying on memory.",          color: '#fff', bg: '#0369A1' },
+  { icon: 'shield' as IconName, headline: '$5,400 saved from expiry',        detail: '2 claims within 3 weeks of appeal deadline. Both caught and resolved.',          color: '#fff', bg: '#5B21B6' },
+  { icon: 'eye'    as IconName, headline: '58 claims — nothing in the dark', detail: "Every claim tracked, every status known. No longer relying on memory.",           color: '#fff', bg: '#0369A1' },
 ]
 
-function ActSummary() {
+function ActSummary({ onComplete, paused }: { onComplete: () => void; paused: boolean }) {
   const [step, setStep] = useState(0)
+  const fired = useRef(false)
+
   useEffect(() => {
-    const t = [300, 750, 1200, 1650, 2500].map((ms, i) => setTimeout(() => setStep(i + 1), ms))
+    const t = [300, 750, 1200, 1650, 2800].map((ms, i) => setTimeout(() => setStep(i + 1), ms))
     return () => t.forEach(clearTimeout)
   }, [])
+
+  useEffect(() => {
+    if (paused || fired.current) return
+    const t = setTimeout(() => { fired.current = true; onComplete() }, 10500)
+    return () => clearTimeout(t)
+  }, [paused, onComplete])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 20px', maxWidth: 600, margin: '0 auto', width: '100%', minHeight: 0 }}>
@@ -438,16 +447,106 @@ function ActSummary() {
           </div>
         ))}
       </div>
-      {step >= 5 && (
-        <Card style={{ marginTop: 12, padding: '16px 18px', flexShrink: 0, background: B.greenLt, border: `1px solid ${B.green}33` }}>
-          <p style={{ color: B.text, fontWeight: 700, fontSize: 15, marginBottom: 5 }}>This is every business day.</p>
-          <p style={{ color: B.textMd, fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
-            Connect your Abeldent database — one afternoon of setup — and we start calling tomorrow morning.
-          </p>
-          <a href="mailto:khalidegeh97@gmail.com?subject=CollectRx pilot setup" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: B.green, color: '#fff', padding: '10px 24px', borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
-            Let's get started <Icon name="arrow-right" size={14} color="#fff" />
-          </a>
+    </div>
+  )
+}
+
+// ─── Act 6: The Close ─────────────────────────────────────────────────────────
+
+function ActClose() {
+  const [step, setStep] = useState(0)
+
+  useEffect(() => {
+    const t = [300, 800, 1400, 2100].map((ms, i) => setTimeout(() => setStep(i + 1), ms))
+    return () => t.forEach(clearTimeout)
+  }, [])
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 20px', maxWidth: 640, margin: '0 auto', width: '100%', minHeight: 0, overflowY: 'auto' }}>
+
+      {/* Headline */}
+      <div style={{ marginBottom: 18, flexShrink: 0, opacity: step >= 1 ? 1 : 0, transform: step >= 1 ? 'none' : 'translateY(8px)', transition: 'all 0.5s ease' }}>
+        <p style={{ color: B.green, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>You're the founding practice</p>
+        <h2 style={{ fontSize: 'clamp(18px, 3vw, 26px)', fontWeight: 800, color: B.text, letterSpacing: '-0.5px', lineHeight: 1.2 }}>
+          Here's what we're proposing.
+        </h2>
+      </div>
+
+      {/* Deal terms — two columns */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14, flexShrink: 0, opacity: step >= 2 ? 1 : 0, transform: step >= 2 ? 'none' : 'translateY(8px)', transition: 'all 0.5s ease' }}>
+        <Card style={{ padding: '16px 18px', background: B.greenLt, border: `1px solid ${B.green}30` }}>
+          <p style={{ color: B.green, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>What you get</p>
+          {[
+            { icon: 'phone'  as IconName, text: 'Full carrier automation — all 6 Canadian carriers, every business day' },
+            { icon: 'eye'    as IconName, text: 'Live dashboard — every claim, every status, every morning' },
+            { icon: 'shield' as IconName, text: 'Direct line to the founder throughout the pilot' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: i < 2 ? 10 : 0 }}>
+              <div style={{ background: B.green, borderRadius: 6, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                <Icon name={item.icon} size={12} color="#fff" />
+              </div>
+              <span style={{ color: B.textMd, fontSize: 12, lineHeight: 1.5 }}>{item.text}</span>
+            </div>
+          ))}
         </Card>
+
+        <Card style={{ padding: '16px 18px' }}>
+          <p style={{ color: B.textMuted, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>What it takes</p>
+          {[
+            { icon: 'clock'       as IconName, text: 'One afternoon to connect Abeldent — we do it together', accent: false },
+            { icon: 'refresh'     as IconName, text: '30 days to see real results in your AR', accent: false },
+            { icon: 'check-circle'as IconName, text: 'Zero cost during the pilot', accent: true },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: i < 2 ? 10 : 0 }}>
+              <div style={{ background: item.accent ? B.greenLt : B.bg, border: `1px solid ${item.accent ? B.green + '44' : B.border}`, borderRadius: 6, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                <Icon name={item.icon} size={12} color={item.accent ? B.green : B.textMuted} />
+              </div>
+              <span style={{ color: B.textMd, fontSize: 12, lineHeight: 1.5 }}>{item.text}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {/* Urgency bar */}
+      <div style={{ flexShrink: 0, marginBottom: 14, opacity: step >= 3 ? 1 : 0, transform: step >= 3 ? 'none' : 'translateY(8px)', transition: 'all 0.5s ease' }}>
+        <div style={{ background: B.redLt, border: `1px solid ${B.red}33`, borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flexShrink: 0, marginTop: 1 }}><Icon name="warning" size={16} color={B.red} strokeWidth={2} /></div>
+          <div>
+            <p style={{ color: B.red, fontWeight: 700, fontSize: 13, marginBottom: 3 }}>Your 84-day Sun Life claim has 6 days before the 90-day soft deadline.</p>
+            <p style={{ color: B.textMuted, fontSize: 12 }}>After 90 days, carrier recovery rates drop significantly. That's $2,340 at risk right now — and it's one of three claims in this window.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* The ask */}
+      {step >= 4 && (
+        <div style={{ flexShrink: 0, animation: 'fadeUp 0.5s ease' }}>
+          <div style={{ background: B.greenDk, borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>The ask</p>
+            <p style={{ color: '#fff', fontWeight: 800, fontSize: 'clamp(16px, 2.5vw, 22px)', letterSpacing: '-0.5px', lineHeight: 1.3, marginBottom: 8 }}>
+              One afternoon to connect Abeldent.<br />Calls start the next business morning.
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 20 }}>
+              At today's pace: $18,580 in one morning. Five mornings a week.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a
+                href="https://calendly.com/collectrx/pilot-setup"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: B.greenDk, padding: '12px 28px', borderRadius: 9, fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
+              >
+                Book your setup call <Icon name="arrow-right" size={15} color={B.greenDk} />
+              </a>
+              <a
+                href="tel:+1-your-number"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '12px 24px', borderRadius: 9, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}
+              >
+                <Icon name="phone" size={13} color="#fff" /> Call Khalid
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -537,7 +636,8 @@ export default function PilotDemo() {
       {act === 'oldway'   && <ActOldWay   onComplete={advance} paused={paused} />}
       {act === 'pipeline' && <ActPipeline onComplete={advance} paused={paused} />}
       {act === 'scale'    && <ActScale    onComplete={advance} paused={paused} />}
-      {act === 'summary'  && <ActSummary />}
+      {act === 'summary'  && <ActSummary  onComplete={advance} paused={paused} />}
+      {act === 'close'    && <ActClose />}
 
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
