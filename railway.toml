@@ -3,7 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-releaseCommand = "cd Collect-RX-main && npx prisma migrate deploy"
+releaseCommand = "npx prisma migrate deploy"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"

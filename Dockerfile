@@ -6,23 +6,19 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Workspace: root package.json declares Collect-RX-main as the only workspace.
-# We copy both manifests + the prisma schema first so Docker layer caching works.
-COPY package.json package-lock.json ./
-COPY Collect-RX-main/package.json ./Collect-RX-main/
-COPY Collect-RX-main/prisma ./Collect-RX-main/prisma/
+# Copy only the inner app manifests — avoids workspace root lock file entirely
+# and busts any cached layers from previous workspace-based builds.
+COPY Collect-RX-main/package.json Collect-RX-main/package-lock.json ./
+COPY Collect-RX-main/prisma ./prisma/
 
-# Install all workspace deps.
-# Using npm install (not ci) because the lock file is generated with npm 11
-# locally while Railway runs npm 10 — the strict sync check in npm ci fails
-# across major npm versions. npm install resolves the workspace correctly.
+# npm install (not ci) — inner lock file was generated with a different npm
+# version than Railway's; npm install resolves without the strict sync check.
 RUN npm install --ignore-scripts --include=dev
 
-# Generate the Prisma client inside the workspace package.
-WORKDIR /app/Collect-RX-main
+# Prisma client generation must happen after install.
 RUN npx prisma generate
 
-# Bring in the rest of the app source.
+# Copy the full app source on top of the installed node_modules.
 COPY Collect-RX-main/ ./
 
 RUN npm run build
