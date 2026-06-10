@@ -5,11 +5,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const planService = require('../../services/plans/planService.cjs') as any;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const usageService = require('../../services/plans/usageService.cjs') as any;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { getFeatures: featuresForTier } = require('../../services/plans/tierFeatures.cjs') as any;
 
 export type PlanGateReason =

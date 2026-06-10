@@ -39,8 +39,6 @@ async function sendSmsAlert(message: string): Promise<void> {
     return;
   }
 
-  // Dynamic require to avoid hard dep at boot if Twilio is not configured
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const twilio = require('twilio');
   const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 

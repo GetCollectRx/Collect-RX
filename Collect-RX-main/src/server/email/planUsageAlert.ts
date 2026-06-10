@@ -4,7 +4,6 @@
 
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
   sg.setApiKey(process.env.SENDGRID_API_KEY);
   return sg;
