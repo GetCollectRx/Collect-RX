@@ -74,8 +74,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       const durationMs = Date.now() - enterTime.current;
       analytics.track('page_exit', { path, durationMs, meta });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  }, [path, meta]);
 
   const track = useCallback(
     (eventType: EventType, overrides?: Partial<AnalyticsEvent>) => {
@@ -155,8 +154,7 @@ export function useFunnel(options: UseFunnelOptions): UseFunnelReturn {
   // Track entry to step 0 automatically
   useEffect(() => {
     advanceTo(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [advanceTo]);
 
   return { currentStep: currentStep.current, advanceTo, advance };
 }
