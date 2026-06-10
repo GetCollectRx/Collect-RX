@@ -359,8 +359,9 @@ export default function CanadianExpansion() {
           <div className="p-4 space-y-4">
             <div className="flex flex-wrap gap-3 items-end">
               <div className="min-w-[160px]">
-                <label className="block text-2xs font-semibold text-gray-500 uppercase mb-1">Province</label>
+                <label htmlFor="gap-province" className="block text-2xs font-semibold text-gray-500 uppercase mb-1">Province</label>
                 <select
+                  id="gap-province"
                   className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800"
                   value={gapProvince}
                   onChange={(e) => setGapProvince(e.target.value as 'ON' | 'BC' | 'AB')}
@@ -444,8 +445,9 @@ export default function CanadianExpansion() {
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 gap-2">
                 <div>
-                  <label className="text-2xs font-semibold text-gray-500 uppercase">Source agent</label>
+                  <label htmlFor="wb-source" className="text-2xs font-semibold text-gray-500 uppercase">Source agent</label>
                   <select
+                    id="wb-source"
                     className="mt-1 w-full text-sm border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     value={wbForm.source}
                     onChange={(e) =>
@@ -470,8 +472,9 @@ export default function CanadianExpansion() {
                   onChange={(e) => setWbForm((f) => ({ ...f, abeldentPatientId: e.target.value }))}
                 />
                 <div>
-                  <label className="text-2xs font-semibold text-gray-500 uppercase">Payload (JSON, non-PHI)</label>
+                  <label htmlFor="wb-payload" className="text-2xs font-semibold text-gray-500 uppercase">Payload (JSON, non-PHI)</label>
                   <textarea
+                    id="wb-payload"
                     className="mt-1 w-full text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 min-h-[88px]"
                     value={wbForm.payloadJson}
                     onChange={(e) => setWbForm((f) => ({ ...f, payloadJson: e.target.value }))}

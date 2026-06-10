@@ -962,10 +962,10 @@ export default function LandingPage() {
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </div>
             <div className="lp-nav-links">
-              <span className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</span>
-              <span className="lp-nav-link" onClick={() => scrollTo('features')}>Features</span>
-              <span className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</span>
-              <span className="lp-nav-link" onClick={() => scrollTo('compliance')}>Compliance</span>
+              <button type="button" className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</button>
+              <button type="button" className="lp-nav-link" onClick={() => scrollTo('features')}>Features</button>
+              <button type="button" className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</button>
+              <button type="button" className="lp-nav-link" onClick={() => scrollTo('compliance')}>Compliance</button>
             </div>
             <div className="lp-nav-right">
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
@@ -1090,7 +1090,8 @@ export default function LandingPage() {
             </div>
             <div className="lp-carrier-grid lp-reveal">
               {CARRIERS.map((c, i) => (
-                <div
+                <button
+                  type="button"
                   key={c.name}
                   className={`lp-carrier-card${i === active ? ' active' : ''}`}
                   onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
@@ -1102,7 +1103,7 @@ export default function LandingPage() {
                   <div className="lp-carrier-bar-track">
                     <div className="lp-carrier-bar-fill" style={{ width: `${(c.pct / 31) * 100}%` }} />
                   </div>
-                </div>
+                </button>
               ))}
             </div>
             <p className="lp-carriers-note lp-reveal">
@@ -1200,16 +1201,16 @@ export default function LandingPage() {
               <div className="lp-footer-cols">
                 <div className="lp-footer-col">
                   <h4>Platform</h4>
-                  <a onClick={() => scrollTo('how-it-works')}>How it Works</a>
-                  <a onClick={() => scrollTo('features')}>Features</a>
-                  <a onClick={() => scrollTo('carriers')}>Carriers</a>
-                  <a onClick={() => scrollTo('compliance')}>Compliance</a>
+                  <button type="button" onClick={() => scrollTo('how-it-works')}>How it Works</button>
+                  <button type="button" onClick={() => scrollTo('features')}>Features</button>
+                  <button type="button" onClick={() => scrollTo('carriers')}>Carriers</button>
+                  <button type="button" onClick={() => scrollTo('compliance')}>Compliance</button>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
                   <Link to="/login">Practice sign in</Link>
-                  <a onClick={() => scrollTo('cta')}>Request access</a>
-                  <a onClick={() => scrollTo('cta')}>Book a demo</a>
+                  <button type="button" onClick={() => scrollTo('cta')}>Request access</button>
+                  <button type="button" onClick={() => scrollTo('cta')}>Book a demo</button>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Legal</h4>
