@@ -230,7 +230,7 @@ function ActOldWay({ onComplete, paused }: { onComplete: () => void; paused: boo
 // ─── Act 3: The Pipeline ──────────────────────────────────────────────────────
 
 const PIPELINE_STEPS = [
-  { name: 'Phone Navigator',   role: 'Gets past the phone tree',    steps: ['Dialed Sun Life claims line', 'Navigated menus: Claims → Status → Dental', '4:12 on hold — no staff needed'],    duration: 3400 },
+  { name: 'Phone Navigator',   role: 'Gets past the phone tree',    steps: ['Dialed Sun Life claims line', 'Navigated menus: Claims → Status → Dental', '4:12 on hold, no staff needed'],    duration: 3400 },
   { name: 'Claims Specialist', role: 'Speaks with the carrier rep', steps: ['Jennifer M. answered', 'Stated claim #, patient details, procedure date', 'Asked for adjudication status'],      duration: 3400 },
   { name: 'Resolution Agent',  role: 'Records and confirms outcome',steps: ['Claim adjudicated in full', 'Payment $1,840 EFT by June 21', 'Reference SL-847291 confirmed'],                   duration: 2600 },
 ]
@@ -323,7 +323,7 @@ function ActPipeline({ onComplete, paused }: { onComplete: () => void; paused: b
 const SCALE_CALLS = [
   { carrier: 'Canada Life',      amount: 980,  kind: 'resolved',   time: '8:14 AM' },
   { carrier: 'Manulife',         amount: 1560, kind: 'resolved',   time: '8:52 AM' },
-  { carrier: 'Green Shield',     amount: 890,  kind: 'escalated',  time: '8:54 AM', note: 'x-rays required — flagged' },
+  { carrier: 'Green Shield',     amount: 890,  kind: 'escalated',  time: '8:54 AM', note: 'x-rays required, flagged' },
   { carrier: 'Sun Life',         amount: 2200, kind: 'resolved',   time: '9:27 AM' },
   { carrier: 'Canada Life',      amount: 1380, kind: 'resolved',   time: '9:41 AM' },
   { carrier: 'Manulife',         amount: 3180, kind: 'processing', time: '9:58 AM', note: 'follow-up in 7 days' },
@@ -401,10 +401,10 @@ function ActScale({ onComplete, paused }: { onComplete: () => void; paused: bool
 // ─── Act 5: Summary ───────────────────────────────────────────────────────────
 
 const VALUE_ROWS = [
-  { icon: 'dollar' as IconName, headline: '$18,580 recovered',               detail: "10 claims resolved. Money already earned — sitting at the carrier until today.", color: '#fff', bg: B.green    },
+  { icon: 'dollar' as IconName, headline: '$18,580 recovered',               detail: "10 claims resolved. Money already earned, sitting at the carrier until today.", color: '#fff', bg: B.green    },
   { icon: 'clock'  as IconName, headline: '3.5 hours back to Sarah',         detail: 'She checked in 34 patients, scheduled 12 follow-ups, quoted 8 treatment plans.', color: '#fff', bg: '#92400E' },
   { icon: 'shield' as IconName, headline: '$5,400 saved from expiry',        detail: '2 claims within 3 weeks of appeal deadline. Both caught and resolved.',          color: '#fff', bg: '#5B21B6' },
-  { icon: 'eye'    as IconName, headline: '58 claims — nothing in the dark', detail: "Every claim tracked, every status known. No longer relying on memory.",           color: '#fff', bg: '#0369A1' },
+  { icon: 'eye'    as IconName, headline: '58 claims, nothing in the dark', detail: "Every claim tracked, every status known. No longer relying on memory.",           color: '#fff', bg: '#0369A1' },
 ]
 
 function ActSummary({ onComplete, paused }: { onComplete: () => void; paused: boolean }) {
@@ -472,13 +472,13 @@ function ActClose() {
         </h2>
       </div>
 
-      {/* Deal terms — two columns */}
+      {/* Deal terms */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14, flexShrink: 0, opacity: step >= 2 ? 1 : 0, transform: step >= 2 ? 'none' : 'translateY(8px)', transition: 'all 0.5s ease' }}>
         <Card style={{ padding: '16px 18px', background: B.greenLt, border: `1px solid ${B.green}30` }}>
           <p style={{ color: B.green, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>What you get</p>
           {[
-            { icon: 'phone'  as IconName, text: 'Full carrier automation — all 6 Canadian carriers, every business day' },
-            { icon: 'eye'    as IconName, text: 'Live dashboard — every claim, every status, every morning' },
+            { icon: 'phone'  as IconName, text: 'Full carrier automation across all 6 Canadian carriers, every business day' },
+            { icon: 'eye'    as IconName, text: 'Live dashboard: every claim, every status, every morning' },
             { icon: 'shield' as IconName, text: 'Direct line to the founder throughout the pilot' },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: i < 2 ? 10 : 0 }}>
@@ -493,7 +493,7 @@ function ActClose() {
         <Card style={{ padding: '16px 18px' }}>
           <p style={{ color: B.textMuted, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>What it takes</p>
           {[
-            { icon: 'clock'       as IconName, text: 'One afternoon to connect Abeldent — we do it together', accent: false },
+            { icon: 'clock'       as IconName, text: 'One afternoon to connect Abeldent (we do it together)', accent: false },
             { icon: 'refresh'     as IconName, text: '30 days to see real results in your AR', accent: false },
             { icon: 'check-circle'as IconName, text: 'Zero cost during the pilot', accent: true },
           ].map((item, i) => (
@@ -513,7 +513,7 @@ function ActClose() {
           <div style={{ flexShrink: 0, marginTop: 1 }}><Icon name="warning" size={16} color={B.red} strokeWidth={2} /></div>
           <div>
             <p style={{ color: B.red, fontWeight: 700, fontSize: 13, marginBottom: 3 }}>Your 84-day Sun Life claim has 6 days before the 90-day soft deadline.</p>
-            <p style={{ color: B.textMuted, fontSize: 12 }}>After 90 days, carrier recovery rates drop significantly. That's $2,340 at risk right now — and it's one of three claims in this window.</p>
+            <p style={{ color: B.textMuted, fontSize: 12 }}>After 90 days, carrier recovery rates drop significantly. That's $2,340 at risk right now, and it is one of three claims in this window.</p>
           </div>
         </div>
       </div>
@@ -623,7 +623,7 @@ export default function PilotDemo() {
               Your AR is already earned.<br />You just haven't collected it yet.
             </h1>
             <p style={{ color: B.textMuted, fontSize: 14, maxWidth: 360, margin: '0 auto 28px', lineHeight: 1.65 }}>
-              A 60-second walkthrough of exactly how CollectRx fixes that — using your practice's numbers.
+              A 60-second walkthrough of exactly how CollectRx fixes that, using your practice's numbers.
             </p>
             <button onClick={() => setAct('problem')} style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}>
               Show me <Icon name="arrow-right" size={16} color="#fff" />
