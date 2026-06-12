@@ -69,6 +69,7 @@ jobs:
 
       - name: Upload test report (JUnit)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: vitest-junit
