@@ -55,3 +55,21 @@ Both `20260611120000_billing_minutes_metering` (Step 1, additive) and `202606111
 
 - 9 integration tests fail with `The column "billingTier" does not exist in the current database` (`tests/recovery.integration.test.ts`, `tests/frontDesk/ownerApiGate.test.ts`) — this is the *only* failure mode, pre-dates Step 2/3, and will clear once `20260611120000_billing_minutes_metering` is applied.
 - Apply both migrations in order (`npx prisma migrate deploy` or via `psql $DATABASE_URL`), in this sequence: `20260611120000_billing_minutes_metering` first, then `20260611150000_drop_legacy_plan_usage_event` once the new gate is confirmed working in production.
+
+## 2026-06-11 — Step 1 applied to Railway; Step 3 deliberately parked outside prisma/migrations/
+
+`20260611120000_billing_minutes_metering` (Step 1) has been applied to the live Railway DB via `npx prisma migrate deploy`. `npx prisma migrate status` now reports "Database schema is up to date!" and the previously-failing 9 tests pass (8 confirmed; the 9th, `platformDevAccess.test.ts`'s `phiAccess` test, has a pre-existing 5s-timeout flake under full-suite load — passes in isolation, unrelated to this change).
+
+**Step 3 (`20260611150000_drop_legacy_plan_usage_event`) was explicitly held** — confirmed by the user choosing "Hold Step 3 (Recommended)" when asked. Reason: there's no production-verification window in this session to confirm the new minutes-based gate is working before running an irreversible `DROP TABLE ... CASCADE`.
+
+**New discovery: `railway.json`'s `deploy.releaseCommand` is `npx prisma migrate deploy`.** This means Railway runs `prisma migrate deploy` automatically as part of every deploy release step. If the Step 3 migration folder were present in `prisma/migrations/` at deploy time, Railway would apply it automatically — with no separate confirmation — defeating the "hold Step 3" decision via a side channel. To prevent this, the migration folder was moved (not deleted) to `tasks/pending-migrations/20260611150000_drop_legacy_plan_usage_event/migration.sql`, where `prisma migrate deploy` cannot see it.
+
+**To run Step 3 later (after confirming the new minutes-based gate is healthy in production):**
+
+```bash
+git mv tasks/pending-migrations/20260611150000_drop_legacy_plan_usage_event prisma/migrations/20260611150000_drop_legacy_plan_usage_event
+npx prisma migrate status   # confirm it shows as the only pending migration
+npx prisma migrate deploy   # applies it directly, OR commit+push and let Railway's releaseCommand apply it on next deploy
+```
+
+Either way, treat this as a deliberate, separate action — not something to bundle into an unrelated push, given `DROP TABLE ... CASCADE` is irreversible.
