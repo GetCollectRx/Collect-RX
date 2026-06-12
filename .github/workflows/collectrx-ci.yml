@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Notify ops (CI failure)
-        if: failure() && secrets.OPS_ALERT_WEBHOOK_URL != ''
+        if: failure() && env.OPS_ALERT_WEBHOOK_URL != ''
         working-directory: Collect-RX-main
         env:
           OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
