@@ -93,3 +93,7 @@ Two issues from the GitHub "run failed" notification, both pre-existing (unrelat
    `migrations/rbac-users-schema.sql` left in place for history but is now superseded — don't run it again.
 
 3. **"CollectRx Electron installers" artifact-upload failures ("storage quota hit")**: deleted 22 old artifacts (~4.9GB, May 14-19 builds) via `gh api -X DELETE`. GitHub recalculates quota every 6-12hrs, so the very next run may still show this until that recalculation happens — not a failed fix, just a delay.
+
+**Result**: `CollectRx CI` is now fully green (run `27442727932`, commit `c793c54`) — both #1 and #2 confirmed fixed, this is the original "run failed" notification source.
+
+`CollectRx Electron installers` (run `27442218639`) still fails — but only at the final `Upload Windows/macOS artifact` steps with the same quota error; both build jobs succeed otherwise. Checked artifact storage across *all* repos on this account (Collect-RX, Click, Collectrx-releases, khalidegeh/khalidegeh): all report 0 artifacts / 0 bytes. So the quota figure GitHub is enforcing is stale — purely the 6-12hr recalculation lag (now >18hrs since deletion), nothing left to delete. Re-running this workflow once GitHub recalculates should succeed with no further changes needed. Did **not** make these uploads `continue-on-error` — unlike the JUnit report, the installer artifacts are this workflow's actual deliverable, so a failed upload should keep failing the run.
