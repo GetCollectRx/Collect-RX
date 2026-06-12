@@ -73,3 +73,23 @@ npx prisma migrate deploy   # applies it directly, OR commit+push and let Railwa
 ```
 
 Either way, treat this as a deliberate, separate action — not something to bundle into an unrelated push, given `DROP TABLE ... CASCADE` is irreversible.
+
+**Side note for whoever runs Step 3:** queried Railway directly — the `plans` table does not exist in this database at all (`relation "plans" does not exist`). The old `Plan`/`UsageEvent` models were apparently never migrated into this DB in the first place (likely created via `prisma db push` on a different environment, or never created here). So `20260611150000_drop_legacy_plan_usage_event`'s `DROP TABLE IF EXISTS "plans"` will be a no-op against Railway — low risk, but worth knowing going in.
+
+## 2026-06-12 — Fixed collectrx-ci.yml parse error + surfaced/fixed missing `User` table migration
+
+Two issues from the GitHub "run failed" notification, both pre-existing (unrelated to the billing cutover):
+
+1. **`.github/workflows/collectrx-ci.yml` failed instantly ("workflow file issue", 0 jobs) on every push since commit `3083243`** (Jun 10+). Root cause: the "Notify ops" step's `if:` condition referenced `secrets.OPS_ALERT_WEBHOOK_URL` directly — `secrets` is not a valid context inside `if:` expressions, which invalidates the *entire* workflow file. Fixed by checking `env.OPS_ALERT_WEBHOOK_URL` instead (the step already exposes the secret via `env:`). Commit `ebedaa8`, pushed and confirmed: CI now parses and runs real jobs.
+
+2. **Fixing #1 caused CI to run for the first time, which surfaced a second pre-existing bug**: 7 tests failed with `P2021 The table "public.User" does not exist in the current database` in CI's fresh `postgres:16-alpine` after `prisma migrate deploy`. Root cause: the `User` model + `PracticeRole` enum (added in commit `b64684e`, RBAC) were shipped via `migrations/rbac-users-schema.sql` — a manually-run-against-Railway SQL file (same pattern as `migrations/eligibility-schema.sql`), never captured as a Prisma migration. Railway's DB has these objects (someone ran the script by hand); a fresh DB (CI) does not.
+
+   Fixed by adding `prisma/migrations/20260523000000_rbac_users_schema/migration.sql` — same DDL as `migrations/rbac-users-schema.sql` but with idempotent guards (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DO $$ ... EXCEPTION WHEN duplicate_object` for the enum/trigger). Verified both paths directly against the Railway Postgres server before pushing:
+   - **Fresh DB** (`CREATE DATABASE ci_fresh_test` on the same server, ran all 27 migrations via `prisma migrate deploy`): `User` table created correctly, all migrations applied cleanly. Dropped afterward.
+   - **Railway prod DB**: ran `prisma migrate deploy` — migration applied as a true no-op (all objects already existed), `prisma migrate status` reports "up to date".
+
+   Timestamped `20260523000000` to reflect when the RBAC commit (`b64684e`, May 23) actually shipped, slotting it between `20260518000000_p6_learning_loop` and `20260524120000_front_desk_console` (neither of which reference `User`/`PracticeRole`, so ordering doesn't affect correctness — chosen for historical accuracy).
+
+   `migrations/rbac-users-schema.sql` left in place for history but is now superseded — don't run it again.
+
+3. **"CollectRx Electron installers" artifact-upload failures ("storage quota hit")**: deleted 22 old artifacts (~4.9GB, May 14-19 builds) via `gh api -X DELETE`. GitHub recalculates quota every 6-12hrs, so the very next run may still show this until that recalculation happens — not a failed fix, just a delay.

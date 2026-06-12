@@ -1,25 +1,28 @@
--- migrations/rbac-users-schema.sql
--- RBAC Phase: User accounts, roles, and AuditLog.userId
+-- RBAC: PracticeRole enum, User accounts, AuditLog.userId
 --
--- SUPERSEDED (2026-06-12): this was run manually against Railway via psql and
--- never captured as a Prisma migration, so fresh databases (CI) never got the
--- User table / PracticeRole enum. Now captured as
--- prisma/migrations/20260523000000_rbac_users_schema/migration.sql (idempotent).
--- Do not run this file again — kept for history only.
+-- Brings prisma/migrations history in line with the schema that was already
+-- applied to Railway via migrations/rbac-users-schema.sql (run manually with
+-- psql, never recorded as a Prisma migration). All statements below are
+-- idempotent: a no-op on databases that already have these objects (Railway),
+-- and a from-scratch create on fresh databases (CI).
 
 -- ─── PracticeRole enum ───────────────────────────────────────────────────────
-CREATE TYPE "PracticeRole" AS ENUM (
-  'practice_owner',
-  'office_manager',
-  'billing_coordinator',
-  'front_desk',
-  'associate_dentist',
-  'accountant',
-  'group_admin'
-);
+DO $$ BEGIN
+  CREATE TYPE "PracticeRole" AS ENUM (
+    'practice_owner',
+    'office_manager',
+    'billing_coordinator',
+    'front_desk',
+    'associate_dentist',
+    'accountant',
+    'group_admin'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- ─── User table ───────────────────────────────────────────────────────────────
-CREATE TABLE "User" (
+CREATE TABLE IF NOT EXISTS "User" (
   "id"             TEXT        NOT NULL DEFAULT gen_random_uuid()::text,
   "practiceId"     TEXT        NOT NULL,
   "email"          TEXT        NOT NULL,
@@ -40,8 +43,8 @@ CREATE TABLE "User" (
     FOREIGN KEY ("practiceId") REFERENCES "Practice" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE INDEX "User_practiceId_idx" ON "User"("practiceId");
-CREATE INDEX "User_email_idx"      ON "User"("email");
+CREATE INDEX IF NOT EXISTS "User_practiceId_idx" ON "User"("practiceId");
+CREATE INDEX IF NOT EXISTS "User_email_idx"      ON "User"("email");
 
 -- Trigger to auto-update updatedAt
 CREATE OR REPLACE FUNCTION set_updated_at()
@@ -52,9 +55,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER "User_updatedAt"
-  BEFORE UPDATE ON "User"
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+  CREATE TRIGGER "User_updatedAt"
+    BEFORE UPDATE ON "User"
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- ─── AuditLog: add userId ─────────────────────────────────────────────────────
 ALTER TABLE "AuditLog"
