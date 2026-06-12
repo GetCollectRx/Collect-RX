@@ -85,7 +85,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     if (!next) continue;
 
     const planGate = await canMakeCall(practiceId);
-    if (!planGate.allowed && planGate.reason !== 'OVERAGE') {
+    if (!planGate.allowed) {
       console.warn('[deskQueueEngine] plan gate blocked dispatch', {
         practiceId,
         reason: planGate.reason,

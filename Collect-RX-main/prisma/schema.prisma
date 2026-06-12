@@ -32,12 +32,23 @@ model Practice {
   /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
   subscriptionStatus           String?
   subscriptionCurrentPeriodEnd DateTime?
+  /// Minutes-based billing (src/billing/tiers.ts) — trial/core/growth/scale.
+  billingTier           BillingTier @default(trial)
+  stripeSubscriptionItemId String?
+  billingPeriodStart    DateTime?
+  trialEndsAt           DateTime?
+  callsPaused           Boolean     @default(false)
+  callsPausedReason     String?
+  callsPausedAt         DateTime?
+  overageConfirmed      Boolean     @default(false)
+  overageConfirmedAt    DateTime?
   patients              Patient[]
   balances              Balance[]
   ruleSets              RuleSet[]
   eligibilitySnapshots  EligibilitySnapshot[]
   users                 User[]
-  plan                  Plan?
+  usagePeriods          UsagePeriod[]
+  featureFlags          FeatureFlag[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -547,6 +558,8 @@ model CallAttempt {
   initiatedAt          DateTime    @map("initiated_at")
   completedAt          DateTime?   @map("completed_at")
   durationSeconds      Int?        @map("duration_seconds")
+  /// ceil(durationSeconds / 60) — the value applied against UsagePeriod.minutesConsumed.
+  minutesBilled        Int?        @map("minutes_billed")
   outcome              CallOutcome?
   outcomeDetail        String?     @map("outcome_detail")
   repName              String?     @map("rep_name")
@@ -1051,70 +1064,58 @@ model FeeGuideEntry {
 // ─────────────────────────────────────────────────────────────────────────────
 // Plan / monetization layer  (collectrx-tiering-strategy.md §7 — P0)
 //
-// One Plan row per Practice. Tracks tier, trial state, and cumulative usage
-// counters (resolved status calls, resolved claims, recovered cents). The
-// queue dispatcher consults planService.canMakeCall(practiceId) before every
-// dispatch; the outcome processor calls usageService.recordOutcome on every
-// terminal, value-bearing call. UsageEvent.vapiCallId is UNIQUE — it is the
-// idempotency key for webhook redelivery.
+// Minutes-metered billing — see src/billing/tiers.ts. The queue dispatcher
+// consults planBridge.canMakeCall(practiceId) before every dispatch; the Vapi
+// webhook processor calls planBridge.recordCallUsage() on every completed call.
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum PlanTier {
-  basic
-  professional
-  enterprise
-}
-
-enum PlanStatus {
+/// Minutes-based billing tiers (src/billing/tiers.ts).
+enum BillingTier {
   trial
-  active
-  past_due
-  canceled
+  core
+  growth
+  scale
 }
 
-enum UsageEventType {
-  resolved_status_call
-  resolved_claim
-  recovered_dollars
+/// One row per billing cycle per practice. Tracks minutes consumed against
+/// the practice's BillingTier allotment (src/billing/tiers.ts).
+model UsagePeriod {
+  id                String   @id @default(uuid())
+  practiceId        String   @map("practice_id")
+  periodStart       DateTime @map("period_start")
+  periodEnd         DateTime @map("period_end")
+  minutesConsumed   Int      @default(0) @map("minutes_consumed")
+  callsCompleted    Int      @default(0) @map("calls_completed")
+  /// Set once the 80%-of-allotment warning has been sent for this period.
+  warning80Sent     Boolean  @default(false) @map("warning_80_sent")
+  /// Set once the "period resetting soon" warning has been sent for this period.
+  warningResetSent  Boolean  @default(false) @map("warning_reset_sent")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([periodStart, periodEnd])
+  @@map("usage_periods")
 }
 
-model Plan {
-  practiceId          String     @id @map("practice_id")
-  tier                PlanTier   @default(professional)
-  status              PlanStatus @default(trial)
-  /// Trial is outcome-gated (strategy doc §3.1): full Pro feature set until
-  /// trialRecoveredCents reaches trialThresholdCents (default $2,500 = 250000).
-  trialRecoveredCents BigInt     @default(0)      @map("trial_recovered_cents")
-  trialThresholdCents BigInt     @default(250000) @map("trial_threshold_cents")
-  trialStartedAt      DateTime   @default(now())  @map("trial_started_at")
-  trialConvertedAt    DateTime?                   @map("trial_converted_at")
-  /// Billing-cycle counters — reset by usageService.startNewCycle().
-  cycleStartedAt      DateTime   @default(now())  @map("cycle_started_at")
-  statusCallsUsed     Int        @default(0)      @map("status_calls_used")
-  resolvedClaimsUsed  Int        @default(0)      @map("resolved_claims_used")
-  /// Lifetime recovered total (cents). Survives cycle resets; used for Enterprise %-of-recovery.
-  recoveredCentsTotal BigInt     @default(0)      @map("recovered_cents_total")
-  createdAt           DateTime   @default(now())  @map("created_at")
-  updatedAt           DateTime   @updatedAt       @map("updated_at")
+/// Per-practice (or global, when practiceId is null) feature pause state —
+/// e.g. auto-pause on hard usage cap (tiers.ts hardStopAtLimit) or carrier-wide
+/// suspension. Resume requires manual confirmation unless explicitly disabled.
+model FeatureFlag {
+  id                                String    @id @default(uuid())
+  practiceId                        String?   @map("practice_id")
+  feature                           String
+  paused                            Boolean   @default(false)
+  pauseReason                       String?   @map("pause_reason")
+  pausedAt                          DateTime? @map("paused_at")
+  resumeRequiresManualConfirmation  Boolean   @default(true) @map("resume_requires_manual_confirmation")
+  createdAt                         DateTime  @default(now()) @map("created_at")
+  updatedAt                         DateTime  @updatedAt @map("updated_at")
 
-  practice Practice @relation(fields: [practiceId], references: [id])
+  practice Practice? @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
-  @@map("plans")
-}
-
-/// One row per value-bearing terminal outcome. vapiCallId UNIQUE prevents
-/// double-counting on webhook redelivery.
-model UsageEvent {
-  id           String         @id @default(uuid())
-  practiceId   String         @map("practice_id")
-  claimId      String?        @map("claim_id")
-  vapiCallId   String?        @unique @map("vapi_call_id")
-  eventType    UsageEventType @map("event_type")
-  amountCents  BigInt         @default(0) @map("amount_cents")
-  occurredAt   DateTime       @default(now()) @map("occurred_at")
-  metadata     Json?
-
-  @@index([practiceId, occurredAt(sort: Desc)])
-  @@index([eventType])
-  @@map("usage_events")
+  @@unique([practiceId, feature])
+  @@map("feature_flags")
 }

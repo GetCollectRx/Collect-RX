@@ -387,10 +387,10 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     }
 
     const planGate = await canMakeCall(practiceId);
-    if (!planGate.allowed && planGate.reason !== 'OVERAGE') {
+    if (!planGate.allowed) {
       return res.status(402).json({
         success: false,
-        error: gateBlockMessage(planGate.reason, planGate.overageCentsPerClaim),
+        error: gateBlockMessage(planGate.reason, planGate.overageRatePerMinute),
         reason: planGate.reason,
       });
     }

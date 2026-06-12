@@ -15,30 +15,33 @@ type UsageAlert = {
 type PlanPayload = {
   success: boolean
   plan: {
+    practiceId: string
     tier: string
+    tierName: string
     status: string
-    autonomy: string
-    valueMetric: string
-    trial: {
-      active: boolean
-      recoveredCents: number
-      thresholdCents: number
-      progress: number
-    }
+    callsPaused: boolean
+    callsPausedReason: string | null
     cycle: {
       startedAt: string
-      statusCallsUsed: number
-      statusCallsIncluded: number | null
-      resolvedClaimsUsed: number
-      resolvedClaimsIncluded: number | null
+      endsAt: string | null
+      minutesConsumed: number
+      minutesIncluded: number
+      minutesRemaining: number
+      usagePercent: number
+      callsCompleted: number
+      dailyMinutesConsumed: number
+      dailyCapMinutes: number | null
+    }
+    trial: {
+      active: boolean
+      endsAt: string | null
+      daysRemaining: number | null
+    }
+    overage: {
+      ratePerMinute: number | null
+      confirmed: boolean
     }
     lifetime: { recoveredCents: number }
-    features: {
-      label: string
-      allowOverage: boolean
-      overageCentsPerClaim?: number | null
-      usageUnitLabel?: string
-    }
     alerts: UsageAlert[]
     cycleEndsAt?: string | null
   }
@@ -63,6 +66,10 @@ function fmtMoney(cents: number): string {
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatOverageRate(ratePerMinute: number): string {
+  return `$${ratePerMinute.toFixed(2)}/min`
 }
 
 function alertStyles(level: UsageAlert['level']): string {
@@ -110,6 +117,7 @@ export default function PracticeBillingPage() {
   const [planData, setPlanData] = useState<PlanPayload | null>(null)
   const [planLoading, setPlanLoading] = useState(true)
   const [visibilityBusy, setVisibilityBusy] = useState(false)
+  const [overageBusy, setOverageBusy] = useState(false)
 
   const subscribed = searchParams.get('subscribed') === '1'
   const canceled = searchParams.get('canceled') === '1'
@@ -170,6 +178,19 @@ export default function PracticeBillingPage() {
       setError((e as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function confirmOverageCharges() {
+    setError(null)
+    setOverageBusy(true)
+    try {
+      await apiFetchJson(resolveApiUrl('/api/billing/usage/confirm-overage'), { method: 'POST' })
+      await loadPlan()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setOverageBusy(false)
     }
   }
 
@@ -241,8 +262,7 @@ export default function PracticeBillingPage() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-400">Current plan</p>
-                  <p className="text-base font-semibold text-gray-900 dark:text-white capitalize">{plan.tier}</p>
-                  <p className="text-xs text-gray-500">{plan.features.label}</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{plan.tierName}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-400">Billing cycle ends</p>
@@ -250,44 +270,50 @@ export default function PracticeBillingPage() {
                 </div>
               </div>
 
-              {plan.trial.active ? (
+              <UsageBar
+                used={plan.cycle.minutesConsumed}
+                limit={plan.cycle.minutesIncluded}
+                label="Minutes used this cycle"
+              />
+
+              {plan.cycle.dailyCapMinutes != null && (
                 <UsageBar
-                  used={plan.trial.recoveredCents}
-                  limit={plan.trial.thresholdCents}
-                  label="Trial recovery progress"
+                  used={plan.cycle.dailyMinutesConsumed}
+                  limit={plan.cycle.dailyCapMinutes}
+                  label="Minutes used today"
                 />
-              ) : (
-                <div className="space-y-4">
-                  {plan.cycle.resolvedClaimsIncluded != null && plan.cycle.resolvedClaimsIncluded > 0 && (
-                    <UsageBar
-                      used={plan.cycle.resolvedClaimsUsed}
-                      limit={plan.cycle.resolvedClaimsIncluded}
-                      label="Claims resolved this cycle"
-                    />
+              )}
+
+              {plan.trial.active && plan.trial.daysRemaining != null && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Trial ends {fmtDate(plan.trial.endsAt)} ({plan.trial.daysRemaining} day{plan.trial.daysRemaining === 1 ? '' : 's'} remaining)
+                </p>
+              )}
+
+              {plan.callsPausedReason === 'overage_pending' && (
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-3 text-sm text-amber-950 dark:text-amber-100 space-y-2">
+                  <p className="font-semibold">Monthly minutes exhausted</p>
+                  <p className="text-amber-900/90 dark:text-amber-100/90">
+                    Calling is paused. Confirm overage charges
+                    {plan.overage.ratePerMinute != null ? ` (${formatOverageRate(plan.overage.ratePerMinute)})` : ''} to resume.
+                  </p>
+                  {isPracticeOwner && (
+                    <button
+                      type="button"
+                      disabled={overageBusy}
+                      onClick={() => void confirmOverageCharges()}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+                    >
+                      {overageBusy ? 'Please wait…' : 'Confirm overage charges'}
+                    </button>
                   )}
                 </div>
               )}
 
-              {plan.features.allowOverage &&
-                plan.features.overageCentsPerClaim != null &&
-                plan.features.overageCentsPerClaim > 0 &&
-                plan.status === 'active' &&
-                !plan.trial.active && (
-                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-3 text-sm text-amber-950 dark:text-amber-100">
-                  <p className="font-semibold">Overage pricing</p>
-                  <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
-                    Your plan includes {plan.cycle.resolvedClaimsIncluded} claims resolved per billing cycle.
-                    After that, CollectRx continues working your AR at{' '}
-                    <span className="font-semibold">
-                      ${(plan.features.overageCentsPerClaim / 100).toFixed(2)} per additional claim resolved
-                    </span>
-                    , billed on your next invoice.
-                  </p>
-                  <p className="mt-2 text-xs text-amber-800/80 dark:text-amber-200/80">
-                    A claim counts when CollectRx closes it: payment confirmed, denial, annual max reached, or resubmit path determined.
-                    In-progress carrier checks do not count.
-                  </p>
-                </div>
+              {!plan.trial.active && plan.overage.ratePerMinute != null && plan.callsPausedReason !== 'overage_pending' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Overage rate after included minutes: {formatOverageRate(plan.overage.ratePerMinute)}
+                </p>
               )}
 
               <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800 pt-3">

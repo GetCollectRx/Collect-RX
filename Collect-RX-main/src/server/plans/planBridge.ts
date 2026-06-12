@@ -1,27 +1,26 @@
 /**
- * TypeScript bridge to the CJS plan / usage services.
+ * Plan/usage bridge — minutes-based billing (src/billing/tiers.ts, UsagePeriod).
+ *
+ * canMakeCall()/recordCallUsage() are the stable interface consumed by the
+ * live call queue (queueEngine.ts) and the Vapi webhook processor
+ * (vapiDeskEvents.ts) — signatures here must stay compatible with those
+ * call sites.
  */
-import { createRequire } from 'node:module';
+import { prisma } from '../../lib/prisma.js';
+import { WARNINGS } from '../../billing/tiers.js';
+import {
+  confirmOverage as confirmOverageUsage,
+  evaluateCallGate,
+  getUsageSnapshot,
+  recordCallUsage as recordCallUsageInternal,
+  recoveredCentsForClaim as recoveredCentsForClaimInternal,
+  startNewBillingCycle as startNewBillingCycleInternal,
+  syncSubscriptionHealth,
+  type PlanGateReason,
+  type PlanGateResult,
+} from './usagePeriodService.js';
 
-const require = createRequire(import.meta.url);
-
-const planService = require('../../services/plans/planService.cjs') as any;
-const usageService = require('../../services/plans/usageService.cjs') as any;
-const { getFeatures: featuresForTier } = require('../../services/plans/tierFeatures.cjs') as any;
-
-export type PlanGateReason =
-  | 'OK'
-  | 'OVERAGE'
-  | 'TRIAL_LIMIT_REACHED'
-  | 'PLAN_LIMIT_REACHED'
-  | 'SUBSCRIPTION_PAST_DUE'
-  | 'SUBSCRIPTION_CANCELED';
-
-export type PlanGateResult = {
-  allowed: boolean;
-  reason: PlanGateReason;
-  overageCentsPerClaim?: number | null;
-};
+export type { PlanGateReason, PlanGateResult };
 
 export type UsageAlertLevel = 'info' | 'warning' | 'critical';
 
@@ -33,216 +32,218 @@ export type UsageAlert = {
 };
 
 export type PlanSummary = {
-  [key: string]: unknown;
+  practiceId: string;
+  tier: string;
+  tierName: string;
+  status: string;
+  callsPaused: boolean;
+  callsPausedReason: string | null;
+  cycle: {
+    startedAt: string;
+    endsAt: string | null;
+    minutesConsumed: number;
+    minutesIncluded: number;
+    minutesRemaining: number;
+    usagePercent: number;
+    callsCompleted: number;
+    dailyMinutesConsumed: number;
+    dailyCapMinutes: number | null;
+  };
+  trial: {
+    active: boolean;
+    endsAt: string | null;
+    daysRemaining: number | null;
+  };
+  overage: {
+    ratePerMinute: number | null;
+    confirmed: boolean;
+  };
+  lifetime: { recoveredCents: number };
   alerts: UsageAlert[];
   cycleEndsAt?: string | null;
-  cycle?: { startedAt?: string };
-  status?: string;
-  trial?: { progress: number; recoveredCents: number; thresholdCents: number };
-  features?: { includedResolvedClaimsPerCycle?: number; allowOverage?: boolean; overageCentsPerClaim?: number; usageUnitLabel?: string };
 };
 
 export async function canMakeCall(practiceId: string): Promise<PlanGateResult> {
-  const gate = await planService.canMakeCall(practiceId);
-  const features = featuresForTier(gate.plan.tier);
-  return {
-    allowed: gate.allowed,
-    reason: gate.reason as PlanGateReason,
-    overageCentsPerClaim: features.overageCentsPerClaim ?? null,
-  };
+  return evaluateCallGate(prisma, practiceId);
 }
 
-export function gateBlockMessage(reason: PlanGateReason, overageCentsPerClaim?: number | null): string {
-  const overageFee =
-    overageCentsPerClaim != null && overageCentsPerClaim > 0
-      ? `$${(overageCentsPerClaim / 100).toFixed(2)}`
-      : null;
+export function formatOverageRate(ratePerMinute: number | null | undefined): string | null {
+  if (ratePerMinute == null || ratePerMinute <= 0) return null;
+  return `$${ratePerMinute.toFixed(2)}/min`;
+}
 
+export function gateBlockMessage(reason: PlanGateReason, overageRatePerMinute?: number | null): string {
   switch (reason) {
     case 'TRIAL_LIMIT_REACHED':
-      return 'Your trial recovery limit has been reached. Subscribe to continue resolving claims.';
-    case 'PLAN_LIMIT_REACHED':
-      return 'Your included claims for this billing cycle are used up. Upgrade your plan to keep CollectRx working your AR.';
+      return 'Your trial has ended. Subscribe to a plan to keep CollectRx calling carriers.';
+    case 'OVERAGE_PENDING': {
+      const rate = formatOverageRate(overageRatePerMinute);
+      return `Monthly minutes exhausted. Confirm overage charges${rate ? ` (${rate})` : ''} to resume calling.`;
+    }
+    case 'DAILY_CAP_REACHED':
+      return 'Daily calling limit reached. CollectRx resumes automatically tomorrow.';
     case 'SUBSCRIPTION_PAST_DUE':
-      return 'Your subscription payment is past due. Update billing to resume claim resolution.';
+      return 'Your subscription payment is past due. Update billing to resume calling.';
     case 'SUBSCRIPTION_CANCELED':
-      return 'Your subscription is canceled. Resubscribe to resume claim resolution.';
-    case 'OVERAGE':
-      return overageFee
-        ? `You are past your included claims this cycle. CollectRx continues working AR at ${overageFee} per additional claim resolved (billed on your next invoice).`
-        : 'You are past your included claims this cycle. Additional usage may be billed.';
+      return 'Your subscription is canceled. Resubscribe to resume calling.';
     default:
       return '';
   }
 }
 
-export function formatOverageRate(cents: number | null | undefined): string | null {
-  if (cents == null || cents <= 0) return null;
-  return `$${(cents / 100).toFixed(2)} per claim`;
-}
+export async function getPlanSummary(practiceId: string, cycleEndsAt?: Date | null): Promise<PlanSummary> {
+  const snapshot = await getUsageSnapshot(prisma, practiceId);
+  if (!snapshot) {
+    throw new Error(`Practice not found: ${practiceId}`);
+  }
+  const { practice, tier, usage, todayMinutes, lifetimeRecoveredCents } = snapshot;
+  const now = new Date();
 
-export async function getPlanSummary(
-  practiceId: string,
-  cycleEndsAt?: Date | null,
-): Promise<PlanSummary> {
-  const summary = await planService.getPlanSummary(practiceId);
-  return {
-    ...summary,
-    cycleEndsAt: cycleEndsAt?.toISOString() ?? null,
-    alerts: computeUsageAlerts(summary),
+  const minutesIncluded = tier.includedMinutes;
+  const minutesConsumed = usage.minutesConsumed;
+  const minutesRemaining = Math.max(0, minutesIncluded - minutesConsumed);
+  const usagePercent = minutesIncluded > 0 ? Math.min(1, minutesConsumed / minutesIncluded) : 0;
+
+  const trialActive = practice.billingTier === 'trial';
+  const trialEndsAt = practice.trialEndsAt ?? null;
+  const trialDaysRemaining =
+    trialActive && trialEndsAt
+      ? Math.ceil((trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      : null;
+
+  const summary: PlanSummary = {
+    practiceId,
+    tier: practice.billingTier,
+    tierName: tier.name,
+    status: practice.subscriptionStatus ?? (trialActive ? 'trial' : 'active'),
+    callsPaused: practice.callsPaused,
+    callsPausedReason: practice.callsPausedReason,
+    cycle: {
+      startedAt: usage.periodStart.toISOString(),
+      endsAt: usage.periodEnd?.toISOString() ?? null,
+      minutesConsumed,
+      minutesIncluded,
+      minutesRemaining,
+      usagePercent,
+      callsCompleted: usage.callsCompleted,
+      dailyMinutesConsumed: todayMinutes,
+      dailyCapMinutes: tier.dailyCapMinutes,
+    },
+    trial: {
+      active: trialActive,
+      endsAt: trialEndsAt?.toISOString() ?? null,
+      daysRemaining: trialDaysRemaining,
+    },
+    overage: {
+      ratePerMinute: tier.overageRatePerMinute,
+      confirmed: practice.overageConfirmed,
+    },
+    lifetime: { recoveredCents: lifetimeRecoveredCents },
+    alerts: [],
+    cycleEndsAt: (cycleEndsAt ?? practice.subscriptionCurrentPeriodEnd)?.toISOString() ?? null,
   };
+
+  summary.alerts = computeUsageAlerts(summary);
+  return summary;
 }
 
-export function computeUsageAlerts(
-  summary: Awaited<ReturnType<typeof planService.getPlanSummary>>,
-): UsageAlert[] {
+export function computeUsageAlerts(summary: PlanSummary): UsageAlert[] {
   const alerts: UsageAlert[] = [];
 
-  if (summary.status === 'past_due') {
+  if (summary.callsPausedReason === 'subscription_cancelled') {
     alerts.push({
       level: 'critical',
-      code: 'SUBSCRIPTION_PAST_DUE',
-      message: 'Payment is past due — carrier calls are paused until billing is updated.',
+      code: 'subscription_cancelled',
+      message: 'Subscription canceled — calls are paused. Subscribe again to resume.',
     });
     return alerts;
   }
 
-  if (summary.status === 'canceled') {
+  if (summary.callsPausedReason === 'payment_failed') {
     alerts.push({
       level: 'critical',
-      code: 'SUBSCRIPTION_CANCELED',
-      message: 'Subscription canceled — subscribe again to resume carrier calls.',
+      code: 'payment_failed',
+      message: 'Payment failed — calls are paused until billing is updated.',
     });
     return alerts;
   }
 
-  if (summary.status === 'trial') {
-    const pct = summary.trial.progress;
-    if (pct >= 1) {
+  if (summary.trial.active) {
+    const expired = summary.trial.endsAt ? new Date(summary.trial.endsAt) < new Date() : false;
+    if (expired || summary.cycle.usagePercent >= 1) {
       alerts.push({
         level: 'critical',
         code: 'TRIAL_LIMIT_REACHED',
-        message: 'Trial recovery limit reached — subscribe to keep calling.',
-        progress: pct,
+        message: 'Trial limit reached — subscribe to keep CollectRx calling carriers.',
+        progress: summary.cycle.usagePercent,
       });
-    } else if (pct >= 0.95) {
+    } else if (summary.trial.daysRemaining != null && summary.trial.daysRemaining <= 3) {
+      const days = summary.trial.daysRemaining;
       alerts.push({
         level: 'warning',
-        code: 'TRIAL_95',
-        message: `Trial is almost complete — $${(summary.trial.recoveredCents / 100).toFixed(0)} of $${(summary.trial.thresholdCents / 100).toFixed(0)} recovered.`,
-        progress: pct,
-      });
-    } else if (pct >= 0.8) {
-      alerts.push({
-        level: 'info',
-        code: 'TRIAL_80',
-        message: `Trial is ${Math.round(pct * 100)}% used — $${(summary.trial.recoveredCents / 100).toFixed(0)} recovered so far.`,
-        progress: pct,
+        code: 'trial_ending',
+        message: `Your trial ends in ${days} day${days === 1 ? '' : 's'} — subscribe to continue.`,
       });
     }
     return alerts;
   }
 
-  const { cycle, features } = summary;
-  const unit = features.usageUnitLabel || 'claims resolved';
-  const overageRate = formatOverageRate(features.overageCentsPerClaim);
-  const softLimit = features.allowOverage;
+  if (summary.callsPausedReason === 'overage_pending') {
+    const rate = formatOverageRate(summary.overage.ratePerMinute);
+    alerts.push({
+      level: 'critical',
+      code: 'usage_100',
+      message: `Monthly minutes exhausted (${summary.cycle.minutesConsumed}/${summary.cycle.minutesIncluded}). Confirm overage charges${rate ? ` at ${rate}` : ''} to resume calling.`,
+      progress: summary.cycle.usagePercent,
+    });
+    return alerts;
+  }
 
-  if (features.includedResolvedClaimsPerCycle != null && features.includedResolvedClaimsPerCycle > 0) {
-    pushPoolAlerts(
-      alerts,
-      'resolved_claims',
-      cycle.resolvedClaimsUsed,
-      features.includedResolvedClaimsPerCycle,
-      unit,
-      !softLimit,
-      overageRate,
-    );
+  if (summary.cycle.usagePercent >= WARNINGS.usagePercentThreshold) {
+    alerts.push({
+      level: 'warning',
+      code: 'usage_80',
+      message: `${Math.round(summary.cycle.usagePercent * 100)}% of included minutes used (${summary.cycle.minutesConsumed}/${summary.cycle.minutesIncluded}).`,
+      progress: summary.cycle.usagePercent,
+    });
+  } else if (summary.cycle.endsAt) {
+    const daysUntilReset = Math.ceil((new Date(summary.cycle.endsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    if (daysUntilReset >= 0 && daysUntilReset <= WARNINGS.daysBeforeResetThreshold && summary.cycle.usagePercent >= 0.5) {
+      alerts.push({
+        level: 'info',
+        code: 'reset_approaching',
+        message: `Your billing period resets in ${daysUntilReset} day${daysUntilReset === 1 ? '' : 's'}.`,
+      });
+    }
   }
 
   return alerts;
 }
 
-function pushPoolAlerts(
-  alerts: UsageAlert[],
-  prefix: string,
-  used: number,
-  limit: number,
-  label: string,
-  hardBlock: boolean,
-  overageRate: string | null,
-): void {
-  const pct = limit > 0 ? used / limit : 0;
-  const remaining = Math.max(0, limit - used);
-  const overageSuffix = overageRate
-    ? ` Additional ${label} are billed at ${overageRate}.`
-    : '';
-  const allowsOverage = !hardBlock;
-
-  if (pct >= 1) {
-    alerts.push({
-      level: 'critical',
-      code: `${prefix}_100`,
-      message: hardBlock
-        ? `Included ${label} exhausted (${used}/${limit}) — CollectRx is paused until your cycle resets or you upgrade.`
-        : `Included ${label} used up (${used}/${limit}). CollectRx keeps working your AR.${overageSuffix} Charges appear on your next invoice.`,
-      progress: pct,
-    });
-  } else if (pct >= 0.95) {
-    alerts.push({
-      level: 'warning',
-      code: `${prefix}_95`,
-      message: allowsOverage
-        ? `Almost at your included ${label} — ${remaining} left this cycle.${overageSuffix}`
-        : `Almost at your included ${label} — ${remaining} left before CollectRx pauses.`,
-      progress: pct,
-    });
-  } else if (pct >= 0.8) {
-    alerts.push({
-      level: allowsOverage ? 'warning' : 'info',
-      code: `${prefix}_80`,
-      message: allowsOverage
-        ? `${Math.round(pct * 100)}% of included ${label} used (${used}/${limit}).${overageSuffix}`
-        : `${Math.round(pct * 100)}% of included ${label} used (${used}/${limit}).`,
-      progress: pct,
-    });
-  }
-}
-
+/** Record minutes for a completed call against the practice's current usage period. */
 export async function recordCallUsage(opts: {
   practiceId: string;
-  claimId: string;
   vapiCallId: string;
-  outcomeCode: string;
-  amountCents?: number;
-}): Promise<{ recorded: boolean; eventType?: string; reason?: string }> {
-  return usageService.recordOutcome(opts);
+}): Promise<{ recorded: boolean; minutesBilled?: number }> {
+  return recordCallUsageInternal(prisma, opts);
+}
+
+/** Practice confirms overage charges from the Usage tab — resumes calling. */
+export async function confirmOverage(practiceId: string): Promise<{ status: 'resumed' | 'not_paused' }> {
+  return confirmOverageUsage(prisma, practiceId);
 }
 
 export async function recoveredCentsForClaim(claimId: string): Promise<number> {
-  return usageService.recoveredCentsForClaim(claimId);
+  return recoveredCentsForClaimInternal(prisma, claimId);
 }
 
 export async function startNewBillingCycle(practiceId: string): Promise<void> {
-  await usageService.startNewCycle(practiceId);
+  await startNewBillingCycleInternal(prisma, practiceId);
 }
 
 export async function syncPlanStatusFromSubscription(
   practiceId: string,
   subscriptionStatus: string | null | undefined,
-  tier = 'professional',
 ): Promise<void> {
-  if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
-    await planService.setTier(practiceId, tier, 'active');
-    return;
-  }
-  if (subscriptionStatus === 'past_due' || subscriptionStatus === 'unpaid') {
-    await planService.setTier(practiceId, tier, 'past_due');
-    return;
-  }
-  if (subscriptionStatus === 'canceled') {
-    await planService.setTier(practiceId, tier, 'canceled');
-  }
+  await syncSubscriptionHealth(prisma, practiceId, subscriptionStatus);
 }
-
-export { planService, usageService };

@@ -6,7 +6,7 @@ import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { requirePlanUsageAccess } from '../middleware/requirePlanUsageAccess.js';
 import { createBillingCheckoutSession, createBillingPortalSession, getSubscriptionGateState } from '../stripe/billing';
 import { apiClientErrorMessage } from '../apiErrorMessage.js';
-import { getPlanSummary } from '../plans/planBridge.js';
+import { confirmOverage, getPlanSummary } from '../plans/planBridge.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import type { PracticeSettings } from '../../types/practiceSettings.js';
 
@@ -61,6 +61,18 @@ export function createBillingRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('[billing/plan]', e);
       res.status(500).json({ success: false, error: apiClientErrorMessage(e) });
+    }
+  });
+
+  /** Practice confirms overage charges from the Usage tab — resumes paused calling. */
+  r.post('/usage/confirm-overage', authenticate, requirePracticeContext, planUsageAccess, async (req: Request, res: Response) => {
+    try {
+      const practiceId = practiceIdFromSession(req);
+      const result = await confirmOverage(practiceId);
+      res.json({ success: true, ...result });
+    } catch (e) {
+      console.error('[billing/usage/confirm-overage]', e);
+      res.status(400).json({ success: false, error: apiClientErrorMessage(e) });
     }
   });
 

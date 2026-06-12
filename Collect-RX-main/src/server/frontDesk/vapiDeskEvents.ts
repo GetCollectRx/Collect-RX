@@ -12,7 +12,6 @@ import {
 import { applyCarrierBlock } from './carrierBlockService.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
-import { callOutcomeToUsageCode } from '../plans/outcomeToUsageCode.js';
 import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
 import { processRecoveryCallEnded } from '../vapi/vapiWebhook.js';
@@ -217,28 +216,9 @@ async function processCallEndedDesk(
   });
 
   try {
-    const updatedClaim = await prisma.insuranceClaim.findUnique({
-      where: { id: claim.id },
-      select: { status: true, outstandingAmount: true },
-    });
-    const usageCode = updatedClaim?.status
-      ? callOutcomeToUsageCode(processed.outcome, updatedClaim.status, processed.outcomeDetail)
-      : null;
-    if (usageCode) {
-      const amountCents =
-        usageCode === 'paid'
-          ? Math.round(Number(updatedClaim?.outstandingAmount ?? 0) * 100)
-          : 0;
-      const usageResult = await recordCallUsage({
-        practiceId: claim.practiceId,
-        claimId: claim.id,
-        vapiCallId,
-        outcomeCode: usageCode,
-        amountCents,
-      });
-      if (usageResult.recorded) {
-        await maybeSendPlanUsageAlertEmails(prisma, claim.practiceId);
-      }
+    const usageResult = await recordCallUsage({ practiceId: claim.practiceId, vapiCallId });
+    if (usageResult.recorded) {
+      await maybeSendPlanUsageAlertEmails(prisma, claim.practiceId);
     }
   } catch (usageErr) {
     console.error('[vapi-webhook] usage recording failed (non-fatal):', usageErr);
