@@ -21,7 +21,7 @@
   scrollbar-color: #1f2937 transparent;
 }
 .crx-app {
-  scrollbar-color: #c5d4cb transparent;
+  scrollbar-color: #cacac8 transparent;
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

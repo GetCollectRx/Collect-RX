@@ -2,246 +2,192 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
 // ─── Design tokens / styles ───────────────────────────────────────────────────
+// HubSpot-inspired editorial system: warm cream/parchment canvas, hairline
+// borders, Source Serif 4 headlines + Inter body, single accent color
+// (CollectRx green standing in for HubSpot's "sprout orange").
 const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,600;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:ital,wght@0,300;0,400;0,500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600&family=DM+Mono:ital,wght@0,400;0,500&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg0:   #0c1f16;
-    --bg1:   #faf8f4;
-    --bg2:   #fffffe;
-    --bg3:   #f5f2eb;
-    --bg4:   #ebe6dd;
-    --bg5:   #e3ddd2;
-    --on-green: #ffffff;
+    --cream:      #fcfcfa;
+    --parchment:  #f8f5ee;
+    --card:       #fcfcfa;
 
-    --green:       #0f9d58;
-    --green-lo:    rgba(15,157,88,0.1);
-    --green-md:    rgba(15,157,88,0.16);
-    --green-hi:    rgba(15,157,88,0.28);
-    --green-glow:  rgba(15,157,88,0.2);
-    --green-dark:  #0A7A43;
+    --ink:        #1f1f1f;
+    --graphite:   #60605f;
+    --mist:       #cacac8;
 
-    --gold:  #c98f12;
-    --blue:  #3b7fd4;
-    --red:   #d64545;
+    --green:      #0f9d58;
+    --green-dark: #0b5b47;
+    --green-lo:   rgba(15,157,88,0.08);
+    --green-md:   rgba(15,157,88,0.14);
+    --green-hi:   rgba(15,157,88,0.28);
 
-    --t0: #0f1f18;
-    --t1: #243d32;
-    --t2: rgba(36,61,50,0.72);
-    --t3: rgba(36,61,50,0.5);
-    --t4: rgba(36,61,50,0.32);
+    --gold: #c98f12;
+    --blue: #3b7fd4;
 
-    --bdr:  rgba(15,110,86,0.12);
-    --bdr2: rgba(15,110,86,0.22);
-    --bdr3: rgba(15,110,86,0.32);
+    --bdr:  rgba(31,31,31,0.10);
+    --bdr2: rgba(31,31,31,0.18);
 
-    --fn: 'DM Sans', system-ui, sans-serif;
-    --fd: 'Bricolage Grotesque', system-ui, sans-serif;
+    --fn: 'Inter', system-ui, sans-serif;
+    --fs: 'Source Serif 4', Georgia, 'Times New Roman', serif;
     --fm: 'DM Mono', 'Fira Code', monospace;
 
-    --shadow-panel: 0 1px 2px rgba(15,31,24,0.04), 0 16px 48px rgba(15,31,24,0.08), 0 0 0 1px var(--bdr);
-    --shadow-card:  0 1px 3px rgba(15,31,24,0.06), 0 8px 24px rgba(15,31,24,0.06);
+    --radius-card: 16px;
+    --radius-btn:  8px;
+    --radius-badge: 4px;
+
     --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
   }
 
   /* ─── BASE ─────────────────────────────────────── */
   .lp {
-    background: var(--bg1);
-    color: var(--t1);
+    background: var(--cream);
+    color: var(--ink);
     font-family: var(--fn);
     font-weight: 400;
-    line-height: 1.6;
+    line-height: 1.56;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
   }
 
-  /* ─── TICKER ────────────────────────────────────── */
-  .lp-ticker {
-    background: var(--bg3);
-    border-bottom: 1px solid var(--bdr);
-    height: 32px;
-    display: flex; align-items: center;
-    overflow: hidden; position: relative;
-    z-index: 201;
-  }
-  .lp-ticker-label {
-    flex-shrink: 0;
-    display: flex; align-items: center; gap: 6px;
-    background: var(--green);
-    color: var(--on-green);
-    height: 32px; padding: 0 12px;
-    font-family: var(--fm); font-size: 10px; font-weight: 500;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    z-index: 2;
-  }
-  .lp-ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--on-green); animation: lp-blink 1.2s ease-in-out infinite; }
-  .lp-ticker-track {
-    display: flex; align-items: center;
-    white-space: nowrap;
-    animation: lp-ticker 28s linear infinite;
-    padding-left: 24px; gap: 40px;
-  }
-  .lp-ticker-item {
-    font-family: var(--fm); font-size: 10.5px; color: var(--t2);
-    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
-  }
-  .lp-ticker-item em { color: var(--green); font-style: normal; font-weight: 500; }
-  .lp-ticker-sep { color: var(--t4); }
-
-  @keyframes lp-ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-
   /* ─── NAV ───────────────────────────────────────── */
   .lp-nav {
-    position: fixed; top: 32px; left: 0; right: 0; z-index: 200;
-    background: rgba(255,254,249,0.92);
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: rgba(252,252,250,0.92);
     border-bottom: 1px solid var(--bdr);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    transition: top var(--transition);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    transition: background var(--transition);
   }
-  .lp-nav.scrolled { top: 0; background: rgba(255,254,249,0.98); }
+  .lp-nav.scrolled { background: rgba(252,252,250,0.98); }
   .lp-nav-inner {
-    max-width: 1240px; margin: 0 auto;
+    max-width: 1200px; margin: 0 auto;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 40px; height: 60px;
+    padding: 0 40px; height: 68px;
   }
   .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
   .lp-logo-mark {
-    width: 28px; height: 28px; border-radius: 7px;
+    width: 28px; height: 28px; border-radius: 8px;
     background: var(--green);
     display: grid; place-items: center; flex-shrink: 0;
   }
-  .lp-logo-mark svg { width: 15px; height: 15px; fill: none; stroke: var(--on-green); stroke-width: 2.5; }
-  .lp-logo-text { font-family: var(--fd); font-size: 15.5px; font-weight: 700; color: var(--t0); letter-spacing: -0.03em; }
+  .lp-logo-mark svg { width: 15px; height: 15px; fill: none; stroke: #fcfcfa; stroke-width: 2.5; }
+  .lp-logo-text { font-family: var(--fn); font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
   .lp-logo-text span { color: var(--green); }
   .lp-nav-links { display: flex; align-items: center; gap: 32px; }
-  .lp-nav-link { font-size: 13px; color: var(--t3); cursor: pointer; text-decoration: none; transition: color var(--transition); letter-spacing: -0.01em; }
-  .lp-nav-link:hover { color: var(--t1); }
-  .lp-nav-right { display: flex; align-items: center; gap: 8px; }
+  .lp-nav-link { font-family: var(--fn); font-size: 16px; font-weight: 400; color: var(--ink); cursor: pointer; text-decoration: none; transition: color var(--transition); background: none; border: none; }
+  .lp-nav-link:hover { color: var(--green); }
+  .lp-nav-right { display: flex; align-items: center; gap: 10px; }
   .lp-nav-signin {
-    font-size: 13px; font-weight: 500; color: var(--t2);
-    text-decoration: none; padding: 7px 14px; border-radius: 7px;
+    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--ink);
+    text-decoration: none; padding: 8px 14px; border-radius: var(--radius-btn);
     transition: color var(--transition), background var(--transition);
   }
-  .lp-nav-signin:hover { color: var(--t0); background: var(--green-lo); }
-  .lp-nav-cta {
-    background: var(--green); color: var(--on-green); border: none;
-    padding: 8px 16px; border-radius: 7px;
-    font-family: var(--fn); font-size: 13px; font-weight: 700;
-    cursor: pointer; letter-spacing: -0.01em;
-    transition: opacity var(--transition), transform var(--transition);
-    box-shadow: 0 0 24px var(--green-glow);
+  .lp-nav-signin:hover { color: var(--green-dark); background: var(--green-lo); }
+
+  /* ─── BUTTONS ────────────────────────────────────── */
+  .lp-btn-primary {
+    background: var(--green); color: #fcfcfa; border: none;
+    padding: 12px 24px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 16px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background var(--transition), transform var(--transition);
+    display: inline-flex; align-items: center; gap: 8px;
   }
-  .lp-nav-cta:hover { opacity: 0.85; transform: translateY(-1px); }
+  .lp-btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
+  .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+
+  .lp-btn-ghost {
+    background: transparent; color: var(--green);
+    border: 1.5px solid var(--green);
+    padding: 11px 24px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 16px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background var(--transition), color var(--transition);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lp-btn-ghost:hover { background: var(--green-lo); }
+  .lp-btn-ghost svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  .lp-cta-pair { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ─── AI BADGE ───────────────────────────────────── */
+  .lp-ai-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--cream);
+    border: 1px solid var(--bdr2);
+    padding: 6px 12px; border-radius: var(--radius-badge);
+    font-family: var(--fn); font-size: 12px; font-weight: 500; color: var(--ink);
+    margin-bottom: 24px;
+  }
+  .lp-ai-badge svg { width: 12px; height: 12px; fill: var(--green); }
 
   /* ─── HERO ──────────────────────────────────────── */
   .lp-hero-wrap {
-    background: var(--bg1);
-    background-image:
-      radial-gradient(ellipse 80% 60% at 80% 40%, rgba(15,157,88,0.08) 0%, transparent 65%),
-      radial-gradient(ellipse 50% 80% at 10% 80%, rgba(15,157,88,0.04) 0%, transparent 60%),
-      url("data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='16' cy='16' r='1' fill='rgba(15,157,88,0.08)'/%3E%3C/svg%3E");
-    background-size: auto, auto, 32px 32px;
-    padding-top: 92px;
+    background: var(--cream);
+    background-image: linear-gradient(257deg, rgba(15,157,88,0.05) -32%, rgba(15,157,88,0.10) 24%, rgba(15,157,88,0.03) 80%, transparent 100%);
+    padding-top: 68px;
   }
   .lp-hero {
-    max-width: 1240px; margin: 0 auto;
-    padding: 80px 40px 96px;
-    display: grid; grid-template-columns: 52% 48%;
+    max-width: 1200px; margin: 0 auto;
+    padding: 72px 40px 96px;
+    display: grid; grid-template-columns: 54% 46%;
     gap: 64px; align-items: center;
   }
 
   /* Left column */
-  .lp-hero-eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--green-lo);
-    color: var(--green);
-    border: 1px solid var(--green-hi);
-    padding: 5px 12px; border-radius: 100px;
-    font-family: var(--fm); font-size: 10.5px; font-weight: 400;
-    letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 28px;
-  }
-  .lp-eyebrow-pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: lp-blink 1.6s ease-in-out infinite; }
-  @keyframes lp-blink { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.25; transform:scale(0.7); } }
   .lp-h1 {
-    font-family: var(--fd);
-    font-size: clamp(42px, 5vw, 70px);
-    font-weight: 800; line-height: 1.01;
-    letter-spacing: -0.045em; color: var(--t0);
-    margin-bottom: 22px;
+    font-family: var(--fs);
+    font-size: clamp(40px, 6vw, 80px);
+    font-weight: 500; line-height: 1.10;
+    letter-spacing: -0.01em; color: var(--ink);
+    margin-bottom: 24px;
   }
-  .lp-h1 em { font-style: italic; font-weight: 700; color: var(--green); }
-  .lp-h1 .lp-h1-dim { color: var(--t2); }
+  .lp-h1 .lp-dot { color: var(--green); }
   .lp-hero-body {
-    font-size: 16px; color: var(--t2); line-height: 1.8;
-    max-width: 460px; margin-bottom: 36px; font-weight: 300;
+    font-family: var(--fn);
+    font-size: 18px; color: var(--graphite); line-height: 1.67;
+    max-width: 460px; margin-bottom: 32px; font-weight: 400;
   }
-  .lp-hero-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 36px; }
-  .lp-btn-primary {
-    background: var(--green); color: var(--on-green); border: none;
-    padding: 14px 26px; border-radius: 9px;
-    font-family: var(--fn); font-size: 14px; font-weight: 700;
-    cursor: pointer; letter-spacing: -0.01em;
-    transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
-    box-shadow: 0 0 36px var(--green-glow);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .lp-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); box-shadow: 0 0 52px var(--green-glow); }
-  .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
-  .lp-btn-ghost {
-    background: transparent; color: var(--t1);
-    border: 1.5px solid var(--bdr2);
-    padding: 13px 26px; border-radius: 9px;
-    font-family: var(--fn); font-size: 14px; font-weight: 500;
-    cursor: pointer; transition: border-color var(--transition), background var(--transition), color var(--transition);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .lp-btn-ghost:hover { border-color: var(--green-hi); background: var(--green-lo); color: var(--t0); }
-  .lp-btn-ghost svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
-  .lp-trust-row { display: flex; gap: 18px; flex-wrap: wrap; }
-  .lp-trust-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--t3); }
-  .lp-trust-check { color: var(--green); }
+  .lp-hero-btns { margin-bottom: 36px; }
+  .lp-trust-row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .lp-trust-item { display: flex; align-items: center; gap: 6px; font-family: var(--fn); font-size: 14px; color: var(--graphite); }
+  .lp-trust-check { color: var(--green); flex-shrink: 0; }
 
   /* ─── OPERATIONS PANEL ───────────────────────────── */
   .lp-ops-panel {
-    background: var(--bg2);
+    background: var(--card);
     border: 1px solid var(--bdr2);
     border-top: 3px solid var(--green);
-    border-radius: 16px; overflow: hidden;
-    box-shadow: var(--shadow-panel);
-    position: relative;
-  }
-  .lp-ops-panel::before {
-    content: ''; position: absolute;
-    top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--green-hi), transparent);
+    border-radius: var(--radius-card); overflow: hidden;
   }
   .lp-ops-header {
-    background: var(--bg3);
+    background: var(--parchment);
     border-bottom: 1px solid var(--bdr);
     padding: 14px 18px;
     display: flex; align-items: center; justify-content: space-between;
   }
-  .lp-ops-title { font-family: var(--fd); font-size: 12.5px; font-weight: 600; color: var(--t1); letter-spacing: -0.01em; }
-  .lp-ops-live {
+  .lp-ops-title { font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+  .lp-ops-sample {
     display: flex; align-items: center; gap: 5px;
-    font-family: var(--fm); font-size: 10px; color: var(--green); letter-spacing: 0.06em;
+    font-family: var(--fm); font-size: 10px; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase;
   }
-  .lp-ops-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: lp-blink 1.3s ease-in-out infinite; }
+  .lp-ops-sample-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--mist); }
 
   /* Current call */
   .lp-call-banner {
-    background: linear-gradient(135deg, rgba(18,201,109,0.08) 0%, rgba(18,201,109,0.03) 100%);
+    background: var(--green-lo);
     border-bottom: 1px solid var(--bdr);
     padding: 14px 18px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
   .lp-call-info { display: flex; flex-direction: column; gap: 3px; }
-  .lp-call-label { font-family: var(--fm); font-size: 9.5px; color: var(--t3); letter-spacing: 0.08em; text-transform: uppercase; }
-  .lp-call-carrier { font-family: var(--fd); font-size: 14px; font-weight: 700; color: var(--t0); letter-spacing: -0.02em; }
-  .lp-call-claim { font-family: var(--fm); font-size: 10.5px; color: var(--green); margin-top: 1px; }
+  .lp-call-label { font-family: var(--fm); font-size: 9.5px; color: var(--graphite); letter-spacing: 0.08em; text-transform: uppercase; }
+  .lp-call-carrier { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+  .lp-call-claim { font-family: var(--fm); font-size: 10.5px; color: var(--green-dark); margin-top: 1px; }
   .lp-waveform { display: flex; align-items: center; gap: 2.5px; height: 28px; }
   .lp-wave-bar {
     width: 3px; border-radius: 2px; background: var(--green);
@@ -260,367 +206,346 @@ const STYLES = `
   .lp-wave-bar:nth-child(11) { height: 20px; animation-delay: 0.28s; }
   .lp-wave-bar:nth-child(12) { height: 14px; animation-delay: 0.35s; }
   @keyframes lp-wave { from { transform: scaleY(0.3); opacity: 0.4; } to { transform: scaleY(1); opacity: 1; } }
+  @keyframes lp-blink { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.25; transform:scale(0.7); } }
 
   /* Carrier tabs */
   .lp-carrier-tabs {
     display: flex; gap: 0;
     border-bottom: 1px solid var(--bdr);
     overflow-x: auto; scrollbar-width: none;
-    background: var(--bg2);
+    background: var(--card);
   }
   .lp-carrier-tabs::-webkit-scrollbar { display: none; }
   .lp-carrier-tab {
-    flex-shrink: 0; padding: 9px 14px;
-    font-family: var(--fm); font-size: 10.5px; font-weight: 400; color: var(--t3);
+    flex-shrink: 0; padding: 10px 14px;
+    font-family: var(--fn); font-size: 13px; font-weight: 400; color: var(--graphite);
     cursor: pointer; background: transparent; border: none; border-bottom: 2px solid transparent;
-    font-family: var(--fn); white-space: nowrap;
+    white-space: nowrap;
     transition: color var(--transition), border-color var(--transition);
-    letter-spacing: -0.01em;
   }
-  .lp-carrier-tab:hover { color: var(--t1); }
-  .lp-carrier-tab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 600; }
+  .lp-carrier-tab:hover { color: var(--ink); }
+  .lp-carrier-tab.active { color: var(--green-dark); border-bottom-color: var(--green); font-weight: 600; }
 
   /* Claim rows */
-  .lp-claims-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; }
+  .lp-claims-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
   .lp-claim {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 12px;
-    background: var(--bg3); border: 1px solid var(--bdr); border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--parchment); border: 1px solid var(--bdr); border-radius: var(--radius-btn);
     animation: lp-slide-in 0.28s cubic-bezier(0.4,0,0.2,1);
     gap: 8px;
   }
   @keyframes lp-slide-in { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
   .lp-claim-left { min-width: 0; flex: 1; }
-  .lp-claim-id { font-family: var(--fm); font-size: 11px; font-weight: 500; color: var(--t1); }
-  .lp-claim-desc { font-size: 10.5px; color: var(--t3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  .lp-claim-id { font-family: var(--fm); font-size: 11px; font-weight: 500; color: var(--ink); }
+  .lp-claim-desc { font-family: var(--fn); font-size: 11px; color: var(--graphite); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
   .lp-claim-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .lp-claim-amt { font-family: var(--fm); font-size: 11.5px; font-weight: 500; color: var(--t1); }
+  .lp-claim-amt { font-family: var(--fm); font-size: 12px; font-weight: 500; color: var(--ink); }
   .lp-badge {
-    display: inline-flex; align-items: center; gap: 3px;
-    padding: 2px 8px; border-radius: 100px; font-size: 9.5px; font-weight: 600; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: var(--radius-badge); font-family: var(--fn); font-size: 11px; font-weight: 500; white-space: nowrap;
   }
-  .lp-badge.approved { background: rgba(18,201,109,0.12); color: var(--green); border: 1px solid rgba(18,201,109,0.2); }
-  .lp-badge.calling  { background: rgba(92,154,255,0.12); color: var(--blue);  border: 1px solid rgba(92,154,255,0.2); }
-  .lp-badge.pending  { background: rgba(240,180,41,0.12); color: var(--gold);  border: 1px solid rgba(240,180,41,0.2); }
+  .lp-badge.approved { background: var(--green-lo); color: var(--green-dark); border: 1px solid var(--green-hi); }
+  .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: var(--blue);  border: 1px solid rgba(59,127,212,0.25); }
+  .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: var(--gold);  border: 1px solid rgba(201,143,18,0.25); }
   .lp-badge-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
   .lp-badge.calling .lp-badge-dot { animation: lp-blink 0.9s ease-in-out infinite; }
 
   /* Panel footer */
   .lp-ops-footer {
-    background: var(--bg3); border-top: 1px solid var(--bdr);
-    padding: 10px 18px;
-    display: flex; align-items: center; justify-content: space-between;
+    background: var(--parchment); border-top: 1px solid var(--bdr);
+    padding: 12px 18px;
+    display: flex; align-items: center;
   }
-  .lp-ops-summary { font-family: var(--fm); font-size: 10.5px; color: var(--t3); }
-  .lp-ops-summary strong { color: var(--green); }
-  .lp-ops-mini-stats { display: flex; gap: 16px; }
-  .lp-ops-mini-stat { display: flex; flex-direction: column; align-items: flex-end; }
-  .lp-ops-mini-num { font-family: var(--fm); font-size: 13px; font-weight: 500; color: var(--t0); line-height: 1; }
-  .lp-ops-mini-lbl { font-size: 9px; color: var(--t4); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+  .lp-ops-summary { font-family: var(--fm); font-size: 11px; color: var(--graphite); }
+  .lp-ops-summary strong { color: var(--green-dark); }
 
   /* ─── STATS BAND ─────────────────────────────────── */
   .lp-stats {
-    background: var(--bg2);
+    background: var(--parchment);
     border-top: 1px solid var(--bdr);
     border-bottom: 1px solid var(--bdr);
   }
   .lp-stats-inner {
-    max-width: 1240px; margin: 0 auto;
+    max-width: 1200px; margin: 0 auto;
     display: grid; grid-template-columns: repeat(4,1fr);
   }
   .lp-stat {
-    padding: 44px 40px;
+    padding: 48px 40px;
     border-right: 1px solid var(--bdr);
-    position: relative; overflow: hidden;
-    transition: background var(--transition);
   }
   .lp-stat:last-child { border-right: none; }
-  .lp-stat:hover { background: var(--bg3); }
-  .lp-stat::after {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, var(--green) 0%, transparent 100%);
-    opacity: 0; transition: opacity var(--transition);
-  }
-  .lp-stat:hover::after { opacity: 1; }
   .lp-stat-num {
-    font-family: var(--fd); font-size: 52px; font-weight: 800;
-    color: var(--t0); letter-spacing: -0.05em; line-height: 1;
-    margin-bottom: 8px; display: flex; align-items: baseline; gap: 3px;
+    font-family: var(--fs); font-size: 48px; font-weight: 500;
+    color: var(--ink); letter-spacing: -0.01em; line-height: 1.1;
+    margin-bottom: 8px; display: flex; align-items: baseline; gap: 4px;
   }
-  .lp-stat-num span { font-size: 28px; color: var(--green); }
-  .lp-stat-lbl { font-size: 12.5px; color: var(--t3); line-height: 1.5; }
+  .lp-stat-num span { font-size: 24px; color: var(--green); font-family: var(--fn); font-weight: 500; }
+  .lp-stat-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
 
   /* ─── SECTION STRUCTURE ──────────────────────────── */
-  .lp-section-inner { max-width: 1240px; margin: 0 auto; }
+  .lp-section-inner { max-width: 1200px; margin: 0 auto; padding: 80px 40px; }
+  .lp-section-heading {
+    text-align: center; max-width: 700px; margin: 0 auto 56px;
+  }
   .lp-eyebrow {
-    font-family: var(--fm); font-size: 10.5px; font-weight: 400;
-    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px;
-    display: flex; align-items: center; gap: 8px;
+    font-family: var(--fn); font-size: 14px; font-weight: 500;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--green);
+    margin-bottom: 14px;
   }
-  .lp-eyebrow::before {
-    content: ''; width: 18px; height: 1px; background: currentColor; opacity: 0.5;
-  }
-  .lp-eyebrow.green { color: var(--green); }
-  .lp-eyebrow.dark  { color: var(--green-dark); }
   .lp-section-h2 {
-    font-family: var(--fd);
-    font-size: clamp(28px, 3.5vw, 48px);
-    font-weight: 800; letter-spacing: -0.04em;
-    line-height: 1.05; margin-bottom: 56px;
+    font-family: var(--fs);
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 500; letter-spacing: -0.01em;
+    line-height: 1.15; color: var(--ink); margin-bottom: 24px;
   }
-  .lp-section-h2.on-dark { color: var(--t0); }
-  .lp-section-h2.on-dark em { font-style: italic; color: var(--green); font-weight: 700; }
-  .lp-section-h2.on-light { color: #0C1A0F; }
-  .lp-section-h2.on-light em { font-style: italic; color: var(--green-dark); font-weight: 700; }
-  .lp-section-sub { font-size: 15px; color: var(--t2); line-height: 1.78; max-width: 520px; margin-top: -38px; margin-bottom: 48px; font-weight: 300; }
-  .lp-section-sub.on-light { color: #445948; }
+  .lp-section-h2 .lp-dot { color: var(--green); }
+  .lp-section-sub { font-family: var(--fn); font-size: 18px; color: var(--graphite); line-height: 1.67; }
+
+  /* Two-column feature split */
+  .lp-split { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .lp-split-h2 {
+    font-family: var(--fs); font-size: clamp(28px, 3.5vw, 40px); font-weight: 500;
+    letter-spacing: -0.01em; line-height: 1.15; color: var(--ink); margin-bottom: 24px;
+  }
+  .lp-split-p { font-family: var(--fn); font-size: 16px; color: var(--graphite); line-height: 1.56; margin-bottom: 16px; }
 
   /* ─── HOW IT WORKS ───────────────────────────────── */
-  .lp-pipeline { background: #F2F6F2; }
-  .lp-pipeline .lp-section-inner { padding: 100px 40px; }
-  .lp-steps {
-    display: grid; grid-template-columns: repeat(4,1fr);
-    gap: 0; position: relative;
-  }
-  .lp-steps::before {
-    content: ''; position: absolute;
-    top: 25px; left: calc(12.5% + 22px); right: calc(12.5% + 22px);
-    height: 1px;
-    background: linear-gradient(90deg, #D0DDD1 0%, #A0BDA3 50%, #D0DDD1 100%);
-    z-index: 0;
-  }
-  .lp-step { padding: 0 20px; text-align: center; z-index: 1; }
-  .lp-step-num {
-    font-family: var(--fm); font-size: 9.5px; font-weight: 500;
-    color: var(--green-dark); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px;
-  }
-  .lp-step-icon {
-    width: 50px; height: 50px; border-radius: 50%;
-    background: white; border: 1.5px solid #D0DDD1;
-    display: grid; place-items: center; margin: 0 auto 16px;
-    box-shadow: 0 2px 8px rgba(12,26,15,0.07);
-    transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
-    position: relative;
-  }
-  .lp-step-icon svg { width: 19px; height: 19px; stroke: var(--green-dark); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .lp-step:hover .lp-step-icon {
-    border-color: var(--green-dark);
-    box-shadow: 0 4px 16px rgba(10,107,79,0.15);
-    transform: translateY(-2px);
-  }
-  .lp-step-label { font-family: var(--fd); font-size: 13.5px; font-weight: 700; color: #0C1A0F; margin-bottom: 7px; letter-spacing: -0.015em; }
-  .lp-step-desc { font-size: 12.5px; color: #5A7060; line-height: 1.68; }
+  .lp-pipeline { background: var(--cream); }
 
-  /* ─── FEATURES ───────────────────────────────────── */
-  .lp-features { background: var(--bg2); }
-  .lp-features .lp-section-inner { padding: 100px 40px; }
-  .lp-feat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
-  .lp-feat {
-    background: var(--bg3); border: 1px solid var(--bdr); border-radius: 12px;
-    padding: 28px 24px;
-    transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+  /* Interactive claim walkthrough */
+  .lp-walk { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: stretch; }
+  .lp-walk-tabs { display: flex; flex-direction: column; gap: 8px; }
+  .lp-walk-tab {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 16px 18px; cursor: pointer; text-align: left;
+    transition: border-color var(--transition), background var(--transition);
     position: relative; overflow: hidden;
   }
-  .lp-feat::after {
-    content: ''; position: absolute; inset: 0;
-    background: radial-gradient(circle at 0% 0%, var(--green-lo) 0%, transparent 60%);
-    opacity: 0; transition: opacity var(--transition);
-    pointer-events: none;
+  .lp-walk-tab.active { border-color: var(--green); background: var(--green-lo); }
+  .lp-walk-tab-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .lp-walk-tab-icon {
+    width: 32px; height: 32px; border-radius: var(--radius-btn); flex-shrink: 0;
+    background: var(--bdr); border: 1px solid var(--bdr2);
+    display: grid; place-items: center;
+    transition: background var(--transition), border-color var(--transition);
   }
-  .lp-feat:hover { border-color: var(--green-hi); transform: translateY(-2px); box-shadow: 0 12px 32px rgba(15,157,88,0.12); }
-  .lp-feat:hover::after { opacity: 1; }
-  .lp-feat-icon {
-    width: 38px; height: 38px; border-radius: 9px;
-    background: var(--green-lo); border: 1px solid var(--green-md);
-    display: grid; place-items: center; margin-bottom: 16px;
-    transition: background var(--transition);
+  .lp-walk-tab-icon svg { width: 15px; height: 15px; stroke: var(--graphite); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--transition); }
+  .lp-walk-tab.active .lp-walk-tab-icon { background: var(--green); border-color: var(--green); }
+  .lp-walk-tab.active .lp-walk-tab-icon svg { stroke: #fcfcfa; }
+  .lp-walk-tab-step { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); text-transform: uppercase; letter-spacing: 0.06em; transition: color var(--transition); }
+  .lp-walk-tab.active .lp-walk-tab-step { color: var(--green-dark); }
+  .lp-walk-tab-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 1px; }
+  .lp-walk-tab-desc { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.5; padding-left: 44px; }
+  .lp-walk-tab-progress {
+    position: absolute; bottom: 0; left: 0; height: 2px; background: var(--green);
+    width: 0%; transition: width 60ms linear;
   }
-  .lp-feat-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .lp-feat:hover .lp-feat-icon { background: var(--green-md); }
-  .lp-feat-h { font-family: var(--fd); font-size: 13.5px; font-weight: 700; color: var(--t0); margin-bottom: 8px; letter-spacing: -0.015em; }
-  .lp-feat-p { font-size: 12.5px; color: var(--t2); line-height: 1.72; font-weight: 300; }
 
-  /* ─── CARRIERS ───────────────────────────────────── */
-  .lp-carriers { background: white; border-top: 1px solid #E0EAE1; border-bottom: 1px solid #E0EAE1; }
-  .lp-carriers .lp-section-inner { padding: 100px 40px; }
-  .lp-carrier-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
-  .lp-carrier-card {
-    background: white; border: 1.5px solid #E0EAE1; border-radius: 11px;
-    padding: 18px 20px; cursor: pointer;
-    transition: border-color var(--transition), box-shadow var(--transition);
-    display: flex; flex-direction: column; gap: 10px;
+  /* Demo card */
+  .lp-walk-card {
+    background: var(--card); border: 1px solid var(--bdr2); border-radius: var(--radius-card);
+    border-top: 3px solid var(--mist);
+    overflow: hidden; display: flex; flex-direction: column;
+    transition: border-top-color 0.4s ease;
   }
-  .lp-carrier-card:hover { border-color: var(--green-dark); box-shadow: 0 2px 16px rgba(10,107,79,0.08); }
-  .lp-carrier-card.active { border-color: var(--green-dark); background: rgba(10,107,79,0.025); }
-  .lp-carrier-row { display: flex; align-items: center; justify-content: space-between; }
-  .lp-carrier-name { font-family: var(--fd); font-size: 13px; font-weight: 700; color: #0C1A0F; letter-spacing: -0.01em; }
-  .lp-carrier-share-badge {
-    font-family: var(--fm); font-size: 10px; font-weight: 400; color: var(--green-dark);
-    background: rgba(10,107,79,0.08); border: 1px solid rgba(10,107,79,0.14);
-    padding: 2px 8px; border-radius: 100px;
+  .lp-walk-card.state-pending  { border-top-color: var(--gold); }
+  .lp-walk-card.state-tokenize { border-top-color: var(--graphite); }
+  .lp-walk-card.state-calling  { border-top-color: var(--blue); }
+  .lp-walk-card.state-approved { border-top-color: var(--green); }
+  .lp-walk-header {
+    background: var(--parchment); border-bottom: 1px solid var(--bdr);
+    padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
-  .lp-carrier-bar-track { height: 3px; background: #E8F0E8; border-radius: 2px; overflow: hidden; }
-  .lp-carrier-bar-fill { height: 100%; background: var(--green-dark); border-radius: 2px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
-  .lp-carriers-note { font-size: 12.5px; color: #7A9080; text-align: center; margin-top: 16px; }
+  .lp-walk-header-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .lp-walk-claim-id { font-family: var(--fm); font-size: 11px; color: var(--graphite); }
+  .lp-walk-claim-title { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lp-badge.neutral { background: rgba(96,96,95,0.08); color: var(--graphite); border: 1px solid var(--bdr2); }
 
-  /* ─── TESTIMONIALS ───────────────────────────────── */
-  .lp-quotes { background: var(--bg1); }
-  .lp-quotes .lp-section-inner { padding: 100px 40px; }
-  .lp-quote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .lp-quote {
-    background: var(--bg2); border: 1px solid var(--bdr); border-radius: 14px;
-    padding: 32px 28px; position: relative;
+  .lp-walk-body { padding: 24px; min-height: 224px; display: flex; flex-direction: column; justify-content: center; }
+  .lp-walk-fade { animation: lp-fade-up 0.4s ease both; display: flex; flex-direction: column; gap: 14px; }
+  @keyframes lp-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .lp-walk-row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: baseline; }
+  .lp-walk-row-label { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); text-transform: uppercase; letter-spacing: 0.06em; }
+  .lp-walk-row-value { font-family: var(--fn); font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .lp-walk-row-value.mono { font-family: var(--fm); }
+
+  .lp-walk-token-old { color: var(--graphite); text-decoration: line-through; opacity: 0.55; }
+  .lp-walk-token-arrow { color: var(--mist); margin: 0 8px; }
+  .lp-walk-token-new { font-family: var(--fm); color: var(--green-dark); font-weight: 500; }
+  .lp-walk-note { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.6; padding-top: 4px; border-top: 1px solid var(--bdr); }
+
+  .lp-walk-call-head { display: flex; align-items: center; justify-content: space-between; }
+  .lp-walk-call-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); }
+  .lp-walk-transcript {
+    background: var(--parchment); border: 1px solid var(--bdr); border-radius: var(--radius-btn);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; min-height: 132px;
+  }
+  .lp-walk-transcript-line { font-family: var(--fm); font-size: 12.5px; color: var(--graphite); animation: lp-fade-up 0.35s ease both; }
+  .lp-walk-transcript-line.active { color: var(--green-dark); font-weight: 500; }
+
+  .lp-walk-check-circle {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--green-lo); border: 1px solid var(--green-hi);
+    display: grid; place-items: center; flex-shrink: 0;
+    animation: lp-pop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .lp-walk-check-circle svg { width: 16px; height: 16px; stroke: var(--green); fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  @keyframes lp-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .lp-walk-caption { font-family: var(--fn); font-size: 13px; color: var(--mist); text-align: center; margin-top: 20px; }
+
+  /* ─── PRODUCT HUB CARDS (Features) ──────────────── */
+  .lp-features { background: var(--parchment); }
+  .lp-feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .lp-feat {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 28px;
     transition: border-color var(--transition);
   }
-  .lp-quote:hover { border-color: var(--bdr2); }
-  .lp-quote-mark {
-    font-family: Georgia, serif; font-size: 64px; line-height: 0.5;
-    color: var(--green); opacity: 0.35; position: absolute; top: 22px; left: 22px;
+  .lp-feat:hover { border-color: var(--green-hi); }
+  .lp-feat-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-btn);
+    background: var(--green-lo); border: 1px solid var(--green-md);
+    display: grid; place-items: center; margin-bottom: 18px;
   }
-  .lp-quote-body { font-size: 14.5px; color: var(--t1); line-height: 1.78; margin-bottom: 24px; font-weight: 300; font-style: italic; padding-top: 16px; }
+  .lp-feat-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-feat-h { font-family: var(--fn); font-size: 22px; font-weight: 500; color: var(--ink); margin-bottom: 10px; letter-spacing: -0.01em; }
+  .lp-feat-p { font-family: var(--fn); font-size: 16px; color: var(--graphite); line-height: 1.56; margin-bottom: 16px; }
+  .lp-feat-check { display: flex; align-items: flex-start; gap: 8px; font-family: var(--fn); font-size: 14px; color: var(--ink); margin-bottom: 16px; }
+  .lp-feat-check svg { width: 14px; height: 14px; stroke: var(--green); fill: none; stroke-width: 2.6; flex-shrink: 0; margin-top: 2px; }
+  .lp-feat-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green-dark);
+    text-decoration: none;
+  }
+  .lp-feat-link svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
+  /* ─── CARRIERS (feature split) ───────────────────── */
+  .lp-carriers { background: var(--cream); }
+  .lp-carrier-grid { display: flex; flex-direction: column; gap: 10px; }
+  .lp-carrier-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 16px 20px; cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .lp-carrier-card:hover { border-color: var(--green-hi); }
+  .lp-carrier-card.active { border-color: var(--green); background: var(--green-lo); }
+  .lp-carrier-row { display: flex; align-items: center; justify-content: space-between; }
+  .lp-carrier-name { font-family: var(--fn); font-size: 16px; font-weight: 500; color: var(--ink); }
+  .lp-carrier-share-badge {
+    font-family: var(--fm); font-size: 11px; font-weight: 400; color: var(--green-dark);
+    background: var(--green-lo); border: 1px solid var(--green-hi);
+    padding: 2px 9px; border-radius: var(--radius-badge);
+  }
+  .lp-carrier-bar-track { height: 4px; background: var(--bdr); border-radius: 999px; overflow: hidden; }
+  .lp-carrier-bar-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
+  .lp-carriers-note { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 16px; }
+
+  /* ─── TESTIMONIALS ───────────────────────────────── */
+  .lp-quotes { background: var(--parchment); }
+  .lp-quote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .lp-quote {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 32px;
+  }
+  .lp-quote-mark {
+    font-family: var(--fs); font-size: 56px; line-height: 0.5;
+    color: var(--green); position: relative; top: 16px;
+  }
+  .lp-quote-body { font-family: var(--fn); font-size: 16px; color: var(--ink); line-height: 1.67; margin-bottom: 24px; font-weight: 400; }
   .lp-quote-attr { display: flex; align-items: center; gap: 12px; }
   .lp-quote-avatar {
-    width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--bdr2);
-    background: var(--bg4); display: grid; place-items: center; flex-shrink: 0;
-    font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--green);
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--bdr2);
+    background: var(--green-lo); display: grid; place-items: center; flex-shrink: 0;
+    font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--green-dark);
   }
-  .lp-quote-name { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--t0); letter-spacing: -0.01em; }
-  .lp-quote-title { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
+  .lp-quote-name { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); }
+  .lp-quote-title { font-family: var(--fn); font-size: 13px; color: var(--graphite); margin-top: 2px; }
 
-  /* ─── COMPLIANCE ─────────────────────────────────── */
-  .lp-compliance { background: var(--bg3); border-top: 1px solid var(--bdr); }
-  .lp-compliance .lp-section-inner { padding: 100px 40px; }
-  .lp-compliance-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  /* ─── COMPLIANCE (product hub cards) ─────────────── */
+  .lp-compliance { background: var(--cream); }
+  .lp-compliance-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
   .lp-compliance-card {
-    background: var(--bg2); border: 1px solid var(--bdr); border-radius: 12px;
-    padding: 26px 22px;
-    transition: border-color var(--transition), background var(--transition);
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 24px;
+    transition: border-color var(--transition);
   }
-  .lp-compliance-card:hover { border-color: var(--green-hi); background: var(--bg3); }
+  .lp-compliance-card:hover { border-color: var(--green-hi); }
   .lp-compliance-icon {
-    width: 40px; height: 40px; border-radius: 9px;
+    width: 40px; height: 40px; border-radius: var(--radius-btn);
     background: var(--green-lo); border: 1px solid var(--green-md);
-    display: grid; place-items: center; margin-bottom: 14px;
+    display: grid; place-items: center; margin-bottom: 16px;
   }
   .lp-compliance-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .lp-compliance-h { font-family: var(--fd); font-size: 13px; font-weight: 700; color: var(--t0); margin-bottom: 8px; letter-spacing: -0.01em; }
-  .lp-compliance-p { font-size: 12px; color: var(--t2); line-height: 1.68; font-weight: 300; }
+  .lp-compliance-h { font-family: var(--fn); font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
+  .lp-compliance-p { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
 
   /* ─── CTA ────────────────────────────────────────── */
-  .lp-cta-section { background: var(--bg2); border-top: 1px solid var(--bdr); padding: 80px 40px; }
+  .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 80px 40px; }
   .lp-cta-inner {
-    max-width: 1240px; margin: 0 auto;
-    background: var(--bg3);
-    border: 1px solid var(--bdr2);
-    border-radius: 20px; padding: 72px 64px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 48px; flex-wrap: wrap;
-    position: relative; overflow: hidden;
-  }
-  .lp-cta-inner::before {
-    content: ''; position: absolute;
-    top: -120px; right: -120px;
-    width: 400px; height: 400px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(18,201,109,0.08) 0%, transparent 65%);
-    pointer-events: none;
-  }
-  .lp-cta-inner::after {
-    content: ''; position: absolute;
-    bottom: -80px; left: -80px;
-    width: 280px; height: 280px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(18,201,109,0.04) 0%, transparent 65%);
-    pointer-events: none;
+    max-width: 1200px; margin: 0 auto;
+    text-align: center;
   }
   .lp-cta-tag {
-    font-family: var(--fm); font-size: 10px; font-weight: 400; color: var(--t4);
-    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px;
-    display: flex; align-items: center; gap: 6px;
+    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green);
+    letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 14px;
   }
-  .lp-cta-tag::before { content: ''; width: 14px; height: 1px; background: var(--t4); }
   .lp-cta-h {
-    font-family: var(--fd);
-    font-size: clamp(28px, 3.5vw, 48px); font-weight: 800;
-    letter-spacing: -0.04em; color: var(--t0); line-height: 1.05; margin-bottom: 14px;
+    font-family: var(--fs);
+    font-size: clamp(28px, 4vw, 48px); font-weight: 500;
+    letter-spacing: -0.01em; color: var(--ink); line-height: 1.15; margin-bottom: 16px;
   }
-  .lp-cta-h em { font-style: italic; color: var(--green); font-weight: 700; }
-  .lp-cta-body { font-size: 15px; color: var(--t2); line-height: 1.75; max-width: 440px; font-weight: 300; }
-  .lp-cta-actions { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; z-index: 1; }
-  .lp-cta-btn-primary {
-    background: var(--green); color: var(--on-green); border: none;
-    padding: 15px 32px; border-radius: 9px;
-    font-family: var(--fn); font-size: 14.5px; font-weight: 700;
-    cursor: pointer; white-space: nowrap;
-    transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
-    box-shadow: 0 0 36px var(--green-glow);
-  }
-  .lp-cta-btn-primary:hover { opacity: 0.87; transform: translateY(-1px); box-shadow: 0 0 52px var(--green-glow); }
-  .lp-cta-btn-outline {
-    background: transparent; color: var(--t1);
-    border: 1.5px solid var(--bdr2);
-    padding: 14px 32px; border-radius: 9px;
-    font-family: var(--fn); font-size: 14.5px; font-weight: 500;
-    cursor: pointer; white-space: nowrap;
-    transition: border-color var(--transition), background var(--transition), color var(--transition);
-  }
-  .lp-cta-btn-outline:hover { border-color: var(--green-hi); background: var(--green-lo); color: var(--t0); }
+  .lp-cta-h .lp-dot { color: var(--green); }
+  .lp-cta-body { font-family: var(--fn); font-size: 18px; color: var(--graphite); line-height: 1.67; max-width: 560px; margin: 0 auto 32px; }
+  .lp-cta-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 
   /* ─── FOOTER ─────────────────────────────────────── */
-  .lp-footer { background: var(--bg3); border-top: 1px solid var(--bdr); padding: 60px 40px 32px; }
-  .lp-footer-inner { max-width: 1240px; margin: 0 auto; }
+  .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 64px 40px 32px; }
+  .lp-footer-inner { max-width: 1200px; margin: 0 auto; }
   .lp-footer-top { display: flex; justify-content: space-between; gap: 40px; flex-wrap: wrap; margin-bottom: 48px; }
-  .lp-footer-brand-sub { font-size: 12.5px; color: var(--t4); margin-top: 10px; max-width: 200px; line-height: 1.65; font-weight: 300; }
-  .lp-footer-cols { display: flex; gap: 56px; }
-  .lp-footer-col h4 { font-family: var(--fm); font-size: 9.5px; font-weight: 400; color: var(--t4); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
-  .lp-footer-col a {
-    display: block; font-size: 12.5px; color: var(--t2); text-decoration: none;
+  .lp-footer-brand-sub { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 12px; max-width: 220px; line-height: 1.57; }
+  .lp-footer-cols { display: flex; gap: 64px; }
+  .lp-footer-col h4 { font-family: var(--fn); font-size: 12px; font-weight: 600; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 16px; }
+  .lp-footer-col a, .lp-footer-col button {
+    display: block; font-family: var(--fn); font-size: 14px; color: var(--graphite); text-decoration: none;
     margin-bottom: 10px; cursor: pointer; transition: color var(--transition);
+    background: none; border: none; padding: 0; text-align: left;
   }
-  .lp-footer-col a:hover { color: var(--t0); }
+  .lp-footer-col a:hover, .lp-footer-col button:hover { color: var(--green-dark); }
   .lp-footer-bottom {
-    border-top: 1px solid var(--bdr); padding-top: 22px;
+    border-top: 1px solid var(--bdr); padding-top: 24px;
     display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
   }
-  .lp-footer-bottom span { font-family: var(--fm); font-size: 11px; color: var(--t4); }
+  .lp-footer-bottom span { font-family: var(--fn); font-size: 13px; color: var(--mist); }
 
   /* ─── SCROLL REVEAL ──────────────────────────────── */
-  .lp-reveal { opacity:0; transform:translateY(20px); transition:opacity 0.65s ease, transform 0.65s ease; }
+  .lp-reveal { opacity:0; transform:translateY(16px); transition:opacity 0.6s ease, transform 0.6s ease; }
   .lp-reveal.visible { opacity:1; transform:none; }
 
   /* ─── RESPONSIVE ─────────────────────────────────── */
   @media (max-width: 1100px) {
-    .lp-hero { grid-template-columns: 1fr; padding: 80px 32px 72px; gap: 56px; }
+    .lp-hero { grid-template-columns: 1fr; padding: 64px 32px 64px; gap: 48px; }
     .lp-stats-inner { grid-template-columns: 1fr 1fr; }
-    .lp-stat { padding: 36px 28px; }
-    .lp-feat-grid { grid-template-columns: 1fr 1fr; }
+    .lp-feat-grid { grid-template-columns: 1fr; }
     .lp-compliance-grid { grid-template-columns: 1fr 1fr; }
-    .lp-steps { grid-template-columns: 1fr 1fr; gap: 36px; }
-    .lp-steps::before { display: none; }
-    .lp-carrier-grid { grid-template-columns: 1fr 1fr; }
-    .lp-cta-inner { padding: 52px 44px; }
+    .lp-walk { grid-template-columns: 1fr; }
+    .lp-split { grid-template-columns: 1fr; gap: 40px; }
     .lp-quote-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
     .lp-nav-inner { padding: 0 24px; }
-    .lp-pipeline .lp-section-inner,
-    .lp-features .lp-section-inner,
-    .lp-carriers .lp-section-inner,
-    .lp-quotes .lp-section-inner,
-    .lp-compliance .lp-section-inner { padding-left: 24px; padding-right: 24px; }
+    .lp-section-inner { padding: 56px 24px; }
     .lp-cta-section, .lp-footer { padding-left: 24px; padding-right: 24px; }
-    .lp-feat-grid { grid-template-columns: 1fr; }
-    .lp-steps { grid-template-columns: 1fr 1fr; }
-    .lp-cta-inner { padding: 40px 28px; flex-direction: column; }
   }
   @media (max-width: 480px) {
-    .lp-compliance-grid, .lp-steps { grid-template-columns: 1fr; }
-    .lp-carrier-grid { grid-template-columns: 1fr; }
-    .lp-stats-inner { grid-template-columns: 1fr 1fr; }
-    .lp-stat-num { font-size: 40px; }
-    .lp-hero { padding-top: 60px; }
-    .lp-ticker { display: none; }
-    .lp-nav { top: 0; }
-    .lp-hero-wrap { padding-top: 60px; }
+    .lp-compliance-grid, .lp-stats-inner { grid-template-columns: 1fr; }
+    .lp-stat-num { font-size: 36px; }
+    .lp-hero { padding-top: 48px; }
+    .lp-hero-wrap { padding-top: 64px; }
+    .lp-walk-row { grid-template-columns: 1fr; gap: 4px; }
   }
 `
 
@@ -666,69 +591,64 @@ const CLAIM_DATA: Record<string, { id: string; desc: string; amt: string; status
   ],
 }
 
-const TICKER_ITEMS = [
-  { carrier: 'Sun Life',         id: '#SL-847291', amt: '$1,240', action: 'resolved' },
-  { carrier: 'Canada Life',      id: '#CL-1048231', amt: '$1,480', action: 'resolved' },
-  { carrier: 'Manulife',         id: '#MFC-39799', amt: '$380',   action: 'resolved' },
-  { carrier: 'Green Shield',     id: '#GS-20847',  amt: '$940',   action: 'resolved' },
-  { carrier: 'Sun Life',         id: '#SL-847055', amt: '$420',   action: 'resolved' },
-  { carrier: 'RBC Insurance',    id: '#RBC-58320', amt: '$1,320', action: 'resolved' },
-  { carrier: 'TELUS AdjudiCare', id: '#TA-67021',  amt: '$310',   action: 'resolved' },
-  { carrier: 'Canada Life',      id: '#CL-1048102', amt: '$96',   action: 'resolved' },
-]
-
 const FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
-    h: 'Carrier-Specific IVR Navigation',
+    h: 'Carrier-specific IVR navigation',
     p: 'Each of the six carriers runs a different IVR structure. CollectRx maintains dedicated navigation paths per carrier, updated whenever systems change.',
+    check: 'Maintained for all six major Canadian carriers',
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>,
-    h: 'Live Claim Status Propagation',
+    h: 'Live claim status propagation',
     p: 'As each call resolves, claim state is written back in real time. Your team sees current status on every outstanding claim without touching a phone.',
+    check: 'Status updates the moment a call ends',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
-    h: 'PHI Tokenization at the Boundary',
+    h: 'PHI tokenization at the boundary',
     p: 'Patient identifiers are replaced with UUID tokens before any data reaches the AI layer. Names, DOBs, and health card numbers never leave your server.',
+    check: 'Built to PHIPA and PIPEDA requirements',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
-    h: 'Structured Denial Escalation',
+    h: 'Structured denial escalation',
     p: 'Denied claims immediately capture the reason code, flag re-submission requirements, and route persistent denials to human review with full context.',
+    check: 'Reason codes captured on every denial',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" /></svg>,
-    h: 'Direct PMS Integration',
+    h: 'Direct PMS integration',
     p: 'Works with any practice management software. A weekly export of outstanding insurance balances is all it takes — no API integration, no IT setup.',
+    check: 'No IT setup or API integration required',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-    h: 'AR Intelligence Reporting',
+    h: 'AR intelligence reporting',
     p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention — by type and aging bucket.',
+    check: 'Delivered weekly, broken down by carrier',
   },
 ]
 
 const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
-    h: 'PHIPA Architecture',
+    h: 'PHIPA architecture',
     p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally, not by policy.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
-    h: 'PIPEDA Compliant',
+    h: 'PIPEDA compliant',
     p: 'Built to Canadian federal privacy standards. Data residency, consent handling, and subject access rights are built into the platform.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
-    h: 'PHI On Your Infrastructure',
+    h: 'PHI on your infrastructure',
     p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
-    h: 'Business Hours Enforcement',
+    h: 'Business hours enforcement',
     p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
   },
 ]
@@ -736,24 +656,46 @@ const TRUST = [
 const PIPELINE_STEPS = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>,
-    label: 'Claim Detected',
+    label: 'Claim detected',
     desc: 'Outstanding claims pulled from your PMS automatically. No manual entry required.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
-    label: 'PHI Removed',
+    label: 'PHI removed',
     desc: 'Patient identifiers replaced with secure UUID tokens before any AI processing.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
-    label: 'Carrier Called',
+    label: 'Carrier called',
     desc: 'AI navigates the carrier IVR, speaks with reps, and captures adjudication status.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>,
-    label: 'Status Written Back',
+    label: 'Status written back',
     desc: 'Result recorded: approved, denied with reason code, or escalated for human review.',
   },
+]
+
+// Single illustrative claim used to drive the "How it Works" walkthrough.
+const DEMO_CLAIM = {
+  id: '#SL-204871',
+  procedure: 'Crown — Unit 14 (D2710)',
+  carrier: 'Sun Life',
+  group: '88421',
+  amount: '$1,240',
+  patientName: 'Sarah Mitchell',
+  patientDob: '04/12/1985',
+  token: '7f3a-92d1-44e0',
+  daysOutstanding: 32,
+}
+
+const IVR_TRANSCRIPT = [
+  'Dialing Sun Life provider line…',
+  '"For claims status, press 2."',
+  'Entering group number 8 8 4 2 1…',
+  '"Please hold for the next representative."',
+  'Speaking with rep — referencing claim #SL-204871…',
+  'Adjudication status received.',
 ]
 
 const TESTIMONIALS = [
@@ -818,34 +760,172 @@ function useScrolled() {
 }
 
 // ─── Components ────────────────────────────────────────────────────────────────
-function Ticker() {
-  const items = [...TICKER_ITEMS, ...TICKER_ITEMS] // double for seamless loop
-  return (
-    <div className="lp-ticker">
-      <div className="lp-ticker-label">
-        <div className="lp-ticker-dot" />
-        Live
-      </div>
-      <div style={{ overflow: 'hidden', flex: 1 }}>
-        <div className="lp-ticker-track">
-          {items.map((t, i) => (
-            <span className="lp-ticker-item" key={i}>
-              <span className="lp-ticker-sep">▪</span>
-              {t.carrier} · {t.id} · <em>{t.amt}</em> {t.action}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function Waveform() {
   return (
     <div className="lp-waveform">
       {Array.from({ length: 12 }).map((_, i) => (
         <div key={i} className="lp-wave-bar" />
       ))}
+    </div>
+  )
+}
+
+function ClaimWalkthrough() {
+  const STEP_DURATION = 5200
+  const TICK = 50
+  const [step, setStep] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const [lineCount, setLineCount] = useState(1)
+
+  // Auto-advance through the four steps on a loop, with a progress bar per tab.
+  useEffect(() => {
+    setProgress(0)
+    let elapsed = 0
+    const id = setInterval(() => {
+      elapsed += TICK
+      setProgress(Math.min((elapsed / STEP_DURATION) * 100, 100))
+      if (elapsed >= STEP_DURATION) {
+        setStep(s => (s + 1) % PIPELINE_STEPS.length)
+      }
+    }, TICK)
+    return () => clearInterval(id)
+  }, [step])
+
+  // Reveal the IVR transcript line-by-line while "Carrier called" is active.
+  useEffect(() => {
+    if (step !== 2) { setLineCount(1); return }
+    setLineCount(1)
+    const id = setInterval(() => {
+      setLineCount(n => (n < IVR_TRANSCRIPT.length ? n + 1 : n))
+    }, 750)
+    return () => clearInterval(id)
+  }, [step])
+
+  const stateClass = ['state-pending', 'state-tokenize', 'state-calling', 'state-approved'][step]
+  const badge = [
+    { label: 'Outstanding', cls: 'pending' },
+    { label: 'Tokenizing',  cls: 'neutral' },
+    { label: 'Calling',     cls: 'calling' },
+    { label: 'Approved',    cls: 'approved' },
+  ][step]
+
+  return (
+    <div className="lp-walk">
+      <div className="lp-walk-tabs">
+        {PIPELINE_STEPS.map((s, i) => (
+          <button
+            key={s.label}
+            type="button"
+            className={`lp-walk-tab${i === step ? ' active' : ''}`}
+            onClick={() => setStep(i)}
+          >
+            <div className="lp-walk-tab-top">
+              <div className="lp-walk-tab-icon">{s.icon}</div>
+              <div>
+                <div className="lp-walk-tab-step">Step {i + 1}</div>
+                <div className="lp-walk-tab-label">{s.label}</div>
+              </div>
+            </div>
+            <div className="lp-walk-tab-desc">{s.desc}</div>
+            {i === step && <div className="lp-walk-tab-progress" style={{ width: `${progress}%` }} />}
+          </button>
+        ))}
+      </div>
+
+      <div className={`lp-walk-card ${stateClass}`}>
+        <div className="lp-walk-header">
+          <div className="lp-walk-header-left">
+            <span className="lp-walk-claim-id">{DEMO_CLAIM.id}</span>
+            <span className="lp-walk-claim-title">{DEMO_CLAIM.procedure}</span>
+          </div>
+          <span className={`lp-badge ${badge.cls}`}>
+            <span className="lp-badge-dot" />
+            {badge.label}
+          </span>
+        </div>
+
+        <div className="lp-walk-body">
+          {step === 0 && (
+            <div className="lp-walk-fade" key="step0">
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Patient</span>
+                <span className="lp-walk-row-value">{DEMO_CLAIM.patientName} · DOB {DEMO_CLAIM.patientDob}</span>
+              </div>
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Carrier</span>
+                <span className="lp-walk-row-value">{DEMO_CLAIM.carrier} · Group #{DEMO_CLAIM.group}</span>
+              </div>
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Amount</span>
+                <span className="lp-walk-row-value mono">{DEMO_CLAIM.amount}</span>
+              </div>
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Status</span>
+                <span className="lp-walk-row-value">{DEMO_CLAIM.daysOutstanding} days outstanding — entering follow-up queue</span>
+              </div>
+            </div>
+          )}
+          {step === 1 && (
+            <div className="lp-walk-fade" key="step1">
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Patient</span>
+                <span className="lp-walk-row-value">
+                  <span className="lp-walk-token-old">{DEMO_CLAIM.patientName} · DOB {DEMO_CLAIM.patientDob}</span>
+                  <span className="lp-walk-token-arrow">→</span>
+                  <span className="lp-walk-token-new">token {DEMO_CLAIM.token}</span>
+                </span>
+              </div>
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Carrier</span>
+                <span className="lp-walk-row-value">{DEMO_CLAIM.carrier} · Group #{DEMO_CLAIM.group}</span>
+              </div>
+              <div className="lp-walk-row">
+                <span className="lp-walk-row-label">Amount</span>
+                <span className="lp-walk-row-value mono">{DEMO_CLAIM.amount}</span>
+              </div>
+              <p className="lp-walk-note">
+                Only the UUID token is sent to the voice agent — names, dates of birth, and health card numbers stay on the backend.
+              </p>
+            </div>
+          )}
+          {step === 2 && (
+            <div className="lp-walk-fade" key="step2">
+              <div className="lp-walk-call-head">
+                <span className="lp-walk-call-label">Calling {DEMO_CLAIM.carrier}…</span>
+                <Waveform />
+              </div>
+              <div className="lp-walk-transcript">
+                {IVR_TRANSCRIPT.slice(0, lineCount).map((line, i) => (
+                  <div key={line} className={`lp-walk-transcript-line${i === lineCount - 1 ? ' active' : ''}`}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="lp-walk-fade" key="step3" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+              <div className="lp-walk-check-circle">
+                <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="lp-walk-row">
+                  <span className="lp-walk-row-label">Result</span>
+                  <span className="lp-walk-row-value">Approved — {DEMO_CLAIM.amount} adjudicated</span>
+                </div>
+                <div className="lp-walk-row">
+                  <span className="lp-walk-row-label">Token</span>
+                  <span className="lp-walk-row-value mono">{DEMO_CLAIM.token}</span>
+                </div>
+                <div className="lp-walk-row">
+                  <span className="lp-walk-row-label">Synced</span>
+                  <span className="lp-walk-row-value">Written back to PMS — no staff action required</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -862,7 +942,7 @@ function OpsPanel({ active, onSelect }: { active: number; onSelect: (i: number) 
       {/* Header */}
       <div className="lp-ops-header">
         <span className="lp-ops-title">Operations Center</span>
-        <div className="lp-ops-live"><div className="lp-ops-live-dot" />Live</div>
+        <div className="lp-ops-sample"><div className="lp-ops-sample-dot" />Sample workflow</div>
       </div>
 
       {/* Current call */}
@@ -908,18 +988,8 @@ function OpsPanel({ active, onSelect }: { active: number; onSelect: (i: number) 
       {/* Footer */}
       <div className="lp-ops-footer">
         <span className="lp-ops-summary">
-          <strong>{approved}/{claims.length}</strong> resolved · <strong>${total.toLocaleString('en-CA')}</strong>
+          Example: <strong>{approved}/{claims.length}</strong> claims resolved · <strong>${total.toLocaleString('en-CA')}</strong>
         </span>
-        <div className="lp-ops-mini-stats">
-          <div className="lp-ops-mini-stat">
-            <span className="lp-ops-mini-num">14</span>
-            <span className="lp-ops-mini-lbl">Today</span>
-          </div>
-          <div className="lp-ops-mini-stat">
-            <span className="lp-ops-mini-num">$24.2k</span>
-            <span className="lp-ops-mini-lbl">Resolved</span>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -949,9 +1019,6 @@ export default function LandingPage() {
       <style>{STYLES}</style>
       <div className="lp">
 
-        {/* ── TICKER ── */}
-        <Ticker />
-
         {/* ── NAV ── */}
         <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
           <div className="lp-nav-inner">
@@ -969,7 +1036,7 @@ export default function LandingPage() {
             </div>
             <div className="lp-nav-right">
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
-              <button type="button" className="lp-nav-cta" onClick={() => scrollTo('cta')}>
+              <button type="button" className="lp-btn-primary" onClick={() => scrollTo('cta')}>
                 Request Access
               </button>
             </div>
@@ -981,13 +1048,13 @@ export default function LandingPage() {
           <section className="lp-hero">
             {/* Left */}
             <div>
-              <div className="lp-hero-eyebrow">
-                <div className="lp-eyebrow-pulse" />
+              <div className="lp-ai-badge">
+                <svg viewBox="0 0 24 24"><path d="M12 0l2.5 9.5L24 12l-9.5 2.5L12 24l-2.5-9.5L0 12l9.5-2.5z" /></svg>
                 Canadian Dental AR Automation · Early Access
               </div>
               <h1 className="lp-h1">
                 Your insurance AR,<br />
-                <em>resolved automatically.</em>
+                resolved automatically<span className="lp-dot">.</span>
               </h1>
               <p className="lp-hero-body">
                 CollectRx runs outstanding claims through a complete AI follow-up pipeline —
@@ -995,19 +1062,20 @@ export default function LandingPage() {
                 escalation, without your staff on hold.
               </p>
               <div className="lp-hero-btns">
-                <button className="lp-btn-primary" onClick={() => scrollTo('cta')}>
-                  Request Early Access
-                  <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                </button>
-                <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
-                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" /></svg>
-                  See how it works
-                </button>
+                <div className="lp-cta-pair">
+                  <button className="lp-btn-primary" onClick={() => scrollTo('cta')}>
+                    Request Early Access
+                    <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                  </button>
+                  <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
+                    See how it works
+                  </button>
+                </div>
               </div>
               <div className="lp-trust-row">
                 {['PHIPA compliant by design', '6 major Canadian carriers', 'No IT setup required'].map(t => (
                   <div className="lp-trust-item" key={t}>
-                    <svg className="lp-trust-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
+                    <svg className="lp-trust-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                       <path d="M5 13l4 4L19 7" />
                     </svg>
                     {t}
@@ -1034,32 +1102,33 @@ export default function LandingPage() {
         {/* ── HOW IT WORKS ── */}
         <section className="lp-pipeline" id="how-it-works">
           <div className="lp-section-inner">
-            <div className="lp-reveal">
-              <div className="lp-eyebrow dark">How it Works</div>
-              <h2 className="lp-section-h2 on-light">
-                Four steps.<br /><em>Zero staff time.</em>
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">How it Works</div>
+              <h2 className="lp-section-h2">
+                Four steps. Zero staff time<span className="lp-dot">.</span>
               </h2>
+              <p className="lp-section-sub">
+                From the moment a claim ages into the queue to the moment its status is
+                written back, the entire follow-up runs without a phone call from your team.
+                Click a step, or watch it run on its own.
+              </p>
             </div>
-            <div className="lp-steps lp-reveal">
-              {PIPELINE_STEPS.map((s, i) => (
-                <div className="lp-step" key={s.label}>
-                  <div className="lp-step-num">Step {i + 1}</div>
-                  <div className="lp-step-icon">{s.icon}</div>
-                  <div className="lp-step-label">{s.label}</div>
-                  <div className="lp-step-desc">{s.desc}</div>
-                </div>
-              ))}
+            <div className="lp-reveal">
+              <ClaimWalkthrough />
+              <p className="lp-walk-caption">
+                Illustrative walkthrough — claim and patient details shown are simulated, not live data.
+              </p>
             </div>
           </div>
         </section>
 
-        {/* ── FEATURES ── */}
+        {/* ── FEATURES (Product Hub Cards) ── */}
         <section className="lp-features" id="features">
           <div className="lp-section-inner">
-            <div className="lp-reveal">
-              <div className="lp-eyebrow green">Platform</div>
-              <h2 className="lp-section-h2 on-dark">
-                Built for the specific realities<br />of <em>Canadian dental AR.</em>
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Platform</div>
+              <h2 className="lp-section-h2">
+                Built for the specific realities of Canadian dental AR<span className="lp-dot">.</span>
               </h2>
             </div>
             <div className="lp-feat-grid">
@@ -1067,64 +1136,75 @@ export default function LandingPage() {
                 <div className="lp-feat lp-reveal" key={f.h} style={{ transitionDelay: `${i * 55}ms` }}>
                   <div className="lp-feat-icon">{f.icon}</div>
                   <div className="lp-feat-h">{f.h}</div>
-                  <div className="lp-feat-p">{f.p}</div>
+                  <p className="lp-feat-p">{f.p}</p>
+                  <div className="lp-feat-check">
+                    <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                    {f.check}
+                  </div>
+                  <Link to="/product" className="lp-feat-link">
+                    Learn more
+                    <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                  </Link>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ── CARRIERS ── */}
+        {/* ── CARRIERS (feature split) ── */}
         <section className="lp-carriers" id="carriers">
           <div className="lp-section-inner">
-            <div className="lp-reveal">
-              <div className="lp-eyebrow dark">Carrier Coverage</div>
-              <h2 className="lp-section-h2 on-light" style={{ marginBottom: 14 }}>
-                Six carriers.<br /><em>78% of the market.</em>
-              </h2>
-              <p className="lp-section-sub on-light">
-                Each integration handles the full call workflow for that carrier — IVR navigation,
-                hold patterns, rep protocols, and status formats. Select a carrier to preview
-                how CollectRx processes its claims.
-              </p>
+            <div className="lp-split lp-reveal">
+              <div>
+                <div className="lp-eyebrow">Carrier Coverage</div>
+                <h2 className="lp-split-h2">
+                  Six carriers. 78% of the market<span className="lp-dot">.</span>
+                </h2>
+                <p className="lp-split-p">
+                  Each integration handles the full call workflow for that carrier — IVR navigation,
+                  hold patterns, rep protocols, and status formats.
+                </p>
+                <p className="lp-split-p">
+                  Select a carrier to preview how CollectRx processes its claims in the
+                  Operations Center above.
+                </p>
+                <p className="lp-carriers-note">
+                  Together these carriers represent approximately 78% of Canadian private dental insurance.
+                </p>
+              </div>
+              <div className="lp-carrier-grid">
+                {CARRIERS.map((c, i) => (
+                  <button
+                    type="button"
+                    key={c.name}
+                    className={`lp-carrier-card${i === active ? ' active' : ''}`}
+                    onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                  >
+                    <div className="lp-carrier-row">
+                      <span className="lp-carrier-name">{c.name}</span>
+                      <span className="lp-carrier-share-badge">{c.share}</span>
+                    </div>
+                    <div className="lp-carrier-bar-track">
+                      <div className="lp-carrier-bar-fill" style={{ width: `${(c.pct / 31) * 100}%` }} />
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="lp-carrier-grid lp-reveal">
-              {CARRIERS.map((c, i) => (
-                <button
-                  type="button"
-                  key={c.name}
-                  className={`lp-carrier-card${i === active ? ' active' : ''}`}
-                  onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-                >
-                  <div className="lp-carrier-row">
-                    <span className="lp-carrier-name">{c.name}</span>
-                    <span className="lp-carrier-share-badge">{c.share}</span>
-                  </div>
-                  <div className="lp-carrier-bar-track">
-                    <div className="lp-carrier-bar-fill" style={{ width: `${(c.pct / 31) * 100}%` }} />
-                  </div>
-                </button>
-              ))}
-            </div>
-            <p className="lp-carriers-note lp-reveal">
-              Together these carriers represent approximately 78% of Canadian private dental insurance.
-            </p>
           </div>
         </section>
 
         {/* ── TESTIMONIALS ── */}
         <section className="lp-quotes">
           <div className="lp-section-inner">
-            <div className="lp-reveal" style={{ padding: '100px 40px 0' }}>
-              <div className="lp-eyebrow green">Early Access</div>
-              <h2 className="lp-section-h2 on-dark" style={{ marginBottom: 40 }}>
-                What practices say.
-              </h2>
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Early Access</div>
+              <h2 className="lp-section-h2">What practices say<span className="lp-dot">.</span></h2>
             </div>
-            <div className="lp-quote-grid lp-reveal" style={{ padding: '0 40px 100px' }}>
+            <div className="lp-quote-grid lp-reveal">
               {TESTIMONIALS.map(t => (
                 <div className="lp-quote" key={t.name}>
-                  <div className="lp-quote-mark">"</div>
+                  <div className="lp-quote-mark">&ldquo;</div>
                   <p className="lp-quote-body">{t.body}</p>
                   <div className="lp-quote-attr">
                     <div className="lp-quote-avatar">{t.initials}</div>
@@ -1142,17 +1222,17 @@ export default function LandingPage() {
         {/* ── COMPLIANCE ── */}
         <section className="lp-compliance" id="compliance">
           <div className="lp-section-inner">
-            <div className="lp-reveal" style={{ padding: '100px 40px 0' }}>
-              <div className="lp-eyebrow green">Compliance</div>
-              <h2 className="lp-section-h2 on-dark" style={{ marginBottom: 14 }}>
-                Compliance is the architecture,<br /><em>not the afterthought.</em>
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Compliance</div>
+              <h2 className="lp-section-h2">
+                Compliance is the architecture, not the afterthought<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 In healthcare, privacy built in after the fact is privacy that fails.
                 In CollectRx, PHI protection is a structural requirement — not a configuration option.
               </p>
             </div>
-            <div className="lp-compliance-grid lp-reveal" style={{ padding: '0 40px 100px' }}>
+            <div className="lp-compliance-grid lp-reveal">
               {TRUST.map(t => (
                 <div className="lp-compliance-card" key={t.h}>
                   <div className="lp-compliance-icon">{t.icon}</div>
@@ -1167,20 +1247,21 @@ export default function LandingPage() {
         {/* ── CTA ── */}
         <div className="lp-cta-section" id="cta">
           <div className="lp-cta-inner lp-reveal">
-            <div>
-              <div className="lp-cta-tag">Early Access</div>
-              <h2 className="lp-cta-h">
-                The AR work is already<br /><em>getting done.</em>
-              </h2>
-              <p className="lp-cta-body">
-                Now live with Canadian dental practices. No setup fees.
-                No long-term contract. If CollectRx doesn't recover revenue you were
-                already leaving behind, you pay nothing.
-              </p>
-            </div>
+            <div className="lp-cta-tag">Early Access</div>
+            <h2 className="lp-cta-h">
+              The AR work is already getting done<span className="lp-dot">.</span>
+            </h2>
+            <p className="lp-cta-body">
+              Now live with Canadian dental practices. No setup fees.
+              No long-term contract. If CollectRx doesn't recover revenue you were
+              already leaving behind, you pay nothing.
+            </p>
             <div className="lp-cta-actions">
-              <button className="lp-cta-btn-primary">Request Early Access</button>
-              <button className="lp-cta-btn-outline">Book a Demo</button>
+              <button className="lp-btn-primary">
+                Request Early Access
+                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+              </button>
+              <button className="lp-btn-ghost">Book a Demo</button>
             </div>
           </div>
         </div>
