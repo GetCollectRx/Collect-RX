@@ -421,6 +421,33 @@ const STYLES = `
   }
   .lp-feat-link svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 
+  /* ─── ROI CALCULATOR ──────────────────────────────── */
+  .lp-roi { background: var(--cream); }
+  .lp-roi-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 56px;
+  }
+  .lp-roi-inputs { display: flex; flex-direction: column; gap: 32px; justify-content: center; }
+  .lp-roi-field-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--fn); font-size: 15px; color: var(--ink); margin-bottom: 12px;
+  }
+  .lp-roi-field-value { font-family: var(--fs); font-size: 20px; font-weight: 500; color: var(--green-dark); }
+  .lp-roi-field input[type="range"] {
+    width: 100%; accent-color: var(--green); cursor: pointer;
+  }
+  .lp-roi-outputs { display: flex; flex-direction: column; gap: 16px; justify-content: center; }
+  .lp-roi-output {
+    background: var(--green-lo); border: 1px solid var(--green-md); border-radius: var(--radius-card);
+    padding: 20px 24px;
+  }
+  .lp-roi-output-num {
+    font-family: var(--fs); font-size: 32px; font-weight: 500; letter-spacing: -0.01em;
+    color: var(--ink); line-height: 1.1; margin-bottom: 4px;
+  }
+  .lp-roi-output-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.5; }
+  .lp-roi-note { font-family: var(--fn); font-size: 13px; color: var(--mist); text-align: center; margin-top: 24px; }
+
   /* ─── CARRIERS (feature split) ───────────────────── */
   .lp-carriers { background: var(--cream); }
   .lp-carrier-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -586,6 +613,7 @@ const STYLES = `
     .lp-hero { grid-template-columns: 1fr; padding: 64px 32px 64px; gap: 48px; }
     .lp-stats-inner { grid-template-columns: 1fr 1fr; }
     .lp-feat-grid { grid-template-columns: 1fr; }
+    .lp-roi-card { grid-template-columns: 1fr; gap: 32px; padding: 32px; }
     .lp-compliance-grid { grid-template-columns: 1fr 1fr; }
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
@@ -691,6 +719,12 @@ const FEATURES = [
     h: 'AR intelligence reporting',
     p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention, organized by type and aging bucket.',
     check: 'Delivered weekly, broken down by carrier',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" /></svg>,
+    h: 'CDCP reconsideration handling',
+    p: 'Denied Canadian Dental Care Plan claims are routed through the CDCP Contact Centre for Level 1 Reconsideration, with denial reason codes mapped to the required evidence checklist.',
+    check: 'Built for the CDCP rollout, not bolted on',
   },
 ]
 
@@ -1069,6 +1103,63 @@ function StatNum({ target, suffix, label }: { target: number; suffix: string; la
   )
 }
 
+const fmtUSD = (n: number) => `$${Math.round(n).toLocaleString('en-CA')}`
+
+function RoiCalculator() {
+  const [outstandingAr, setOutstandingAr] = useState(12000)
+  const [holdHours, setHoldHours] = useState(8)
+
+  const hoursPerYear = holdHours * 52
+  const timeValuePerYear = hoursPerYear * 25
+  const atRiskLow = outstandingAr * 0.10
+  const atRiskHigh = outstandingAr * 0.25
+
+  return (
+    <div className="lp-roi-card">
+      <div className="lp-roi-inputs">
+        <div className="lp-roi-field">
+          <div className="lp-roi-field-label">
+            <span>Outstanding insurance claims right now</span>
+            <span className="lp-roi-field-value">{fmtUSD(outstandingAr)}</span>
+          </div>
+          <input
+            type="range" min={1000} max={50000} step={500}
+            value={outstandingAr}
+            onChange={(e) => setOutstandingAr(Number(e.target.value))}
+            aria-label="Outstanding insurance claims right now"
+          />
+        </div>
+        <div className="lp-roi-field">
+          <div className="lp-roi-field-label">
+            <span>Hours/week your team spends on hold with carriers</span>
+            <span className="lp-roi-field-value">{holdHours} hrs</span>
+          </div>
+          <input
+            type="range" min={0} max={20} step={1}
+            value={holdHours}
+            onChange={(e) => setHoldHours(Number(e.target.value))}
+            aria-label="Hours per week spent on hold with insurance carriers"
+          />
+        </div>
+      </div>
+      <div className="lp-roi-outputs">
+        <div className="lp-roi-output">
+          <div className="lp-roi-output-num">{hoursPerYear.toLocaleString()} hrs / year</div>
+          <div className="lp-roi-output-lbl">
+            Front-desk time freed up, worth roughly {fmtUSD(timeValuePerYear)}/year at $25/hr
+          </div>
+        </div>
+        <div className="lp-roi-output">
+          <div className="lp-roi-output-num">{fmtUSD(atRiskLow)} to {fmtUSD(atRiskHigh)}</div>
+          <div className="lp-roi-output-lbl">
+            Of your current outstanding claims, at typical industry write-off rates for AR aged past 90 days
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [active, setActive] = useState(0)
@@ -1151,6 +1242,7 @@ export default function LandingPage() {
             </div>
             <div className="lp-nav-links">
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</button>
+              <button type="button" className="lp-nav-link" onClick={() => scrollTo('roi')}>ROI Calculator</button>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('features')}>Features</button>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</button>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('compliance')}>Compliance</button>
@@ -1219,6 +1311,29 @@ export default function LandingPage() {
             <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
           </div>
         </div>
+
+        {/* ── ROI CALCULATOR ── */}
+        <section className="lp-roi" id="roi">
+          <div className="lp-section-inner">
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Your numbers</div>
+              <h2 className="lp-section-h2">
+                What's this worth to your practice<span className="lp-dot">?</span>
+              </h2>
+              <p className="lp-section-sub">
+                Adjust the sliders to match your practice. These are estimates to help you
+                size the opportunity, not a guarantee.
+              </p>
+            </div>
+            <div className="lp-reveal">
+              <RoiCalculator />
+              <p className="lp-roi-note">
+                Estimates only, based on industry-typical figures. Actual results depend on your
+                claim mix, carriers, and current follow-up process.
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* ── HOW IT WORKS ── */}
         <section className="lp-pipeline" id="how-it-works">
