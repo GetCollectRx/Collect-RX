@@ -96,7 +96,11 @@ router.post('/', async (req: Request, res: Response) => {
   res.status(200).json({ received: true });
 
   try {
-    await processVapiDeskWebhook(prisma, payload, { rawBody });
+    const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
+    const handledAsProspect = await tryProcessProspectVapiWebhook(prisma, payload);
+    if (!handledAsProspect) {
+      await processVapiDeskWebhook(prisma, payload, { rawBody });
+    }
     await markWebhookProcessed(prisma, bodyHash);
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);

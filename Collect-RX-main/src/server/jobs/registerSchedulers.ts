@@ -45,8 +45,31 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
+  const marketingEveryMs = parseInt(process.env.MARKETING_TICK_MS || '3600000', 10);
+  if (process.env.MARKETING_LOOP_ENABLED !== '0') {
+    await q.add('MARKETING_SEQUENCE_TICK', {}, { repeat: { every: marketingEveryMs } });
+  }
+
+  const marketingLearningPattern = (process.env.MARKETING_LEARNING_CRON || '0 7 * * 1').trim();
+  const marketingLearningOn = ['1', 'true', 'yes'].includes(
+    (process.env.MARKETING_LEARNING_ENABLED ?? '1').trim().toLowerCase(),
+  );
+  if (marketingLearningOn && process.env.MARKETING_LOOP_ENABLED !== '0') {
+    if (!cron.validate(marketingLearningPattern)) {
+      console.error(
+        `[registerSchedulers] Invalid MARKETING_LEARNING_CRON "${marketingLearningPattern}" — MARKETING_LEARNING_CYCLE not registered`,
+      );
+    } else {
+      await q.add('MARKETING_LEARNING_CYCLE', {}, { repeat: { pattern: marketingLearningPattern } });
+    }
+  }
+
   console.log(
     `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"` +
-      (learningOn ? `, LEARNING cron "${learningPattern}"` : ''),
+      (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
+      (process.env.MARKETING_LOOP_ENABLED !== '0'
+        ? `, MARKETING every ${marketingEveryMs}ms` +
+          (marketingLearningOn ? `, MARKETING_LEARNING cron "${marketingLearningPattern}"` : '')
+        : ''),
   );
 }

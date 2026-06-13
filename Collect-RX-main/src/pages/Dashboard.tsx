@@ -50,6 +50,7 @@ interface DashboardStats {
   operationalAlerts?: {
     blockedCarriers: { code: string; name: string }[]
     patientPaymentsReady: boolean
+    decliningCarriers?: { code: string; name: string; successRate: number }[]
   }
   recoveryMetrics?: RecoveryMetricsSnapshot | null
 }
@@ -83,6 +84,7 @@ function DashboardBody({ stats: s, platform, practiceName, isPracticeOwner, canM
   const pct31 = totalAging > 0 ? (s.aging['31-60'] / totalAging) * 100 : 0
   const pct60 = totalAging > 0 ? (s.aging['>60'] / totalAging) * 100 : 0
   const blocked = s.operationalAlerts?.blockedCarriers ?? []
+  const declining = s.operationalAlerts?.decliningCarriers ?? []
   const activeNow = Array.isArray(s.telephony?.activeCalls) ? s.telephony.activeCalls.length : 0
   const callsToday = s.telephony?.callsPlacedToday ?? 0
   const rm = s.recoveryMetrics
@@ -174,6 +176,22 @@ function DashboardBody({ stats: s, platform, practiceName, isPracticeOwner, canM
               </Link>
             </p>
           )}
+        </div>
+      )}
+
+      {declining.length > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20 p-4 space-y-1 relative z-10">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            Carrier response trend declining
+          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            {declining.map((c) => `${c.name} (${c.successRate.toFixed(0)}% success)`).join(', ')} —{' '}
+            success rate has dropped over the last 30 days. Worth a look before your next call batch in case
+            it's an early sign of a carrier flagging automation.{' '}
+            <Link to="/reports/carriers" className="underline">
+              Carrier Performance
+            </Link>
+          </p>
         </div>
       )}
 

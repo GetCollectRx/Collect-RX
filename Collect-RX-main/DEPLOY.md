@@ -217,6 +217,14 @@ Keep `TEST_PHONE_OVERRIDE` **deleted** (not blank — deleted) before going live
 
 ---
 
+## Practice partnerships (outbound sales)
+
+See **[docs/marketing/PARTNERSHIPS-DEPLOY.md](docs/marketing/PARTNERSHIPS-DEPLOY.md)** for the full checklist (SendGrid inbound + events, Vapi sales qualifier, cadence dry run).
+
+CASL policy: **[docs/marketing/CASL-OUTREACH.md](docs/marketing/CASL-OUTREACH.md)**
+
+---
+
 ## Quick reference: minimum Railway Variables checklist
 
 ```

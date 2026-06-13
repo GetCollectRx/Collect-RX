@@ -38,6 +38,8 @@ import Escalations           from './pages/Escalations'
 import QueueStatsReport      from './pages/QueueStatsReport'
 import Portfolio             from './pages/Portfolio'
 import AdminPractices        from './pages/AdminPractices'
+import PartnershipsBoard     from './pages/PartnershipsBoard'
+import ProspectDetail        from './pages/ProspectDetail'
 import SystemHealth          from './pages/SystemHealth'
 import UserManagement        from './pages/UserManagement'
 import BreakGlass            from './pages/BreakGlass'
@@ -77,6 +79,7 @@ const PLATFORM_DEV_NAV_PATHS = new Set([
   '/analytics',
   '/usage-insights',
   '/admin',
+  '/admin/partnerships',
   '/admin/sync',
 ])
 
@@ -114,6 +117,7 @@ const BILLING_OPS_NAV: NavItem[] = [
 
 const PLATFORM_ADMIN_NAV: NavItem[] = [
   { to: '/admin', exact: true, label: 'Practices', icon: 'admin' },
+  { to: '/admin/partnerships', exact: false, label: 'Partnerships', icon: 'portfolio' },
   { to: '/admin/health', exact: true, label: 'System health', icon: 'health' },
   { to: '/usage-insights', exact: true, label: 'Usage insights', icon: 'analytics' },
   { to: '/admin/users', exact: true, label: 'Users', icon: 'users' },
@@ -330,6 +334,8 @@ function AppShell() {
           <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
+          <Route path="/admin/partnerships" element={<ProtectedRoute allowedRoles={['platform_admin']}><PartnershipsBoard /></ProtectedRoute>} />
+          <Route path="/admin/partnerships/:id" element={<ProtectedRoute allowedRoles={['platform_admin']}><ProspectDetail /></ProtectedRoute>} />
           <Route path="/admin/health" element={<ProtectedRoute allowedRoles={['platform_admin']}><SystemHealth /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['platform_admin']}><UserManagement /></ProtectedRoute>} />
           <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />

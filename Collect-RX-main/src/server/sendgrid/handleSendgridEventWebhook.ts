@@ -1,10 +1,12 @@
 /**
- * P4-01 / P4-02 — SendGrid Event Webhook: bounces, drops, spam reports.
- * https://docs.sendgrid.com/for-developers/tracking-events/event
+ * P4-01 / P4-02 — SendGrid Event Webhook: bounces, drops, spam reports, opens/clicks.
+ * Patient balances: opt-out on bounce/spam/unsubscribe.
+ * Prospects: engagement tracking + stage advancement (prospect_id custom arg).
  */
 import { createRequire } from 'module';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { handleProspectSendGridEvent } from '../marketing/prospectEngagement.js';
 
 const require = createRequire(import.meta.url);
 const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook') as {
@@ -19,12 +21,25 @@ type SgEvent = {
   email?: string;
   event?: string;
   reason?: string;
+  url?: string;
   /** custom_args from SendGrid v3 */
   balance_id?: string;
+  prospect_id?: string;
 };
 
-function optOutRelevant(e: string | undefined) {
+function patientOptOutRelevant(e: string | undefined) {
   return e === 'bounce' || e === 'dropped' || e === 'spamreport' || e === 'unsubscribe';
+}
+
+function prospectEngagementRelevant(e: string | undefined) {
+  return (
+    e === 'open' ||
+    e === 'click' ||
+    e === 'bounce' ||
+    e === 'dropped' ||
+    e === 'spamreport' ||
+    e === 'unsubscribe'
+  );
 }
 
 function getHeader(req: Request, name: string): string {
@@ -72,10 +87,20 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
     }
 
     for (const ev of events) {
-      if (!optOutRelevant(ev.event)) {
+      if (ev.prospect_id && prospectEngagementRelevant(ev.event)) {
+        try {
+          await handleProspectSendGridEvent(prisma, ev);
+        } catch (e) {
+          console.error('[sendgrid/webhook] prospect event error', (e as Error).message);
+        }
         continue;
       }
-        const balId = ev.balance_id;
+
+      if (!patientOptOutRelevant(ev.event)) {
+        continue;
+      }
+
+      const balId = ev.balance_id;
       if (balId && typeof balId === 'string') {
         try {
           await prisma.patientBalance.updateMany({

@@ -1,0 +1,8 @@
+{
+  "hourlyRateCAD": 25,
+  "writeOffRateLow": 0.10,
+  "writeOffRateHigh": 0.25,
+  "source": "industry-typical estimates",
+  "notes": "Replace hourlyRateCAD and writeOffRateLow/High with figures derived from pilot practice data once available. No code changes needed elsewhere — the ROI calculator on the landing page reads directly from this file.",
+  "lastUpdated": "2026-06-13"
+}

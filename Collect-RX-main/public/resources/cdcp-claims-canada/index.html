@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CDCP Dental Claims: AR Follow-Up Guide for Canadian Practices | CollectRx</title>
+    <meta name="description" content="How the Canadian Dental Care Plan (CDCP) affects your practice's accounts receivable — fee grid ceilings, the 60-day reconsideration window, pre-authorization, and how to automate follow-up with Sun Life." />
+    <link rel="canonical" href="https://www.collectrx.ca/resources/cdcp-claims-canada/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#0F6E56" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CollectRx" />
+    <meta property="og:url" content="https://www.collectrx.ca/resources/cdcp-claims-canada/" />
+    <meta property="og:title" content="CDCP Dental Claims: AR Follow-Up Guide for Canadian Practices" />
+    <meta property="og:description" content="What the Canadian Dental Care Plan means for your AR workflow — fee grid ceilings, the 60-day reconsideration window, pre-authorization, and how to keep CDCP claims from stalling." />
+    <meta property="og:image" content="https://www.collectrx.ca/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_CA" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CDCP Dental Claims: AR Follow-Up Guide for Canadian Practices" />
+    <meta name="twitter:description" content="What the Canadian Dental Care Plan means for your AR workflow — fee grid ceilings, the 60-day reconsideration window, and pre-authorization." />
+    <meta name="twitter:image" content="https://www.collectrx.ca/og-image.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600&display=swap" rel="stylesheet">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is the CDCP reconsideration window for denied claims?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Practices have 60 days from the date of a CDCP claim decision to submit a reconsideration request to Sun Life, the plan's claims administrator, before that window closes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the CDCP require pre-authorization?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Certain procedure categories under the Canadian Dental Care Plan require pre-authorization before treatment, and claims submitted without it can be denied outright."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the CDCP fee grid ceiling?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "CDCP reimburses providers up to a percentage of the federally published fee grid (around 90% in most provinces), which is often lower than a practice's standard fee schedule — the difference shows up as a variance on reconciliation rather than a straightforward denial."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Who do I call about a CDCP claim status?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "CDCP claims are adjudicated through Sun Life's dedicated provider contact centre, separate from Sun Life's regular group benefits line."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <style>
+      :root {
+        --cream: #fcfcfa;
+        --parchment: #f8f5ee;
+        --ink: #1f1f1f;
+        --graphite: #60605f;
+        --mist: #cacac8;
+        --bdr: #e8e4db;
+        --green: #0F6E56;
+        --green-dark: #0b5443;
+        --fs: 'Source Serif 4', Georgia, serif;
+        --fn: 'Inter', system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: var(--fn);
+        color: var(--ink);
+        background: var(--cream);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 56px 24px 96px; }
+      .tag {
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--green-dark);
+        background: var(--parchment);
+        border: 1px solid var(--bdr);
+        border-radius: 999px;
+        padding: 6px 14px;
+        margin-bottom: 24px;
+      }
+      h1 {
+        font-family: var(--fs);
+        font-size: 40px;
+        line-height: 1.15;
+        font-weight: 500;
+        margin-bottom: 16px;
+      }
+      .lede {
+        font-size: 19px;
+        color: var(--graphite);
+        margin-bottom: 40px;
+        max-width: 640px;
+      }
+      h2 {
+        font-family: var(--fs);
+        font-size: 26px;
+        font-weight: 500;
+        margin: 48px 0 16px;
+        padding-top: 8px;
+        border-top: 1px solid var(--bdr);
+      }
+      p { margin-bottom: 16px; color: var(--ink); font-size: 16px; }
+      ul { margin: 0 0 16px 0; padding-left: 22px; }
+      li { margin-bottom: 8px; font-size: 16px; }
+      strong { font-weight: 600; }
+      .fact-box {
+        background: var(--parchment);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        padding: 24px;
+        margin: 24px 0;
+      }
+      .fact-box h3 {
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--green-dark);
+        margin-bottom: 12px;
+      }
+      .fact-box dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 15px; }
+      .fact-box dt { color: var(--graphite); }
+      .fact-box dd { font-weight: 500; }
+      .cta {
+        margin-top: 56px;
+        padding: 32px;
+        background: var(--green);
+        color: #fff;
+        border-radius: 16px;
+        text-align: center;
+      }
+      .cta h2 { border-top: none; margin-top: 0; color: #fff; font-size: 24px; }
+      .cta p { color: #e6f3ef; }
+      .cta a {
+        display: inline-block;
+        margin-top: 8px;
+        background: #fff;
+        color: var(--green-dark);
+        font-weight: 600;
+        text-decoration: none;
+        padding: 12px 28px;
+        border-radius: 8px;
+        font-size: 15px;
+      }
+      footer {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--bdr);
+        font-size: 14px;
+        color: var(--mist);
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      footer a { color: var(--graphite); text-decoration: none; }
+      footer a:hover { color: var(--green-dark); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <span class="tag">Canadian Dental Care Plan</span>
+      <h1>CDCP Claims Are Piling Up — Here's What's Actually Slowing Your AR Down</h1>
+      <p class="lede">
+        The Canadian Dental Care Plan (CDCP) added a new federal payer to nearly every practice's claim mix.
+        It runs on its own rules — a different reconsideration clock, a different fee ceiling, and
+        pre-authorization requirements that don't exist with private carriers. Here's what to watch for,
+        and how to keep CDCP claims from quietly aging into write-offs.
+      </p>
+
+      <h2>CDCP isn't a private carrier — it's adjudicated through Sun Life</h2>
+      <p>
+        The CDCP is a federal program, but day-to-day claim adjudication runs through Sun Life via a
+        dedicated CDCP provider contact centre — separate from Sun Life's regular group benefits line.
+        If your front desk is calling the number on a patient's old Sun Life card, they're likely in the
+        wrong queue, which is one of the most common reasons CDCP claim-status calls go nowhere.
+      </p>
+
+      <div class="fact-box">
+        <h3>CDCP at a glance</h3>
+        <dl>
+          <dt>Administrator</dt>
+          <dd>Sun Life (dedicated CDCP provider line)</dd>
+          <dt>Pre-authorization</dt>
+          <dd>Required for certain procedure categories — missing preauth is an outright denial</dd>
+          <dt>Reconsideration window</dt>
+          <dd>60 days from the date of decision</dd>
+          <dt>Fee grid ceiling</dt>
+          <dd>~90% of the federal fee grid — often below your standard fee schedule</dd>
+          <dt>Coverage tiers</dt>
+          <dd>Preventive 100% · Basic 80% · Major 50% · Orthodontic 0%</dd>
+          <dt>Deductible</dt>
+          <dd>None</dd>
+        </dl>
+      </div>
+
+      <h2>Where CDCP claims actually get stuck</h2>
+      <ul>
+        <li>
+          <strong>Pre-auth gaps.</strong> A procedure that would auto-adjudicate under a private plan gets
+          denied outright under CDCP if pre-authorization wasn't filed first — and that denial often arrives
+          with little explanation.
+        </li>
+        <li>
+          <strong>The 60-day reconsideration clock.</strong> Unlike most private carriers, CDCP gives you a
+          hard 60-day window to request reconsideration after a decision. Miss it, and the claim is closed —
+          permanently, not just delayed.
+        </li>
+        <li>
+          <strong>Fee grid variance, not denial.</strong> A claim can come back "paid" but at ~90% of the
+          federal fee grid rather than your billed amount. That's not a denial your team will flag — it just
+          quietly reduces what's collected, claim after claim, unless someone's reconciling against the
+          original estimate.
+        </li>
+      </ul>
+
+      <h2>What this means for your front desk</h2>
+      <p>
+        Every CDCP claim now needs the same follow-up discipline as a private carrier claim — a status check
+        if it's been sitting too long, a reconsideration filed within 60 days if it's denied, and a
+        reconciliation pass to catch fee-grid variances. For a practice with a meaningful CDCP-eligible
+        patient base, that's a second full follow-up workflow stacked on top of the six private carriers
+        your team already chases.
+      </p>
+
+      <h2>How CollectRx handles CDCP</h2>
+      <p>
+        CollectRx already routes CDCP claims through their own recovery path — the same AI follow-up that
+        calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and TELUS AdjudiCare for status updates
+        also tracks CDCP claims against the dedicated CDCP queue, flags claims that are CDCP-reconsideration
+        eligible before the 60-day window closes, and reconciles paid amounts against the federal fee grid
+        ceiling so fee-grid variances surface as a number, not a surprise at month-end.
+      </p>
+
+      <div class="cta">
+        <h2>See what CDCP follow-up could look like for your practice</h2>
+        <p>Run the numbers on your current outstanding claims and front-desk hours, or request early access.</p>
+        <a href="https://www.collectrx.ca/#cta">Request Early Access</a>
+      </div>
+
+      <footer>
+        <a href="https://www.collectrx.ca/">CollectRx Home</a>
+        <a href="https://www.collectrx.ca/#roi">ROI Calculator</a>
+        <a href="https://www.collectrx.ca/legal/privacy">Privacy Policy</a>
+        <a href="https://www.collectrx.ca/legal/terms">Terms of Service</a>
+      </footer>
+    </div>
+  </body>
+</html>
