@@ -12,7 +12,7 @@ export async function logProspectActivity(
       prospectId,
       type,
       summary,
-      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
+      metadata: metadata ? (metadata as unknown as Prisma.InputJsonValue) : undefined,
     },
   });
 }
