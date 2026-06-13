@@ -174,27 +174,26 @@ OutreachEvent
 
 ## Phased delivery
 
-### Phase A — Foundation (this sprint)
-- Prisma schema + migration
-- Backend API (prospects CRUD, sequence trigger, pipeline view)
-- BullMQ marketing queue
+### Phase A — Foundation ✅ COMPLETE
+- Prisma schema + migration (`ProspectPractice`, `ProspectSequence`, `ProspectEvent`)
+- Backend API (prospects CRUD, sequence trigger, pipeline, stats)
+- BullMQ marketing queue (`collectrx-marketing`)
 - Email sequence engine (days 0, 3, 7, 14)
+- Voice qualifier Vapi agent + call trigger
+- Google Places prospect harvester
 - Partnerships UI (pipeline kanban + prospect detail)
 
-### Phase B — Voice qualification
-- Sales_Qualifier Vapi agent definition
-- Call trigger from pipeline UI
-- Call outcome → stage advancement
+### Phase B — Beast mode ✅ COMPLETE
+- **Smart stage auto-advancement** — SendGrid open/click/bounce events advance pipeline stages; 3 opens → `engaged`; demo click → hot lead alert
+- **Hot lead alerts** — Slack Incoming Webhook + email on 3× opens, demo link clicks, voice call outcomes, demo bookings (`hotLeadAlerts.ts`)
+- **AI reply intelligence** — SendGrid Inbound Parse + Gemini classifies every reply (positive / objection / unsubscribe / wrong_contact); auto-advances stage, generates suggested objection responses (`replyIntelligence.ts`)
+- **Post-call AI summary** — Fetches Vapi transcript after call ends; Gemini extracts pain points, PMS, interest level; auto-sends personalized follow-up email (`callSummary.ts`)
+- **Referral engine** — After `closed_won`, auto-triggers 2-step referral ask sequence at day 14 + day 30 (`referralEngine.ts`)
+- **GPT-powered personalization** — Gemini generates unique first paragraph per prospect for step 1 email, falls back gracefully (`aiPersonalization.ts`)
 
-### Phase C — Prospect harvester
-- Google Places API integration (configurable search area)
-- Auto-score and deduplication
-- Admin "Harvest" trigger in UI
-
-### Phase D — Demo scheduler
-- Calendly/Cal.com webhook
-- Pre-demo email automation
-- Closed-won → Practice creation handoff
+### Phase C — Demo scheduler (next)
+- Calendly/Cal.com webhook → `demo_scheduled` stage + pre-demo prep email
+- Closed-won → Practice creation handoff (link prospect → new Practice record)
 
 ---
 

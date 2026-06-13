@@ -111,7 +111,7 @@ import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
-import { createMarketingRouter, createProspectUnsubscribeRouter } from './marketing/marketingRouter.js';
+import { createMarketingRouter, createProspectUnsubscribeRouter, createInboundEmailRouter } from './marketing/marketingRouter.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 const app = express();
@@ -211,6 +211,14 @@ app.post(
   makeSendgridEventWebhookHandler(prisma),
 );
 
+// SendGrid Inbound Parse — multipart or urlencoded reply emails from prospects
+app.use(
+  '/api/webhooks',
+  webhookLimiter,
+  express.urlencoded({ extended: true, limit: '2mb' }),
+  createInboundEmailRouter(prisma),
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,6 +298,9 @@ app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
 app.use('/api/marketing',  createMarketingRouter(prisma));
 app.use('/api/public',     createProspectUnsubscribeRouter(prisma));
+
+// SendGrid Inbound Parse — must be BEFORE express.json() (uses urlencoded body)
+// Registered here but actual middleware is after the raw webhook section
 app.use('/api',            createPublicPatientPayRouter(prisma));
 app.use('/api',            createBalancesOutreachRouter(prisma));
 app.use('/api',            createBenefitsApiRouter(prisma));

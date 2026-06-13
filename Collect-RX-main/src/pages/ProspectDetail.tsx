@@ -69,10 +69,10 @@ const EVENT_LABELS: Record<string, string> = {
   email_sent: 'Email sent',
   email_opened: 'Email opened',
   email_clicked: 'Email clicked',
-  email_replied: 'Email replied',
+  email_replied: 'Email replied (AI classified)',
   email_bounced: 'Email bounced',
   call_attempted: 'Call attempted',
-  call_connected: 'Call connected',
+  call_connected: 'Call connected — AI summary generated',
   call_outcome: 'Call outcome recorded',
   demo_booked: 'Demo booked',
   stage_changed: 'Stage changed',
@@ -333,14 +333,43 @@ export default function ProspectDetail() {
                           <p className="text-sm text-gray-800 dark:text-gray-200 font-medium">
                             {EVENT_LABELS[ev.type] ?? ev.type}
                           </p>
-                          {ev.metadata && Object.keys(ev.metadata).length > 0 && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                              {Object.entries(ev.metadata)
-                                .filter(([k]) => k !== 'action')
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(' · ')}
-                            </p>
-                          )}
+                    {ev.metadata && Object.keys(ev.metadata).length > 0 && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 space-y-0.5">
+                        {/* AI call summary */}
+                        {ev.type === 'call_connected' && typeof ev.metadata['summary'] === 'string' && (
+                          <p className="bg-blue-50 dark:bg-blue-900/20 rounded px-2 py-1 text-blue-800 dark:text-blue-300">
+                            {ev.metadata['summary']}
+                          </p>
+                        )}
+                        {ev.type === 'call_connected' && Array.isArray(ev.metadata['painPoints']) && (ev.metadata['painPoints'] as string[]).length > 0 && (
+                          <p><span className="font-medium">Pain points:</span> {(ev.metadata['painPoints'] as string[]).join(', ')}</p>
+                        )}
+                        {/* AI reply classification */}
+                        {ev.type === 'email_replied' && typeof ev.metadata['intent'] === 'string' && (
+                          <p className="bg-amber-50 dark:bg-amber-900/20 rounded px-2 py-1 text-amber-800 dark:text-amber-300">
+                            Intent: <strong>{ev.metadata['intent']}</strong>
+                            {typeof ev.metadata['objectionType'] === 'string' && ` · ${ev.metadata['objectionType']}`}
+                            {typeof ev.metadata['summary'] === 'string' && ` — ${ev.metadata['summary']}`}
+                          </p>
+                        )}
+                        {ev.type === 'email_replied' && typeof ev.metadata['suggestedReply'] === 'string' && (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-crx-600 dark:text-crx-400 hover:underline">View suggested reply</summary>
+                            <p className="mt-1 bg-gray-50 dark:bg-gray-700 rounded p-2 whitespace-pre-wrap">{ev.metadata['suggestedReply']}</p>
+                          </details>
+                        )}
+                        {/* Fallback: show key metadata as text */}
+                        {ev.type !== 'call_connected' && ev.type !== 'email_replied' && (
+                          <p className="truncate">
+                            {Object.entries(ev.metadata)
+                              .filter(([k]) => !['action', 'bodySnippet'].includes(k))
+                              .slice(0, 4)
+                              .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+                              .join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    )}
                         </div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">
                           {new Date(ev.occurredAt).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}

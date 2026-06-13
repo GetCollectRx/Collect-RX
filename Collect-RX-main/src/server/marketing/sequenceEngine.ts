@@ -15,6 +15,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { buildEmailSteps, EMAIL_CADENCE_TOTAL_STEPS } from './emailTemplates.js';
 import { buildProspectUnsubscribeUrl } from './unsubscribeUrl.js';
+import { personalizeEmailIntro } from './aiPersonalization.js';
 
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -48,6 +49,7 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<vo
   const dueSequences = await prisma.prospectSequence.findMany({
     where: {
       status: 'active',
+      sequenceType: 'email_cadence',
       nextRunAt: { lte: now },
     },
     include: {
@@ -78,7 +80,7 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<vo
 async function processEmailStep(
   prisma: PrismaClient,
   seq: { id: string; currentStep: number; totalSteps: number; startedAt: Date },
-  prospect: { id: string; name: string; city: string | null; email: string | null },
+  prospect: { id: string; name: string; city: string | null; email: string | null; province: string | null; practiceSize: string | null; pmsGuess: string | null; website: string | null; score: number },
   sg: ReturnType<typeof getSendGrid>,
   cfg: ReturnType<typeof getSenderConfig>,
   now: Date,
@@ -112,6 +114,26 @@ async function processEmailStep(
     return;
   }
 
+  // Step 1: inject AI-generated personalized intro paragraph
+  let emailHtml = stepDef.html;
+  if (nextStep === 1) {
+    const personalizedIntro = await personalizeEmailIntro({
+      practiceName: prospect.name,
+      city: prospect.city,
+      province: prospect.province,
+      pmsGuess: prospect.pmsGuess,
+      practiceSize: prospect.practiceSize as 'solo' | 'small_group' | 'large_group' | null,
+      website: prospect.website,
+    });
+    if (personalizedIntro) {
+      // Replace the generic opening paragraph with AI-personalized version
+      emailHtml = emailHtml.replace(
+        /<p>I'm .+?<\/p>/s,
+        `<p>${personalizedIntro}</p><p>I'm ${cfg.senderName} from <strong>CollectRx</strong> — we build AI-powered follow-up agents that call insurance carriers on behalf of Canadian dental practices to resolve outstanding claims.</p>`,
+      );
+    }
+  }
+
   let emailSent = false;
   let errorMsg: string | undefined;
 
@@ -121,8 +143,9 @@ async function processEmailStep(
         to: prospect.email,
         from: { email: cfg.fromEmail, name: cfg.senderName },
         subject: stepDef.subject,
-        html: stepDef.html,
+        html: emailHtml,
         customArgs: { prospect_id: prospect.id, sequence_id: seq.id, step: String(nextStep) },
+        headers: { 'X-Prospect-Id': prospect.id },
       });
       emailSent = true;
     } catch (err: unknown) {

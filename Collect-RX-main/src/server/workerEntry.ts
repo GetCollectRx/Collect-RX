@@ -17,6 +17,7 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
+import { runReferralSequenceTick } from './marketing/referralEngine.js';
 
 assertPostgresTlsInProduction();
 
@@ -57,6 +58,7 @@ const marketingWorker = new Worker(
   async (job) => {
     if (job.name === 'MARKETING_SEQUENCE_TICK') {
       await runMarketingSequenceTick(prisma);
+      await runReferralSequenceTick(prisma);
     } else {
       console.warn(`[marketingWorker] Unknown job name: ${job.name}`);
     }

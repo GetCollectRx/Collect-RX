@@ -25,6 +25,10 @@ import { startEmailCadence } from './sequenceEngine.js';
 import { initiateQualificationCall } from './salesQualifierAgent.js';
 import { harvestProspects } from './prospectHarvester.js';
 import { verifyProspectUnsubscribeRequest } from './unsubscribeUrl.js';
+import { startReferralSequence } from './referralEngine.js';
+import { processCallSummary } from './callSummary.js';
+import { processInboundReply } from './replyIntelligence.js';
+import { fireHotLeadAlert } from './hotLeadAlerts.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_STAGES = [
@@ -256,6 +260,25 @@ export function createMarketingRouter(prisma: PrismaClient): Router {
           occurredAt: now,
         },
       });
+
+      // Trigger referral sequence when a prospect converts to closed_won
+      if (newStage === 'closed_won') {
+        startReferralSequence(prisma, prospect.id).catch((e) =>
+          console.error('[marketing] referral sequence start error', (e as Error).message),
+        );
+      }
+
+      // Fire hot lead alert for high-value stage advances
+      if (newStage === 'demo_scheduled' || newStage === 'qualified') {
+        fireHotLeadAlert({
+          prospectName: prospect.name,
+          prospectId: prospect.id,
+          city: prospect.city,
+          stage: newStage,
+          score: typeof updates['score'] === 'number' ? updates['score'] as number : existing.score,
+          trigger: newStage === 'demo_scheduled' ? 'demo_booked' : 'qualified',
+        }).catch(() => undefined);
+      }
     }
     if (body.notes !== undefined && body.notes !== existing.notes) {
       await prisma.prospectEvent.create({
@@ -396,6 +419,30 @@ export function createMarketingRouter(prisma: PrismaClient): Router {
       }
     });
 
+    // Kick off AI call summary + follow-up generation in the background
+    const vapiCallId = str((body.call as Record<string, unknown>)?.['id'] as unknown) || str(meta['call_id'] as unknown);
+    if (vapiCallId && outcome !== 'not_available' && outcome !== 'wrong_number') {
+      processCallSummary(prisma, { prospectId, vapiCallId, callOutcome: outcome }).catch((e) =>
+        console.error('[voice-outcome] call summary error', (e as Error).message),
+      );
+    }
+
+    // Fire hot lead alert for positive outcomes
+    if (newStage === 'qualified' || newStage === 'demo_scheduled') {
+      const prospect = await prisma.prospectPractice.findUnique({ where: { id: prospectId } });
+      if (prospect) {
+        fireHotLeadAlert({
+          prospectName: prospect.name,
+          prospectId,
+          city: prospect.city,
+          stage: newStage,
+          score: prospect.score,
+          trigger: newStage === 'demo_scheduled' ? 'demo_booked' : 'qualified',
+          detail: notes ?? undefined,
+        }).catch(() => undefined);
+      }
+    }
+
     res.json({ received: true });
   });
 
@@ -425,9 +472,44 @@ export function createMarketingRouter(prisma: PrismaClient): Router {
 }
 
 /**
- * Public (unauthenticated) prospect unsubscribe endpoint.
- * Registered at /api/public/prospect-unsubscribe.
+ * SendGrid Inbound Parse webhook.
+ * Receives replies from prospects and runs AI intent classification.
+ * Register at: POST /api/webhooks/sendgrid-inbound
+ *
+ * SendGrid config: Inbound Parse → your domain → webhook URL
+ * (uses multipart/form-data — must be mounted BEFORE express.json())
  */
+export function createInboundEmailRouter(prisma: PrismaClient): Router {
+  const r = Router();
+
+  r.post('/sendgrid-inbound', async (req: Request, res: Response) => {
+    // SendGrid Inbound Parse sends multipart/form-data or application/x-www-form-urlencoded
+    const body = (req.body ?? {}) as Record<string, string>;
+
+    const from = body['from'] || body['sender'] || '';
+    const to = body['to'] || '';
+    const subject = body['subject'] || '';
+    const text = body['text'] || '';
+    const html = body['html'] || '';
+    const headers = body['headers'] || '';
+
+    // Extract prospect_id from custom headers we inject
+    const prospectIdMatch = headers.match(/X-Prospect-Id:\s*([a-f0-9-]+)/i);
+    const prospectId = prospectIdMatch?.[1] || undefined;
+
+    // Respond immediately — processing is async
+    res.status(200).send('ok');
+
+    try {
+      await processInboundReply(prisma, { from, to, subject, text, html, headers, prospectId });
+    } catch (e) {
+      console.error('[inboundParse] processing error', (e as Error).message);
+    }
+  });
+
+  return r;
+}
+
 export function createProspectUnsubscribeRouter(prisma: PrismaClient): Router {
   const r = Router();
 
