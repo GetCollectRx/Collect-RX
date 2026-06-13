@@ -1,4 +1,5 @@
 import type { PrismaClient, Prospect } from '@prisma/client';
+import type { VapiWebhookPayload } from '../../vapi/client.js';
 import {
   buildSalesQualifierFirstMessage,
   buildSalesQualifierSystemPrompt,
@@ -83,15 +84,11 @@ function normalizePhone(phone: string): string {
 /** Handle Vapi webhook for sales qualifier calls (no claimId). */
 export async function tryProcessProspectVapiWebhook(
   prisma: PrismaClient,
-  payload: {
-    type?: string;
-    call?: { id?: string; endedAt?: string };
-    metadata?: { prospectId?: string; callType?: string };
-    transcript?: string;
-  },
+  payload: VapiWebhookPayload,
 ): Promise<boolean> {
-  const prospectId = payload.metadata?.prospectId;
-  const callType = payload.metadata?.callType;
+  const meta = payload.metadata as { prospectId?: string; callType?: string } | undefined;
+  const prospectId = meta?.prospectId;
+  const callType = meta?.callType;
   if (!prospectId || callType !== 'sales_qualifier') return false;
 
   if (payload.type !== 'call.ended' && payload.type !== 'call.failed') return true;

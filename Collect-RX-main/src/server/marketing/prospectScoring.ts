@@ -1,4 +1,4 @@
-import type { PrismaClient, Prospect, ProspectSource } from '@prisma/client';
+import type { Prisma, PrismaClient, Prospect, ProspectSource } from '@prisma/client';
 
 /** Tunable weights for prospect harvest / outreach priority scoring. */
 export interface ScoreWeights {
@@ -121,9 +121,11 @@ export async function saveScoreWeights(
   weights: ScoreWeights,
   stats: Record<string, unknown>,
 ): Promise<void> {
+  const weightsJson = weights as Prisma.InputJsonValue;
+  const statsJson = stats as Prisma.InputJsonValue;
   await prisma.marketingScoreConfig.upsert({
     where: { id: 'default' },
-    create: { id: 'default', weights, stats },
-    update: { weights, stats },
+    create: { id: 'default', weights: weightsJson, stats: statsJson },
+    update: { weights: weightsJson, stats: statsJson },
   });
 }

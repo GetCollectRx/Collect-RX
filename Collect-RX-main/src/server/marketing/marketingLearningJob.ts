@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PrismaClient, Prospect } from '@prisma/client';
+import type { Prisma, PrismaClient, Prospect } from '@prisma/client';
 import {
   computeProspectScore,
   DEFAULT_SCORE_WEIGHTS,
@@ -214,9 +214,9 @@ export async function runMarketingLearningCycle(
       wins,
       losses,
       prospectsRescored,
-      weightsBefore,
-      weightsAfter,
-      summary: stats,
+      weightsBefore: weightsBefore as Prisma.InputJsonValue,
+      weightsAfter: weightsAfter as Prisma.InputJsonValue,
+      summary: stats as Prisma.InputJsonValue,
     },
   });
 
@@ -238,7 +238,11 @@ export async function runMarketingLearningCycle(
 export async function ensureMarketingScoreConfig(prisma: PrismaClient): Promise<void> {
   await prisma.marketingScoreConfig.upsert({
     where: { id: 'default' },
-    create: { id: 'default', weights: DEFAULT_SCORE_WEIGHTS, stats: { version: 1 } },
+    create: {
+      id: 'default',
+      weights: DEFAULT_SCORE_WEIGHTS as Prisma.InputJsonValue,
+      stats: { version: 1 } as Prisma.InputJsonValue,
+    },
     update: {},
   });
 }

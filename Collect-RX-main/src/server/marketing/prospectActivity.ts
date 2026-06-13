@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 export async function logProspectActivity(
   prisma: PrismaClient,
@@ -12,7 +12,7 @@ export async function logProspectActivity(
       prospectId,
       type,
       summary,
-      metadata: metadata ?? undefined,
+      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
     },
   });
 }
