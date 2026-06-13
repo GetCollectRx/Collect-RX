@@ -28,12 +28,19 @@ type ProspectDetail = {
   email: string | null
   phone: string | null
   city: string | null
+  province: string | null
   score: number
   stage: keyof typeof STAGE_LABELS
   sequenceStep: number
   sequenceCompleted: boolean
   sequencePausedUntil: string | null
   optOutAt: string | null
+  demoScheduledAt: string | null
+  preDemoEmailSentAt: string | null
+  dnclCheckedAt: string | null
+  dnclListed: boolean | null
+  linkedPracticeId: string | null
+  hubspotDealId: string | null
   callSummary: string | null
   replyIntent: string | null
   suggestedReply: string | null
@@ -211,6 +218,31 @@ export default function ProspectDetailPage() {
           </div>
 
           {msg && <p className="text-sm text-amber-700 dark:text-amber-300">{msg}</p>}
+
+          <Card>
+            <CardHeader title="Partnership status" />
+            <div className="px-4 pb-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              {prospect.demoScheduledAt && (
+                <p>
+                  Demo: {new Date(prospect.demoScheduledAt).toLocaleString('en-CA')}
+                  {prospect.preDemoEmailSentAt ? ' · reminder sent' : ' · reminder pending'}
+                </p>
+              )}
+              {prospect.dnclCheckedAt && (
+                <p>
+                  DNCL: {prospect.dnclListed ? 'listed (calls blocked)' : 'clear'}
+                  {' · checked '}
+                  {new Date(prospect.dnclCheckedAt).toLocaleString('en-CA')}
+                </p>
+              )}
+              {prospect.linkedPracticeId && (
+                <p>Linked practice: <code className="text-xs">{prospect.linkedPracticeId}</code></p>
+              )}
+              {prospect.hubspotDealId && (
+                <p>HubSpot deal: <code className="text-xs">{prospect.hubspotDealId}</code></p>
+              )}
+            </div>
+          </Card>
 
           <Card>
             <CardHeader title="Actions" />

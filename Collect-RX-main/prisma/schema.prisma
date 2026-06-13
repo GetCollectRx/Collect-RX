@@ -42,6 +42,7 @@ model Practice {
   callsPausedAt         DateTime?
   overageConfirmed      Boolean     @default(false)
   overageConfirmedAt    DateTime?
+  partnershipProspect   Prospect?
   patients              Patient[]
   balances              Balance[]
   ruleSets              RuleSet[]
@@ -1163,6 +1164,21 @@ enum ProspectSource {
   referral
 }
 
+model MarketingCampaign {
+  id               String     @id @default(uuid())
+  name             String
+  targetProvinces  Json?      @map("target_provinces")
+  harvestQuery     String?    @map("harvest_query")
+  maxProspects     Int?       @map("max_prospects")
+  active           Boolean    @default(true)
+  notes            String?
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  prospects        Prospect[]
+
+  @@map("marketing_campaigns")
+}
+
 model Prospect {
   id                   String         @id @default(uuid())
   practiceName         String         @map("practice_name")
@@ -1176,6 +1192,10 @@ model Prospect {
   score                Int            @default(0)
   stage                ProspectStage  @default(new)
   source               ProspectSource @default(manual)
+  campaignId           String?        @map("campaign_id")
+  campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  linkedPracticeId     String?        @unique @map("linked_practice_id")
+  linkedPractice       Practice?      @relation(fields: [linkedPracticeId], references: [id], onDelete: SetNull)
   pmsHint              String?        @map("pms_hint")
   sequenceStep         Int            @default(0) @map("sequence_step")
   sequencePausedUntil  DateTime?      @map("sequence_paused_until")
@@ -1187,6 +1207,11 @@ model Prospect {
   lastEmailSentAt      DateTime?      @map("last_email_sent_at")
   lastEngagedAt        DateTime?      @map("last_engaged_at")
   closedWonAt          DateTime?      @map("closed_won_at")
+  demoScheduledAt      DateTime?      @map("demo_scheduled_at")
+  preDemoEmailSentAt   DateTime?      @map("pre_demo_email_sent_at")
+  dnclCheckedAt        DateTime?      @map("dncl_checked_at")
+  dnclListed           Boolean?       @map("dncl_listed")
+  hubspotDealId        String?        @map("hubspot_deal_id")
   optOutAt             DateTime?      @map("opt_out_at")
   callSummary          String?        @map("call_summary") @db.Text
   replyIntent          String?        @map("reply_intent")
@@ -1201,6 +1226,7 @@ model Prospect {
   @@index([stage])
   @@index([email])
   @@index([createdAt])
+  @@index([campaignId])
   @@map("prospects")
 }
 

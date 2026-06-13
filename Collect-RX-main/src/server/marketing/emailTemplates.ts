@@ -1,5 +1,6 @@
 import type { Prospect } from '@prisma/client';
 import { wrapOutreachEmail } from './emailLayout.js';
+import { mergeProspectFields } from './aiPersonalization.js';
 import {
   OUTREACH_SIGNOFF,
   capabilityLinesForStep,
@@ -154,7 +155,43 @@ ${OUTREACH_SIGNOFF}`;
 ];
 
 export function interpolateSubject(template: string, prospect: Prospect): string {
-  return template.replace(/\{\{practice\}\}/g, prospect.practiceName);
+  return mergeProspectFields(template, prospect);
+}
+
+export function buildPreDemoEmail(prospect: Prospect): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const when = prospect.demoScheduledAt
+    ? prospect.demoScheduledAt.toLocaleString('en-CA', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      })
+    : 'your scheduled time';
+  const g = outreachGreeting(prospect.contactName);
+  const inner = `<p style="margin:0 0 16px;">${g}</p>
+<p style="margin:0 0 16px;">This is a quick reminder about your CollectRx demo for ${prospect.practiceName} on ${when}.</p>
+<p style="margin:0 0 16px;">We will walk through how insurance AR follow-up runs with your team in the loop, and answer questions about fit for your office.</p>
+${signoffHtml()}`;
+  return {
+    subject: `Reminder: CollectRx demo for ${prospect.practiceName}`,
+    html: brandedEmail(inner, {
+      preheader: 'Your CollectRx demo is tomorrow.',
+      cta: { label: 'Demo details', href: DEMO_LINK },
+    }),
+    text: `${g}
+
+This is a quick reminder about your CollectRx demo for ${prospect.practiceName} on ${when}.
+
+We will walk through how insurance AR follow-up runs with your team in the loop, and answer questions about fit for your office.
+
+${OUTREACH_SIGNOFF}`,
+  };
 }
 
 /** Preview next cadence email (step 1–4) without sending. */

@@ -6,7 +6,14 @@ import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { harvestProspects } from '../marketing/prospectHarvester.js';
 import { initiateProspectSalesCall } from '../marketing/vapiSalesCall.js';
 import { advanceProspectStage, runMarketingSequenceTick } from '../marketing/sequenceEngine.js';
-import { maybeStartReferralSequence } from '../marketing/referralEngine.js';
+import { handleProspectClosedWon } from '../marketing/practiceHandoff.js';
+import { syncProspectStageToHubspot } from '../marketing/hubspotSync.js';
+import { checkProspectDncl } from '../marketing/dnclCheck.js';
+import {
+  createCampaign,
+  harvestForCampaign,
+  listCampaigns,
+} from '../marketing/campaignService.js';
 import { sendHotLeadAlert } from '../marketing/hotLeadAlerts.js';
 import { logProspectActivity } from '../marketing/prospectActivity.js';
 import { previewColdEmail } from '../marketing/emailTemplates.js';
@@ -192,10 +199,18 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
         await logProspectActivity(prisma, prospect.id, 'stage_change', `Stage → ${body.stage}`);
 
         if (body.stage === 'closed_won') {
-          await maybeStartReferralSequence(prisma, prospect);
-        }
-        if (body.stage === 'demo_booked') {
-          await sendHotLeadAlert(prospect, 'demo_booked');
+          await handleProspectClosedWon(prisma, prospect.id);
+        } else {
+          if (body.stage === 'demo_booked') {
+            await sendHotLeadAlert(prospect, 'demo_booked');
+          }
+          void syncProspectStageToHubspot(
+            prisma,
+            prospect.id,
+            body.stage as ProspectStage,
+          ).catch((err) => {
+            console.warn('[hubspot] stage sync failed', (err as Error).message);
+          });
         }
       }
 
@@ -213,10 +228,29 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
   });
 
   router.post('/prospects/harvest', async (req: Request, res: Response) => {
-    const body = req.body as { query?: string; city?: string; province?: string; limit?: number };
+    const body = req.body as {
+      query?: string;
+      city?: string;
+      province?: string;
+      limit?: number;
+      campaignId?: string;
+    };
     const query = body.query?.trim();
     if (!query) {
       return res.status(400).json({ success: false, error: 'query required (e.g. dental practice)' });
+    }
+    if (body.campaignId) {
+      try {
+        const result = await harvestForCampaign(prisma, body.campaignId, {
+          query,
+          city: body.city,
+          province: body.province,
+          limit: body.limit,
+        });
+        return res.json({ success: true, data: result });
+      } catch (err) {
+        return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+      }
     }
     const result = await harvestProspects(prisma, {
       query,
@@ -225,6 +259,67 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
       limit: body.limit,
     });
     return res.json({ success: true, data: result });
+  });
+
+  router.get('/campaigns', async (_req: Request, res: Response) => {
+    const campaigns = await listCampaigns(prisma);
+    return res.json({ success: true, data: { campaigns } });
+  });
+
+  router.post('/campaigns', async (req: Request, res: Response) => {
+    try {
+      const body = req.body as Record<string, unknown>;
+      const campaign = await createCampaign(prisma, {
+        name: String(body.name || ''),
+        targetProvinces: Array.isArray(body.targetProvinces)
+          ? (body.targetProvinces as string[])
+          : undefined,
+        harvestQuery: typeof body.harvestQuery === 'string' ? body.harvestQuery : undefined,
+        maxProspects: typeof body.maxProspects === 'number' ? body.maxProspects : undefined,
+        notes: typeof body.notes === 'string' ? body.notes : undefined,
+      });
+      return res.status(201).json({ success: true, data: campaign });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  });
+
+  router.post('/campaigns/:id/harvest', async (req: Request, res: Response) => {
+    try {
+      const body = req.body as { query?: string; city?: string; province?: string; limit?: number };
+      const result = await harvestForCampaign(prisma, req.params.id!, {
+        query: body.query,
+        city: body.city,
+        province: body.province,
+        limit: body.limit,
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  });
+
+  router.post('/prospects/:id/dncl-check', async (req: Request, res: Response) => {
+    try {
+      const prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
+      if (!prospect) return res.status(404).json({ success: false, error: 'Not found' });
+      const result = await checkProspectDncl(prisma, prospect);
+      const updated = await prisma.prospect.findUnique({ where: { id: prospect.id } });
+      return res.json({ success: true, data: { ...result, prospect: updated } });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  });
+
+  router.post('/prospects/:id/create-practice', async (req: Request, res: Response) => {
+    try {
+      const { createPracticeFromProspect } = await import('../marketing/practiceHandoff.js');
+      const result = await createPracticeFromProspect(prisma, req.params.id!);
+      const prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
+      return res.json({ success: true, data: { ...result, prospect } });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
   });
 
   router.post('/prospects/:id/call', async (req: Request, res: Response) => {

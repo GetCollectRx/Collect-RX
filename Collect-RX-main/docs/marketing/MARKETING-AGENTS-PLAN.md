@@ -7,7 +7,7 @@
 
 | Layer | Location |
 |-------|----------|
-| Data | `Prospect`, `ProspectActivity`, `MarketingScoreConfig`, `MarketingLearningRun` |
+| Data | `Prospect`, `ProspectActivity`, `MarketingScoreConfig`, `MarketingLearningRun`, `MarketingCampaign` |
 | API | `/api/admin/partnerships/*` (`partnershipsRouter.ts`) |
 | UI | `/admin/partnerships` — kanban + table, prospect detail |
 | Cadence | `sequenceEngine.ts` + BullMQ `MARKETING_SEQUENCE_TICK` |
@@ -29,7 +29,13 @@ SendGrid events and inbound replies auto-advance stages. Hot lead alerts fire on
 4. **Sales qualifier** — Vapi outbound call  
 5. **Call summary** — transcript → follow-up email  
 6. **Referral engine** — post `closed_won` ask sequence  
-7. **Score learning** — weekly job compares wins vs losses, retunes weights
+7. **Score learning** — weekly job compares wins vs losses, retunes weights  
+8. **Demo scheduler** — Calendly/Cal.com webhook → `demo_booked`, pre-demo email 24h before  
+9. **DNCL gate** — blocks outbound sales calls when number is listed  
+10. **Practice handoff** — `closed_won` creates linked `Practice` + owner user  
+11. **Campaign manager** — named campaigns with harvest caps and geography  
+12. **HubSpot sync** — optional bi-directional stage → deal updates  
+13. **Merge-field personalization** — `{{practice}}`, `{{city}}`, `{{province}}` in approved templates
 
 ## Self-tuning (Phase C)
 

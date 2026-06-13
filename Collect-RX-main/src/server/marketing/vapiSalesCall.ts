@@ -24,6 +24,9 @@ export async function initiateProspectSalesCall(
   if (!phoneNumberId) throw new Error('VAPI_PHONE_NUMBER_ID not configured');
   if (!prospect.phone) throw new Error('Prospect has no phone number');
 
+  const { assertProspectCallable } = await import('./dnclCheck.js');
+  await assertProspectCallable(prisma, prospect);
+
   const payload = {
     assistantId,
     phoneNumberId,

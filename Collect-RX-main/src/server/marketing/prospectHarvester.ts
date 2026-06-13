@@ -11,6 +11,7 @@ export interface HarvestInput {
   city?: string;
   province?: string;
   limit?: number;
+  campaignId?: string;
 }
 
 export interface HarvestResult {
@@ -101,6 +102,7 @@ export async function harvestProspects(
         score: computeProspectScore(signalsFromHarvestPlace(place), weights),
         stage: 'new',
         source: 'harvest',
+        campaignId: input.campaignId ?? null,
         metadata: { harvestQuery: textQuery, rating: place.rating ?? null },
       },
     });

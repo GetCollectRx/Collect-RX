@@ -3,6 +3,7 @@ import { COLD_SEQUENCE, interpolateSubject } from './emailTemplates.js';
 import { sendProspectEmail } from './prospectEmail.js';
 import { logProspectActivity } from './prospectActivity.js';
 import { runReferralSequenceTick } from './referralEngine.js';
+import { runPreDemoEmailTick } from './demoScheduler.js';
 
 const STAGE_ORDER: ProspectStage[] = [
   'new',
@@ -41,6 +42,7 @@ export async function advanceProspectStage(
 export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
   coldEmailsSent: number;
   referralEmailsSent: number;
+  preDemoEmailsSent: number;
 }> {
   const now = new Date();
   let coldEmailsSent = 0;
@@ -110,5 +112,6 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
   }
 
   const referralEmailsSent = await runReferralSequenceTick(prisma);
-  return { coldEmailsSent, referralEmailsSent };
+  const preDemoEmailsSent = await runPreDemoEmailTick(prisma);
+  return { coldEmailsSent, referralEmailsSent, preDemoEmailsSent };
 }

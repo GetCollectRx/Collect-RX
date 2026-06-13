@@ -26,6 +26,13 @@ const baseProspect: Prospect = {
   lastEmailSentAt: null,
   lastEngagedAt: null,
   closedWonAt: null,
+  demoScheduledAt: null,
+  preDemoEmailSentAt: null,
+  dnclCheckedAt: null,
+  dnclListed: null,
+  hubspotDealId: null,
+  campaignId: null,
+  linkedPracticeId: null,
   optOutAt: null,
   callSummary: null,
   replyIntent: null,
@@ -176,5 +183,44 @@ describe('email preview', () => {
     expect(preview?.subject).toContain('Downtown Dental');
     expect(preview?.text).toContain('two costs');
     expect(preview?.html).not.toContain('—');
+  });
+});
+
+describe('merge-field personalization', () => {
+  it('interpolates city and province in subjects', async () => {
+    const { mergeProspectFields } = await import('../../src/server/marketing/aiPersonalization.js');
+    const out = mergeProspectFields('{{practice}} in {{city}}, {{province}}', baseProspect);
+    expect(out).toBe('Downtown Dental in Toronto, ON');
+  });
+});
+
+describe('pre-demo email', () => {
+  it('includes scheduled time when set', async () => {
+    const { buildPreDemoEmail } = await import('../../src/server/marketing/emailTemplates.js');
+    const demoAt = new Date('2026-06-15T18:00:00Z');
+    const email = buildPreDemoEmail({ ...baseProspect, demoScheduledAt: demoAt });
+    expect(email.subject).toContain('Downtown Dental');
+    expect(email.text).toContain('CollectRx demo');
+  });
+});
+
+describe('DNCL check', () => {
+  it('marks listed when phone is in local file', async () => {
+    const { writeFileSync, unlinkSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const listPath = join(tmpdir(), `dncl-test-${Date.now()}.txt`);
+    writeFileSync(listPath, '4165550100\n');
+    process.env.DNCL_PHONE_LIST_PATH = listPath;
+    process.env.DNCL_STRICT = 'true';
+
+    const prisma = mockPrisma();
+    const { checkProspectDncl } = await import('../../src/server/marketing/dnclCheck.js');
+    const result = await checkProspectDncl(prisma, baseProspect);
+    expect(result.listed).toBe(true);
+    expect(result.source).toBe('local_file');
+
+    delete process.env.DNCL_PHONE_LIST_PATH;
+    unlinkSync(listPath);
   });
 });

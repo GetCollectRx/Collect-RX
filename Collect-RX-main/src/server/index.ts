@@ -113,6 +113,7 @@ import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminA
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
 import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
 import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
+import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
@@ -224,6 +225,12 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+
+app.use(
+  '/api/webhooks/demo-booking',
+  webhookLimiter,
+  createDemoBookingWebhookRouter(prisma),
+);
 
 // urlencoded is intentionally NOT global: only Twilio's signature-verified webhook posts
 // form-encoded bodies. Keeping it off everywhere else shrinks the CSRF surface for the
