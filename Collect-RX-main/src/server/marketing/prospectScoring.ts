@@ -121,8 +121,8 @@ export async function saveScoreWeights(
   weights: ScoreWeights,
   stats: Record<string, unknown>,
 ): Promise<void> {
-  const weightsJson = weights as Prisma.InputJsonValue;
-  const statsJson = stats as Prisma.InputJsonValue;
+  const weightsJson = weights as unknown as Prisma.InputJsonValue;
+  const statsJson = stats as unknown as Prisma.InputJsonValue;
   await prisma.marketingScoreConfig.upsert({
     where: { id: 'default' },
     create: { id: 'default', weights: weightsJson, stats: statsJson },

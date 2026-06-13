@@ -214,9 +214,9 @@ export async function runMarketingLearningCycle(
       wins,
       losses,
       prospectsRescored,
-      weightsBefore: weightsBefore as Prisma.InputJsonValue,
-      weightsAfter: weightsAfter as Prisma.InputJsonValue,
-      summary: stats as Prisma.InputJsonValue,
+      weightsBefore: weightsBefore as unknown as Prisma.InputJsonValue,
+      weightsAfter: weightsAfter as unknown as Prisma.InputJsonValue,
+      summary: stats as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -240,8 +240,8 @@ export async function ensureMarketingScoreConfig(prisma: PrismaClient): Promise<
     where: { id: 'default' },
     create: {
       id: 'default',
-      weights: DEFAULT_SCORE_WEIGHTS as Prisma.InputJsonValue,
-      stats: { version: 1 } as Prisma.InputJsonValue,
+      weights: DEFAULT_SCORE_WEIGHTS as unknown as Prisma.InputJsonValue,
+      stats: { version: 1 } as unknown as Prisma.InputJsonValue,
     },
     update: {},
   });
