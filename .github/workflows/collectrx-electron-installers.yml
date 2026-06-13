@@ -79,7 +79,6 @@ jobs:
           test "$(find _artifacts_mac -name '*.zip' | wc -l | tr -d ' ')" -ge 1
 
       - name: Upload macOS artifacts
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CollectRx-mac-zip
@@ -140,7 +139,6 @@ jobs:
           if (-not (Get-ChildItem _artifacts_win -Filter *.exe)) { throw 'No .exe produced under dist-electron' }
 
       - name: Upload Windows artifact
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: CollectRx-windows-installer
