@@ -9,7 +9,7 @@ cd Collect-RX-main
 npx prisma migrate deploy
 ```
 
-Creates `prospects` and `prospect_activities` tables.
+Creates `prospects`, `prospect_activities`, `marketing_score_config`, and `marketing_learning_runs` tables.
 
 ## 2. Required environment variables
 
@@ -37,6 +37,17 @@ Creates `prospects` and `prospect_activities` tables.
 | `MARKETING_SOCIAL_PROOF_LINE` | One sentence for email 4 (e.g. named practice quote) |
 
 With `REDIS_URL` set, cadence runs via BullMQ (`MARKETING_TICK_MS`, default hourly). Without Redis, in-process cron runs (`MARKETING_CRON`, default hourly).
+
+### Weekly score learning
+
+| Variable | Purpose |
+|----------|---------|
+| `MARKETING_LEARNING_ENABLED` | `1` (default) runs weekly self-tuning |
+| `MARKETING_LEARNING_CRON` | Cron pattern (default `0 7 * * 1` — Monday 07:00) |
+
+Each run compares `closed_won` vs `closed_lost` prospects, adjusts harvest score weights (phone, website, referral source, etc.), rescored active pipeline prospects, and logs to `marketing_learning_runs`. Requires at least 8 closed outcomes before adjusting.
+
+Manual trigger: **Run score learning** on `/admin/partnerships` or `POST /api/admin/partnerships/learning/run`.
 
 ## 4. SendGrid webhooks
 

@@ -16,6 +16,7 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
+import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
 
 assertPostgresTlsInProduction();
 
@@ -46,6 +47,8 @@ const worker = new Worker(
       await runLearningCycle(prisma);
     } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
       await runMarketingSequenceTick(prisma);
+    } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
+      await runMarketingLearningCycle(prisma);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);
     }

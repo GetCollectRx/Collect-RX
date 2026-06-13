@@ -1216,3 +1216,28 @@ model ProspectActivity {
   @@index([prospectId, createdAt])
   @@map("prospect_activities")
 }
+
+/// Learned harvest / outreach score weights (singleton row id=default).
+model MarketingScoreConfig {
+  id        String   @id @default("default")
+  weights   Json
+  stats     Json?
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("marketing_score_config")
+}
+
+/// Audit trail for weekly self-tuning score runs.
+model MarketingLearningRun {
+  id                String   @id @default(uuid())
+  wins              Int
+  losses            Int
+  prospectsRescored Int      @map("prospects_rescored")
+  weightsBefore     Json     @map("weights_before")
+  weightsAfter      Json     @map("weights_after")
+  summary           Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("marketing_learning_runs")
+}

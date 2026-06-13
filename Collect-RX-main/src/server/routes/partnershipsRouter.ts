@@ -15,6 +15,12 @@ import {
   formatCapabilityCatalogForReview,
 } from '../marketing/outreachVoice.js';
 import { PROSPECT_STAGES } from '../../types/partnerships.js';
+import {
+  loadScoreWeights,
+} from '../marketing/prospectScoring.js';
+import {
+  runMarketingLearningCycle,
+} from '../marketing/marketingLearningJob.js';
 
 export function createPartnershipsRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -29,6 +35,81 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
     const byStage = Object.fromEntries(counts.map((c) => [c.stage, c._count._all]));
     const total = counts.reduce((n, c) => n + c._count._all, 0);
     return res.json({ success: true, data: { total, byStage } });
+  });
+
+  router.get('/pipeline', async (_req: Request, res: Response) => {
+    const pipeline = await Promise.all(
+      PROSPECT_STAGES.map(async (stage) => {
+        const [count, prospects] = await Promise.all([
+          prisma.prospect.count({ where: { stage } }),
+          prisma.prospect.findMany({
+            where: { stage },
+            orderBy: [{ score: 'desc' }, { updatedAt: 'desc' }],
+            take: 10,
+            select: {
+              id: true,
+              practiceName: true,
+              city: true,
+              province: true,
+              score: true,
+              stage: true,
+              email: true,
+              phone: true,
+              updatedAt: true,
+            },
+          }),
+        ]);
+        return {
+          stage,
+          count,
+          prospects: prospects.map((p) => ({
+            id: p.id,
+            practiceName: p.practiceName,
+            city: p.city,
+            province: p.province,
+            score: p.score,
+            stage: p.stage,
+            email: p.email,
+            phone: p.phone,
+            updatedAt: p.updatedAt.toISOString(),
+          })),
+        };
+      }),
+    );
+    return res.json({ success: true, data: { pipeline } });
+  });
+
+  router.get('/learning/score-config', async (_req: Request, res: Response) => {
+    const weights = await loadScoreWeights(prisma);
+    const config = await prisma.marketingScoreConfig.findUnique({ where: { id: 'default' } });
+    const lastRun = await prisma.marketingLearningRun.findFirst({
+      orderBy: { createdAt: 'desc' },
+    });
+    return res.json({
+      success: true,
+      data: {
+        weights,
+        stats: config?.stats ?? null,
+        lastRun: lastRun
+          ? {
+              id: lastRun.id,
+              wins: lastRun.wins,
+              losses: lastRun.losses,
+              prospectsRescored: lastRun.prospectsRescored,
+              createdAt: lastRun.createdAt.toISOString(),
+            }
+          : null,
+      },
+    });
+  });
+
+  router.post('/learning/run', async (_req: Request, res: Response) => {
+    try {
+      const result = await runMarketingLearningCycle(prisma);
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
   });
 
   router.get('/prospects', async (req: Request, res: Response) => {

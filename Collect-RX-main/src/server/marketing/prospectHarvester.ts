@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import {
+  computeProspectScore,
+  loadScoreWeights,
+  signalsFromHarvestPlace,
+} from './prospectScoring.js';
 
 export interface HarvestInput {
   query: string;
@@ -23,15 +28,6 @@ interface PlaceResult {
   formatted_phone_number?: string;
 }
 
-function scorePlace(p: PlaceResult): number {
-  let score = 40;
-  if (p.formatted_phone_number) score += 20;
-  if (p.website) score += 15;
-  if (p.rating && p.rating >= 4) score += 15;
-  if (p.rating && p.rating >= 4.5) score += 10;
-  return Math.min(100, score);
-}
-
 function parseCityProvince(address?: string): { city?: string; province?: string } {
   if (!address) return {};
   const parts = address.split(',').map((s) => s.trim());
@@ -50,6 +46,8 @@ export async function harvestProspects(
   const errors: string[] = [];
   let imported = 0;
   let skipped = 0;
+
+  const weights = await loadScoreWeights(prisma);
 
   if (!apiKey) {
     return {
@@ -100,7 +98,7 @@ export async function harvestProspects(
         city: input.city ?? city ?? null,
         province: input.province ?? province ?? null,
         googlePlaceId: place.place_id ?? null,
-        score: scorePlace(place),
+        score: computeProspectScore(signalsFromHarvestPlace(place), weights),
         stage: 'new',
         source: 'harvest',
         metadata: { harvestQuery: textQuery, rating: place.rating ?? null },

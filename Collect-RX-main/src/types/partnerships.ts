@@ -38,3 +38,36 @@ export interface ProspectListItem {
   lastEmailSentAt: string | null;
   createdAt: string;
 }
+
+export interface PipelineProspectCard {
+  id: string;
+  practiceName: string;
+  city: string | null;
+  province: string | null;
+  score: number;
+  stage: ProspectStage;
+  email: string | null;
+  phone: string | null;
+  updatedAt: string;
+}
+
+export interface PipelineColumn {
+  stage: ProspectStage;
+  count: number;
+  prospects: PipelineProspectCard[];
+}
+
+/** Stages shown in the kanban (active pipeline first). */
+export const KANBAN_ACTIVE_STAGES: ProspectStage[] = [
+  'new',
+  'contacted',
+  'engaged',
+  'qualified',
+  'demo_booked',
+];
+
+export const KANBAN_CLOSED_STAGES: ProspectStage[] = [
+  'closed_won',
+  'closed_lost',
+  'opted_out',
+];

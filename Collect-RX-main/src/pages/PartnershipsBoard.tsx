@@ -5,8 +5,8 @@ import {
   Badge, Button, Card, CardHeader, DataState, Input, Select,
   Table, TableContainer, Tbody, Td, Th, Thead, Tr, TableEmpty,
 } from '../components/ui'
-import type { ProspectListItem } from '../types/partnerships'
-import { STAGE_LABELS } from '../types/partnerships'
+import type { ProspectListItem, PipelineColumn } from '../types/partnerships'
+import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES } from '../types/partnerships'
 
 type Stats = { total: number; byStage: Record<string, number> }
 
@@ -36,22 +36,31 @@ export default function PartnershipsBoard() {
   const [manualMsg, setManualMsg] = useState<string | null>(null)
   const [tickBusy, setTickBusy] = useState(false)
   const [tickMsg, setTickMsg] = useState<string | null>(null)
+  const [view, setView] = useState<'table' | 'kanban'>('kanban')
+  const [pipeline, setPipeline] = useState<PipelineColumn[]>([])
+  const [learningMsg, setLearningMsg] = useState<string | null>(null)
+  const [learningBusy, setLearningBusy] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
     const q = stageFilter ? `?stage=${stageFilter}` : ''
-    Promise.all([
-      apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(`/api/admin/partnerships/prospects${q}`),
-      apiFetchJson<{ success: boolean; data: Stats }>('/api/admin/partnerships/stats'),
-    ])
-      .then(([list, st]) => {
-        setProspects(list.data)
-        setStats(st.data)
-      })
+    const loads: Promise<void>[] = [
+      apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(`/api/admin/partnerships/prospects${q}`)
+        .then((list) => setProspects(list.data)),
+      apiFetchJson<{ success: boolean; data: Stats }>('/api/admin/partnerships/stats')
+        .then((st) => setStats(st.data)),
+    ]
+    if (view === 'kanban') {
+      loads.push(
+        apiFetchJson<{ success: boolean; data: { pipeline: PipelineColumn[] } }>('/api/admin/partnerships/pipeline')
+          .then((p) => setPipeline(p.data.pipeline)),
+      )
+    }
+    Promise.all(loads)
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
-  }, [stageFilter])
+  }, [stageFilter, view])
 
   useEffect(() => { load() }, [load])
 
@@ -132,6 +141,33 @@ export default function PartnershipsBoard() {
     }
   }
 
+  const runLearning = async () => {
+    setLearningBusy(true)
+    setLearningMsg(null)
+    try {
+      const res = await apiFetch('/api/admin/partnerships/learning/run', { method: 'POST' })
+      const body = await res.json() as {
+        data?: { skipped?: boolean; reason?: string; prospectsRescored?: number; adjustments?: unknown[] }
+        error?: string
+      }
+      if (!res.ok) throw new Error(body.error || 'Learning run failed')
+      if (body.data?.skipped) {
+        setLearningMsg(body.data.reason || 'Skipped (not enough closed outcomes yet)')
+      } else {
+        setLearningMsg(
+          `Rescored ${body.data?.prospectsRescored ?? 0} prospects · ${body.data?.adjustments?.length ?? 0} weight tweaks`,
+        )
+      }
+      load()
+    } catch (e) {
+      setLearningMsg((e as Error).message)
+    } finally {
+      setLearningBusy(false)
+    }
+  }
+
+  const pipelineByStage = Object.fromEntries(pipeline.map((col) => [col.stage, col])) as Record<string, PipelineColumn>
+
   return (
     <DataState loading={loading} error={error}>
       <div className="page-enter p-6 space-y-6 max-w-[1400px]">
@@ -144,6 +180,23 @@ export default function PartnershipsBoard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant={view === 'kanban' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('kanban')}
+            >
+              Kanban
+            </Button>
+            <Button
+              variant={view === 'table' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('table')}
+            >
+              Table
+            </Button>
+            <Button variant="ghost" size="sm" disabled={learningBusy} onClick={() => void runLearning()}>
+              {learningBusy ? 'Learning…' : 'Run score learning'}
+            </Button>
             <Button variant="ghost" size="sm" disabled={tickBusy} onClick={() => void runSequenceTick()}>
               {tickBusy ? 'Running…' : 'Run cadence tick'}
             </Button>
@@ -151,6 +204,7 @@ export default function PartnershipsBoard() {
           </div>
         </div>
         {tickMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{tickMsg}</p>}
+        {learningMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{learningMsg}</p>}
 
         <Card>
           <CardHeader title="Add prospect manually" subtitle="For referrals, inbound leads, or one-off targets" />
@@ -192,6 +246,66 @@ export default function PartnershipsBoard() {
           <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
         </div>
 
+        {view === 'kanban' ? (
+          <div className="space-y-6">
+            <div className="overflow-x-auto pb-2">
+              <div className="flex gap-3 min-w-max">
+                {KANBAN_ACTIVE_STAGES.map((stage) => {
+                  const col = pipelineByStage[stage]
+                  return (
+                    <div
+                      key={stage}
+                      className="w-64 shrink-0 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                          {STAGE_LABELS[stage]}
+                        </span>
+                        <Badge>{col?.count ?? 0}</Badge>
+                      </div>
+                      <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
+                        {(col?.prospects ?? []).map((p) => (
+                          <Link
+                            key={p.id}
+                            to={`/admin/partnerships/${p.id}`}
+                            className="block bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:border-crx-400 dark:hover:border-crx-500 transition-colors"
+                          >
+                            <div className="flex justify-between gap-2">
+                              <span className="text-sm font-medium line-clamp-2">{p.practiceName}</span>
+                              <span className="text-xs text-gray-500 shrink-0">{p.score}</span>
+                            </div>
+                            {(p.city || p.province) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {[p.city, p.province].filter(Boolean).join(', ')}
+                              </p>
+                            )}
+                          </Link>
+                        ))}
+                        {!col?.prospects?.length && (
+                          <p className="text-xs text-gray-400 text-center py-4">Empty</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {KANBAN_CLOSED_STAGES.map((stage) => {
+                const col = pipelineByStage[stage]
+                return (
+                  <div
+                    key={stage}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <span className="text-gray-600 dark:text-gray-400">{STAGE_LABELS[stage]}</span>
+                    <Badge>{col?.count ?? 0}</Badge>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
         <TableContainer>
           <Table>
             <Thead>
@@ -238,6 +352,7 @@ export default function PartnershipsBoard() {
             </Tbody>
           </Table>
         </TableContainer>
+        )}
       </div>
     </DataState>
   )

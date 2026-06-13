@@ -113,7 +113,7 @@ import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminA
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
 import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
 import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
-import { startMarketingLoopInProcess } from './marketing/marketingScheduler.js';
+import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 const app = express();
@@ -417,6 +417,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
       startLearningLoopInProcess(prisma);
     }
     startMarketingLoopInProcess(prisma);
+    startMarketingLearningInProcess(prisma);
   }
 
   attachDeskWebSocket(server);
