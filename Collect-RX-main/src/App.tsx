@@ -43,6 +43,8 @@ import UserManagement        from './pages/UserManagement'
 import BreakGlass            from './pages/BreakGlass'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
 import UsersAdmin              from './pages/UsersAdmin'
+import Partnerships            from './pages/Partnerships'
+import ProspectDetail          from './pages/ProspectDetail'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
@@ -78,6 +80,7 @@ const PLATFORM_DEV_NAV_PATHS = new Set([
   '/usage-insights',
   '/admin',
   '/admin/sync',
+  '/partnerships',
 ])
 
 const FRONT_DESK_NAV: NavItem[] = [
@@ -95,6 +98,7 @@ const OWNER_NAV: NavItem[] = [
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+  { to: '/partnerships', exact: false, label: 'Partnerships', icon: 'partnerships' },
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
   { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
 ]
@@ -167,6 +171,10 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/outbox', exact: false, label: 'Outbox', icon: 'outbox' },
       { to: '/cdcp', exact: false, label: 'CDCP', icon: 'cdcp' },
     ],
+  },
+  {
+    label: 'Growth',
+    items: [{ to: '/partnerships', exact: false, label: 'Partnerships', icon: 'partnerships' }],
   },
   {
     label: 'Setup',
@@ -352,6 +360,8 @@ function AppShell() {
           <Route path="/outbox"        element={<Outbox />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          <Route path="/partnerships"  element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Partnerships /></ProtectedRoute>} />
+          <Route path="/partnerships/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><ProspectDetail /></ProtectedRoute>} />
         </Routes>
         </PlatformDevRouteGuard>
         </main>

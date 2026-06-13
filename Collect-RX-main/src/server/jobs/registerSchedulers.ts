@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { getArQueue } from './arQueue.js';
+import { getMarketingQueue } from '../marketing/marketingQueue.js';
 
 const RULES_EVERY_MS = 60_000;
 
@@ -49,4 +50,13 @@ export async function registerArJobSchedulers(): Promise<void> {
     `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"` +
       (learningOn ? `, LEARNING cron "${learningPattern}"` : ''),
   );
+
+  // Marketing sequence tick — hourly check for due email steps
+  const mq = getMarketingQueue();
+  const existingMq = await mq.getRepeatableJobs();
+  for (const r of existingMq) {
+    await mq.removeRepeatableByKey(r.key);
+  }
+  await mq.add('MARKETING_SEQUENCE_TICK', {}, { repeat: { every: 60 * 60 * 1000 } });
+  console.log('[registerSchedulers] MARKETING_SEQUENCE_TICK registered (every 60min)');
 }

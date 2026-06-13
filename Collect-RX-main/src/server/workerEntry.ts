@@ -12,9 +12,11 @@ import { Worker } from 'bullmq';
 import express from 'express';
 import IORedis from 'ioredis';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
+import { MARKETING_QUEUE_NAME } from './marketing/marketingQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
+import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 
 assertPostgresTlsInProduction();
 
@@ -50,17 +52,33 @@ const worker = new Worker(
   { connection, concurrency: 1 }
 );
 
+const marketingWorker = new Worker(
+  MARKETING_QUEUE_NAME,
+  async (job) => {
+    if (job.name === 'MARKETING_SEQUENCE_TICK') {
+      await runMarketingSequenceTick(prisma);
+    } else {
+      console.warn(`[marketingWorker] Unknown job name: ${job.name}`);
+    }
+  },
+  { connection, concurrency: 1 }
+);
+
+marketingWorker.on('failed', (job, err) => {
+  console.error('[marketingWorker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+});
+
 worker.on('failed', (job, err) => {
   console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
 });
 
-console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
+console.log(`[worker] listening on queue "${AR_QUEUE_NAME}" and "${MARKETING_QUEUE_NAME}"`);
 
 // Railway services commonly enforce the same healthcheck path as the web service.
 // The worker is not public-facing, but this tiny endpoint lets Railway confirm it is alive.
 const healthApp = express();
 healthApp.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });
+  res.json({ status: 'ok', service: 'collectrx-worker', queues: [AR_QUEUE_NAME, MARKETING_QUEUE_NAME] });
 });
 healthApp.get('/api/health/ready', async (_req, res) => {
   try {
