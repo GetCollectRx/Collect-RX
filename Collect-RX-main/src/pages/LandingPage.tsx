@@ -501,6 +501,63 @@ const STYLES = `
   .lp-cta-body { font-family: var(--fn); font-size: 18px; color: var(--graphite); line-height: 1.67; max-width: 560px; margin: 0 auto 32px; }
   .lp-cta-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 
+  /* ─── ACCESS / DEMO MODAL ────────────────────────── */
+  .lp-modal-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(31,31,31,0.45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    animation: lp-modal-fade 0.15s ease-out both;
+  }
+  @keyframes lp-modal-fade { from { opacity: 0; } to { opacity: 1; } }
+  .lp-modal {
+    position: relative;
+    background: var(--cream);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--bdr);
+    box-shadow: 0 24px 64px -16px rgba(31,31,31,0.35);
+    width: 100%; max-width: 440px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding: 36px;
+  }
+  .lp-modal-close {
+    position: absolute; top: 16px; right: 16px;
+    width: 32px; height: 32px; border-radius: 8px;
+    background: transparent; border: none; cursor: pointer;
+    display: grid; place-items: center;
+    color: var(--graphite);
+    transition: background var(--transition), color var(--transition);
+  }
+  .lp-modal-close:hover { background: var(--green-lo); color: var(--ink); }
+  .lp-modal-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .lp-modal-h {
+    font-family: var(--fs); font-size: 24px; font-weight: 500;
+    color: var(--ink); letter-spacing: -0.01em; margin-bottom: 8px; padding-right: 24px;
+  }
+  .lp-modal-sub { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.6; margin-bottom: 24px; }
+  .lp-modal-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .lp-modal-field label { font-family: var(--fn); font-size: 13px; font-weight: 500; color: var(--ink); }
+  .lp-modal-field input {
+    font-family: var(--fn); font-size: 15px; color: var(--ink);
+    background: var(--cream); border: 1px solid var(--bdr2); border-radius: var(--radius-btn);
+    padding: 10px 12px; outline: none;
+    transition: border-color var(--transition);
+  }
+  .lp-modal-field input:focus { border-color: var(--green); }
+  .lp-modal-error { font-family: var(--fn); font-size: 13px; color: #c0392b; margin: -4px 0 16px; }
+  .lp-modal-submit { width: 100%; justify-content: center; margin-top: 4px; }
+  .lp-modal-submit:disabled { opacity: 0.6; cursor: default; transform: none; }
+  .lp-modal-success { text-align: center; padding: 8px 0; }
+  .lp-modal-success-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--green-lo); color: var(--green);
+    display: grid; place-items: center; margin: 0 auto 16px;
+  }
+  .lp-modal-success-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; }
+  .lp-modal-success .lp-modal-h { padding-right: 0; }
+  .lp-modal-success .lp-btn-primary { margin-top: 8px; }
+
   /* ─── FOOTER ─────────────────────────────────────── */
   .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 64px 40px 32px; }
   .lp-footer-inner { max-width: 1200px; margin: 0 auto; }
@@ -551,6 +608,8 @@ const STYLES = `
     .lp-nav-right { gap: 4px; }
     .lp-nav-signin { padding: 6px 8px; font-size: 12px; white-space: nowrap; }
     .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
+    .lp-modal { padding: 24px; }
+    .lp-modal-h { font-size: 20px; }
   }
 `
 
@@ -1019,6 +1078,63 @@ export default function LandingPage() {
   const scrollTo = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 
+  // ── Request Early Access / Book a Demo modal ──────────────────────────────
+  const [accessOpen, setAccessOpen] = useState(false)
+  const [accessIntent, setAccessIntent] = useState<'access' | 'demo'>('access')
+  const [accessForm, setAccessForm] = useState({ name: '', email: '', practiceName: '', phone: '' })
+  const [accessStatus, setAccessStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [accessError, setAccessError] = useState('')
+
+  const openAccess = (intent: 'access' | 'demo') => {
+    setAccessIntent(intent)
+    setAccessStatus('idle')
+    setAccessError('')
+    setAccessOpen(true)
+  }
+
+  const closeAccess = () => {
+    setAccessOpen(false)
+    setAccessStatus('idle')
+    setAccessError('')
+    setAccessForm({ name: '', email: '', practiceName: '', phone: '' })
+  }
+
+  useEffect(() => {
+    if (!accessOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAccess() }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [accessOpen])
+
+  const submitAccess = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!accessForm.name.trim() || !accessForm.email.trim()) {
+      setAccessError('Please enter your name and email.')
+      return
+    }
+    setAccessStatus('submitting')
+    setAccessError('')
+    try {
+      const res = await fetch('/api/early-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...accessForm, intent: accessIntent }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Something went wrong. Please try again.')
+      }
+      setAccessStatus('success')
+    } catch (err) {
+      setAccessStatus('error')
+      setAccessError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+    }
+  }
+
   return (
     <>
       <style>{STYLES}</style>
@@ -1041,7 +1157,7 @@ export default function LandingPage() {
             </div>
             <div className="lp-nav-right">
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
-              <button type="button" className="lp-btn-primary" onClick={() => scrollTo('cta')}>
+              <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Access
               </button>
             </div>
@@ -1068,7 +1184,7 @@ export default function LandingPage() {
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
-                  <button className="lp-btn-primary" onClick={() => scrollTo('cta')}>
+                  <button className="lp-btn-primary" onClick={() => openAccess('access')}>
                     Request Early Access
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                   </button>
@@ -1262,11 +1378,11 @@ export default function LandingPage() {
               already leaving behind, you pay nothing.
             </p>
             <div className="lp-cta-actions">
-              <button className="lp-btn-primary">
+              <button className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Early Access
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
               </button>
-              <button className="lp-btn-ghost">Book a Demo</button>
+              <button className="lp-btn-ghost" onClick={() => openAccess('demo')}>Book a Demo</button>
             </div>
           </div>
         </div>
@@ -1295,8 +1411,8 @@ export default function LandingPage() {
                 <div className="lp-footer-col">
                   <h4>Access</h4>
                   <Link to="/login">Practice sign in</Link>
-                  <button type="button" onClick={() => scrollTo('cta')}>Request access</button>
-                  <button type="button" onClick={() => scrollTo('cta')}>Book a demo</button>
+                  <button type="button" onClick={() => openAccess('access')}>Request access</button>
+                  <button type="button" onClick={() => openAccess('demo')}>Book a demo</button>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Legal</h4>
@@ -1312,6 +1428,73 @@ export default function LandingPage() {
             </div>
           </div>
         </footer>
+
+        {/* ── ACCESS / DEMO MODAL ── */}
+        {accessOpen && (
+          <div className="lp-modal-overlay" onClick={closeAccess}>
+            <div className="lp-modal" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="lp-modal-close" onClick={closeAccess} aria-label="Close">
+                <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+              {accessStatus === 'success' ? (
+                <div className="lp-modal-success">
+                  <div className="lp-modal-success-icon">
+                    <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <h3 className="lp-modal-h">Request received</h3>
+                  <p className="lp-modal-sub">
+                    Thanks{accessForm.name.trim() ? `, ${accessForm.name.trim().split(' ')[0]}` : ''}.
+                    We'll be in touch within one business day.
+                  </p>
+                  <button type="button" className="lp-btn-primary" onClick={closeAccess}>Done</button>
+                </div>
+              ) : (
+                <form onSubmit={submitAccess}>
+                  <h3 className="lp-modal-h">{accessIntent === 'demo' ? 'Book a demo' : 'Request early access'}</h3>
+                  <p className="lp-modal-sub">
+                    Tell us a bit about your practice and we'll reach out to set things up.
+                  </p>
+                  <div className="lp-modal-field">
+                    <label htmlFor="access-name">Name</label>
+                    <input
+                      id="access-name" type="text" required autoComplete="name"
+                      value={accessForm.name}
+                      onChange={(e) => setAccessForm(f => ({ ...f, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="lp-modal-field">
+                    <label htmlFor="access-email">Email</label>
+                    <input
+                      id="access-email" type="email" required autoComplete="email"
+                      value={accessForm.email}
+                      onChange={(e) => setAccessForm(f => ({ ...f, email: e.target.value }))}
+                    />
+                  </div>
+                  <div className="lp-modal-field">
+                    <label htmlFor="access-practice">Practice name</label>
+                    <input
+                      id="access-practice" type="text" autoComplete="organization"
+                      value={accessForm.practiceName}
+                      onChange={(e) => setAccessForm(f => ({ ...f, practiceName: e.target.value }))}
+                    />
+                  </div>
+                  <div className="lp-modal-field">
+                    <label htmlFor="access-phone">Phone (optional)</label>
+                    <input
+                      id="access-phone" type="tel" autoComplete="tel"
+                      value={accessForm.phone}
+                      onChange={(e) => setAccessForm(f => ({ ...f, phone: e.target.value }))}
+                    />
+                  </div>
+                  {accessError && <p className="lp-modal-error">{accessError}</p>}
+                  <button type="submit" className="lp-btn-primary lp-modal-submit" disabled={accessStatus === 'submitting'}>
+                    {accessStatus === 'submitting' ? 'Sending…' : (accessIntent === 'demo' ? 'Request demo' : 'Request access')}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </>

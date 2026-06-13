@@ -1119,3 +1119,24 @@ model FeatureFlag {
   @@unique([practiceId, feature])
   @@map("feature_flags")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public landing page lead capture (collectrx.ca "Request Early Access" / "Book a
+// Demo" CTAs). Unauthenticated — see earlyAccessRoutes.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One row per landing-page lead submission.
+model EarlyAccessRequest {
+  id           String   @id @default(uuid())
+  name         String
+  email        String
+  practiceName String?  @map("practice_name")
+  phone        String?
+  /// 'access' (Request Early Access) or 'demo' (Book a Demo).
+  intent       String   @default("access")
+  message      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("early_access_requests")
+}
