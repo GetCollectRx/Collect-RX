@@ -546,6 +546,11 @@ const STYLES = `
     .lp-hero { padding-top: 48px; }
     .lp-hero-wrap { padding-top: 64px; }
     .lp-walk-row { grid-template-columns: 1fr; gap: 4px; }
+    .lp-nav-inner { padding: 0 16px; }
+    .lp-logo-text { font-size: 14px; }
+    .lp-nav-right { gap: 4px; }
+    .lp-nav-signin { padding: 6px 8px; font-size: 12px; white-space: nowrap; }
+    .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
   }
 `
 
@@ -561,33 +566,33 @@ const CARRIERS = [
 
 const CLAIM_DATA: Record<string, { id: string; desc: string; amt: string; status: 'approved' | 'calling' | 'pending' }[]> = {
   'Sun Life': [
-    { id: '#SL-847291', desc: 'Crown — Unit 14, D2710',      amt: '$1,240', status: 'approved' },
-    { id: '#SL-847180', desc: 'Root Canal — Unit 26, D3330', amt: '$890',   status: 'calling'  },
+    { id: '#SL-847291', desc: 'Crown (Unit 14, D2710)',      amt: '$1,240', status: 'approved' },
+    { id: '#SL-847180', desc: 'Root Canal (Unit 26, D3330)', amt: '$890',   status: 'calling'  },
     { id: '#SL-847055', desc: 'Scaling & Root Planing',      amt: '$420',   status: 'approved' },
     { id: '#SL-846990', desc: 'Composite Restoration',       amt: '$280',   status: 'pending'  },
   ],
   'Canada Life': [
-    { id: '#CL-1048231', desc: 'Full Gold Crown — D2710',  amt: '$1,480', status: 'approved' },
+    { id: '#CL-1048231', desc: 'Full Gold Crown (D2710)',  amt: '$1,480', status: 'approved' },
     { id: '#CL-1048189', desc: 'Periodontal Maintenance',  amt: '$310',   status: 'calling'  },
     { id: '#CL-1048102', desc: 'Bitewing X-rays ×4',       amt: '$96',    status: 'approved' },
   ],
   'Manulife': [
-    { id: '#MFC-39821', desc: 'Implant Crown — D6065', amt: '$2,100', status: 'calling'  },
+    { id: '#MFC-39821', desc: 'Implant Crown (D6065)', amt: '$2,100', status: 'calling'  },
     { id: '#MFC-39799', desc: 'Extraction, Surgical',  amt: '$380',   status: 'approved' },
-    { id: '#MFC-39744', desc: 'Night Guard — D9940',   amt: '$560',   status: 'pending'  },
+    { id: '#MFC-39744', desc: 'Night Guard (D9940)',   amt: '$560',   status: 'pending'  },
   ],
   'Green Shield': [
-    { id: '#GS-20847', desc: 'Bridge Pontic — D6240',   amt: '$940', status: 'approved' },
-    { id: '#GS-20831', desc: 'Composite — Class II',     amt: '$245', status: 'approved' },
+    { id: '#GS-20847', desc: 'Bridge Pontic (D6240)',   amt: '$940', status: 'approved' },
+    { id: '#GS-20831', desc: 'Composite, Class II',     amt: '$245', status: 'approved' },
     { id: '#GS-20810', desc: 'Recall + Prophylaxis',     amt: '$182', status: 'calling'  },
   ],
   'RBC Insurance': [
-    { id: '#RBC-58320', desc: 'Porcelain Crown — D2712', amt: '$1,320', status: 'approved' },
+    { id: '#RBC-58320', desc: 'Porcelain Crown (D2712)', amt: '$1,320', status: 'approved' },
     { id: '#RBC-58291', desc: 'Emergency Exam + PA',      amt: '$130',   status: 'approved' },
   ],
   'TELUS AdjudiCare': [
     { id: '#TA-67021', desc: 'Scaling, per unit ×4',   amt: '$310', status: 'approved' },
-    { id: '#TA-66998', desc: 'Inlay, Ceramic — D2410', amt: '$780', status: 'calling'  },
+    { id: '#TA-66998', desc: 'Inlay, Ceramic (D2410)', amt: '$780', status: 'calling'  },
   ],
 }
 
@@ -619,13 +624,13 @@ const FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" /></svg>,
     h: 'Direct PMS integration',
-    p: 'Works with any practice management software. A weekly export of outstanding insurance balances is all it takes — no API integration, no IT setup.',
+    p: 'Works with any practice management software. A weekly export of outstanding insurance balances is all it takes, no API integration, no IT setup.',
     check: 'No IT setup or API integration required',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     h: 'AR intelligence reporting',
-    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention — by type and aging bucket.',
+    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention, organized by type and aging bucket.',
     check: 'Delivered weekly, broken down by carrier',
   },
 ]
@@ -679,7 +684,7 @@ const PIPELINE_STEPS = [
 // Single illustrative claim used to drive the "How it Works" walkthrough.
 const DEMO_CLAIM = {
   id: '#SL-204871',
-  procedure: 'Crown — Unit 14 (D2710)',
+  procedure: 'Crown, Unit 14 (D2710)',
   carrier: 'Sun Life',
   group: '88421',
   amount: '$1,240',
@@ -694,7 +699,7 @@ const IVR_TRANSCRIPT = [
   '"For claims status, press 2."',
   'Entering group number 8 8 4 2 1…',
   '"Please hold for the next representative."',
-  'Speaking with rep — referencing claim #SL-204871…',
+  'Speaking with rep, referencing claim #SL-204871…',
   'Adjudication status received.',
 ]
 
@@ -702,13 +707,13 @@ const TESTIMONIALS = [
   {
     body: "We were spending four to five hours a week just on hold with insurance carriers. That time is completely gone now. The claims that used to age past 90 days are now resolved by day 35.",
     name: 'Dr. Sarah Chen',
-    title: 'Practice Owner — North York, ON',
+    title: 'Practice Owner, North York, ON',
     initials: 'SC',
   },
   {
     body: "The PHIPA compliance piece was what convinced us. We had reservations about any AI touching patient workflows. Knowing that identifiers never leave our server made this a straightforward decision.",
     name: 'Dr. Michael Patel',
-    title: 'Managing Partner — Dental Group, Mississauga',
+    title: 'Managing Partner, Dental Group, Mississauga',
     initials: 'MP',
   },
 ]
@@ -861,7 +866,7 @@ function ClaimWalkthrough() {
               </div>
               <div className="lp-walk-row">
                 <span className="lp-walk-row-label">Status</span>
-                <span className="lp-walk-row-value">{DEMO_CLAIM.daysOutstanding} days outstanding — entering follow-up queue</span>
+                <span className="lp-walk-row-value">{DEMO_CLAIM.daysOutstanding} days outstanding, entering follow-up queue</span>
               </div>
             </div>
           )}
@@ -884,7 +889,7 @@ function ClaimWalkthrough() {
                 <span className="lp-walk-row-value mono">{DEMO_CLAIM.amount}</span>
               </div>
               <p className="lp-walk-note">
-                Only the UUID token is sent to the voice agent — names, dates of birth, and health card numbers stay on the backend.
+                Only the UUID token is sent to the voice agent. Names, dates of birth, and health card numbers stay on the backend.
               </p>
             </div>
           )}
@@ -911,7 +916,7 @@ function ClaimWalkthrough() {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div className="lp-walk-row">
                   <span className="lp-walk-row-label">Result</span>
-                  <span className="lp-walk-row-value">Approved — {DEMO_CLAIM.amount} adjudicated</span>
+                  <span className="lp-walk-row-value">Approved: {DEMO_CLAIM.amount} adjudicated</span>
                 </div>
                 <div className="lp-walk-row">
                   <span className="lp-walk-row-label">Token</span>
@@ -919,7 +924,7 @@ function ClaimWalkthrough() {
                 </div>
                 <div className="lp-walk-row">
                   <span className="lp-walk-row-label">Synced</span>
-                  <span className="lp-walk-row-value">Written back to PMS — no staff action required</span>
+                  <span className="lp-walk-row-value">Written back to PMS, no staff action required</span>
                 </div>
               </div>
             </div>
@@ -1057,7 +1062,7 @@ export default function LandingPage() {
                 resolved automatically<span className="lp-dot">.</span>
               </h1>
               <p className="lp-hero-body">
-                CollectRx runs outstanding claims through a complete AI follow-up pipeline —
+                CollectRx runs outstanding claims through a complete AI follow-up pipeline:
                 carrier-specific IVR navigation, live adjudication tracking, and denial
                 escalation, without your staff on hold.
               </p>
@@ -1084,7 +1089,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right — Operations Panel */}
+            {/* Right: Operations Panel */}
             <OpsPanel active={active} onSelect={setActive} />
           </section>
         </div>
@@ -1116,7 +1121,7 @@ export default function LandingPage() {
             <div className="lp-reveal">
               <ClaimWalkthrough />
               <p className="lp-walk-caption">
-                Illustrative walkthrough — claim and patient details shown are simulated, not live data.
+                Illustrative walkthrough: claim and patient details shown are simulated, not live data.
               </p>
             </div>
           </div>
@@ -1161,7 +1166,7 @@ export default function LandingPage() {
                   Six carriers. 78% of the market<span className="lp-dot">.</span>
                 </h2>
                 <p className="lp-split-p">
-                  Each integration handles the full call workflow for that carrier — IVR navigation,
+                  Each integration handles the full call workflow for that carrier: IVR navigation,
                   hold patterns, rep protocols, and status formats.
                 </p>
                 <p className="lp-split-p">
@@ -1229,7 +1234,7 @@ export default function LandingPage() {
               </h2>
               <p className="lp-section-sub">
                 In healthcare, privacy built in after the fact is privacy that fails.
-                In CollectRx, PHI protection is a structural requirement — not a configuration option.
+                In CollectRx, PHI protection is a structural requirement, not a configuration option.
               </p>
             </div>
             <div className="lp-compliance-grid lp-reveal">
