@@ -717,9 +717,9 @@ const FEATURES = [
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-    h: 'AR intelligence reporting',
-    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention, organized by type and aging bucket.',
-    check: 'Delivered weekly, broken down by carrier',
+    h: 'Collections metrics',
+    p: 'Sync-verified dollars recovered, open insurance outstanding, and claims in follow-up. Compare CollectRx results to your PMS aging reports.',
+    check: 'Recovery metrics in your dashboard',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" /></svg>,
@@ -733,7 +733,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
     h: 'PHIPA architecture',
-    p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally, not by policy.',
+    p: 'Identifiers are tokenized before data is processed outside your controlled environment. Compliance is enforced structurally, not by policy.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
@@ -743,7 +743,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
     h: 'PHI on your infrastructure',
-    p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries.',
+    p: 'No identifiers are transmitted to external services without tokenization. Health data stays within your system boundaries.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
@@ -1264,16 +1264,16 @@ export default function LandingPage() {
             <div>
               <div className="lp-ai-badge">
                 <svg viewBox="0 0 24 24"><path d="M12 0l2.5 9.5L24 12l-9.5 2.5L12 24l-2.5-9.5L0 12l9.5-2.5z" /></svg>
-                Canadian Dental AR Automation · Early Access
+                Canadian Insurance AR Automation · Early Access
               </div>
               <h1 className="lp-h1">
-                Your insurance AR,<br />
-                resolved automatically<span className="lp-dot">.</span>
+                Collect outstanding insurance AR<br />
+                without staff on hold<span className="lp-dot">.</span>
               </h1>
               <p className="lp-hero-body">
-                CollectRx runs outstanding claims through a complete AI follow-up pipeline:
-                carrier-specific IVR navigation, live adjudication tracking, and denial
-                escalation, without your staff on hold.
+                Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
+                that never lands. CollectRx runs follow-up to six major Canadian insurers, tracks
+                claim status, and handles denials, from a simple PMS export.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
@@ -1306,9 +1306,9 @@ export default function LandingPage() {
         {/* ── STATS BAND ── */}
         <div className="lp-stats lp-reveal">
           <div className="lp-stats-inner">
-            <StatNum target={6}  suffix=" carriers" label="Major Canadian carriers integrated" />
+            <StatNum target={6}  suffix=" carriers" label="Major Canadian insurers integrated" />
             <StatNum target={78} suffix="%"          label="Private dental market covered" />
-            <StatNum target={12} suffix="h"          label="Front-desk hours recovered per week" />
+            <StatNum target={100} suffix="%"         label="Insurance AR focus (not patient balances)" />
             <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
           </div>
         </div>
@@ -1342,11 +1342,11 @@ export default function LandingPage() {
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">How it Works</div>
               <h2 className="lp-section-h2">
-                Four steps. Zero staff time<span className="lp-dot">.</span>
+                Four steps. Less staff time on hold<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 From the moment a claim ages into the queue to the moment its status is
-                written back, the entire follow-up runs without a phone call from your team.
+                written back, insurance follow-up runs without your team calling carriers.
                 Click a step, or watch it run on its own.
               </p>
             </div>
@@ -1489,9 +1489,8 @@ export default function LandingPage() {
               The AR work is already getting done<span className="lp-dot">.</span>
             </h2>
             <p className="lp-cta-body">
-              Now live with Canadian dental practices. No setup fees.
-              No long-term contract. If CollectRx doesn't recover revenue you were
-              already leaving behind, you pay nothing.
+              Annual partnership for Canadian dental practices. No setup fees.
+              Collections metrics show what we recovered on your outstanding insurance AR.
             </p>
             <div className="lp-cta-actions">
               <button className="lp-btn-primary" onClick={() => openAccess('access')}>

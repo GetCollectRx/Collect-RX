@@ -111,6 +111,9 @@ import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
+import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
+import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
+import { startMarketingLoopInProcess } from './marketing/marketingScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 const app = express();
@@ -210,6 +213,12 @@ app.post(
   makeSendgridEventWebhookHandler(prisma),
 );
 
+app.use(
+  '/api/webhooks/sendgrid-inbound',
+  webhookLimiter,
+  createSendgridInboundRouter(prisma),
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
@@ -293,6 +302,7 @@ app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
+app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/pms', pmsApiRouter);
@@ -406,6 +416,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     if (isLearningLoopEnabled()) {
       startLearningLoopInProcess(prisma);
     }
+    startMarketingLoopInProcess(prisma);
   }
 
   attachDeskWebSocket(server);

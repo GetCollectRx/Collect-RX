@@ -1,0 +1,180 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { handleProspectSendGridEvent } from '../../src/server/marketing/prospectEngagement.js';
+import type { PrismaClient, Prospect } from '@prisma/client';
+
+const baseProspect: Prospect = {
+  id: 'p1',
+  practiceName: 'Downtown Dental',
+  contactName: null,
+  email: 'office@downtown.ca',
+  phone: '4165550100',
+  city: 'Toronto',
+  province: 'ON',
+  website: null,
+  googlePlaceId: null,
+  score: 80,
+  stage: 'contacted',
+  source: 'harvest',
+  pmsHint: null,
+  sequenceStep: 1,
+  sequencePausedUntil: null,
+  sequenceCompleted: false,
+  referralStep: 0,
+  referralCompleted: false,
+  emailOpenCount: 2,
+  emailClickCount: 0,
+  lastEmailSentAt: null,
+  lastEngagedAt: null,
+  closedWonAt: null,
+  optOutAt: null,
+  callSummary: null,
+  replyIntent: null,
+  suggestedReply: null,
+  painPoints: null,
+  metadata: null,
+  lastVapiCallId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+function mockPrisma(overrides: Partial<Prospect> = {}) {
+  const prospect = { ...baseProspect, ...overrides };
+  return {
+    prospect: {
+      findUnique: vi.fn().mockResolvedValue(prospect),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ ...prospect, emailOpenCount: 3 }),
+      update: vi.fn().mockImplementation(({ data }: { data: Partial<Prospect> }) =>
+        Promise.resolve({ ...prospect, ...data }),
+      ),
+    },
+    prospectActivity: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+  } as unknown as PrismaClient;
+}
+
+describe('handleProspectSendGridEvent', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+    );
+  });
+
+  it('increments open count and can advance to engaged', async () => {
+    const prisma = mockPrisma();
+    await handleProspectSendGridEvent(prisma, {
+      event: 'open',
+      prospect_id: 'p1',
+    });
+    expect(prisma.prospect.update).toHaveBeenCalled();
+    expect(prisma.prospectActivity.create).toHaveBeenCalled();
+  });
+
+  it('opts out on spam report', async () => {
+    const prisma = mockPrisma();
+    await handleProspectSendGridEvent(prisma, {
+      event: 'spamreport',
+      prospect_id: 'p1',
+    });
+    expect(prisma.prospect.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ stage: 'opted_out' }),
+      }),
+    );
+  });
+});
+
+describe('email templates', () => {
+  it('interpolates practice name in subject', async () => {
+    const { interpolateSubject } = await import('../../src/server/marketing/emailTemplates.js');
+    expect(interpolateSubject('Hello {{practice}}', baseProspect)).toBe('Hello Downtown Dental');
+  });
+
+  it('step 1 uses capability copy without social proof or em dashes', async () => {
+    const { COLD_SEQUENCE } = await import('../../src/server/marketing/emailTemplates.js');
+    const html = COLD_SEQUENCE[0]!.buildHtml(baseProspect);
+    expect(html).toContain('two costs');
+    expect(html).not.toContain('—');
+    expect(html.toLowerCase()).not.toContain('colleague');
+    expect(html.toLowerCase()).not.toContain('patients');
+    expect(html.toLowerCase()).not.toContain('mentioned');
+  });
+});
+
+describe('reply intelligence fallback', () => {
+  it('detects unsubscribe keywords without Gemini', async () => {
+    const prisma = mockPrisma();
+    const { processInboundReply } = await import('../../src/server/marketing/replyIntelligence.js');
+    await processInboundReply(
+      prisma,
+      baseProspect,
+      'Please unsubscribe me from this list',
+      'office@downtown.ca',
+    );
+    expect(prisma.prospect.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ stage: 'opted_out' }),
+      }),
+    );
+  });
+});
+
+describe('branded email layout', () => {
+  it('wraps content with CollectRx branding', async () => {
+    const { wrapOutreachEmail } = await import('../../src/server/marketing/emailLayout.js');
+    const html = wrapOutreachEmail({
+      bodyHtml: '<p>Test body</p>',
+      cta: { label: 'Book demo', href: 'https://www.collectrx.ca' },
+    });
+    expect(html).toContain('CollectRx');
+    expect(html).toContain('#0f9d58');
+    expect(html).toContain('Book demo');
+  });
+});
+
+describe('reply templates', () => {
+  it('returns capability-focused positive reply without social proof', async () => {
+    const { getReplyTemplate } = await import('../../src/server/marketing/replyTemplates.js');
+    const tpl = getReplyTemplate('positive', baseProspect, 'Yes interested');
+    expect(tpl?.text).toContain('outstanding insurance AR');
+    expect(tpl?.text.toLowerCase()).not.toContain('colleague');
+    expect(tpl?.text.toLowerCase()).not.toContain('focuses on patients');
+    expect(tpl?.autoSend).toBe(true);
+  });
+
+  it('detects too-small objection variant', async () => {
+    const { detectObjectionVariant } = await import('../../src/server/marketing/replyTemplates.js');
+    expect(detectObjectionVariant('We are too small, just one dentist')).toBe('too_small');
+  });
+});
+
+describe('sales call script', () => {
+  it('includes voice rules and no fake social proof in system prompt', async () => {
+    const { buildSalesQualifierSystemPrompt } = await import('../../src/server/marketing/salesCallScript.js');
+    const prompt = buildSalesQualifierSystemPrompt(baseProspect);
+    expect(prompt).toContain('Do NOT claim we already work with');
+    expect(prompt).toContain('CollectRx');
+    expect(prompt).toContain('Downtown Dental');
+  });
+});
+
+describe('capability catalog', () => {
+  it('maps steps to enabled capabilities only', async () => {
+    const { capabilitiesForCadenceStep } = await import('../../src/server/marketing/outreachVoice.js');
+    const step1 = capabilitiesForCadenceStep(1);
+    expect(step1.length).toBeGreaterThan(0);
+    expect(step1.every((c) => c.enabled)).toBe(true);
+    expect(step1.some((c) => c.id === 'socialProof')).toBe(false);
+  });
+});
+
+describe('email preview', () => {
+  it('builds preview for cadence step 1', async () => {
+    const { previewColdEmail } = await import('../../src/server/marketing/emailTemplates.js');
+    const preview = previewColdEmail(baseProspect, 1);
+    expect(preview?.subject).toContain('Downtown Dental');
+    expect(preview?.text).toContain('two costs');
+    expect(preview?.html).not.toContain('—');
+  });
+});

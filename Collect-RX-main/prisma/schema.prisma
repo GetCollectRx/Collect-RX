@@ -1140,3 +1140,79 @@ model EarlyAccessRequest {
   @@index([createdAt])
   @@map("early_access_requests")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Practice partnerships — outbound sales pipeline (platform admin only).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ProspectStage {
+  new
+  contacted
+  engaged
+  qualified
+  demo_booked
+  closed_won
+  closed_lost
+  opted_out
+}
+
+enum ProspectSource {
+  harvest
+  manual
+  early_access
+  referral
+}
+
+model Prospect {
+  id                   String         @id @default(uuid())
+  practiceName         String         @map("practice_name")
+  contactName          String?        @map("contact_name")
+  email                String?
+  phone                String?
+  city                 String?
+  province             String?
+  website              String?
+  googlePlaceId        String?        @map("google_place_id")
+  score                Int            @default(0)
+  stage                ProspectStage  @default(new)
+  source               ProspectSource @default(manual)
+  pmsHint              String?        @map("pms_hint")
+  sequenceStep         Int            @default(0) @map("sequence_step")
+  sequencePausedUntil  DateTime?      @map("sequence_paused_until")
+  sequenceCompleted    Boolean        @default(false) @map("sequence_completed")
+  referralStep         Int            @default(0) @map("referral_step")
+  referralCompleted    Boolean        @default(false) @map("referral_completed")
+  emailOpenCount       Int            @default(0) @map("email_open_count")
+  emailClickCount      Int            @default(0) @map("email_click_count")
+  lastEmailSentAt      DateTime?      @map("last_email_sent_at")
+  lastEngagedAt        DateTime?      @map("last_engaged_at")
+  closedWonAt          DateTime?      @map("closed_won_at")
+  optOutAt             DateTime?      @map("opt_out_at")
+  callSummary          String?        @map("call_summary") @db.Text
+  replyIntent          String?        @map("reply_intent")
+  suggestedReply       String?        @map("suggested_reply") @db.Text
+  painPoints           Json?          @map("pain_points")
+  metadata             Json?
+  lastVapiCallId       String?        @map("last_vapi_call_id")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  activities           ProspectActivity[]
+
+  @@index([stage])
+  @@index([email])
+  @@index([createdAt])
+  @@map("prospects")
+}
+
+model ProspectActivity {
+  id         String   @id @default(uuid())
+  prospectId String   @map("prospect_id")
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  type       String
+  summary    String
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([prospectId, createdAt])
+  @@map("prospect_activities")
+}
