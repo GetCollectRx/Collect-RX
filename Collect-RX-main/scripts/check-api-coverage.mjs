@@ -75,6 +75,7 @@ const SERVER_EXTRA = [
   /^\/api\/public\/email-unsubscribe$/,
   /^\/api\/work-queue$/,
   /^\/api\/work-queue\//,
+  /^\/api\/early-access$/,
   /^\/api\/admin\/sync\//,
   /^\/api\/telemetry$/,
   /^\/api\/telemetry\//,
