@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import roiAssumptions from '../config/roi-assumptions.json'
 
 // ─── Design tokens / styles ───────────────────────────────────────────────────
 // HubSpot-inspired editorial system: warm cream/parchment canvas, hairline
@@ -1110,9 +1111,9 @@ function RoiCalculator() {
   const [holdHours, setHoldHours] = useState(8)
 
   const hoursPerYear = holdHours * 52
-  const timeValuePerYear = hoursPerYear * 25
-  const atRiskLow = outstandingAr * 0.10
-  const atRiskHigh = outstandingAr * 0.25
+  const timeValuePerYear = hoursPerYear * roiAssumptions.hourlyRateCAD
+  const atRiskLow = outstandingAr * roiAssumptions.writeOffRateLow
+  const atRiskHigh = outstandingAr * roiAssumptions.writeOffRateHigh
 
   return (
     <div className="lp-roi-card">
@@ -1146,7 +1147,7 @@ function RoiCalculator() {
         <div className="lp-roi-output">
           <div className="lp-roi-output-num">{hoursPerYear.toLocaleString()} hrs / year</div>
           <div className="lp-roi-output-lbl">
-            Front-desk time freed up, worth roughly {fmtUSD(timeValuePerYear)}/year at $25/hr
+            Front-desk time freed up, worth roughly {fmtUSD(timeValuePerYear)}/year at ${roiAssumptions.hourlyRateCAD}/hr
           </div>
         </div>
         <div className="lp-roi-output">

@@ -9,6 +9,7 @@ import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
 import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
+import { computeCarrierStats } from '../services/platformReports.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { getPracticePmsContext } from '../pms/practicePmsContext.js';
@@ -159,6 +160,16 @@ router.get('/stats', async (req: Request, res: Response) => {
       name: CARRIER_CONFIGS[b.carrierId]?.displayName ?? b.carrierId,
     }));
 
+    let decliningCarriers: { code: string; name: string; successRate: number }[] = [];
+    try {
+      const { stats } = await computeCarrierStats(prisma, practiceId, '30d');
+      decliningCarriers = stats
+        .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
+        .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
+    } catch (carrierStatsErr) {
+      console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
+    }
+
     const stripeAcct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
     const patientPaymentsReady = Boolean(
       stripeAcct?.chargesEnabled && process.env.STRIPE_SECRET_KEY?.trim(),
@@ -217,6 +228,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       operationalAlerts: {
         blockedCarriers,
         patientPaymentsReady,
+        decliningCarriers,
       },
     });
   } catch (err) {

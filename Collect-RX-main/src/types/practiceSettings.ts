@@ -79,6 +79,18 @@ export interface CarrierStatRow {
   trend: 'improving' | 'declining' | 'stable';
 }
 
+export interface DenialAnalyticsSnapshot {
+  byCarrier: Array<{
+    carrierId: CarrierId;
+    totalClaims: number;
+    deniedClaims: number;
+    denialRate: number;
+  }>;
+  topDenialReasons: Array<{ reason: string; count: number }>;
+  appealWinRate: number;
+  avgDaysToResolution: number;
+}
+
 export type EscalationResolution =
   | 'resolved'
   | 'appealing'
