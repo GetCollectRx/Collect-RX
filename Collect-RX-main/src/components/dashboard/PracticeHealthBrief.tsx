@@ -33,6 +33,21 @@ type Props = {
   loading?: boolean
 }
 
+function MetricValue({
+  loading,
+  children,
+  className = '',
+}: {
+  loading?: boolean
+  children: React.ReactNode
+  className?: string
+}) {
+  if (loading) {
+    return <span className={`practice-health-value practice-health-value--skeleton ${className}`.trim()} aria-hidden />
+  }
+  return <p className={`practice-health-value ${className}`.trim()}>{children}</p>
+}
+
 function fmtCurrency(v: number) {
   return new Intl.NumberFormat('en-CA', {
     style: 'currency',
@@ -121,7 +136,7 @@ export function PracticeHealthBrief({
       <section className="practice-health-answers" aria-label="Key answers">
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">How much insurance money is still outstanding?</h2>
-          <p className="practice-health-value">{loading ? 'N/A' : fmtCurrency(m.totalOpenAR)}</p>
+          <MetricValue loading={loading}>{fmtCurrency(m.totalOpenAR)}</MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
@@ -136,9 +151,7 @@ export function PracticeHealthBrief({
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">What&apos;s blocking collections?</h2>
-          <p className="practice-health-value">
-            {loading ? 'N/A' : m.blockingGatesOpen + m.openEscalations}
-          </p>
+          <MetricValue loading={loading}>{m.blockingGatesOpen + m.openEscalations}</MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
@@ -167,7 +180,7 @@ export function PracticeHealthBrief({
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">What did we recover this month?</h2>
-          <p className="practice-health-value">{loading ? 'N/A' : fmtCurrency(m.recovered30d)}</p>
+          <MetricValue loading={loading}>{fmtCurrency(m.recovered30d)}</MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
@@ -182,9 +195,9 @@ export function PracticeHealthBrief({
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">Are agents and sync running?</h2>
-          <p className="practice-health-value">
-            {loading ? 'N/A' : m.activeCalls > 0 ? `${m.activeCalls} live` : `${m.callsToday} calls today`}
-          </p>
+          <MetricValue loading={loading}>
+            {m.activeCalls > 0 ? `${m.activeCalls} live` : `${m.callsToday} calls today`}
+          </MetricValue>
           <p className="crx-sub">
             {loading ? 'Loading…' : syncLabel(lastImport, pms)}
           </p>
@@ -215,7 +228,12 @@ export function PracticeHealthBrief({
 
       <section className="practice-health-footer">
         <p className="crx-sub">
-          Resolved today: <strong>{loading ? 'N/A' : m.claimsResolvedToday}</strong>
+          Resolved today:{' '}
+          {loading ? (
+            <span className="practice-health-inline-skeleton" aria-hidden />
+          ) : (
+            <strong>{m.claimsResolvedToday}</strong>
+          )}
           {!loading && m.agingOver60 > 0 && (
             <>
               {' '}

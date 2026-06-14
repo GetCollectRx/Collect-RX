@@ -1478,7 +1478,42 @@
 }
 
 .crx-app .practice-health-card.is-loading {
-  opacity: 0.72;
+  opacity: 0.92;
+}
+
+.crx-app .practice-health-value--skeleton {
+  display: block;
+  width: min(8rem, 70%);
+  height: 1.75rem;
+  margin: 0.125rem 0 0.375rem;
+  border-radius: 0.375rem;
+  background: linear-gradient(
+    90deg,
+    var(--crx-bg3) 0%,
+    color-mix(in srgb, var(--crx-t2) 12%, var(--crx-bg3)) 50%,
+    var(--crx-bg3) 100%
+  );
+  background-size: 200% 100%;
+  animation: practice-health-shimmer 1.2s ease-in-out infinite;
+}
+
+.crx-app .practice-health-inline-skeleton {
+  display: inline-block;
+  width: 1.5rem;
+  height: 0.875rem;
+  vertical-align: middle;
+  border-radius: 0.25rem;
+  background: var(--crx-bg3);
+  animation: practice-health-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes practice-health-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .crx-app .practice-health-q {

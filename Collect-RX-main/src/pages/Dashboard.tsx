@@ -64,6 +64,26 @@ interface OwnerPlatformData {
   openEscalations: number
 }
 
+const DASHBOARD_STATS_CACHE_PREFIX = 'crx_dashboard_stats_'
+
+function readCachedStats(practiceId: string): DashboardStats | null {
+  try {
+    const raw = sessionStorage.getItem(`${DASHBOARD_STATS_CACHE_PREFIX}${practiceId}`)
+    if (!raw) return null
+    return JSON.parse(raw) as DashboardStats
+  } catch {
+    return null
+  }
+}
+
+function writeCachedStats(practiceId: string, stats: DashboardStats) {
+  try {
+    sessionStorage.setItem(`${DASHBOARD_STATS_CACHE_PREFIX}${practiceId}`, JSON.stringify(stats))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 const EMPTY_METRICS: HealthBriefMetrics = {
   totalOpenAR: 0,
   openWorkItemCount: 0,
@@ -434,10 +454,12 @@ export default function Dashboard() {
   } = usePractice()
   const canManageSync =
     isPracticeOwner || isPlatformDev || role === 'office_manager' || role === 'billing_coordinator'
-  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [stats, setStats] = useState<DashboardStats | null>(() =>
+    practiceId ? readCachedStats(practiceId) : null,
+  )
   const [platform, setPlatform] = useState<OwnerPlatformData | null>(null)
   const [recoveryNotifications, setRecoveryNotifications] = useState<RecoveryNotificationItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(() => Boolean(practiceId && !readCachedStats(practiceId)))
   const [error, setError] = useState<string | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -462,6 +484,7 @@ export default function Dashboard() {
           : Promise.resolve(null),
       ])
       setStats(dash)
+      writeCachedStats(practiceId, dash)
       setRecoveryNotifications(notifRes.data ?? [])
       setPlatform(plat)
       setError(null)
@@ -485,11 +508,18 @@ export default function Dashboard() {
   }, [practiceId, isPracticeOwner])
 
   useEffect(() => {
-    void loadDashboard()
+    if (!practiceId) {
+      setStats(null)
+      setLoading(false)
+      return
+    }
+    const cached = readCachedStats(practiceId)
+    if (cached) setStats(cached)
+    void loadDashboard({ quiet: Boolean(cached) })
     return () => {
       if (retryTimer.current) clearTimeout(retryTimer.current)
     }
-  }, [loadDashboard])
+  }, [loadDashboard, practiceId])
 
   const metrics = useMemo(() => buildMetrics(stats, platform), [stats, platform])
   const actions = useMemo(
@@ -497,7 +527,7 @@ export default function Dashboard() {
     [recoveryNotifications, metrics],
   )
 
-  const dataBusy = practiceLoading || (loading && !stats && !error)
+  const dataBusy = loading && !stats
   const practiceName = practice?.name ?? 'Your practice'
 
   if (!practiceId && !practiceLoading) {
