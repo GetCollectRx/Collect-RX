@@ -4,7 +4,7 @@
 // Four tiers:
 //   authLimiter     —   5 req / 15 min per IP  (login — brute-force prevention)
 //   strictLimiter   —  10 req / 1 min  per IP  (expensive writes)
-//   standardLimiter — 120 req / 1 min  per IP  (standard API reads/writes)
+//   standardLimiter — 120 req / 1 min per IP (anonymous), 600/min per signed-in user
 //   webhookLimiter  — 300 req / 1 min  per IP  (Vapi can fire bursts)
 //
 // When REDIS_URL is set, all limiters use a Redis-backed store so counts are shared
@@ -17,6 +17,7 @@ import IORedis from 'ioredis';
 import { RedisStore, type RedisReply } from 'rate-limit-redis';
 import rateLimit, { ipKeyGenerator, type Options, type RateLimitRequestHandler } from 'express-rate-limit';
 import type { Request, Response } from 'express';
+import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 
 let rateLimitRedis: IORedis | null = null;
 let loggedRedisStore = false;
@@ -41,6 +42,24 @@ function makeHandler(message: string) {
   };
 }
 
+/** Per signed-in user when a valid session cookie is present; otherwise per client IP. */
+function sessionOrIpKey(req: Request): string {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (typeof token === 'string' && token.length > 0) {
+    try {
+      const payload = verifyAuthToken(token);
+      const userId =
+        'userId' in payload && typeof payload.userId === 'string'
+          ? payload.userId
+          : payload.role;
+      return `sess:${userId}`;
+    } catch {
+      /* fall through to IP */
+    }
+  }
+  return ipKeyGenerator(req.ip ?? 'unknown');
+}
+
 function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
   const redis = getOptionalRateLimitRedis();
   const storeOpts: Partial<Options> = redis
@@ -55,13 +74,13 @@ function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
 
   if (redis && !loggedRedisStore) {
     loggedRedisStore = true;
-    console.log('[rate-limit] Redis store enabled (REDIS_URL) — limits shared across replicas.');
+    console.log('[rate-limit] Redis store enabled (REDIS_URL). Limits shared across replicas.');
   }
 
   return rateLimit({
     standardHeaders: true,   // Return RateLimit-* headers (RFC 6585)
     legacyHeaders:   false,  // Suppress deprecated X-RateLimit-*
-    keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+    keyGenerator: sessionOrIpKey,
     ...storeOpts,
     ...opts,
   });
@@ -76,7 +95,7 @@ export const authLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 15 * 60 * 1000, // 15-minute window
   max: 5,
   handler: makeHandler(
-    'Too many login attempts — please wait 15 minutes before trying again.',
+    'Too many login attempts. Please wait 15 minutes before trying again.',
   ),
 });
 
@@ -88,19 +107,20 @@ export const strictLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
   max: 10,
   handler: makeHandler(
-    'Too many requests — please slow down and try again shortly.',
+    'Too many requests. Please slow down and try again shortly.',
   ),
 });
 
 /**
- * standardLimiter — 120 requests per minute per IP.
- * Applied globally to all /api/* routes as a baseline defence.
+ * standardLimiter — baseline for /api/*.
+ * Anonymous traffic: 120 req/min per IP.
+ * Signed-in app sessions: 600 req/min per user (avoids shared-NAT / proxy IP collisions).
  */
 export const standardLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
-  max: 120,
+  max: (req) => (sessionOrIpKey(req).startsWith('sess:') ? 600 : 120),
   handler: makeHandler(
-    'Too many requests — please slow down and try again shortly.',
+    'Too many requests. Please slow down and try again shortly.',
   ),
 });
 
@@ -112,7 +132,7 @@ export const webhookLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
   max: 300,
   handler: makeHandler(
-    'Too many webhook requests — please slow down and try again shortly.',
+    'Too many webhook requests. Please slow down and try again shortly.',
   ),
 });
 
@@ -124,7 +144,7 @@ export const publicLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
   max: 60,
   handler: makeHandler(
-    'Too many requests — please slow down and try again shortly.',
+    'Too many requests. Please slow down and try again shortly.',
   ),
 });
 
@@ -136,7 +156,7 @@ export const healthLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
   max: 120,
   handler: makeHandler(
-    'Too many health or metrics requests — please slow down and try again shortly.',
+    'Too many health or metrics requests. Please slow down and try again shortly.',
   ),
 });
 
@@ -147,5 +167,5 @@ export const healthLimiter: RateLimitRequestHandler = makeLimiter({
 export const telemetryEventsLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
   max: 1000,
-  handler: makeHandler('Telemetry rate limit exceeded — please slow down.'),
+  handler: makeHandler('Telemetry rate limit exceeded. Please slow down.'),
 });

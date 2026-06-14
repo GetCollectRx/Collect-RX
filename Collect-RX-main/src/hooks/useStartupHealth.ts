@@ -30,14 +30,6 @@ async function fetchOk(path: string, timeoutMs = 8000): Promise<boolean> {
   }
 }
 
-async function fetchWithRetry(path: string, attempts = 3): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    if (await fetchOk(path)) return true
-    if (i < attempts - 1) await new Promise(r => setTimeout(r, 400))
-  }
-  return false
-}
-
 export function useStartupHealth(authReady: boolean) {
   const [steps, setSteps] = useState<StartupStep[]>(INITIAL_STEPS)
   const [phase, setPhase] = useState<'checking' | 'ready'>('checking')
@@ -57,11 +49,11 @@ export function useStartupHealth(authReady: boolean) {
       patchStep('connect', 'done')
 
       patchStep('api', 'running')
-      const apiOk = await fetchWithRetry('/api/health')
+      const apiOk = await fetchOk('/api/health')
       patchStep('api', apiOk ? 'done' : 'error')
 
       patchStep('services', 'running')
-      const readyOk = apiOk ? await fetchWithRetry('/api/health/ready') : false
+      const readyOk = apiOk ? await fetchOk('/api/health/ready') : false
       patchStep('services', readyOk ? 'done' : 'error')
 
       patchStep('workspace', 'running')

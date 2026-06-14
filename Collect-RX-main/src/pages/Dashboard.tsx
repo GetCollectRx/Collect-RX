@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
 import {
@@ -121,32 +121,57 @@ export default function Dashboard() {
   const [recoveryNotifications, setRecoveryNotifications] = useState<RecoveryNotificationItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const loadDashboard = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!practiceId) return
+    if (!opts?.quiet) {
+      setLoading(true)
+      setError(null)
+    }
+    try {
+      const [dash, notifRes, plat] = await Promise.all([
+        apiFetchJson<DashboardStats>(`/api/dashboard/stats?practiceId=${practiceId}`),
+        apiFetchJson<{ success: boolean; data: RecoveryNotificationItem[] }>(
+          `/api/insurance/recovery/notifications?practiceId=${practiceId}`,
+        ).catch(() => ({ success: true, data: [] as RecoveryNotificationItem[] })),
+        isPracticeOwner
+          ? apiFetchJson<{ success: boolean; data: OwnerPlatformData }>(
+              `/api/practices/${practiceId}/dashboard`,
+            )
+              .then((r) => r.data)
+              .catch(() => null)
+          : Promise.resolve(null),
+      ])
+      setStats(dash)
+      setRecoveryNotifications(notifRes.data ?? [])
+      setPlatform(plat)
+      setError(null)
+    } catch (e) {
+      const msg = (e as Error).message
+      const rateLimited = /too many requests|rate limit/i.test(msg)
+      setError(
+        rateLimited
+          ? 'Live numbers are catching up. Your home page is ready; we will refresh shortly.'
+          : msg,
+      )
+      if (rateLimited) {
+        if (retryTimer.current) clearTimeout(retryTimer.current)
+        retryTimer.current = setTimeout(() => {
+          void loadDashboard({ quiet: true })
+        }, 4000)
+      }
+    } finally {
+      if (!opts?.quiet) setLoading(false)
+    }
+  }, [practiceId, isPracticeOwner])
 
   useEffect(() => {
-    if (!practiceId) return
-    setLoading(true)
-    setError(null)
-    Promise.all([
-      apiFetchJson<DashboardStats>(`/api/dashboard/stats?practiceId=${practiceId}`),
-      apiFetchJson<{ success: boolean; data: RecoveryNotificationItem[] }>(
-        `/api/insurance/recovery/notifications?practiceId=${practiceId}`,
-      ).catch(() => ({ success: true, data: [] as RecoveryNotificationItem[] })),
-      isPracticeOwner
-        ? apiFetchJson<{ success: boolean; data: OwnerPlatformData }>(
-            `/api/practices/${practiceId}/dashboard`,
-          )
-            .then((r) => r.data)
-            .catch(() => null)
-        : Promise.resolve(null),
-    ])
-      .then(([dash, notifRes, plat]) => {
-        setStats(dash)
-        setRecoveryNotifications(notifRes.data ?? [])
-        setPlatform(plat)
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false))
-  }, [practiceId, isPracticeOwner])
+    void loadDashboard()
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+    }
+  }, [loadDashboard])
 
   const metrics = useMemo(() => buildMetrics(stats, platform), [stats, platform])
   const actions = useMemo(
@@ -154,7 +179,7 @@ export default function Dashboard() {
     [recoveryNotifications, metrics],
   )
 
-  const dataBusy = practiceLoading || (loading && !stats)
+  const dataBusy = practiceLoading || (loading && !stats && !error)
   const practiceName = practice?.name ?? 'Your practice'
 
   if (!practiceId && !practiceLoading) {

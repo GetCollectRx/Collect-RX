@@ -151,6 +151,14 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])
 
+  const applySessionHealth = useCallback((health?: SessionHealthPayload | null) => {
+    if (health) {
+      setSessionHealth(health)
+      return
+    }
+    void fetchSessionHealth()
+  }, [fetchSessionHealth])
+
   const refreshSession = useCallback(async () => {
     const r = await fetch(resolveApiUrl('/api/auth/me'), { credentials: 'include' })
     if (r.status === 401) { clearState(stateSetters); return }
@@ -178,7 +186,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       applySessionConfig('platform_dev', pid)
       setSessionUser(null)
       setAuthState('ready')
-      void fetchSessionHealth()
+      applySessionHealth(data.health)
       return
     }
 
@@ -196,8 +204,8 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     applySessionConfig(sessionRole, pid)
     setSessionUser(data.user ?? null)
     setAuthState('ready')
-    void fetchSessionHealth()
-  }, [fetchSessionHealth])
+    applySessionHealth(data.health)
+  }, [applySessionHealth, fetchSessionHealth])
 
   useEffect(() => {
     void refreshSession().catch(() => { setAuthState('anon') })
