@@ -150,42 +150,8 @@ interface BalanceForPayment {
   patientToken: string;
 }
 
-export async function generatePaymentLink(balance: BalanceForPayment, stripeAccountId: string) {
-  const stripe = getStripe();
-  const amountCents = Math.round(Number(balance.patientOwes) * 100);
-
-  if (amountCents <= 0) throw new Error('Balance amount must be positive');
-
-  // Create a one-off price
-  const price = await stripe.prices.create(
-    {
-      currency: 'cad',
-      unit_amount: amountCents,
-      product_data: {
-        name: 'Dental Procedure Payment',
-      },
-    },
-    { stripeAccount: stripeAccountId }
-  );
-
-  // Create a Payment Link
-  const link = await stripe.paymentLinks.create(
-    {
-      line_items: [{ price: price.id, quantity: 1 }],
-      metadata: {
-        balance_id: String(balance.id),
-        practice_id: String(balance.practiceId || ''),
-        patient_token: String(balance.patientToken),
-      },
-      after_completion: {
-        type: 'redirect',
-        redirect: { url: `${SERVER_URL()}/payment/thank-you?paid=1` },
-      },
-    },
-    { stripeAccount: stripeAccountId }
-  );
-
-  return { url: link.url, id: link.id };
+export async function generatePaymentLink(_balance: BalanceForPayment, _stripeAccountId: string) {
+  throw new Error('Patient payment links are disabled — CollectRx is insurance-carrier recovery only');
 }
 
 // Stripe webhook handler — use the same PrismaClient as the app (migrations, tests).

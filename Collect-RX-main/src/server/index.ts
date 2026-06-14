@@ -406,6 +406,18 @@ async function connectDatabaseOrExit(): Promise<void> {
 async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
   await connectDatabaseOrExit();
 
+  try {
+    const closed = await prisma.workItem.updateMany({
+      where: { status: 'open', itemType: { not: 'insurance' } },
+      data: { status: 'closed' },
+    });
+    if (closed.count > 0) {
+      console.log(`[server] closed ${closed.count} legacy non-insurance work queue item(s)`);
+    }
+  } catch (err) {
+    console.warn('[server] legacy work queue cleanup failed:', (err as Error).message);
+  }
+
   void runTelemetryMigrations().catch((err) => {
     console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
   });

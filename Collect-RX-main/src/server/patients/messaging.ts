@@ -8,6 +8,7 @@
  */
 
 import { buildEmailUnsubscribeUrl } from '../email/unsubscribeUrl.js';
+import { blockPatientOutboundContact } from '../insuranceOnlyPolicy.js';
 
 interface Balance {
   id: string;
@@ -44,6 +45,7 @@ function fmt(amount: number): string {
 
 // Send email via SendGrid
 export async function sendEmail(balance: Balance, paymentLink?: string | null): Promise<boolean> {
+  if (blockPatientOutboundContact('email', balance.id)) return false;
   const sg = getSendGrid();
   if (!sg) return false;
   if (!balance.patientEmail) return false;
@@ -117,6 +119,7 @@ export async function sendEmail(balance: Balance, paymentLink?: string | null): 
 
 // Send SMS via Twilio
 export async function sendSMS(balance: Balance, paymentLink?: string | null): Promise<boolean> {
+  if (blockPatientOutboundContact('sms', balance.id)) return false;
   if (balance.smsOptOutAt) {
     return false;
   }

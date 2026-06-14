@@ -13,7 +13,6 @@ import express from 'express';
 import IORedis from 'ioredis';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
-import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
@@ -42,7 +41,7 @@ const worker = new Worker(
       // Insurance call_queue priority sync runs inside runRulesEngineTick (same path as in-process setInterval).
       await runRulesEngineTick(prisma);
     } else if (job.name === 'REMINDER_CYCLE') {
-      await runReminderCycle();
+      console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
     } else if (job.name === 'LEARNING_CYCLE') {
       await runLearningCycle(prisma);
     } else if (job.name === 'MARKETING_SEQUENCE_TICK') {

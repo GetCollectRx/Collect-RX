@@ -174,6 +174,16 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     outstandingAmount,
   } = params;
 
+  const allowedNumbers = new Set(
+    Object.values(CARRIER_PHONE_MAP).map((n) => n.replace(/\D/g, '')),
+  );
+  const normalized = carrierPhone.replace(/\D/g, '');
+  if (!allowedNumbers.has(normalized)) {
+    throw new Error(
+      `[VapiClient] Refusing outbound call — destination is not a known carrier claims line: ${carrierPhone}`,
+    );
+  }
+
   // Build the metadata forwarded to the Vapi squad for IVR navigation.
   // patientToken is a UUID — it identifies the patient to the backend only.
   const metadata: VapiCallMetadata = {
