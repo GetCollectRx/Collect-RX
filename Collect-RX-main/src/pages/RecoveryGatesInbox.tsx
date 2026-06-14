@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { useRoleAccess } from '../lib/useRoleAccess'
 import {
@@ -44,10 +44,10 @@ function fmtMoney(v: number) {
 }
 
 export default function RecoveryGatesInbox() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
   const { isReadOnly } = useRoleAccess()
   const [gates, setGates] = useState<GateRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [clearingId, setClearingId] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
@@ -63,8 +63,9 @@ export default function RecoveryGatesInbox() {
   }, [practiceId])
 
   useEffect(() => {
+    if (!canFetch) return
     load()
-  }, [load])
+  }, [canFetch, load])
 
   const clearGate = async (gate: GateRow) => {
     setClearingId(gate.id)
@@ -91,7 +92,7 @@ export default function RecoveryGatesInbox() {
   }
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>

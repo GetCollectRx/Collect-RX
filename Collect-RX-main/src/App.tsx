@@ -9,7 +9,6 @@ import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
-import PreTreatmentEstimate  from './pages/PreTreatmentEstimate'
 import Analytics             from './pages/Analytics'
 import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
@@ -57,6 +56,24 @@ function isPostAuthEntryPath(pathname: string): boolean {
   return path === '/' || path === '/login'
 }
 
+function PublicDemoRoute() {
+  const { authState, userRole } = usePractice()
+  if (authState === 'loading') {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: 'var(--crx-bg1, #F0ECE4)' }}
+      >
+        <p className="text-sm text-gray-600">Loading…</p>
+      </div>
+    )
+  }
+  if (authState === 'ready' && userRole) {
+    return <Navigate to={HOME_ROUTE[userRole]} replace />
+  }
+  return <PilotDemo />
+}
+
 function AppHomeFallback() {
   const { userRole, authState } = usePractice()
   if (authState === 'anon' || !userRole) {
@@ -102,7 +119,6 @@ const OWNER_NAV: NavItem[] = [
   { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
   { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
   { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-  { to: '/usage-insights', exact: true, label: 'Usage insights', icon: 'analytics' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
@@ -358,7 +374,7 @@ function AppShell() {
           <Route path="/outbox" element={<Navigate to="/insurance" replace />} />
           <Route path="/pay/:balanceId" element={<Navigate to="/insurance" replace />} />
           <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/estimate"      element={<PreTreatmentEstimate />} />
+          <Route path="/estimate"      element={<Navigate to="/insurance" replace />} />
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
@@ -460,7 +476,7 @@ function App() {
             <Route path="/product" element={<ProductOnePager />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/demo" element={<PilotDemo />} />
+            <Route path="/demo" element={<PublicDemoRoute />} />
             <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="*" element={<AuthGate />} />

@@ -145,7 +145,7 @@ export default function InsuranceClaimDetail() {
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null)
   const [recoveryLoadError, setRecoveryLoadError] = useState<string | null>(null)
   const [workItem, setWorkItem] = useState<WorkItemLite | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nextAction, setNextAction] = useState('')
   const [assignedRep, setAssignedRep] = useState('')
@@ -162,7 +162,11 @@ export default function InsuranceClaimDetail() {
   } | null>(null)
 
   const load = () => {
-    if (!id) return
+    if (!id) {
+      setLoading(false)
+      setError('Claim not found')
+      return
+    }
     setLoading(true)
     Promise.all([
       apiFetchJson<{ success: boolean; data: ClaimDetail }>(`/api/insurance/claims/${id}`),

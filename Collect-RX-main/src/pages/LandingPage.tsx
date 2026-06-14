@@ -1243,6 +1243,7 @@ export default function LandingPage() {
             </div>
             <div className="lp-nav-links">
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</button>
+              <Link to="/demo" className="lp-nav-link">Product demo</Link>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('roi')}>ROI Calculator</button>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('features')}>Features</button>
               <button type="button" className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</button>
@@ -1281,9 +1282,9 @@ export default function LandingPage() {
                     Request Early Access
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                   </button>
-                  <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
+                  <Link to="/demo" className="lp-btn-ghost">
                     See how it works
-                  </button>
+                  </Link>
                 </div>
               </div>
               <div className="lp-trust-row">
@@ -1497,7 +1498,7 @@ export default function LandingPage() {
                 Request Early Access
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
               </button>
-              <button className="lp-btn-ghost" onClick={() => openAccess('demo')}>Book a Demo</button>
+              <Link to="/demo" className="lp-btn-ghost">See the product demo</Link>
             </div>
           </div>
         </div>
@@ -1519,6 +1520,7 @@ export default function LandingPage() {
                 <div className="lp-footer-col">
                   <h4>Platform</h4>
                   <button type="button" onClick={() => scrollTo('how-it-works')}>How it Works</button>
+                  <Link to="/demo">Product demo</Link>
                   <button type="button" onClick={() => scrollTo('features')}>Features</button>
                   <button type="button" onClick={() => scrollTo('carriers')}>Carriers</button>
                   <button type="button" onClick={() => scrollTo('compliance')}>Compliance</button>
@@ -1527,7 +1529,8 @@ export default function LandingPage() {
                   <h4>Access</h4>
                   <Link to="/login">Practice sign in</Link>
                   <button type="button" onClick={() => openAccess('access')}>Request access</button>
-                  <button type="button" onClick={() => openAccess('demo')}>Book a demo</button>
+                  <Link to="/demo">Watch demo</Link>
+                  <button type="button" onClick={() => openAccess('demo')}>Book a setup call</button>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Legal</h4>

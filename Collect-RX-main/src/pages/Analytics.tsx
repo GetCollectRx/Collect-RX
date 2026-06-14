@@ -525,29 +525,32 @@ export default function Analytics() {
     if (!practiceId) return
     setLoading(true)
     setError(null)
-    Promise.all([
-      apiFetch(`/api/analytics/collection-rate?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/stage-funnel?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/priority-balances?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/message-effectiveness?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/payment-trends?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/carrier-performance?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/practice-performance?practiceId=${practiceId}`),
-    ])
+    const endpoints = [
+      `/api/analytics/collection-rate?practiceId=${practiceId}`,
+      `/api/analytics/stage-funnel?practiceId=${practiceId}`,
+      `/api/analytics/priority-balances?practiceId=${practiceId}`,
+      `/api/analytics/message-effectiveness?practiceId=${practiceId}`,
+      `/api/analytics/payment-trends?practiceId=${practiceId}`,
+      `/api/analytics/carrier-performance?practiceId=${practiceId}`,
+      `/api/analytics/practice-performance?practiceId=${practiceId}`,
+    ] as const
+    Promise.all(endpoints.map((url) => apiFetch(url)))
       .then(async (rs) => {
         const parsed = await Promise.all(
           rs.map(async (r) => {
             const data = await parseApiJson(r)
-            if (!r.ok) {
-              throw new Error((data as { error?: string }).error || 'Analytics request failed')
-            }
-            return data
+            return { ok: r.ok, data, status: r.status }
           }),
         )
-        return parsed
-      })
-      .then((results) => {
-        const [col, fun, pri, eff, trends, car, perf] = results as [
+        const failed = parsed.filter((p) => !p.ok)
+        if (failed.length === parsed.length) {
+          throw new Error(
+            (failed[0]?.data as { error?: string })?.error || 'Analytics unavailable',
+          )
+        }
+        const [col, fun, pri, eff, trends, car, perf] = parsed.map((p) =>
+          p.ok ? p.data : {},
+        ) as [
           Record<string, unknown>,
           { funnel?: unknown[] },
           { priorityBalances?: unknown[] },
@@ -563,6 +566,9 @@ export default function Analytics() {
         setPaymentTrends(trends.trends ?? [])
         setCarrierPerf(car.performance ?? [])
         setPracticePerf(perf.data ?? null)
+        if (failed.length > 0) {
+          setError('Some legacy analytics sections are unavailable; insurance metrics below are still shown.')
+        }
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))

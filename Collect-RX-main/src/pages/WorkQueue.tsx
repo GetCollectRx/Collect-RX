@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import {
   Button, Select, Input, DataState,
@@ -26,9 +27,10 @@ interface WorkItemRow {
 }
 
 export default function WorkQueue() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId } = usePractice()
+  const { canFetch, pageBusy, pageError } = usePracticePageGate()
   const [items, setItems] = useState<WorkItemRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ itemType: '', aging: '', gatesDueToday: false })
@@ -50,7 +52,10 @@ export default function WorkQueue() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [practiceId, filters])
+  useEffect(() => {
+    if (!canFetch) return
+    load()
+  }, [practiceId, filters, canFetch])
 
   const syncQueue = async () => {
     setSyncing(true)
@@ -94,7 +99,7 @@ export default function WorkQueue() {
   }
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
         {/* ── Page header ── */}
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
