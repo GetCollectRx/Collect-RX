@@ -58,7 +58,7 @@ function outcomeLabel(outcome: string | null): string {
 }
 
 function formatDurationSec(sec: number | null): string {
-  if (sec == null) return '—'
+  if (sec == null) return 'N/A'
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return m > 0 ? `${m}m ${s}s` : `${s}s`
@@ -205,7 +205,7 @@ export default function CallHistory() {
                           ) : r.outcome === 'NO_ANSWER' ? (
                             <span className="text-xs text-gray-400 dark:text-gray-600">Retry via queue</span>
                           ) : (
-                            <span className="text-gray-300 dark:text-gray-700">—</span>
+                            <span className="text-gray-300 dark:text-gray-700">N/A</span>
                           )}
                         </Td>
                         <Td>

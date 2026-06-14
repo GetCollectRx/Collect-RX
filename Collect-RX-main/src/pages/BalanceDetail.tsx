@@ -97,7 +97,7 @@ export default function BalanceDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Visit & procedure — full width on large screens (PMS / Abeldent path is Patient A/R + connector) */}
+        {/* Visit & procedure, full width on large screens (PMS / Abeldent path is Patient A/R + connector) */}
         <Card className="lg:col-span-2">
           <CardHeader title="Visit & procedure" subtitle="Tied to your practice management system" />
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
@@ -106,17 +106,17 @@ export default function BalanceDetail() {
             description, treatment date, and an external patient id for reconciliation. See{' '}
             <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">docs/product/PMS-INTEGRATION-PLAN.md</code> in the repo.
           </p>
-          <InfoRow label="Source" value={balance.source ?? '—'} />
-          <InfoRow label="Procedure / line detail" value="— (add via PMS or CSV with extended fields in a future release)" />
+          <InfoRow label="Source" value={balance.source ?? 'N/A'} />
+          <InfoRow label="Procedure / line detail" value="N/A (add via PMS or CSV with extended fields in a future release)" />
         </Card>
 
         {/* Patient info */}
         <Card>
           <CardHeader title="Patient Information" />
           <InfoRow label="Name"              value={balance.patient?.displayName} />
-          <InfoRow label="Email"             value={balance.patient?.emailFake ?? '—'} />
-          <InfoRow label="Phone"             value={balance.patient?.phoneFake ?? '—'} />
-          <InfoRow label="Preferred channel" value={balance.patient?.preferredChannel ?? '—'} />
+          <InfoRow label="Email"             value={balance.patient?.emailFake ?? 'N/A'} />
+          <InfoRow label="Phone"             value={balance.patient?.phoneFake ?? 'N/A'} />
+          <InfoRow label="Preferred channel" value={balance.patient?.preferredChannel ?? 'N/A'} />
         </Card>
 
         {/* Balance info */}

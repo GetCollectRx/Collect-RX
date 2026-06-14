@@ -238,7 +238,7 @@ function createWindow() {
     minHeight: 600,
     title: 'CollectRx',
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    backgroundColor: '#0f172a',
+    backgroundColor: '#fcfcfa',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

@@ -83,13 +83,13 @@ const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
 const OUTCOME_LABELS: Record<string, string> = {
   RESOLVED:                'Resolved',
   DENIED:                  'Denied',
-  ESCALATED:               'Escalated — needs your call',
+  ESCALATED:               'Escalated, needs your call',
   PENDING:                 'Pending',
   BLOCK_DETECTED:          'Carrier block detected',
   FAILED:                  'Call failed',
   NO_ANSWER:               'No answer',
   HUNG_UP:                 'Call ended unexpectedly',
-  APPROVED_PENDING_PAYMENT: 'Approved — awaiting payment',
+  APPROVED_PENDING_PAYMENT: 'Approved, awaiting payment',
 }
 
 function outcomeColor(outcome: string | null) {
@@ -239,15 +239,15 @@ export default function InsuranceClaimDetail() {
         const raw = j.error ?? ''
         let msg = raw
         if (raw.includes('30 days') || raw.includes('too recent')) {
-          msg = 'This claim is less than 30 days old — AI calls are not placed until day 31.'
+          msg = 'This claim is less than 30 days old, AI calls are not placed until day 31.'
         } else if (raw.includes('90 days') || raw.includes('escalate')) {
-          msg = 'This claim is over 90 days old — it has been escalated for human follow-up.'
+          msg = 'This claim is over 90 days old, it has been escalated for human follow-up.'
         } else if (raw.includes('3 attempt') || raw.includes('max attempt')) {
-          msg = 'Maximum 3 call attempts reached — this claim must be resolved manually.'
+          msg = 'Maximum 3 call attempts reached, this claim must be resolved manually.'
         } else if (raw.includes('business hours') || raw.includes('outside')) {
           msg = 'Calls can only be placed Mon–Fri 8am–5pm Eastern time.'
         } else if (raw.includes('CARRIER_BLOCK') || raw.includes('blocked')) {
-          msg = 'This carrier is currently blocked — automation was detected on a previous call. Unblock in Admin → Carriers.'
+          msg = 'This carrier is currently blocked, automation was detected on a previous call. Unblock in Admin → Carriers.'
         } else if (raw.includes('already') || raw.includes('CALLING')) {
           msg = 'A call is already in progress for this claim.'
         } else if (raw.includes('Recovery route') || raw.includes('recovery action') || raw.includes('Practice gate')) {
@@ -313,7 +313,7 @@ export default function InsuranceClaimDetail() {
       if (!r.ok) throw new Error(j.error ?? 'Could not clear gate')
       setActionMsg(
         j.scheduledRecallAt
-          ? `Gate cleared — follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
+          ? `Gate cleared, follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
           : 'Gate cleared',
       )
       load()
@@ -350,9 +350,9 @@ export default function InsuranceClaimDetail() {
               <div className="flex items-start gap-3">
                 <span className="text-amber-500 text-xl leading-none mt-0.5">⚠</span>
                 <div>
-                  <h2 className="text-sm font-bold text-amber-900 dark:text-amber-300">AI handed off — your call required</h2>
+                  <h2 className="text-sm font-bold text-amber-900 dark:text-amber-300">AI handed off, your call required</h2>
                   <p className="text-xs text-amber-800 dark:text-amber-400 mt-1 leading-relaxed">
-                    The AI reached the carrier but hit a wall it can't cross — a supervisor, appeals department, or written
+                    The AI reached the carrier but hit a wall it can't cross, a supervisor, appeals department, or written
                     dispute is needed. Read the AI's call summary below, then call the carrier directly to resolve it.
                     Once resolved, mark it done here.
                   </p>
@@ -367,7 +367,7 @@ export default function InsuranceClaimDetail() {
                   <Input
                     value={resolveNotes}
                     onChange={(e) => setResolveNotes(e.target.value)}
-                    placeholder="Optional — outcome notes (e.g. 'Spoke with supervisor Jane, claim reprocessing in 5–7 days')"
+                    placeholder="Optional, outcome notes (e.g. 'Spoke with supervisor Jane, claim reprocessing in 5–7 days')"
                     className="text-sm"
                   />
                   <Button
@@ -375,7 +375,7 @@ export default function InsuranceClaimDetail() {
                     onClick={() => void resolveEscalation()}
                     disabled={resolving}
                   >
-                    {resolving ? 'Saving…' : '✓ Mark resolved — I called the carrier'}
+                    {resolving ? 'Saving…' : '✓ Mark resolved, I called the carrier'}
                   </Button>
                 </div>
               )}
@@ -404,7 +404,7 @@ export default function InsuranceClaimDetail() {
             <Card>
               <CardHeader
                 title="Recovery loop"
-                subtitle="How CollectRx is working this balance — route, gates, and sync-verified payment"
+                subtitle="How CollectRx is working this balance: route, gates, and sync-verified payment"
               />
               <div className="px-4 pb-4 space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -454,7 +454,7 @@ export default function InsuranceClaimDetail() {
                   <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
                     <dt className="text-xs text-gray-500 uppercase tracking-wide">Queue</dt>
                     <dd className="font-medium mt-0.5">
-                      {recovery.queueStatus ?? '—'}
+                      {recovery.queueStatus ?? 'N/A'}
                       {recovery.queueAttempts > 0 ? ` · ${recovery.queueAttempts} attempt(s)` : ''}
                     </dd>
                   </div>
@@ -520,7 +520,7 @@ export default function InsuranceClaimDetail() {
                             disabled={clearingGateId === a.id}
                             onClick={() => void clearRecoveryGate(a.id)}
                           >
-                            {clearingGateId === a.id ? 'Saving…' : 'Mark complete — ready to re-call'}
+                            {clearingGateId === a.id ? 'Saving…' : 'Mark complete, ready to re-call'}
                           </Button>
                         )}
                       </div>

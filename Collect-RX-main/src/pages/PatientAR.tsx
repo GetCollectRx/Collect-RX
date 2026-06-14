@@ -41,10 +41,10 @@ interface PatientBalance {
 function fmtCurrency(v: number | null | undefined) {
   return v != null
     ? new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(v)
-    : '—'
+    : 'N/A'
 }
 function fmtDate(d: string | null | undefined) {
-  if (!d) return '—'
+  if (!d) return 'N/A'
   return new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -85,7 +85,7 @@ export default function PatientAR() {
       const res  = await apiFetch(`/api/patients/balances/${id}/send-reminder`, { method: 'POST' })
       const data = await parseApiJson<{ error?: string; emailSent?: boolean; smsSent?: boolean }>(res)
       if (!res.ok) throw new Error(data.error || 'Request failed')
-      showToast('ok', `Reminder sent — email: ${data.emailSent ? 'yes' : 'no'}, SMS: ${data.smsSent ? 'yes' : 'no'}`)
+      showToast('ok', `Reminder sent, email: ${data.emailSent ? 'yes' : 'no'}, SMS: ${data.smsSent ? 'yes' : 'no'}`)
       await load()
     } catch (err) { showToast('err', (err as Error).message) }
     finally { setSendingId(null) }
@@ -115,7 +115,7 @@ export default function PatientAR() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Patient AR</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Post-insurance balances — synced from your practice management system</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Post-insurance balances, synced from your practice management system</p>
         </div>
         <Button variant="secondary" size="sm" onClick={load} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -188,7 +188,7 @@ export default function PatientAR() {
                     <Tr key={b.id}>
                       <Td bold>{fullName}</Td>
                       <Td muted>
-                        <span title={b.procedureDescription ?? ''}>{b.procedureCode ?? '—'}</span>
+                        <span title={b.procedureDescription ?? ''}>{b.procedureCode ?? 'N/A'}</span>
                       </Td>
                       <Td muted>{fmtDate(b.treatmentDate)}</Td>
                       <Td align="right" muted>{fmtCurrency(b.amountBilled)}</Td>
@@ -196,7 +196,7 @@ export default function PatientAR() {
                       <Td align="right" bold>{fmtCurrency(b.patientOwes)}</Td>
                       <Td align="right">
                         <Badge color={days >= 45 ? 'red' : days >= 21 ? 'amber' : 'gray'}>
-                          {b.daysSinceAdjudication ?? '—'}
+                          {b.daysSinceAdjudication ?? 'N/A'}
                         </Badge>
                       </Td>
                       <Td><Badge color={rStatus.color}>{rStatus.label}</Badge></Td>

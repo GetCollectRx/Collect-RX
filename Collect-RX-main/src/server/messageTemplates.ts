@@ -51,7 +51,7 @@ ${paymentLink}
 
 Need help? Contact ${phone}.
 
-— ${practiceName}`,
+${practiceName}`,
 
     REMINDER_2: `Hi ${greet},
 
@@ -62,9 +62,9 @@ ${paymentLink}
 
 ${phone} if you need to talk through options.
 
-— ${practiceName}`,
+${practiceName}`,
 
-    ESCALATED: `Important — ${patientDisplayName}
+    ESCALATED: `Important: ${patientDisplayName}
 
 ${practiceName}: your balance of $${amount.toFixed(2)} is ${daysOutstanding} days past due and is being reviewed for next steps.
 
@@ -73,8 +73,8 @@ ${paymentLink}
 
 Contact ${phone} immediately to resolve this or arrange a plan.
 
-— ${practiceName}`,
+${practiceName}`,
   };
 
-  return templates[templateKey] || `${practiceName} — message for ${patientDisplayName} regarding $${amount.toFixed(2)}. Pay: ${paymentLink}`;
+  return templates[templateKey] || `${practiceName}: message for ${patientDisplayName} regarding $${amount.toFixed(2)}. Pay: ${paymentLink}`;
 }

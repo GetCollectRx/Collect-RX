@@ -56,7 +56,7 @@ export default function PaymentPage() {
           <div className="text-5xl mb-4" aria-hidden="true">✅</div>
           <h2 className="text-lg font-bold text-crx-600 dark:text-crx-400">Payment successful!</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Thank you — your payment of{' '}
+            Thank you, your payment of{' '}
             <strong className="text-gray-900 dark:text-gray-100">
               ${balance.amount.toFixed(2)}
             </strong>{' '}

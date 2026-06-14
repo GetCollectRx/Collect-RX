@@ -61,7 +61,7 @@ export function LivingAgingOrb({ segments, totalAmount, amountUnit = 'dollars' }
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="living-chart-title">A/R aging pulse</h2>
-          <p className="crx-sub">Hover a band — click to lock focus</p>
+          <p className="crx-sub">Hover a band, click to lock focus</p>
         </div>
         <span className="living-live-chip">Interactive</span>
       </div>

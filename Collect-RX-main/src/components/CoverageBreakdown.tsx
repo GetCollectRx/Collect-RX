@@ -1,5 +1,5 @@
 /**
- * CoverageBreakdown — Visual breakdown of coverage percentages by category
+ * CoverageBreakdown, Visual breakdown of coverage percentages by category
  */
 
 interface CoverageItem {

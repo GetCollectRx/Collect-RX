@@ -220,7 +220,7 @@ export default function InsuranceClaims() {
                             {RECOVERY_ROUTE_LABELS[c.recoveryRoute] ?? c.recoveryRoute}
                           </Badge>
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-gray-400">N/A</span>
                         )}
                         {c.blockingGateTitle && (
                           <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5" title={c.blockingGateTitle}>

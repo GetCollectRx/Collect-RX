@@ -83,7 +83,7 @@ export default function Portfolio() {
                     <Td align="right">{fmtMoney(totalAging(r.aging))}</Td>
                     <Td align="right">{r.queueStats.queued}</Td>
                     <Td align="right">{r.openEscalations}</Td>
-                    <Td>{r.topCarrierIssue ?? '—'}</Td>
+                    <Td>{r.topCarrierIssue ?? 'N/A'}</Td>
                     <Td>
                       {r.queueStats.isPaused ? (
                         <Badge color="amber">Paused</Badge>

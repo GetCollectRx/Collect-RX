@@ -7,6 +7,7 @@ import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
 import Changelog from './pages/Changelog'
 import PilotDemo  from './pages/PilotDemo'
+import ProcessDemo from './pages/ProcessDemo'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
@@ -49,16 +50,17 @@ import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
 import { HOME_ROUTE, type UserRole } from './types/userRole'
-import { useEffect, type ReactNode } from 'react'
+import { StartupScreen } from './components/StartupScreen'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
+import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
+import './App.css'
+import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
 
 type NavItem = { to: string; exact: boolean; label: string; icon: NavIconName }
 type NavSection = { label: string; items: NavItem[] }
-
-const LOGO_PATH =
-  'M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14.924a7.003 7.003 0 01-2 0V11a1 1 0 112 0v3.924zm1-5.924a1 1 0 11-2 0 1 1 0 012 0z'
 
 /** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
 const PLATFORM_DEV_BLOCKED_PREFIXES = [
@@ -380,6 +382,9 @@ function AuthGate() {
   const { authState, loading, subscription, isPlatformDev, userRole } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
+  const [bootComplete, setBootComplete] = useState(false)
+
+  const authReady = authState !== 'loading' && !loading
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
@@ -396,6 +401,10 @@ function AuthGate() {
     navigate('/login', { replace: true })
   }, [loading, authState, location.pathname, navigate])
 
+  if (!bootComplete) {
+    return <StartupScreen authReady={authReady} onComplete={() => setBootComplete(true)} />
+  }
+
   if (authState === 'loading' || loading) {
     return (
       <div
@@ -403,14 +412,7 @@ function AuthGate() {
         style={{ background: 'var(--crx-bg1)' }}
       >
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-5 h-5 rounded-md flex items-center justify-center"
-            style={{ background: 'var(--crx-green)' }}
-          >
-            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor" style={{ color: 'var(--crx-bg0)' }}>
-              <path d={LOGO_PATH} />
-            </svg>
-          </div>
+          <CollectRxLogoMark size={24} />
           <p className="text-sm font-medium" style={{ color: 'var(--crx-t2)' }}>
             Loading…
           </p>
@@ -448,6 +450,8 @@ function App() {
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/demo" element={<PilotDemo />} />
+            <Route path="/demo/process" element={<ProcessDemo />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>
           </AnalyticsSessionBridge>

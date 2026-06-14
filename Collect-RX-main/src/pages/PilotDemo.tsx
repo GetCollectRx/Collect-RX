@@ -625,9 +625,14 @@ export default function PilotDemo() {
             <p style={{ color: B.textMuted, fontSize: 14, maxWidth: 360, margin: '0 auto 28px', lineHeight: 1.65 }}>
               A 60-second walkthrough of exactly how CollectRx fixes that, using your practice's numbers.
             </p>
-            <button onClick={() => setAct('problem')} style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}>
-              Show me <Icon name="arrow-right" size={16} color="#fff" />
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+              <button onClick={() => setAct('problem')} style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}>
+                Show me <Icon name="arrow-right" size={16} color="#fff" />
+              </button>
+              <a href="/demo/process" style={{ color: B.green, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                Or watch the live process demo →
+              </a>
+            </div>
           </div>
         </div>
       )}

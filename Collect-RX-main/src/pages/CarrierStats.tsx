@@ -126,7 +126,7 @@ export default function CarrierStats() {
                 <div className="p-5 pb-0">
                   <CardHeader
                     title="Top denial reasons"
-                    subtitle="Most common reasons carriers give for denying claims — use these to spot patterns in your submissions"
+                    subtitle="Most common reasons carriers give for denying claims, use these to spot patterns in your submissions"
                   />
                 </div>
                 <TableContainer className="border-0 shadow-none rounded-none">
@@ -177,7 +177,7 @@ export default function CarrierStats() {
                     <Td align="right">{r.successRate.toFixed(1)}%</Td>
                     <Td align="right">{fmtDuration(r.avgCallDurationSeconds)}</Td>
                     <Td align="right">{r.avgAttempts.toFixed(1)}</Td>
-                    <Td className="max-w-[200px] truncate">{r.topDenialReason ?? '—'}</Td>
+                    <Td className="max-w-[200px] truncate">{r.topDenialReason ?? 'N/A'}</Td>
                     <Td>
                       <Badge color={trendColor[r.trend]}>{r.trend}</Badge>
                     </Td>

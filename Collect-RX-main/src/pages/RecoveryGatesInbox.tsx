@@ -79,7 +79,7 @@ export default function RecoveryGatesInbox() {
       if (!r.ok) throw new Error(j.error ?? 'Could not clear gate')
       setActionMsg(
         j.scheduledRecallAt
-          ? `Gate cleared — follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
+          ? `Gate cleared, follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
           : 'Gate cleared',
       )
       load()
@@ -97,7 +97,7 @@ export default function RecoveryGatesInbox() {
           <div>
             <h1 className="page-title">Practice gate inbox</h1>
             <p className="page-subtitle mt-0.5">
-              Blocking recovery actions — complete in PMS, then mark ready to re-call.
+              Blocking recovery actions, complete in PMS, then mark ready to re-call.
             </p>
           </div>
           <div className="flex gap-2">
@@ -139,7 +139,7 @@ export default function RecoveryGatesInbox() {
                 {gates.length === 0 ? (
                   <TableEmpty
                     colSpan={6}
-                    message="No open gates — carrier calls will proceed when dispatch rules allow."
+                    message="No open gates, carrier calls will proceed when dispatch rules allow."
                   />
                 ) : (
                   gates.map((g) => (

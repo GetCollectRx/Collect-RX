@@ -116,7 +116,7 @@ export default function SyncOpsDashboard() {
         )}
 
         <Card>
-          <CardHeader title="Upload claim export" subtitle="CSV from your PMS — column names are mapped automatically" />
+          <CardHeader title="Upload claim export" subtitle="CSV from your PMS, column names are mapped automatically" />
           <div className="px-4 pb-4 flex flex-wrap gap-4">
             {vendors.map((v) => (
               <label key={v.id} className="text-sm">
@@ -172,8 +172,8 @@ export default function SyncOpsDashboard() {
                     <Td><Badge>{run.status}</Badge></Td>
                     <Td>{run.recordsImported}/{run.recordsTotal}</Td>
                     <Td>{run.recordsFailed}</Td>
-                    <Td>{run.driftPct != null ? `${(run.driftPct * 100).toFixed(2)}%` : '—'}</Td>
-                    <Td>{run.validationPassed == null ? '—' : run.validationPassed ? '✓' : '✗'}</Td>
+                    <Td>{run.driftPct != null ? `${(run.driftPct * 100).toFixed(2)}%` : 'N/A'}</Td>
+                    <Td>{run.validationPassed == null ? 'N/A' : run.validationPassed ? '✓' : '✗'}</Td>
                     <Td>
                       <Button
                         variant="ghost"

@@ -41,14 +41,14 @@ export default function PatientLookup() {
       setResults(data.results ?? [])
       setSearched(true)
     } catch {
-      setError('Network error — please try again')
+      setError('Network error, please try again')
     } finally {
       setLoading(false)
     }
   }
 
   function formatDate(iso: string | null) {
-    if (!iso) return '—'
+    if (!iso) return 'N/A'
     return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 

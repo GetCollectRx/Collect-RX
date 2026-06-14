@@ -1,7 +1,7 @@
 import { Card } from '../components/ui'
 import { useSearchParams, Link } from 'react-router-dom'
 
-/** P3-23 — post-Stripe return (configure `after_completion` in Payment Links to this path). */
+/** P3-23, post-Stripe return (configure `after_completion` in Payment Links to this path). */
 export default function PaymentThankYou() {
   const [q] = useSearchParams()
   const session = q.get('session_id')

@@ -165,7 +165,7 @@ export default function WorkQueue() {
               </Thead>
               <Tbody>
                 {items.length === 0 ? (
-                  <TableEmpty colSpan={9} message="Queue is empty — run Refresh from sources after a PMS import." />
+                  <TableEmpty colSpan={9} message="Queue is empty, run Refresh from sources after a PMS import." />
                 ) : (
                   items.map((row) => {
                     const { label, color } = scoreLabel(row.rankScore)
@@ -189,7 +189,7 @@ export default function WorkQueue() {
                           {row.recoveryRoute ? (
                             <span className="font-mono text-gray-500">{row.recoveryRoute}</span>
                           ) : (
-                            '—'
+                            'N/A'
                           )}
                           {row.blockingGateTitle && (
                             <p className="text-amber-700 dark:text-amber-400 truncate mt-0.5" title={row.blockingGateTitle}>
@@ -209,7 +209,7 @@ export default function WorkQueue() {
                           {editingRepId === row.id ? (
                             <Input value={rep} onChange={(e) => setRep(e.target.value)} className="text-xs" />
                           ) : (
-                            row.assignedRep ?? <span className="text-gray-300 dark:text-gray-700">—</span>
+                            row.assignedRep ?? <span className="text-gray-300 dark:text-gray-700">N/A</span>
                           )}
                         </Td>
                         <Td className="max-w-xs">

@@ -19,7 +19,7 @@ function stripeCheckoutUrl(url: string | null | undefined): string | null {
 }
 
 /**
- * P3-22 — staff shares /pay/p/:token; no practice login required.
+ * P3-22, staff shares /pay/p/:token; no practice login required.
  * Token is issued when a Stripe Payment Link is created (see setPaymentLink).
  */
 type PublicPayData = {
@@ -153,7 +153,7 @@ export default function PublicPatientPay() {
             Payment link not ready
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Hi {who} — we could not open a secure card checkout for this balance yet.
+            Hi {who}, we could not open a secure card checkout for this balance yet.
             Please contact your dental office; they can resend your pay link or take payment another way.
           </p>
           {showAmount && (
@@ -187,7 +187,7 @@ export default function PublicPatientPay() {
           </div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Collect<span className="text-crx-500">Rx</span></h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Hi {(data.firstName || '').trim() || 'there'} — you have a balance to pay
+            Hi {(data.firstName || '').trim() || 'there'}, you have a balance to pay
           </p>
         </div>
         <Card>

@@ -69,7 +69,7 @@ export default function SystemHealth() {
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">System Health</h1>
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-              Platform-wide queue status — auto-refreshes every 30s
+              Platform-wide queue status, auto-refreshes every 30s
             </p>
           </div>
           {lastRefresh && (
@@ -89,7 +89,7 @@ export default function SystemHealth() {
         {platformRecovery && (
           <Card>
             <CardHeader
-              title="Recovery loop — platform"
+              title="Recovery loop: platform"
               subtitle="Cross-practice gates and sync verification backlog"
             />
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 px-4 pb-4">
@@ -157,7 +157,7 @@ export default function SystemHealth() {
                     <Td bold>{r.practice.name}</Td>
                     <Td align="right">{r.queued}</Td>
                     <Td align="right">{r.held}</Td>
-                    <Td>{r.activeCall?.claimRef ?? '—'}</Td>
+                    <Td>{r.activeCall?.claimRef ?? 'N/A'}</Td>
                     <Td align="right">{r.resolvedToday}</Td>
                     <Td align="right">{r.blockingGatesOpen ?? 0}</Td>
                     <Td align="right">{r.awaitingSyncVerification ?? 0}</Td>

@@ -135,7 +135,7 @@ export default function PracticeSettings() {
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
           {isReadOnly && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view — changes are disabled.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
           )}
 
           <Card>
@@ -168,7 +168,7 @@ export default function PracticeSettings() {
               )}
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Phone decisions use profile <code className="text-2xs">{pmsInfo?.phoneDecisionProfile ?? 'carrier_recovery_v1'}</code>
-                {' '}— not PMS-specific logic.
+                {' '}(not PMS-specific logic).
               </p>
             </div>
           </Card>

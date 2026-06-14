@@ -76,7 +76,7 @@ export default function Outbox() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Message Outbox</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">All messages sent to patients — simulate patient responses below</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">All messages sent to patients, simulate patient responses below</p>
         </div>
         <div className="flex items-center gap-2">
           {pending > 0 && <Badge color="amber" dot>{pending} awaiting response</Badge>}
