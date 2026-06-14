@@ -362,7 +362,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Session invalid' });
       }
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
-      const health = await buildSessionHealth(prisma);
       return res.json({
         role: user.role,
         userRole: getUserRole(auth) ?? practiceRoleToBrief(user.role),
@@ -370,7 +369,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         phiAccess: auth.phiAccess,
         practice,
         subscription,
-        health,
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
       });
     } catch (e) {

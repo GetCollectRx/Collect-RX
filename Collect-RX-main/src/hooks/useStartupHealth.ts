@@ -18,7 +18,7 @@ const INITIAL_STEPS: StartupStep[] = [
   { id: 'workspace', label: 'Loading your workspace', status: 'pending' },
 ]
 
-async function fetchOk(path: string, timeoutMs = 8000): Promise<boolean> {
+async function fetchOk(path: string, timeoutMs = 5000): Promise<boolean> {
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), timeoutMs)
@@ -40,30 +40,33 @@ export function useStartupHealth(authReady: boolean) {
   }, [])
 
   useEffect(() => {
+    if (!authReady) return
+    patchStep('connect', 'done')
+    patchStep('api', 'done')
+    patchStep('services', 'done')
+    patchStep('workspace', 'done')
+  }, [authReady, patchStep])
+
+  useEffect(() => {
     if (started.current) return
     started.current = true
 
     void (async () => {
       patchStep('connect', 'running')
-      await new Promise(r => setTimeout(r, 280))
       patchStep('connect', 'done')
 
       patchStep('api', 'running')
-      const apiOk = await fetchOk('/api/health')
-      patchStep('api', apiOk ? 'done' : 'error')
-
       patchStep('services', 'running')
-      const readyOk = apiOk ? await fetchOk('/api/health/ready') : false
-      patchStep('services', readyOk ? 'done' : 'error')
-
       patchStep('workspace', 'running')
+
+      const [apiOk, readyOk] = await Promise.all([
+        fetchOk('/api/health'),
+        fetchOk('/api/health/ready'),
+      ])
+      patchStep('api', apiOk ? 'done' : 'error')
+      patchStep('services', readyOk ? 'done' : 'error')
     })()
   }, [patchStep])
-
-  useEffect(() => {
-    if (!authReady) return
-    patchStep('workspace', 'done')
-  }, [authReady, patchStep])
 
   useEffect(() => {
     if (phase !== 'checking') return

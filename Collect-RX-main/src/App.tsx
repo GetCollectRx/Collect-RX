@@ -386,6 +386,10 @@ function AuthGate() {
   const authReady = authState !== 'loading' && !loading
 
   useEffect(() => {
+    if (authReady) setBootComplete(true)
+  }, [authReady])
+
+  useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
     const home = HOME_ROUTE[userRole]
     if (location.pathname === '/' || location.pathname === '') {

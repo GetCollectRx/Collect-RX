@@ -34,7 +34,7 @@ export function StartupScreen({ authReady, onComplete }: StartupScreenProps) {
 
   useEffect(() => {
     if (phase !== 'ready') return
-    const id = setTimeout(onComplete, 1500)
+    const id = setTimeout(onComplete, 250)
     return () => clearTimeout(id)
   }, [phase, onComplete])
 
