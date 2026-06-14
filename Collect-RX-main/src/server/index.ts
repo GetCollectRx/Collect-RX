@@ -69,6 +69,10 @@ import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
 import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
+  assertResourcePagesBuilt,
+  createResourceStaticMiddleware,
+} from './resourceStatic.js';
+import {
   sessionStandardLimiter,
   anonStandardLimiter,
   webhookLimiter,
@@ -328,6 +332,10 @@ app.use('/api',            createCanadianExpansionRouter(prisma));
 const distPath = new URL('../../dist', import.meta.url).pathname;
 const indexHtmlPath = new URL('../../dist/index.html', import.meta.url).pathname;
 
+if (process.env.NODE_ENV === 'production') {
+  assertResourcePagesBuilt(distPath);
+}
+
 let cachedSpaIndexHtml: string | null = null;
 
 function escapeHtmlAttr(s: string): string {
@@ -350,6 +358,7 @@ function getSpaIndexHtml(): string {
   return cachedSpaIndexHtml;
 }
 
+app.use(createResourceStaticMiddleware(distPath));
 app.use(express.static(distPath));
 app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {

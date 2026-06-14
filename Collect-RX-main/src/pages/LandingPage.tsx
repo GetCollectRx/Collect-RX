@@ -1533,6 +1533,13 @@ export default function LandingPage() {
                   <button type="button" onClick={() => openAccess('demo')}>Book a setup call</button>
                 </div>
                 <div className="lp-footer-col">
+                  <h4>Resources</h4>
+                  <a href="/resources/">All guides</a>
+                  <a href="/resources/dental-insurance-follow-up-canada/">Why claims sit unpaid</a>
+                  <a href="/resources/canadian-dental-carriers-follow-up/">Carrier follow-up</a>
+                  <a href="/resources/cdcp-claims-canada/">CDCP claims guide</a>
+                </div>
+                <div className="lp-footer-col">
                   <h4>Legal</h4>
                   <Link to="/legal/terms">Terms of Service</Link>
                   <Link to="/legal/privacy">Privacy Policy</Link>

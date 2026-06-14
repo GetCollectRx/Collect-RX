@@ -8,12 +8,27 @@
   <url>
     <loc>https://www.collectrx.ca/product</loc>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.collectrx.ca/resources/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.collectrx.ca/resources/dental-insurance-follow-up-canada/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.collectrx.ca/resources/canadian-dental-carriers-follow-up/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.collectrx.ca/resources/cdcp-claims-canada/</loc>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.collectrx.ca/legal/terms</loc>
