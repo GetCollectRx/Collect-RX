@@ -7,6 +7,7 @@ import {
   type HealthActionItem,
   type HealthBriefMetrics,
 } from '../components/dashboard/PracticeHealthBrief'
+import { PracticeDemoStory } from '../components/dashboard/PracticeDemoStory'
 import { QueueOverview } from '../components/QueueOverview'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
@@ -528,6 +529,11 @@ export default function Dashboard() {
         actions={actions}
         pms={stats?.pms}
         lastImport={stats?.lastPmsImport}
+        loading={dataBusy}
+      />
+      <PracticeDemoStory
+        practiceName={practiceName}
+        metrics={metrics}
         loading={dataBusy}
       />
       {stats && (

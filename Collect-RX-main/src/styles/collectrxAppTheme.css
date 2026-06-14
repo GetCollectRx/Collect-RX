@@ -1597,3 +1597,204 @@
   gap: 0.5rem;
 }
 
+/* ─── Demo walkthrough (dashboard presenter layer) ───────────────────────── */
+
+.crx-app .practice-demo-story {
+  margin: 0 1.5rem 1.5rem;
+  max-width: 1120px;
+  padding: 1.25rem 1.25rem 1.5rem;
+  border-radius: 16px;
+  border: 1px solid var(--crx-green-hi);
+  background: linear-gradient(180deg, var(--crx-green-lo) 0%, var(--crx-bg2) 100%);
+}
+
+.crx-app .practice-demo-story--collapsed {
+  padding: 0;
+  border: none;
+  background: transparent;
+  margin-bottom: 0.75rem;
+}
+
+.crx-app .practice-demo-story-reopen {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-green);
+  background: var(--crx-green-lo);
+  border: 1px dashed var(--crx-green-hi);
+  border-radius: 10px;
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.crx-app .practice-demo-story-reopen:hover {
+  background: var(--crx-bg2);
+}
+
+.crx-app .practice-demo-story-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.crx-app .practice-demo-story-title {
+  font-family: var(--crx-fd);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.crx-app .practice-demo-story-lede {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--crx-t1);
+  max-width: 52rem;
+  margin: 0;
+}
+
+.crx-app .practice-demo-story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.crx-app .practice-demo-story-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .crx-app .practice-demo-story-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crx-app .practice-demo-story-card {
+  background: var(--crx-cream);
+  border: 1px solid var(--crx-bdr);
+  border-radius: 12px;
+  padding: 1rem 1.125rem;
+}
+
+.crx-app .practice-demo-story-pain {
+  font-family: var(--crx-fm);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--crx-red);
+  margin: 0 0 0.75rem;
+}
+
+.crx-app .practice-demo-story-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .crx-app .practice-demo-story-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crx-app .practice-demo-story-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--crx-t2);
+  margin: 0 0 0.35rem;
+}
+
+.crx-app .practice-demo-story-label--good {
+  color: var(--crx-green);
+}
+
+.crx-app .practice-demo-story-copy {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--crx-t1);
+  margin: 0;
+}
+
+.crx-app .practice-demo-story-proof {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  margin: 0 0 0.5rem;
+  line-height: 1.45;
+}
+
+.crx-app .practice-demo-story-link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-green);
+  text-decoration: none;
+}
+
+.crx-app .practice-demo-story-link:hover {
+  text-decoration: underline;
+}
+
+.crx-app .practice-demo-story-flow {
+  padding: 1rem 1.125rem;
+  border-radius: 12px;
+  background: var(--crx-cream);
+  border: 1px solid var(--crx-bdr);
+  margin-bottom: 1rem;
+}
+
+.crx-app .practice-demo-story-flow-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  margin: 0 0 0.5rem;
+}
+
+.crx-app .practice-demo-story-flow-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--crx-t1);
+}
+
+.crx-app .practice-demo-story-flow-steps li + li {
+  margin-top: 0.35rem;
+}
+
+.crx-app .practice-demo-story-notes-toggle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t2);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.crx-app .practice-demo-story-notes-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--crx-t1);
+}
+
+.crx-app .practice-demo-story-notes-list li + li {
+  margin-top: 0.35rem;
+}
+
