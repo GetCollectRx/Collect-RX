@@ -186,7 +186,7 @@ export default function ProductOnePager() {
                 Watch the demo
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m-7-7l7 7-7 7"/></svg>
               </a>
-              <a href="#how-it-works" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'none', border: `1px solid ${G.border}`, color: G.textMd, padding: '13px 24px', borderRadius: 10, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
+              <a href="/how-it-works" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'none', border: `1px solid ${G.border}`, color: G.textMd, padding: '13px 24px', borderRadius: 10, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
                 How it works
               </a>
             </div>

@@ -13,7 +13,6 @@ import Analytics             from './pages/Analytics'
 import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
-import LandingPage           from './pages/LandingPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
 import Phase5Dashboard       from './pages/Phase5Dashboard'
 import InsuranceClaims       from './pages/InsuranceClaims'
@@ -47,6 +46,8 @@ import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridg
 import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
 import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
+import MarketingSite from './website/MarketingSite'
+import { usePublicPortalTheme } from './website/usePublicPortalTheme'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
@@ -321,14 +322,6 @@ function useBrandAppShellTheme() {
   }, [setTheme])
 }
 
-/** Login and other public Tailwind pages: light card on cream (not dark gray). */
-function usePublicPortalTheme() {
-  const { setTheme } = useTheme()
-  useEffect(() => {
-    setTheme('light')
-  }, [setTheme])
-}
-
 // ── App shell ─────────────────────────────────────────────────────────────
 function AppShell() {
   useBrandAppShellTheme()
@@ -402,7 +395,7 @@ function AnonOrLanding() {
   if (pathRequiresAuth(pathname)) {
     return <RedirectToLogin />
   }
-  return <LandingPage />
+  return <MarketingSite />
 }
 
 function AnonRoutes() {
@@ -412,8 +405,8 @@ function AnonRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/dashboard" element={<RedirectToLogin />} />
       <Route path="/dashboard/*" element={<RedirectToLogin />} />
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/" element={<MarketingSite />} />
+      <Route path="/landing" element={<MarketingSite />} />
       <Route path="*" element={<AnonOrLanding />} />
     </Routes>
   )
@@ -500,12 +493,12 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/demo" element={<PublicDemoRoute />} />
             <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
-            <Route path="/how-it-works" element={<LandingPage page="how-it-works" />} />
-            <Route path="/roi" element={<LandingPage page="roi" />} />
-            <Route path="/features" element={<LandingPage page="features" />} />
-            <Route path="/carriers" element={<LandingPage page="carriers" />} />
-            <Route path="/compliance" element={<LandingPage page="compliance" />} />
-            <Route path="/landing" element={<LandingPage />} />
+            <Route path="/how-it-works" element={<MarketingSite />} />
+            <Route path="/roi" element={<MarketingSite />} />
+            <Route path="/features" element={<MarketingSite />} />
+            <Route path="/carriers" element={<MarketingSite />} />
+            <Route path="/compliance" element={<MarketingSite />} />
+            <Route path="/landing" element={<MarketingSite />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>
           </AnalyticsSessionBridge>

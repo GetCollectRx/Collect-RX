@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import roiAssumptions from '../config/roi-assumptions.json'
-import { MARKETING_PATHS, type MarketingPageId } from '../website/marketingPaths'
-
-type LandingPageProps = { page?: MarketingPageId }
+import {
+  MARKETING_NAV_TABS,
+  MARKETING_PAGE_TITLES,
+  MARKETING_PATHS,
+  marketingPageFromPathname,
+  type MarketingPageId,
+} from '../website/marketingPaths'
 
 const HASH_TO_PATH: Record<string, string> = {
   'how-it-works': MARKETING_PATHS.howItWorks,
@@ -102,6 +106,30 @@ const STYLES = `
     transition: color var(--transition), background var(--transition);
   }
   .lp-nav-signin:hover { color: var(--green-dark); background: var(--green-lo); }
+
+  .lp-nav-menu-btn {
+    display: none;
+    background: none; border: none; cursor: pointer;
+    padding: 8px; border-radius: 8px; color: var(--ink);
+  }
+  .lp-nav-menu-btn:hover { background: var(--green-lo); }
+  .lp-nav-menu-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+  .lp-nav-mobile {
+    display: none;
+    position: fixed; top: 68px; left: 0; right: 0; z-index: 199;
+    background: rgba(252,252,250,0.98);
+    border-bottom: 1px solid var(--bdr);
+    backdrop-filter: blur(20px);
+    padding: 12px 24px 20px;
+    flex-direction: column; gap: 4px;
+  }
+  .lp-nav-mobile.open { display: flex; }
+  .lp-nav-mobile .lp-nav-link {
+    padding: 12px 8px; font-size: 17px;
+    border-bottom: 1px solid var(--bdr);
+  }
+  .lp-nav-mobile .lp-nav-link:last-child { border-bottom: none; }
 
   /* ─── BUTTONS ────────────────────────────────────── */
   .lp-btn-primary {
@@ -636,6 +664,7 @@ const STYLES = `
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
+    .lp-nav-menu-btn { display: grid; place-items: center; }
     .lp-nav-inner { padding: 0 24px; }
     .lp-section-inner { padding: 56px 24px; }
     .lp-cta-section, .lp-footer { padding-left: 24px; padding-right: 24px; }
@@ -827,16 +856,27 @@ const TESTIMONIALS = [
 ]
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────────
-function useReveal() {
+function useReveal(page: MarketingPageId) {
   useEffect(() => {
-    const els = document.querySelectorAll('.lp-reveal')
-    const obs = new IntersectionObserver(
-      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') }),
-      { threshold: 0.08 }
-    )
-    els.forEach(el => obs.observe(el))
-    return () => obs.disconnect()
-  }, [])
+    let obs: IntersectionObserver | null = null
+    const frame = requestAnimationFrame(() => {
+      const els = document.querySelectorAll('.lp-reveal')
+      if (page !== 'home') {
+        els.forEach(el => el.classList.add('visible'))
+        return
+      }
+      els.forEach(el => el.classList.remove('visible'))
+      obs = new IntersectionObserver(
+        entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') }),
+        { threshold: 0.08 },
+      )
+      els.forEach(el => obs!.observe(el))
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      obs?.disconnect()
+    }
+  }, [page])
 }
 
 function useCounter(target: number) {
@@ -1176,11 +1216,22 @@ function RoiCalculator() {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function LandingPage({ page = 'home' }: LandingPageProps) {
+export default function LandingPage() {
+  const { pathname } = useLocation()
+  const page = marketingPageFromPathname(pathname)
   const [active, setActive] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
   const scrolled = useScrolled()
-  useReveal()
+  useReveal(page)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    document.title = MARKETING_PAGE_TITLES[page]
+  }, [page])
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [pathname])
 
   useEffect(() => {
     if (page !== 'home') return
@@ -1268,14 +1319,25 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
             <div className="lp-nav-links">
-              <Link to={MARKETING_PATHS.howItWorks} className={navClass('how-it-works')}>How it Works</Link>
+              {MARKETING_NAV_TABS.map(tab => (
+                <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
+              ))}
               <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
-              <Link to={MARKETING_PATHS.roi} className={navClass('roi')}>ROI Calculator</Link>
-              <Link to={MARKETING_PATHS.features} className={navClass('features')}>Features</Link>
-              <Link to={MARKETING_PATHS.carriers} className={navClass('carriers')}>Carriers</Link>
-              <Link to={MARKETING_PATHS.compliance} className={navClass('compliance')}>Compliance</Link>
             </div>
             <div className="lp-nav-right">
+              <button
+                type="button"
+                className="lp-nav-menu-btn"
+                aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(o => !o)}
+              >
+                {menuOpen ? (
+                  <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+                )}
+              </button>
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
               <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Access
@@ -1284,9 +1346,18 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
           </div>
         </nav>
 
+        <div className={`lp-nav-mobile${menuOpen ? ' open' : ''}`} role="navigation" aria-label="Mobile navigation">
+          {MARKETING_NAV_TABS.map(tab => (
+            <Link key={tab.id} to={tab.path} className={navClass(tab.id)} onClick={() => setMenuOpen(false)}>
+              {tab.label}
+            </Link>
+          ))}
+          <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+        </div>
+
         {/* ── HERO (home only) ── */}
         {page === 'home' && (
-        <div className="lp-hero-wrap">
+        <div className="lp-hero-wrap" data-testid="marketing-home-hero">
           <section className="lp-hero">
             {/* Left */}
             <div>
@@ -1346,7 +1417,7 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
 
         {/* ── ROI CALCULATOR ── */}
         {page === 'roi' && (
-        <section className="lp-roi" style={{ paddingTop: 88 }}>
+        <section className="lp-roi" style={{ paddingTop: 88 }} data-testid="marketing-roi">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Your numbers</div>
@@ -1371,7 +1442,7 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
 
         {/* ── HOW IT WORKS ── */}
         {page === 'how-it-works' && (
-        <section className="lp-pipeline" style={{ paddingTop: 88 }}>
+        <section className="lp-pipeline" style={{ paddingTop: 88 }} data-testid="marketing-how-it-works">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">How it Works</div>
@@ -1396,7 +1467,7 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
 
         {/* ── FEATURES ── */}
         {page === 'features' && (
-        <section className="lp-features" style={{ paddingTop: 88 }}>
+        <section className="lp-features" style={{ paddingTop: 88 }} data-testid="marketing-features">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Platform</div>
@@ -1427,7 +1498,7 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
 
         {/* ── CARRIERS ── */}
         {page === 'carriers' && (
-        <section className="lp-carriers" style={{ paddingTop: 88 }}>
+        <section className="lp-carriers" style={{ paddingTop: 88 }} data-testid="marketing-carriers">
           <div className="lp-section-inner">
             <div className="lp-split lp-reveal">
               <div>
@@ -1502,7 +1573,7 @@ export default function LandingPage({ page = 'home' }: LandingPageProps) {
 
         {/* ── COMPLIANCE ── */}
         {page === 'compliance' && (
-        <section className="lp-compliance" style={{ paddingTop: 88 }}>
+        <section className="lp-compliance" style={{ paddingTop: 88 }} data-testid="marketing-compliance">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Compliance</div>
