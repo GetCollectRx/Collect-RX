@@ -42,22 +42,16 @@ function makeHandler(message: string) {
   };
 }
 
-/** Per signed-in user when a valid session cookie is present; otherwise per client IP. */
-function sessionOrIpKey(req: Request): string {
+/** True when the request carries a valid signed-in session cookie. */
+function hasValidSession(req: Request): boolean {
   const token = req.cookies?.[COOKIE_NAME];
-  if (typeof token === 'string' && token.length > 0) {
-    try {
-      const payload = verifyAuthToken(token);
-      const userId =
-        'userId' in payload && typeof payload.userId === 'string'
-          ? payload.userId
-          : payload.role;
-      return `sess:${userId}`;
-    } catch {
-      /* fall through to IP */
-    }
+  if (typeof token !== 'string' || token.length === 0) return false;
+  try {
+    verifyAuthToken(token);
+    return true;
+  } catch {
+    return false;
   }
-  return ipKeyGenerator(req.ip ?? 'unknown');
 }
 
 function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
@@ -80,7 +74,22 @@ function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
   return rateLimit({
     standardHeaders: true,   // Return RateLimit-* headers (RFC 6585)
     legacyHeaders:   false,  // Suppress deprecated X-RateLimit-*
-    keyGenerator: sessionOrIpKey,
+    keyGenerator: (req) => {
+      if (hasValidSession(req)) {
+        const token = req.cookies![COOKIE_NAME] as string;
+        try {
+          const payload = verifyAuthToken(token);
+          const userId =
+            'userId' in payload && typeof payload.userId === 'string'
+              ? payload.userId
+              : payload.role;
+          return `sess:${userId}`;
+        } catch {
+          /* fall through */
+        }
+      }
+      return ipKeyGenerator(req.ip ?? 'unknown');
+    },
     ...storeOpts,
     ...opts,
   });
@@ -112,17 +121,31 @@ export const strictLimiter: RateLimitRequestHandler = makeLimiter({
 });
 
 /**
- * standardLimiter — baseline for /api/*.
- * Anonymous traffic: 120 req/min per IP.
- * Signed-in app sessions: 600 req/min per user (avoids shared-NAT / proxy IP collisions).
+ * sessionStandardLimiter — signed-in app traffic: 600 req/min per user.
  */
-export const standardLimiter: RateLimitRequestHandler = makeLimiter({
+export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter({
   windowMs: 60 * 1000,
-  max: (req) => (sessionOrIpKey(req).startsWith('sess:') ? 600 : 120),
+  max: 600,
+  skip: (req) => !hasValidSession(req),
   handler: makeHandler(
     'Too many requests. Please slow down and try again shortly.',
   ),
 });
+
+/**
+ * anonStandardLimiter — anonymous / pre-login API traffic: 120 req/min per IP.
+ */
+export const anonStandardLimiter: RateLimitRequestHandler = makeLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  skip: (req) => hasValidSession(req),
+  handler: makeHandler(
+    'Too many requests. Please slow down and try again shortly.',
+  ),
+});
+
+/** @deprecated Use sessionStandardLimiter + anonStandardLimiter together. */
+export const standardLimiter: RateLimitRequestHandler = anonStandardLimiter;
 
 /**
  * webhookLimiter — 300 requests per minute per IP.

@@ -69,7 +69,8 @@ import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
 import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
-  standardLimiter,
+  sessionStandardLimiter,
+  anonStandardLimiter,
   webhookLimiter,
   healthLimiter,
   telemetryEventsLimiter,
@@ -282,7 +283,8 @@ app.use('/api/telemetry/events', telemetryEventsLimiter);
 // Rate limiting — baseline for all /api/* routes.
 // authLimiter (stricter) is applied inside authRoutes.ts on POST /login.
 // ─────────────────────────────────────────────────────────────────────────────
-app.use('/api', standardLimiter);
+app.use('/api', sessionStandardLimiter);
+app.use('/api', anonStandardLimiter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes

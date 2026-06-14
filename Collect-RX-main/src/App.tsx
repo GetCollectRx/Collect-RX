@@ -7,7 +7,6 @@ import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
 import Changelog from './pages/Changelog'
 import PilotDemo  from './pages/PilotDemo'
-import ProcessDemo from './pages/ProcessDemo'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
@@ -450,7 +449,7 @@ function App() {
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/demo" element={<PilotDemo />} />
-            <Route path="/demo/process" element={<ProcessDemo />} />
+            <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>

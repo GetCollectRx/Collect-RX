@@ -78,7 +78,7 @@ function overallStatus(m: HealthBriefMetrics, actions: HealthActionItem[]): {
 function syncLabel(lastImport?: DashboardLastPmsImport | null, pms?: PracticePmsInfo | null): string {
   if (!pms?.vendorId) return 'PMS not connected, connect in Settings'
   if (!lastImport) return `${pms.displayName ?? 'PMS'} connected, no import yet`
-  const when = new Date(lastImport.startedAt).toLocaleDateString('en-CA', {
+  const when = new Date(lastImport.at).toLocaleDateString('en-CA', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
