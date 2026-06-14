@@ -46,6 +46,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
+import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
@@ -388,16 +389,32 @@ function AppShell() {
   )
 }
 
+function RedirectToLogin() {
+  const location = useLocation()
+  useEffect(() => {
+    storeLoginRedirect(location.pathname, location.search)
+  }, [location.pathname, location.search])
+  return <Navigate to="/login" replace />
+}
+
+function AnonOrLanding() {
+  const { pathname, search } = useLocation()
+  if (pathRequiresAuth(pathname)) {
+    return <RedirectToLogin />
+  }
+  return <LandingPage />
+}
+
 function AnonRoutes() {
   usePublicPortalTheme()
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/dashboard" element={<Navigate to="/login" replace />} />
-      <Route path="/dashboard/*" element={<Navigate to="/login" replace />} />
+      <Route path="/dashboard" element={<RedirectToLogin />} />
+      <Route path="/dashboard/*" element={<RedirectToLogin />} />
       <Route path="/" element={<LandingPage />} />
       <Route path="/landing" element={<LandingPage />} />
-      <Route path="*" element={<LandingPage />} />
+      <Route path="*" element={<AnonOrLanding />} />
     </Routes>
   )
 }
@@ -416,6 +433,11 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
+    const redirect = consumeLoginRedirect()
+    if (redirect) {
+      navigate(redirect, { replace: true })
+      return
+    }
     if (isPostAuthEntryPath(location.pathname)) {
       navigate(HOME_ROUTE[userRole], { replace: true })
     }
@@ -478,6 +500,11 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/demo" element={<PublicDemoRoute />} />
             <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
+            <Route path="/how-it-works" element={<LandingPage page="how-it-works" />} />
+            <Route path="/roi" element={<LandingPage page="roi" />} />
+            <Route path="/features" element={<LandingPage page="features" />} />
+            <Route path="/carriers" element={<LandingPage page="carriers" />} />
+            <Route path="/compliance" element={<LandingPage page="compliance" />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>

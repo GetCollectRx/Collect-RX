@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import roiAssumptions from '../config/roi-assumptions.json'
+import { MARKETING_PATHS, type MarketingPageId } from '../website/marketingPaths'
+
+type LandingPageProps = { page?: MarketingPageId }
+
+const HASH_TO_PATH: Record<string, string> = {
+  'how-it-works': MARKETING_PATHS.howItWorks,
+  roi: MARKETING_PATHS.roi,
+  features: MARKETING_PATHS.features,
+  carriers: MARKETING_PATHS.carriers,
+  compliance: MARKETING_PATHS.compliance,
+  cta: MARKETING_PATHS.home,
+  'early-access': MARKETING_PATHS.home,
+}
 
 // ─── Design tokens / styles ───────────────────────────────────────────────────
 // HubSpot-inspired editorial system: warm cream/parchment canvas, hairline
@@ -81,6 +94,7 @@ const STYLES = `
   .lp-nav-links { display: flex; align-items: center; gap: 32px; }
   .lp-nav-link { font-family: var(--fn); font-size: 16px; font-weight: 400; color: var(--ink); cursor: pointer; text-decoration: none; transition: color var(--transition); background: none; border: none; }
   .lp-nav-link:hover { color: var(--green); }
+  .lp-nav-link.active { color: var(--green-dark); font-weight: 600; }
   .lp-nav-right { display: flex; align-items: center; gap: 10px; }
   .lp-nav-signin {
     font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--ink);
@@ -1162,13 +1176,25 @@ function RoiCalculator() {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function LandingPage() {
+export default function LandingPage({ page = 'home' }: LandingPageProps) {
   const [active, setActive] = useState(0)
   const scrolled = useScrolled()
   useReveal()
+  const navigate = useNavigate()
 
-  const scrollTo = (id: string) =>
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  useEffect(() => {
+    if (page !== 'home') return
+    const hash = window.location.hash.replace('#', '')
+    const dest = HASH_TO_PATH[hash]
+    if (dest) navigate(dest, { replace: true })
+  }, [page, navigate])
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [page])
+
+  const navClass = (id: MarketingPageId) =>
+    `lp-nav-link${page === id ? ' active' : ''}`
 
   // ── Request Early Access / Book a Demo modal ──────────────────────────────
   const [accessOpen, setAccessOpen] = useState(false)
@@ -1235,19 +1261,19 @@ export default function LandingPage() {
         {/* ── NAV ── */}
         <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
           <div className="lp-nav-inner">
-            <div className="lp-logo">
+            <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
                 <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
-            </div>
+            </Link>
             <div className="lp-nav-links">
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</button>
-              <Link to="/demo" className="lp-nav-link">Product demo</Link>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('roi')}>ROI Calculator</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('features')}>Features</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('compliance')}>Compliance</button>
+              <Link to={MARKETING_PATHS.howItWorks} className={navClass('how-it-works')}>How it Works</Link>
+              <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
+              <Link to={MARKETING_PATHS.roi} className={navClass('roi')}>ROI Calculator</Link>
+              <Link to={MARKETING_PATHS.features} className={navClass('features')}>Features</Link>
+              <Link to={MARKETING_PATHS.carriers} className={navClass('carriers')}>Carriers</Link>
+              <Link to={MARKETING_PATHS.compliance} className={navClass('compliance')}>Compliance</Link>
             </div>
             <div className="lp-nav-right">
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
@@ -1258,7 +1284,8 @@ export default function LandingPage() {
           </div>
         </nav>
 
-        {/* ── HERO ── */}
+        {/* ── HERO (home only) ── */}
+        {page === 'home' && (
         <div className="lp-hero-wrap">
           <section className="lp-hero">
             {/* Left */}
@@ -1303,8 +1330,10 @@ export default function LandingPage() {
             <OpsPanel active={active} onSelect={setActive} />
           </section>
         </div>
+        )}
 
-        {/* ── STATS BAND ── */}
+        {/* ── STATS BAND (home only) ── */}
+        {page === 'home' && (
         <div className="lp-stats lp-reveal">
           <div className="lp-stats-inner">
             <StatNum target={6}  suffix=" carriers" label="Major Canadian insurers integrated" />
@@ -1313,9 +1342,11 @@ export default function LandingPage() {
             <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
           </div>
         </div>
+        )}
 
         {/* ── ROI CALCULATOR ── */}
-        <section className="lp-roi" id="roi">
+        {page === 'roi' && (
+        <section className="lp-roi" style={{ paddingTop: 88 }}>
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Your numbers</div>
@@ -1336,9 +1367,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* ── HOW IT WORKS ── */}
-        <section className="lp-pipeline" id="how-it-works">
+        {page === 'how-it-works' && (
+        <section className="lp-pipeline" style={{ paddingTop: 88 }}>
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">How it Works</div>
@@ -1359,9 +1392,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── FEATURES (Product Hub Cards) ── */}
-        <section className="lp-features" id="features">
+        {/* ── FEATURES ── */}
+        {page === 'features' && (
+        <section className="lp-features" style={{ paddingTop: 88 }}>
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Platform</div>
@@ -1388,9 +1423,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── CARRIERS (feature split) ── */}
-        <section className="lp-carriers" id="carriers">
+        {/* ── CARRIERS ── */}
+        {page === 'carriers' && (
+        <section className="lp-carriers" style={{ paddingTop: 88 }}>
           <div className="lp-section-inner">
             <div className="lp-split lp-reveal">
               <div>
@@ -1404,7 +1441,7 @@ export default function LandingPage() {
                 </p>
                 <p className="lp-split-p">
                   Select a carrier to preview how CollectRx processes its claims in the
-                  Operations Center above.
+                  live operations view below.
                 </p>
                 <p className="lp-carriers-note">
                   Together these carriers represent approximately 78% of Canadian private dental insurance.
@@ -1416,7 +1453,7 @@ export default function LandingPage() {
                     type="button"
                     key={c.name}
                     className={`lp-carrier-card${i === active ? ' active' : ''}`}
-                    onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    onClick={() => setActive(i)}
                   >
                     <div className="lp-carrier-row">
                       <span className="lp-carrier-name">{c.name}</span>
@@ -1429,10 +1466,15 @@ export default function LandingPage() {
                 ))}
               </div>
             </div>
+            <div className="lp-reveal" style={{ marginTop: 48 }}>
+              <OpsPanel active={active} onSelect={setActive} />
+            </div>
           </div>
         </section>
+        )}
 
-        {/* ── TESTIMONIALS ── */}
+        {/* ── TESTIMONIALS (home only) ── */}
+        {page === 'home' && (
         <section className="lp-quotes">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
@@ -1456,9 +1498,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* ── COMPLIANCE ── */}
-        <section className="lp-compliance" id="compliance">
+        {page === 'compliance' && (
+        <section className="lp-compliance" style={{ paddingTop: 88 }}>
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Compliance</div>
@@ -1481,9 +1525,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── CTA ── */}
-        <div className="lp-cta-section" id="cta">
+        {/* ── CTA (home only) ── */}
+        {page === 'home' && (
+        <div className="lp-cta-section">
           <div className="lp-cta-inner lp-reveal">
             <div className="lp-cta-tag">Early Access</div>
             <h2 className="lp-cta-h">
@@ -1502,6 +1548,7 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* ── FOOTER ── */}
         <footer className="lp-footer">
@@ -1519,11 +1566,12 @@ export default function LandingPage() {
               <div className="lp-footer-cols">
                 <div className="lp-footer-col">
                   <h4>Platform</h4>
-                  <button type="button" onClick={() => scrollTo('how-it-works')}>How it Works</button>
-                  <Link to="/demo">Product demo</Link>
-                  <button type="button" onClick={() => scrollTo('features')}>Features</button>
-                  <button type="button" onClick={() => scrollTo('carriers')}>Carriers</button>
-                  <button type="button" onClick={() => scrollTo('compliance')}>Compliance</button>
+                  <Link to={MARKETING_PATHS.howItWorks}>How it Works</Link>
+                  <Link to={MARKETING_PATHS.demo}>Product demo</Link>
+                  <Link to={MARKETING_PATHS.features}>Features</Link>
+                  <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
+                  <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
+                  <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
