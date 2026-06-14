@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import roiAssumptions from '../config/roi-assumptions.json'
+import { CollectRxLogoMark } from '../components/brand/CollectRxLogo'
 
 // ─── Design tokens / styles ───────────────────────────────────────────────────
 // HubSpot-inspired editorial system: warm cream/parchment canvas, hairline
@@ -71,11 +72,10 @@ const STYLES = `
   }
   .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
   .lp-logo-mark {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: var(--green);
-    display: grid; place-items: center; flex-shrink: 0;
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .lp-logo-mark svg { width: 15px; height: 15px; fill: none; stroke: #fcfcfa; stroke-width: 2.5; }
+  .lp-logo-mark svg { width: 28px; height: 28px; }
   .lp-logo-text { font-family: var(--fn); font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
   .lp-logo-text span { color: var(--green); }
   .lp-nav-links { display: flex; align-items: center; gap: 32px; }
@@ -109,6 +109,7 @@ const STYLES = `
     cursor: pointer; white-space: nowrap;
     transition: background var(--transition), color var(--transition);
     display: inline-flex; align-items: center; gap: 8px;
+    text-decoration: none;
   }
   .lp-btn-ghost:hover { background: var(--green-lo); }
   .lp-btn-ghost svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
@@ -1237,7 +1238,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <div className="lp-logo">
               <div className="lp-logo-mark">
-                <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                <CollectRxLogoMark size={28} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </div>
@@ -1260,7 +1261,6 @@ export default function LandingPage() {
         {/* ── HERO ── */}
         <div className="lp-hero-wrap">
           <section className="lp-hero">
-            {/* Left */}
             <div>
               <div className="lp-ai-badge">
                 <svg viewBox="0 0 24 24"><path d="M12 0l2.5 9.5L24 12l-9.5 2.5L12 24l-2.5-9.5L0 12l9.5-2.5z" /></svg>
@@ -1275,16 +1275,14 @@ export default function LandingPage() {
                 that never lands. CollectRx runs follow-up to six major Canadian insurers, tracks
                 claim status, and handles denials, from a simple PMS export.
               </p>
-              <div className="lp-hero-btns">
-                <div className="lp-cta-pair">
-                  <button className="lp-btn-primary" onClick={() => openAccess('access')}>
-                    Request Early Access
-                    <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                  </button>
-                  <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
-                    See how it works
-                  </button>
-                </div>
+              <div className="lp-hero-btns lp-cta-pair">
+                <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
+                  Request Early Access
+                  <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </button>
+                <Link to="/demo/process" className="lp-btn-ghost">
+                  Watch live demo
+                </Link>
               </div>
               <div className="lp-trust-row">
                 {['PHIPA compliant by design', '6 major Canadian carriers', 'No IT setup required'].map(t => (
@@ -1297,8 +1295,6 @@ export default function LandingPage() {
                 ))}
               </div>
             </div>
-
-            {/* Right: Operations Panel */}
             <OpsPanel active={active} onSelect={setActive} />
           </section>
         </div>
@@ -1415,7 +1411,7 @@ export default function LandingPage() {
                     type="button"
                     key={c.name}
                     className={`lp-carrier-card${i === active ? ' active' : ''}`}
-                    onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    onClick={() => { setActive(i); scrollTo('how-it-works') }}
                   >
                     <div className="lp-carrier-row">
                       <span className="lp-carrier-name">{c.name}</span>
@@ -1509,7 +1505,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                    <CollectRxLogoMark size={28} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>
