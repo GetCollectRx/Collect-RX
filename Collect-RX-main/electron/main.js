@@ -4,7 +4,7 @@
  * CollectRx — Electron main process
  *
  * Dev mode:  loads http://localhost:5173/login (Vite)
- * Prod mode: COLLECTRX_DASHBOARD_URL (or dashboard-url.txt), defaulting path / → /login
+ * Prod mode: COLLECTRX_DASHBOARD_URL (or dashboard-url.txt), defaulting path / → /dashboard
  */
 
 const {
@@ -121,9 +121,8 @@ ipcMain.on('crx-get-api-origin', (event) => {
 });
 
 /**
- * Logged-out `/` is the marketing landing; the practice UI + login are at `/login`.
- * Open `/login` in Electron so the desktop app is not mistaken for mirroring the public site.
- * Override with COLLECTRX_DASHBOARD_START_PATH=/custom if your deploy uses a different entry.
+ * Practice home lives at /dashboard. Signed-in sessions land there; logged-out users
+ * are redirected to /login by the app router.
  */
 function electronWindowEntryUrl(baseUrl) {
   const override = process.env.COLLECTRX_DASHBOARD_START_PATH?.trim();
@@ -135,7 +134,7 @@ function electronWindowEntryUrl(baseUrl) {
     }
     const pathOnly = (u.pathname || '/').replace(/\/+$/, '') || '/';
     if (pathOnly === '/') {
-      u.pathname = '/login';
+      u.pathname = '/dashboard';
     }
     return u.toString();
   } catch {

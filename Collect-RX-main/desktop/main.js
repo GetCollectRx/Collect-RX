@@ -42,7 +42,7 @@ function electronWindowEntryUrl(baseUrl) {
     }
     const pathOnly = (u.pathname || '/').replace(/\/+$/, '') || '/';
     if (pathOnly === '/') {
-      u.pathname = '/login';
+      u.pathname = '/dashboard';
     }
     return u.toString();
   } catch {

@@ -58,6 +58,20 @@ import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
 
+/** Paths that should redirect to the signed-in home route (not render AppShell content). */
+function isPostAuthEntryPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return path === '/' || path === '/login'
+}
+
+function AppHomeFallback() {
+  const { userRole, authState } = usePractice()
+  if (authState === 'anon' || !userRole) {
+    return <Navigate to="/login" replace />
+  }
+  return <Navigate to={HOME_ROUTE[userRole]} replace />
+}
+
 type NavItem = { to: string; exact: boolean; label: string; icon: NavIconName }
 type NavSection = { label: string; items: NavItem[] }
 
@@ -359,6 +373,7 @@ function AppShell() {
           <Route path="/outbox"        element={<Outbox />} />
           <Route path="/pay/:balanceId" element={<PaymentPage />} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          <Route path="*" element={<AppHomeFallback />} />
         </Routes>
         </PlatformDevRouteGuard>
         </main>
@@ -372,6 +387,10 @@ function AnonRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/dashboard" element={<Navigate to="/login" replace />} />
+      <Route path="/dashboard/*" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
       <Route path="*" element={<LandingPage />} />
     </Routes>
   )
@@ -391,9 +410,8 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
-    const home = HOME_ROUTE[userRole]
-    if (location.pathname === '/' || location.pathname === '') {
-      navigate(home, { replace: true })
+    if (isPostAuthEntryPath(location.pathname)) {
+      navigate(HOME_ROUTE[userRole], { replace: true })
     }
   }, [loading, authState, userRole, location.pathname, navigate])
 
