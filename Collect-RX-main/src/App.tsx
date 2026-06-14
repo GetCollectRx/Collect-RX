@@ -398,7 +398,7 @@ function RedirectToLogin() {
 }
 
 function AnonOrLanding() {
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   if (pathRequiresAuth(pathname)) {
     return <RedirectToLogin />
   }
