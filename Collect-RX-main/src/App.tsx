@@ -1,7 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
-import PublicPatientPay from './pages/PublicPatientPay'
-import PaymentThankYou  from './pages/PaymentThankYou'
 import LegalTerms from './pages/LegalTerms'
 import LegalPrivacy from './pages/LegalPrivacy'
 import ProductOnePager from './pages/ProductOnePager'
@@ -11,15 +9,10 @@ import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
-import Balances              from './pages/Balances'
-import BalanceDetail         from './pages/BalanceDetail'
-import PatientAR             from './pages/PatientAR'
 import PreTreatmentEstimate  from './pages/PreTreatmentEstimate'
 import Analytics             from './pages/Analytics'
-import Outbox                from './pages/Outbox'
 import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
-import PaymentPage           from './pages/PaymentPage'
 import { LoginPage }         from './pages/LoginPage'
 import LandingPage           from './pages/LandingPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
@@ -174,8 +167,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
       { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
       { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-      { to: '/balances', exact: false, label: 'Outreach AR', icon: 'balances' },
-      { to: '/patient-ar', exact: false, label: 'Patient AR', icon: 'patientar' },
     ],
   },
   {
@@ -183,7 +174,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/estimate', exact: false, label: 'Estimate', icon: 'estimate' },
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
-      { to: '/outbox', exact: false, label: 'Outbox', icon: 'outbox' },
       { to: '/cdcp', exact: false, label: 'CDCP', icon: 'cdcp' },
     ],
   },
@@ -362,16 +352,16 @@ function AppShell() {
           <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
-          <Route path="/balances"      element={<Balances />} />
-          <Route path="/balances/:id"  element={<BalanceDetail />} />
+          <Route path="/balances" element={<Navigate to="/insurance" replace />} />
+          <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
+          <Route path="/patient-ar" element={<Navigate to="/insurance" replace />} />
+          <Route path="/outbox" element={<Navigate to="/insurance" replace />} />
+          <Route path="/pay/:balanceId" element={<Navigate to="/insurance" replace />} />
           <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/patient-ar"    element={<PatientAR />} />
           <Route path="/estimate"      element={<PreTreatmentEstimate />} />
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
-          <Route path="/outbox"        element={<Outbox />} />
-          <Route path="/pay/:balanceId" element={<PaymentPage />} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
@@ -463,8 +453,8 @@ function App() {
         <PracticeProvider>
           <AnalyticsSessionBridge>
           <Routes>
-            <Route path="/pay/p/:publicToken" element={<PublicPatientPay />} />
-            <Route path="/payment/thank-you" element={<PaymentThankYou />} />
+            <Route path="/pay/p/:publicToken" element={<Navigate to="/" replace />} />
+            <Route path="/payment/thank-you" element={<Navigate to="/" replace />} />
             <Route path="/legal/terms" element={<LegalTerms />} />
             <Route path="/legal/privacy" element={<LegalPrivacy />} />
             <Route path="/product" element={<ProductOnePager />} />

@@ -54,7 +54,6 @@ interface DashboardStats {
   lastPmsImport?: DashboardLastPmsImport | null
   operationalAlerts?: {
     blockedCarriers: { code: string; name: string }[]
-    patientPaymentsReady: boolean
     decliningCarriers?: { code: string; name: string; successRate: number }[]
   }
   recoveryMetrics?: RecoveryMetricsSnapshot | null
@@ -260,7 +259,7 @@ function DashboardBody({
         )}
       </div>
 
-      {(blocked.length > 0 || s.operationalAlerts?.patientPaymentsReady === false) && (
+      {(blocked.length > 0) && (
         <div className="crx-alert px-4 py-3 text-sm relative z-10">
           <p className="font-semibold" style={{ color: 'var(--crx-gold)' }}>
             Attention needed

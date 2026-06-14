@@ -49,8 +49,15 @@ async function ensurePaymentLink(balance: any): Promise<string | null> {
   }
 }
 
-// Core reminder cycle
+// Core reminder cycle (disabled unless PATIENT_REMINDERS_ENABLED=1 — insurance-only product)
 export async function runReminderCycle(): Promise<{ sent: number; skipped: number; error?: string }> {
+  const enabled = ['1', 'true', 'yes'].includes(
+    (process.env.PATIENT_REMINDERS_ENABLED || '').trim().toLowerCase(),
+  );
+  if (!enabled) {
+    return { sent: 0, skipped: 0 };
+  }
+
   console.log('Reminder engine: starting cycle');
 
   let candidates;
@@ -136,6 +143,14 @@ export async function runReminderCycle(): Promise<{ sent: number; skipped: numbe
 
 // Scheduler
 export function startReminderEngine() {
+  const enabled = ['1', 'true', 'yes'].includes(
+    (process.env.PATIENT_REMINDERS_ENABLED || '').trim().toLowerCase(),
+  );
+  if (!enabled) {
+    console.log('Reminder engine disabled (insurance-only mode). Set PATIENT_REMINDERS_ENABLED=1 to re-enable.');
+    return;
+  }
+
   const expression = process.env.REMINDER_CRON || '0 9 * * *'; // 9:00 AM every day
 
   if (!cron.validate(expression)) {

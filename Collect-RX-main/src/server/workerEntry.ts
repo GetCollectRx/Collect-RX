@@ -1,5 +1,5 @@
 /**
- * P8-02 — BullMQ worker: run rules + patient reminders out of the HTTP process.
+ * P8-02 — BullMQ worker: insurance ops tick out of the HTTP process.
  * Start: `npm run worker` (same env as API: DATABASE_URL, REDIS_URL, STRIPE_*, etc.)
  */
 import 'dotenv/config';

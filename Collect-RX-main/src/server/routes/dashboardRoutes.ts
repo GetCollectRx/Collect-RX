@@ -5,7 +5,6 @@ import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
-import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
 import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
@@ -127,22 +126,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
 
-    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
-    const payments = await prisma.paymentEvent.findMany({
-      where: { balance: { practiceId }, paidAt: { gte: weekAgo } },
-      include: { balance: { include: { patient: true } } },
-      orderBy: { paidAt: 'desc' },
-      take: 12,
-    });
-
     let revenueToday = 0;
     let revenueThisWeek = 0;
-    const todayMs = startOfUtcDay.getTime();
-    for (const p of payments) {
-      const cents = p.amountCents / 100;
-      revenueThisWeek += cents;
-      if (p.paidAt.getTime() >= todayMs) revenueToday += cents;
-    }
 
     const callsPlacedToday = await prisma.callAttempt.count({
       where: {
@@ -170,28 +155,12 @@ router.get('/stats', async (req: Request, res: Response) => {
       console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
     }
 
-    const stripeAcct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
-    const patientPaymentsReady = Boolean(
-      stripeAcct?.chargesEnabled && process.env.STRIPE_SECRET_KEY?.trim(),
-    );
-
-    const recentPayments = payments.slice(0, 8).map((p) =>
-      redactDashboardRecentPayment(
-        {
-          id: p.id,
-          amount: p.amountCents / 100,
-          paidAt: p.paidAt.toISOString(),
-          patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
-        },
-        req.auth,
-      ),
-    );
-
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
 
     let recoveryMetrics = null;
     try {
       recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
+      revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
     } catch (recoveryErr) {
       console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
     }
@@ -224,10 +193,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       revenueToday,
       revenueThisWeek,
       telephony: { callsPlacedToday, activeCalls: [] as unknown[] },
-      recentPayments,
       operationalAlerts: {
         blockedCarriers,
-        patientPaymentsReady,
         decliningCarriers,
       },
     });

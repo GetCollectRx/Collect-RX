@@ -58,6 +58,16 @@ export async function syncWorkItemsForPractice(
   const weights = await getQueueWeights(prisma, practiceId);
   let upserted = 0;
 
+  // Retire legacy patient/outreach queue rows — insurance claims only.
+  await prisma.workItem.updateMany({
+    where: {
+      practiceId,
+      status: 'open',
+      itemType: { not: 'insurance' },
+    },
+    data: { status: 'closed' },
+  });
+
   const openClaimStatuses = ['PENDING', 'IN_QUEUE', 'CALLING', 'DENIED', 'ESCALATED', 'ON_HOLD', 'APPROVED_PENDING_PAYMENT'] as const;
 
   const claims = await prisma.insuranceClaim.findMany({
@@ -98,100 +108,7 @@ export async function syncWorkItemsForPractice(
     upserted += 1;
   }
 
-  const patientRows = await prisma.patientBalance.findMany({
-    where: { practiceId, paymentStatus: { in: ['outstanding', 'partial'] }, patientOwes: { gt: 0 } },
-  });
-
-  for (const p of patientRows) {
-    const dollars = Number(p.patientOwes);
-    const days = p.daysSinceAdjudication;
-    const carrierId = p.carrierCode ? mapCarrierCodeString(p.carrierCode) : null;
-    const rankScore = computeRankScore(dollars, days, carrierId, weights);
-    const name = `${p.patientFirstName} ${p.patientLastName}`.trim();
-    await prisma.workItem.upsert({
-      where: {
-        practiceId_sourceType_sourceId: {
-          practiceId,
-          sourceType: 'patient_balance',
-          sourceId: p.id,
-        },
-      },
-      create: {
-        practiceId,
-        sourceType: 'patient_balance',
-        sourceId: p.id,
-        itemType: 'patient_ar',
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        carrierId,
-        title: name || 'Patient balance',
-        rankScore,
-        status: 'open',
-      },
-      update: {
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        carrierId,
-        title: name || 'Patient balance',
-        rankScore,
-      },
-    });
-    upserted += 1;
-  }
-
-  const outreachBalances = await prisma.balance.findMany({
-    where: { practiceId, status: 'OPEN' },
-    include: { patient: true },
-  });
-
-  for (const b of outreachBalances) {
-    const dollars = b.amountCents / 100;
-    const days = Math.floor((Date.now() - b.createdAt.getTime()) / 86400000);
-    const rankScore = computeRankScore(dollars, days, null, weights);
-    await prisma.workItem.upsert({
-      where: {
-        practiceId_sourceType_sourceId: {
-          practiceId,
-          sourceType: 'outreach_balance',
-          sourceId: b.id,
-        },
-      },
-      create: {
-        practiceId,
-        sourceType: 'outreach_balance',
-        sourceId: b.id,
-        itemType: 'outreach',
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        title: b.patient.displayName,
-        rankScore,
-        status: 'open',
-      },
-      update: {
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        title: b.patient.displayName,
-        rankScore,
-      },
-    });
-    upserted += 1;
-  }
-
   return { upserted };
-}
-
-function mapCarrierCodeString(code: string): CarrierId | null {
-  const normalized = code.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  const map: Record<string, CarrierId> = {
-    sun_life: 'sun_life',
-    canada_life: 'canada_life',
-    manulife: 'manulife',
-    green_shield: 'green_shield',
-    rbc: 'rbc',
-    rbc_insurance: 'rbc',
-    telus_adjudicare: 'telus_adjudicare',
-  };
-  return map[normalized] ?? null;
 }
 
 export interface WorkQueueFilters {
@@ -277,11 +194,12 @@ export async function listWorkItems(
   page = 1,
   limit = 50,
 ) {
-  const where: Prisma.WorkItemWhereInput = { practiceId, status: filters.status ?? 'open' };
+  const where: Prisma.WorkItemWhereInput = {
+    practiceId,
+    status: filters.status ?? 'open',
+    itemType: filters.itemType ? (filters.itemType as Prisma.EnumWorkItemTypeFilter['equals']) : 'insurance',
+  };
 
-  if (filters.itemType) {
-    where.itemType = filters.itemType as Prisma.EnumWorkItemTypeFilter['equals'];
-  }
   if (filters.carrierId) where.carrierId = filters.carrierId;
   if (filters.assignedRep) where.assignedRep = filters.assignedRep;
 

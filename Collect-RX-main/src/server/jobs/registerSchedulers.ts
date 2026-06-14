@@ -25,10 +25,15 @@ export async function registerArJobSchedulers(): Promise<void> {
   await q.add('RULES_TICK', {}, { repeat: { every: RULES_EVERY_MS } });
 
   const pattern = process.env.REMINDER_CRON || '0 9 * * *';
-  if (!cron.validate(pattern)) {
-    console.error(`[registerSchedulers] Invalid REMINDER_CRON "${pattern}" — reminder job not registered`);
-  } else {
-    await q.add('REMINDER_CYCLE', {}, { repeat: { pattern } });
+  const patientRemindersEnabled = ['1', 'true', 'yes'].includes(
+    (process.env.PATIENT_REMINDERS_ENABLED || '').trim().toLowerCase(),
+  );
+  if (patientRemindersEnabled) {
+    if (!cron.validate(pattern)) {
+      console.error(`[registerSchedulers] Invalid REMINDER_CRON "${pattern}" — reminder job not registered`);
+    } else {
+      await q.add('REMINDER_CYCLE', {}, { repeat: { pattern } });
+    }
   }
 
   const learningPattern = (process.env.LEARNING_CRON || '0 6 * * *').trim();
@@ -65,7 +70,8 @@ export async function registerArJobSchedulers(): Promise<void> {
   }
 
   console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"` +
+    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms` +
+      (patientRemindersEnabled ? `, REMINDER cron "${pattern}"` : '') +
       (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
       (process.env.MARKETING_LOOP_ENABLED !== '0'
         ? `, MARKETING every ${marketingEveryMs}ms` +

@@ -443,22 +443,22 @@ export default function Admin() {
         )}
       </Card>
 
-      {/* Rules engine status */}
+      {/* Insurance recovery engine status */}
       <Card>
-        <CardHeader title="Rules Engine" subtitle="Evaluates and escalates balances every 60 seconds" />
+        <CardHeader title="Insurance recovery engine" subtitle="Call queue, payment trace, and work-queue sync every 60 seconds" />
         <div className="flex items-center gap-2 mb-4">
           <span className="w-2 h-2 rounded-full bg-crx-500 animate-pulse" aria-hidden="true" />
           <span className="text-sm font-medium text-crx-600 dark:text-crx-400">Running</span>
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 space-y-2">
-          <p className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Active Rules</p>
+          <p className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Active loops</p>
           {[
-            'On BALANCE_CREATED → Send NOTIFIED message immediately',
-            'After 5 days in NOTIFIED → Send REMINDER_1',
-            'After 10 days in REMINDER_1 → Send REMINDER_2',
-            'After 20 days in REMINDER_2 OR amount ≥ $500 → ESCALATED + STAFF_REVIEW',
-          ].map(rule => (
+            'Priority sync — ranks open claims for the next carrier call batch',
+            'Payment trace — recalls carriers when approved claims await PMS balance drop',
+            'Practice gates — blocks re-call until resubmit, docs, or verify is cleared',
+            'Work queue — mirrors open insurance claims by dollars at risk and aging',
+          ].map((rule) => (
             <div key={rule} className="flex items-start gap-2">
               <span className="text-crx-500 flex-shrink-0 mt-0.5">→</span>
               <span>{rule}</span>
