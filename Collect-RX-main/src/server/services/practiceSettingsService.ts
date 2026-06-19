@@ -14,7 +14,21 @@ function defaultCarrierConfigs(): CarrierConfig[] {
     callWindowStart: '08:00',
     callWindowEnd: '17:00',
     notes: '',
+    providerNumber: '',
+    authorizationSubmitted: false,
+    authorizationSubmittedAt: null,
   }));
+}
+
+const DEFAULT_CARRIER_CONFIG_BY_ID = new Map(defaultCarrierConfigs().map((c) => [c.carrierId, c]));
+
+/** Backfill fields added after a practice's settings were first saved (e.g. providerNumber). */
+function normalizeCarrierConfig(raw: unknown): CarrierConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Partial<CarrierConfig>;
+  const fallback = DEFAULT_CARRIER_CONFIG_BY_ID.get(c.carrierId as CarrierId);
+  if (!fallback) return undefined;
+  return { ...fallback, ...c };
 }
 
 export function defaultPracticeSettings(): PracticeSettings {
@@ -70,7 +84,11 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
       : {}),
     ...(Array.isArray(o.carrierConfigs)
-      ? { carrierConfigs: o.carrierConfigs as CarrierConfig[] }
+      ? {
+          carrierConfigs: o.carrierConfigs
+            .map(normalizeCarrierConfig)
+            .filter((c): c is CarrierConfig => c !== undefined),
+        }
       : {}),
     ...(typeof o.pmsVendor === 'string'
       ? (() => {
@@ -139,6 +157,19 @@ export function validatePracticeSettingsUpdate(
       }
       if (c.maxAttempts < 1 || c.maxAttempts > 3) {
         return 'maxAttempts must be between 1 and 3';
+      }
+      if (c.providerNumber !== undefined) {
+        if (typeof c.providerNumber !== 'string' || c.providerNumber.length > 50) {
+          return `${c.carrierId} providerNumber must be a string of at most 50 characters`;
+        }
+      }
+      if (c.authorizationSubmitted !== undefined && typeof c.authorizationSubmitted !== 'boolean') {
+        return `${c.carrierId} authorizationSubmitted must be a boolean`;
+      }
+      if (c.authorizationSubmittedAt !== undefined && c.authorizationSubmittedAt !== null) {
+        if (typeof c.authorizationSubmittedAt !== 'string' || Number.isNaN(Date.parse(c.authorizationSubmittedAt))) {
+          return `${c.carrierId} authorizationSubmittedAt must be an ISO date string or null`;
+        }
       }
     }
   }

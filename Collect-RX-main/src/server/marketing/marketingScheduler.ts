@@ -6,6 +6,7 @@ import {
   marketingLearningCronExpression,
   runMarketingLearningCycle,
 } from './marketingLearningJob.js';
+import { runTrialOnboardingTick } from './trialOnboarding.js';
 
 let started = false;
 let learningStarted = false;
@@ -25,6 +26,9 @@ export function startMarketingLoopInProcess(prisma: PrismaClient): void {
   cron.schedule(pattern, () => {
     runMarketingSequenceTick(prisma).catch((err) => {
       console.error('[marketing] tick failed', (err as Error).message);
+    });
+    runTrialOnboardingTick(prisma).catch((err) => {
+      console.error('[trial-onboarding] tick failed', (err as Error).message);
     });
   });
   console.log(`[marketing] In-process sequence tick scheduled: ${pattern}`);

@@ -16,7 +16,7 @@ import {
 } from '../marketing/campaignService.js';
 import { sendHotLeadAlert } from '../marketing/hotLeadAlerts.js';
 import { logProspectActivity } from '../marketing/prospectActivity.js';
-import { previewColdEmail } from '../marketing/emailTemplates.js';
+import { previewColdEmail, type PostDemoOutcome } from '../marketing/emailTemplates.js'
 import {
   CAPABILITY_CATALOG,
   formatCapabilityCatalogForReview,
@@ -28,6 +28,9 @@ import {
 import {
   runMarketingLearningCycle,
 } from '../marketing/marketingLearningJob.js';
+import { startTrialOnboarding, runTrialOnboardingTick } from '../marketing/trialOnboarding.js';
+import { sendSuggestedReply } from '../marketing/replyIntelligence.js';
+import { sendPostDemoFollowUp } from '../marketing/postDemoFollowUp.js';
 
 export function createPartnershipsRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -179,6 +182,62 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
     });
     await logProspectActivity(prisma, prospect.id, 'created', 'Manually added prospect');
     return res.status(201).json({ success: true, data: prospect });
+  });
+
+  /**
+   * Bulk import prospects from the RCDSO scraper or any CSV-to-JSON pipeline.
+   * Body: { prospects: ProspectInput[] }
+   * Skips rows where (practiceName + city) already exists.
+   * Returns { created, skipped, errors }.
+   */
+  router.post('/prospects/bulk-import', async (req: Request, res: Response) => {
+    const body = req.body as { prospects?: unknown[] };
+    if (!Array.isArray(body.prospects) || body.prospects.length === 0) {
+      return res.status(400).json({ success: false, error: 'prospects array required' });
+    }
+    if (body.prospects.length > 500) {
+      return res.status(400).json({ success: false, error: 'Max 500 prospects per batch' });
+    }
+
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const row of body.prospects) {
+      const r = row as Record<string, unknown>;
+      const practiceName = String(r.practiceName || '').trim();
+      const city = typeof r.city === 'string' ? r.city.trim() : null;
+
+      if (!practiceName) { errors.push('Missing practiceName'); continue; }
+
+      try {
+        const existing = await prisma.prospect.findFirst({
+          where: { practiceName, city: city ?? undefined },
+          select: { id: true },
+        });
+        if (existing) { skipped++; continue; }
+
+        await prisma.prospect.create({
+          data: {
+            practiceName,
+            contactName: typeof r.contactName === 'string' ? r.contactName.trim() : null,
+            email: typeof r.email === 'string' && r.email.trim() ? r.email.trim() : null,
+            phone: typeof r.phone === 'string' ? r.phone.trim() : null,
+            city,
+            province: typeof r.province === 'string' ? r.province.trim() : 'ON',
+            website: typeof r.website === 'string' ? r.website.trim() : null,
+            pmsHint: typeof r.pmsHint === 'string' ? r.pmsHint.trim() : null,
+            score: typeof r.score === 'number' ? r.score : 50,
+            source: 'rcdso',
+          },
+        });
+        created++;
+      } catch (err) {
+        errors.push(`${practiceName}: ${(err as Error).message}`);
+      }
+    }
+
+    return res.json({ success: true, data: { created, skipped, errors: errors.slice(0, 20) } });
   });
 
   router.patch('/prospects/:id', async (req: Request, res: Response) => {
@@ -378,6 +437,46 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
     return res.json({ success: true, data: prospect });
   });
 
+  router.post('/prospects/:id/send-suggested-reply', async (req: Request, res: Response) => {
+    try {
+      const result = await sendSuggestedReply(prisma, req.params.id!);
+      const prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
+      return res.json({ success: true, data: { ...result, prospect } });
+    } catch (err) {
+      const msg = (err as Error).message;
+      const status = msg.includes('No suggested') ? 400 : 422;
+      return res.status(status).json({ success: false, error: msg });
+    }
+  });
+
+  router.post('/prospects/:id/post-demo-follow-up', async (req: Request, res: Response) => {
+    try {
+      const body = req.body as {
+        outcome?: PostDemoOutcome;
+        concern?: string;
+        concernResponse?: string;
+        agreementSendDay?: string;
+        send?: boolean;
+      };
+      const outcome = body.outcome;
+      if (!outcome || !['interested', 'thinking', 'not_fit'].includes(outcome)) {
+        return res.status(400).json({ success: false, error: 'outcome required (interested | thinking | not_fit)' });
+      }
+      const result = await sendPostDemoFollowUp(prisma, req.params.id!, {
+        outcome,
+        concern: body.concern,
+        concernResponse: body.concernResponse,
+        agreementSendDay: body.agreementSendDay,
+        send: body.send,
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      const msg = (err as Error).message;
+      const status = msg.includes('already sent') ? 409 : 422;
+      return res.status(status).json({ success: false, error: msg });
+    }
+  });
+
   router.post('/sequence/tick', async (_req: Request, res: Response) => {
     const result = await runMarketingSequenceTick(prisma);
     return res.json({ success: true, data: result });
@@ -392,6 +491,36 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
         markdown: formatCapabilityCatalogForReview(),
       },
     });
+  });
+
+  /**
+   * Start trial onboarding for a prospect.
+   * Sends the pre-kickoff email (step 0) immediately and begins the 60-day sequence.
+   * Call this after the trial agreement is signed.
+   */
+  router.post('/prospects/:id/start-trial', async (req: Request, res: Response) => {
+    try {
+      await startTrialOnboarding(prisma, req.params.id!);
+      const prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
+      return res.json({ success: true, data: prospect });
+    } catch (err) {
+      const msg = (err as Error).message;
+      const status = msg.includes('already started') ? 409 : 422;
+      return res.status(status).json({ success: false, error: msg });
+    }
+  });
+
+  /**
+   * Advance any due trial onboarding emails across all active trials.
+   * Called by the daily cron job; can also be triggered manually for testing.
+   */
+  router.post('/trial/tick', async (_req: Request, res: Response) => {
+    try {
+      const sent = await runTrialOnboardingTick(prisma);
+      return res.json({ success: true, data: { sent } });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
   });
 
   return router;

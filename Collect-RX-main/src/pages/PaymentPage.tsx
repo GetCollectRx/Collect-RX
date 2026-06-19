@@ -15,7 +15,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function PaymentPage() {
   const { balanceId } = useParams()
-  const [balance, setBalance] = useState<any>(null)
+  const [balance, setBalance] = useState<{ amount: number; status: string; patient?: { displayName?: string }; createdAt: string; daysOutstanding: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [paying,  setPaying]  = useState(false)
   const [success, setSuccess] = useState(false)

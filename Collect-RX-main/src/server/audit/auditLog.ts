@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
-import { isUserSession } from '../accessControl/types.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
+import { isUserSession, type UserAuthPayload } from '../accessControl/types.js'
 
 /**
  * P5-04: append-only audit. Do not put names, free-text PHI, or full request bodies in `details`.

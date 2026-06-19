@@ -60,6 +60,8 @@ import helmet from 'helmet';
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
 import { piiVault } from '../services/pii-vault';
+// Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot
+import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import { assertPhiEncryptionAtRestConfigured } from './crypto/phiEncryptionKey.js';
@@ -107,6 +109,7 @@ import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js'
 import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
@@ -122,6 +125,7 @@ import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRoute
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
+import { complianceRouter } from './routes/complianceRoutes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -323,6 +327,12 @@ app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
 app.use('/api',            createCanadianExpansionRouter(prisma));
+// Compliance audit — platform_admin / auditor only
+app.use('/api/compliance', complianceRouter);
+
+// Autonomous agent runtime — structured outputs + escalation
+import agentRunsRouter from './routes/agentRunsRouter.js';
+app.use('/api/agent-runs', agentRunsRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)
@@ -451,9 +461,31 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   }
 
   attachDeskWebSocket(server);
+
+  // ── PHI Vault: attach persistent store + rehydrate before queue engine ─────
+  // On server restart, all in-memory PHI tokens are lost. claimsPiiVault.rehydrate()
+  // decrypts all non-expired PhiVaultEntry rows back into memory so the queue
+  // engine can dispatch existing claims without requiring a re-import.
+  // PHI_ENCRYPTION_KEY must be set (asserted above by assertPhiEncryptionAtRestConfigured).
+  claimsPiiVault.useStore(prisma);
+  try {
+    const rehydrated = await claimsPiiVault.rehydrate();
+    console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
+  } catch (err) {
+    // Non-fatal — calls will fail detokenize checks until re-import, but server still runs
+    console.error('[piiVault] Rehydration failed:', err);
+  }
+
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);
   void runStartupScanOnBoot(prisma, PORT);
+
+  // ── Autonomous agent system ──────────────────────────────────────────────────
+  // 23 cron-based agents + 6 event-triggered agents.
+  // Activate by setting AGENTS_ENABLED=true in Railway env vars.
+  // Also requires GEMINI_API_KEY (already used by learning + marketing modules)
+  // and AGENTS_DIR pointing to the agents/ folder (defaults to ../../agents).
+  startScheduledAgents(prisma);
 }
 
 async function boot() {

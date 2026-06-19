@@ -9,6 +9,12 @@ export interface CarrierConfig {
   callWindowStart: string;
   callWindowEnd: string;
   notes: string;
+  /** Practice's provider/billing ID with this carrier — not PHI. */
+  providerNumber: string;
+  /** True once the billing agent authorization letter has been submitted to this carrier. */
+  authorizationSubmitted: boolean;
+  /** ISO timestamp of submission, or null if not yet submitted. */
+  authorizationSubmittedAt: string | null;
 }
 
 export interface PracticeSettings {

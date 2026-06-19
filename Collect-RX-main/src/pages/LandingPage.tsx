@@ -2085,12 +2085,15 @@ export default function LandingPage() {
         {/* ── ACCESS / DEMO MODAL ── */}
         {accessOpen && (
           <div className="lp-modal-overlay" onClick={closeAccess} role="presentation">
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dialog role is interactive per WAI-ARIA; jsx-a11y v6 does not recognise it as such */}
             <div
               className="lp-modal"
               role="dialog"
               aria-modal="true"
               aria-labelledby="access-modal-heading"
+              tabIndex={-1}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <button type="button" className="lp-modal-close" onClick={closeAccess} aria-label="Close">
                 <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>

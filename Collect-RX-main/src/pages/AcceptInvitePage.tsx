@@ -95,7 +95,6 @@ export default function AcceptInvitePage() {
                   value={form.displayName}
                   onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
                   required
-                  autoFocus
                 />
               </div>
               <div className="crx-portal-field">

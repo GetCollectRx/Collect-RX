@@ -1,8 +1,7 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, CarrierId } from '@prisma/client'
 import type { VapiWebhookPayload } from '../../vapi/client.js';
 import { resolveOutcomeFromWebhookPayload } from '../../outcome/webhookOutcomeResolver.js';
 import { recordVapiWebhook } from '../observability/metrics.js';
-import type { CarrierId } from '@prisma/client';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall, mapTranscriptLine } from './deskMappers.js';
 import {
@@ -15,6 +14,7 @@ import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
 import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
 import { processRecoveryCallEnded } from '../vapi/vapiWebhook.js';
+import { appendAuditLog } from '../audit/auditLog.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
   message?: { toolCalls?: Array<{ function?: { name?: string } }> };
@@ -71,6 +71,13 @@ export async function processVapiDeskWebhook(
         data: {
           call: mapActiveCall(attempt, claim, (queue?.attempts ?? 0) || 1),
         },
+      });
+      await appendAuditLog(prisma, {
+        practiceId: claim.practiceId,
+        action: 'ADAD_DISCLOSURE_SCHEDULED',
+        subjectType: 'CallAttempt',
+        subjectId: attempt.id,
+        details: { vapiCallId },
       });
     }
     return;
@@ -205,6 +212,20 @@ async function processCallEndedDesk(
     where: { vapiCallId },
     select: { id: true, outcome: true },
   });
+
+  if (payload.transcript) {
+    // CRTC ADAD: verify the mandatory automated-system identification was
+    // delivered within the opening utterance (first ~300 chars ≈ 20 seconds).
+    const opening = payload.transcript.slice(0, 300).toLowerCase();
+    const disclosureVerified = opening.includes('automated');
+    await appendAuditLog(prisma, {
+      practiceId: claim.practiceId,
+      action: disclosureVerified ? 'ADAD_DISCLOSURE_VERIFIED' : 'ADAD_DISCLOSURE_UNVERIFIED',
+      subjectType: 'CallAttempt',
+      subjectId: attemptAfter?.id ?? existing?.id ?? vapiCallId,
+      details: { vapiCallId, verified: disclosureVerified },
+    });
+  }
 
   broadcastDesk(claim.practiceId, {
     type: 'call.ended',

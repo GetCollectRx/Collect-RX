@@ -1,9 +1,11 @@
 import type { PrismaClient, Prospect, ProspectStage } from '@prisma/client';
-import { COLD_SEQUENCE, interpolateSubject } from './emailTemplates.js';
+import { COLD_SEQUENCE, resolveColdSubject } from './emailTemplates.js';
 import { sendProspectEmail } from './prospectEmail.js';
 import { logProspectActivity } from './prospectActivity.js';
 import { runReferralSequenceTick } from './referralEngine.js';
 import { runPreDemoEmailTick } from './demoScheduler.js';
+import { isWithinColdSendWindow } from './sendWindow.js';
+import { runPostDemoReminderTick } from './postDemoFollowUp.js';
 
 const STAGE_ORDER: ProspectStage[] = [
   'new',
@@ -43,6 +45,7 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
   coldEmailsSent: number;
   referralEmailsSent: number;
   preDemoEmailsSent: number;
+  postDemoReminders: number;
 }> {
   const now = new Date();
   let coldEmailsSent = 0;
@@ -79,8 +82,12 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
       continue;
     }
 
+    if (!isWithinColdSendWindow(prospect, now)) {
+      continue;
+    }
+
     const html = stepDef.buildHtml(prospect);
-    const subject = interpolateSubject(stepDef.subject, prospect);
+    const subject = resolveColdSubject(stepDef.step, prospect);
     const sent = await sendProspectEmail(
       prospect,
       {
@@ -113,5 +120,6 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
 
   const referralEmailsSent = await runReferralSequenceTick(prisma);
   const preDemoEmailsSent = await runPreDemoEmailTick(prisma);
-  return { coldEmailsSent, referralEmailsSent, preDemoEmailsSent };
+  const postDemoReminders = await runPostDemoReminderTick(prisma);
+  return { coldEmailsSent, referralEmailsSent, preDemoEmailsSent, postDemoReminders };
 }

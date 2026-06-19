@@ -1,6 +1,5 @@
 import { createRequire } from 'module';
-import type { Prospect } from '@prisma/client';
-import type { PrismaClient } from '@prisma/client';
+import type { Prospect, PrismaClient } from '@prisma/client'
 import { logProspectActivity } from './prospectActivity.js';
 
 const require = createRequire(import.meta.url);
@@ -27,8 +26,9 @@ export async function sendProspectEmail(
   if (!prospect.email || prospect.optOutAt) return false;
 
   const sg = getSendGrid();
-  const from = process.env.SENDGRID_FROM_EMAIL || 'billing@collectrx.ca';
-  const fromName = process.env.SENDGRID_FROM_NAME || 'CollectRx';
+  const from = process.env.SENDGRID_FROM_EMAIL || 'khalid@collectrx.ca';
+  const fromName = process.env.SENDGRID_FROM_NAME || 'Khalid';
+  const replyTo = process.env.SENDGRID_REPLY_TO || 'reply@inbound.collectrx.ca';
 
   if (!sg) {
     console.log('[prospectEmail] SENDGRID_API_KEY unset — would send to', prospect.email, opts.subject);
@@ -42,6 +42,7 @@ export async function sendProspectEmail(
     await sg.send({
       to: prospect.email,
       from: { email: from, name: fromName },
+      replyTo: replyTo,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,

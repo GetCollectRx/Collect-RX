@@ -33,6 +33,18 @@ interface PriorityRankRow {
 
 type CarrierPerfRow = { carrier: string; rate: number; resolved: number; total: number }
 
+interface CollectionRate { totalCollected: number }
+interface FunnelStage { stage: string; count: number; dropOff: number }
+interface PriorityBalance {
+  id: string | number
+  patient: { displayName: string }
+  daysOutstanding: number
+  amount: number
+  currentStage: string
+}
+interface MsgEffectRow { messageType: string; paymentRate: number }
+interface PaymentTrendRow { week: string; totalAmount?: number }
+
 interface InsuranceAnalytics {
   timeSaved: {
     completedCalls: number
@@ -505,11 +517,11 @@ export default function Analytics() {
     )
   }
   const [loading,        setLoading]       = useState(false)
-  const [collectionRate, setCollectionRate] = useState<any>(null)
-  const [funnel,         setFunnel]        = useState<any[]>([])
-  const [priorityBal,    setPriorityBal]   = useState<any[]>([])
-  const [msgEffect,      setMsgEffect]     = useState<any[]>([])
-  const [paymentTrends,  setPaymentTrends] = useState<any[]>([])
+  const [collectionRate, setCollectionRate] = useState<CollectionRate | null>(null)
+  const [funnel,         setFunnel]        = useState<FunnelStage[]>([])
+  const [priorityBal,    setPriorityBal]   = useState<PriorityBalance[]>([])
+  const [msgEffect,      setMsgEffect]     = useState<MsgEffectRow[]>([])
+  const [paymentTrends,  setPaymentTrends] = useState<PaymentTrendRow[]>([])
   const [carrierPerf,    setCarrierPerf]   = useState<CarrierPerfRow[]>([])
   const [practicePerf, setPracticePerf]   = useState<{
     openArTotal: number
@@ -581,7 +593,7 @@ export default function Analytics() {
     ? `${(((collectionRate.totalCollected - 500) / 500) * 100).toFixed(0)}%`
     : 'N/A'
 
-  const lineData = paymentTrends.map((t: any) => ({
+  const lineData = paymentTrends.map((t) => ({
     label: new Date(t.week).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }),
     value: t.totalAmount ?? 0,
   }))
@@ -705,7 +717,7 @@ export default function Analytics() {
             <Card>
               <CardHeader title="Collection Funnel" subtitle="Balances by stage, where drop-offs occur" />
               <BarChart
-                data={funnel.map((s: any) => ({
+                data={funnel.map((s) => ({
                   label: s.stage.replace(/_/g, ' ').slice(0, 8),
                   value: s.count,
                   color: s.dropOff > 0 ? '#f59e0b' : '#0F6E56',
@@ -769,7 +781,7 @@ export default function Analytics() {
             <Card>
               <CardHeader title="Top Priority Balances" subtitle="Ranked by age × amount" />
               <div className="space-y-2">
-                {priorityBal.slice(0, 8).map((b: any, i: number) => (
+                {priorityBal.slice(0, 8).map((b, i) => (
                   <div key={b.id} className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                     <span className={`text-xs font-bold w-6 text-center ${i < 3 ? 'text-red-500' : 'text-amber-500'}`}>
                       #{i + 1}
@@ -792,7 +804,7 @@ export default function Analytics() {
             <Card>
               <CardHeader title="Message Effectiveness" subtitle="Payment rates by message type" />
               <div className="space-y-3">
-                {msgEffect.map((m: any) => (
+                {msgEffect.map((m) => (
                   <div key={m.messageType} className="flex items-center gap-3">
                     <span className="text-xs font-medium text-gray-600 dark:text-gray-300 w-28 truncate">
                       {m.messageType}

@@ -87,31 +87,19 @@ describe('Practice-scoped APIs — require authentication', () => {
 });
 
 describe('Public patient pay — no auth', () => {
-  it('GET /api/public/pay/:token returns 400 for malformed token', async () => {
+  it('GET /api/public/pay/:token returns 410 (patient outreach permanently disabled)', async () => {
     const res = await request(app).get('/api/public/pay/nonexistent-token-for-tests');
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(410);
     expect(res.headers['content-type']).toMatch(/json/i);
-    expect(res.body).toMatchObject({ error: 'Invalid link' });
+    expect(res.body).toMatchObject({ error: expect.stringMatching(/insurance-carrier recovery only/i) });
   });
 
-  it.skipIf(!dbReady)(
-    'GET /api/public/pay/:token returns 404 JSON for unknown valid-format token',
-    async () => {
-      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
-      expect(res.status).toBe(404);
-      expect(res.headers['content-type']).toMatch(/json/i);
-      expect(res.body).toMatchObject({ error: expect.any(String) });
-    },
-  );
-
-  it.skipIf(dbReady)(
-    'GET /api/public/pay/:token returns 503 when database is unreachable',
-    async () => {
-      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
-      expect(res.status).toBe(503);
-      expect(res.body).toMatchObject({ error: expect.stringMatching(/temporarily unavailable/i) });
-    },
-  );
+  it('GET /api/public/pay/:token returns 410 for a valid-format token too', async () => {
+    const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
+    expect(res.status).toBe(410);
+    expect(res.headers['content-type']).toMatch(/json/i);
+    expect(res.body).toMatchObject({ error: expect.stringMatching(/insurance-carrier recovery only/i) });
+  });
 });
 
 describe('Stripe Connect — onboard return URL must be signed or session', () => {

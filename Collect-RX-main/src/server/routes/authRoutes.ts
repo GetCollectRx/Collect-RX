@@ -10,9 +10,9 @@ import {
   practiceRoleToBrief,
   ROLE_LEVEL,
   authPracticeId,
+  type UserAuthPayload,
 } from '../accessControl/types.js';
 import type { UserRole } from '../../types/userRole.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
 import {
   setUserAuthCookie,
   setPlatformDevAuthCookie,

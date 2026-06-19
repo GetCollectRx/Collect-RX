@@ -4,6 +4,35 @@ import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
 import { Card, CardHeader, StageBadge, Badge, Button, DataState } from '../components/ui'
 
+interface BalanceRecord {
+  practice?: { name?: string }
+  patient?: { displayName?: string; emailFake?: string; phoneFake?: string; preferredChannel?: string }
+  currentStage?: string
+  status?: string
+  daysOutstanding: number
+  amount: number
+  source?: string
+  createdAt: string
+  dueDate: string
+  states?: Array<{ id: string | number; stage: string; stageAt: string }>
+  outreachEvents?: Array<{
+    id: string | number
+    templateKey: string
+    sentAt: string
+    channel: string
+    deliveryStatus: string
+    responseStatus: string
+    messageBody: string
+  }>
+  paymentEvents?: Array<{
+    id: string | number
+    paidAt: string
+    amountCents: number
+    method: string
+    result: string
+  }>
+}
+
 function fmtCurrency(v: number) {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(v)
 }
@@ -44,7 +73,7 @@ function TimelineItem({ icon, title, time, children }: {
 
 export default function BalanceDetail() {
   const { id } = useParams()
-  const [balance, setBalance] = useState<any>(null)
+  const [balance, setBalance] = useState<BalanceRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -139,11 +168,11 @@ export default function BalanceDetail() {
         <CardHeader title="Activity Timeline" subtitle="All stage changes, messages, and payments" />
         <div className="mt-1">
           {/* Stage transitions */}
-          {balance.states?.map((s: any) => (
+          {balance.states?.map((s) => (
             <TimelineItem key={s.id} icon="🔄" title={`Stage → ${s.stage}`} time={fmtDt(s.stageAt)} />
           ))}
           {/* Outreach events */}
-          {balance.outreachEvents?.map((e: any) => (
+          {balance.outreachEvents?.map((e) => (
             <TimelineItem key={e.id} icon="💬" title={`Message sent: ${e.templateKey}`} time={`${fmtDt(e.sentAt)} via ${e.channel}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Badge color={e.deliveryStatus === 'SENT' ? 'blue' : 'red'}>{e.deliveryStatus}</Badge>
@@ -157,7 +186,7 @@ export default function BalanceDetail() {
             </TimelineItem>
           ))}
           {/* Payments */}
-          {balance.paymentEvents?.map((p: any) => (
+          {balance.paymentEvents?.map((p) => (
             <TimelineItem key={p.id} icon="💰" title="Payment received" time={fmtDt(p.paidAt)}>
               <div className="text-sm text-gray-700 dark:text-gray-300 space-y-0.5">
                 <p><span className="text-gray-500">Amount:</span> <strong>{fmtCurrency(p.amountCents / 100)}</strong></p>

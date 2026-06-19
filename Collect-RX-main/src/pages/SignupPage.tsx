@@ -175,7 +175,6 @@ export default function SignupPage() {
                     value={form.practiceName}
                     onChange={e => setForm(f => ({ ...f, practiceName: e.target.value }))}
                     required={selectedRole === 'practice_owner'}
-                    autoFocus
                   />
                 </div>
               )}
@@ -189,7 +188,6 @@ export default function SignupPage() {
                   value={form.displayName}
                   onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
                   required
-                  autoFocus={selectedRole !== 'practice_owner'}
                 />
               </div>
               <div className="crx-portal-field">

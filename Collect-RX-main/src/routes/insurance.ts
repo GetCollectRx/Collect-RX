@@ -28,7 +28,10 @@ import {
   redactInsuranceClaimsList,
 } from '../server/accessControl/redaction.js';
 import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
+import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { piiVault } from '../pii-vault.js';
+import logger from '../logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -397,16 +400,59 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
 
-    // Initiate Vapi call
+    const [practice, practiceSettings] = await Promise.all([
+      prisma.practice.findUnique({ where: { id: practiceId }, select: { name: true } }),
+      getPracticeSettings(prisma, practiceId),
+    ]);
+    const carrierSettings = practiceSettings.carrierConfigs.find(
+      (c) => c.carrierId === claim.carrierId,
+    );
+
+    // ── PHI RESOLUTION ────────────────────────────────────────────────────────
+    // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
+    // only — never stored in DB, never in logs. Token must still be live in
+    // piiVault (4-hour TTL from import time).
+    const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger');
+    if (!phiResult.success || !phiResult.phi) {
+      logger.warn?.('[insurance trigger] PHI token expired or missing', {
+        claimId,
+        patientToken: claim.patientToken,
+        error: phiResult.error,
+      });
+      return res.status(422).json({
+        success: false,
+        error: 'PHI token has expired — re-import the claim to refresh it',
+      });
+    }
+    logger.audit?.('PHI_TOKEN_RESOLVED', {
+      claimId,
+      patientToken: claim.patientToken,
+      callerContext: 'insurance-trigger',
+      phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+
+    // Initiate Vapi call — PHI injected as ephemeral call variables
     const vapiResult = await vapiClient.initiateCall({
       claimId: claim.id,
       carrierId: claim.carrierId,
       practiceId,
-      patientToken: claim.patientToken,  // UUID from PIIVault — no real PHI
+      patientToken: claim.patientToken,
+      // PHI — from piiVault.detokenize() above; ephemeral, never stored
+      patientName:  phiResult.phi.patientName,
+      patientDob:   phiResult.phi.dateOfBirth,
+      policyNumber: phiResult.phi.subscriberId,
+      groupNumber:  phiResult.phi.groupPolicyNumber,
       carrierPhone: carrierConfig.phone,
       claimNumber: claim.claimNumber,
       billedAmount: Number(claim.billedAmount),
       outstandingAmount: Number(claim.outstandingAmount),
+      daysOutstanding: claim.daysOutstanding,
+      treatmentDate: claim.servicedAt?.toISOString().split('T')[0],
+      practiceName: practice?.name ?? '',
+      providerNumber: carrierSettings?.providerNumber ?? '',
+      practicePhone: practiceSettings.escalationPhoneNumber,
+      // TODO: add Practice.npi, Practice.taxId to schema
+      // TODO: add InsuranceClaim.treatmentCodes, InsuranceClaim.submittedAt to schema
     });
 
     // Update claim status, create CallAttempt row, and update queue atomically

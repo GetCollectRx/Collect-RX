@@ -236,6 +236,8 @@ export default function PracticeSettings() {
                     <Th align="right">Max attempts</Th>
                     <Th>Window</Th>
                     <Th>Notes</Th>
+                    <Th>Provider number</Th>
+                    <Th>Auth submitted</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -281,6 +283,54 @@ export default function PracticeSettings() {
                           disabled={isReadOnly}
                           onChange={(e) => updateCarrier(idx, { notes: e.target.value })}
                         />
+                      </Td>
+                      <Td>
+                        <input
+                          type="text"
+                          className="w-full text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+                          value={c.providerNumber}
+                          disabled={isReadOnly}
+                          maxLength={50}
+                          placeholder="e.g. ON-123456"
+                          onChange={(e) => updateCarrier(idx, { providerNumber: e.target.value })}
+                        />
+                      </Td>
+                      <Td>
+                        {c.authorizationSubmitted ? (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-green-700 dark:text-green-400">
+                              Submitted{c.authorizationSubmittedAt
+                                ? ` ${new Date(c.authorizationSubmittedAt).toLocaleDateString()}`
+                                : ''}
+                            </span>
+                            {!isReadOnly && (
+                              <button
+                                type="button"
+                                className="text-gray-500 underline hover:text-gray-700 dark:hover:text-gray-300"
+                                onClick={() =>
+                                  updateCarrier(idx, {
+                                    authorizationSubmitted: false,
+                                    authorizationSubmittedAt: null,
+                                  })
+                                }
+                              >
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={c.authorizationSubmitted}
+                            disabled={isReadOnly}
+                            onChange={(e) =>
+                              updateCarrier(idx, {
+                                authorizationSubmitted: e.target.checked,
+                                authorizationSubmittedAt: e.target.checked ? new Date().toISOString() : null,
+                              })
+                            }
+                          />
+                        )}
                       </Td>
                     </Tr>
                   ))}

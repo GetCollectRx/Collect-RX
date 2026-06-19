@@ -106,12 +106,25 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 ### Abeldent Connector (Phase 4)
 
-Abeldent Local Plus is the dental practice management software running on SQL Server on Dr. Hasan's Windows machine.
+AbelDent is one supported PMS connector. It is optional. New practices onboard via CSV (see CSV Import below). The AbelDent connector is only active when `ABELDENT_SCHEMA_MAP` is set. The server starts and runs fully without it.
 
+Schema discovery is deferred until access to a Windows AbelDent installation is available. Do not block any work on this.
+
+When AbelDent access is available:
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
 3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
 4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Railway API.
+
+### CSV Import (Primary Onboarding Path)
+
+For practices without AbelDent (the majority of new onboarding), CSV is the primary data path. The full pipeline is built:
+
+- `src/server/csv/parseSimple.ts` — parses and validates CSV with column alias mapping
+- `src/server/pms/pmsImportPipeline.ts` — parse → validate → Prisma upsert → sync to work queue
+- `src/server/pms/pmsRegistry.ts` — `other` (generic CSV) is a valid vendor with `importFamily: 'generic'`, `supportsDesktopConnector: false`
+
+A practice can be fully onboarded via CSV with no desktop app required. The Electron app is only needed for AbelDent-connected practices.
 
 ---
 

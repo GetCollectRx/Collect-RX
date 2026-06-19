@@ -35,7 +35,9 @@ const AUTH_ROUTE_FILES = [
   'server/routes/adminRoutes.ts',
   'server/routes/pmsSyncRoutes.ts',
   'server/routes/patientArApi.ts',
-  'server/routes/balancesOutreachRoutes.ts',
+  // balancesOutreachRoutes.ts is intentionally excluded: every route is a hard-coded
+  // 410 (legacy patient outreach, disabled by insuranceOnlyPolicy) with no DB access,
+  // so there is no practiceId to scope.
   'server/routes/benefitsApi.ts',
   'server/routes/billingRoutes.ts',
   'server/routes/cdcp.ts',

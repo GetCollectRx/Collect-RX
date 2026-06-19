@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
-import { ROLE_LABELS } from '../lib/authTypes'
-import type { PracticeRole } from '../lib/authTypes'
+import { ROLE_LABELS, type PracticeRole } from '../lib/authTypes'
 import { usePractice } from '../context/PracticeContext'
 
 interface StaffUser {

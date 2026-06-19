@@ -126,7 +126,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
 
-    let revenueToday = 0;
+    const revenueToday = 0;
     let revenueThisWeek = 0;
 
     const callsPlacedToday = await prisma.callAttempt.count({

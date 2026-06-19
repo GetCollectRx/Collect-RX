@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { Action } from '../accessControl/permissions.js';
-import { canPerformAction } from '../accessControl/permissions.js';
+import { canPerformAction, type Action } from '../accessControl/permissions.js'
 import { getUserRole } from '../accessControl/types.js';
 
 /** Rejects requests when the session role is not allowed the MCP-aligned action. */

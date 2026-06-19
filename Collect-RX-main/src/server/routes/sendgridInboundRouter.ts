@@ -41,7 +41,7 @@ export function createSendgridInboundRouter(prisma: PrismaClient): Router {
       return res.status(400).send('missing content');
     }
 
-    let prospectId = extractProspectIdFromHeaders(headerMap);
+    const prospectId = extractProspectIdFromHeaders(headerMap);
     let prospect = prospectId
       ? await prisma.prospect.findUnique({ where: { id: prospectId } })
       : null;

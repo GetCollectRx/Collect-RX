@@ -1,11 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS } from '../../carriers/adapter.js';
+import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall } from '../../vapi/client.js';
-import { isWithinCallWindow } from '../../carriers/adapter.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
+import { getPracticeSettings } from '../services/practiceSettingsService.js';
+import { piiVault } from '../../pii-vault.js';
+import logger from '../../logger.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -119,15 +121,68 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
+
+    const practice = await prisma.practice.findUnique({
+      where: { id: practiceId },
+      select: { name: true },
+    });
+    const practiceSettings = await getPracticeSettings(prisma, practiceId);
+    const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
+      (c) => c.carrierId === next.claim.carrierId,
+    );
+    if (!practiceCarrierConfig?.authorizationSubmitted) {
+      console.warn('[deskQueueEngine] dispatching without carrier authorization on file', {
+        practiceId,
+        carrierId: next.claim.carrierId,
+        claimId: next.claimId,
+      });
+    }
+
+    // ── PHI RESOLUTION ─────────────────────────────────────────────────────────
+    // Detokenize the UUID stored in DB to get the real patient PHI.
+    // PHI lives in piiVault (in-memory, 4-hour TTL) only — never in the DB.
+    // If the token has expired (e.g. server restart) we skip this claim and
+    // log the error so a re-tokenization pass can recover it.
+    const phiResult = piiVault.detokenize(
+      next.claim.patientToken,
+      'queue-engine',
+    );
+    if (!phiResult.success || !phiResult.phi) {
+      logger.warn('[deskQueueEngine] PHI token expired or missing — skipping claim', {
+        claimId: next.claimId,
+        patientToken: next.claim.patientToken,
+        error: phiResult.error,
+      });
+      continue;
+    }
+    logger.audit?.('PHI_TOKEN_RESOLVED', {
+      claimId: next.claimId,
+      patientToken: next.claim.patientToken,
+      callerContext: 'queue-engine',
+      phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+
     const vapiResult = await initiateCall({
       claimId: next.claim.id,
       carrierId: next.claim.carrierId,
       patientToken: next.claim.patientToken,
+      // PHI — resolved from piiVault.detokenize() above; ephemeral, never stored
+      patientName:  phiResult.phi.patientName,
+      patientDob:   phiResult.phi.dateOfBirth,
+      policyNumber: phiResult.phi.subscriberId,     // member/certificate ID
+      groupNumber:  phiResult.phi.groupPolicyNumber, // group/plan ID
       carrierPhone: carrierConfig.phone,
       claimNumber: next.claim.claimNumber,
       billedAmount: Number(next.claim.billedAmount),
       outstandingAmount: Number(next.claim.outstandingAmount),
+      daysOutstanding: next.claim.daysOutstanding,
+      treatmentDate: next.claim.servicedAt?.toISOString().split('T')[0],
       practiceId,
+      practiceName: practice?.name ?? '',
+      providerNumber: practiceCarrierConfig?.providerNumber ?? '',
+      practicePhone: practiceSettings.escalationPhoneNumber,
+      // TODO: add Practice.npi, Practice.taxId to schema
+      // TODO: add InsuranceClaim.treatmentCodes, InsuranceClaim.submittedAt to schema
     });
 
     const attempt = await prisma.callAttempt.create({
