@@ -1,15 +1,11 @@
-# Fast checks on every push/PR (no Electron — avoids macOS/Windows minutes).
-name: CollectRx CI
+name: CollectRx PRD Gate
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main, dev]
   pull_request:
-    branches: [main, dev]
+    branches: [prd]
 
 concurrency:
-  group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
+  group: prd-gate-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -19,9 +15,19 @@ env:
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
-  verify:
+  enforce-source-branch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    steps:
+      - name: Reject non-dev sources
+        if: github.head_ref != 'dev'
+        run: |
+          echo "PRs to prd must come from dev. Source branch was: ${{ github.head_ref }}"
+          exit 1
+
+  prd-checks:
+    needs: enforce-source-branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -45,10 +51,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      - name: Install dependencies (workspace root)
+      - name: Install dependencies
         run: npm ci
 
-      # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
         working-directory: Collect-RX-main
         run: npm run db:generate
@@ -61,29 +66,25 @@ jobs:
         working-directory: Collect-RX-main
         run: npm run typecheck
 
+      - name: Lint
+        working-directory: Collect-RX-main
+        run: npm run lint
+
       - name: Unit & integration tests
         working-directory: Collect-RX-main
         env:
           CI: "true"
         run: npm test
 
-      - name: Upload test report (JUnit)
+      - name: Frontend build
+        working-directory: Collect-RX-main
+        run: npx vite build
+
+      - name: Upload test report
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: vitest-junit
+          name: prd-gate-junit
           path: Collect-RX-main/test-results/junit.xml
           if-no-files-found: ignore
-
-      - name: Notify ops (CI failure)
-        if: failure() && env.OPS_ALERT_WEBHOOK_URL != ''
-        working-directory: Collect-RX-main
-        env:
-          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_SERVER_URL: ${{ github.server_url }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: node scripts/ci-notify-failure.mjs
