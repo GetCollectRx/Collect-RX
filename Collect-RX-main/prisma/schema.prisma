@@ -50,6 +50,7 @@ model Practice {
   users                 User[]
   usagePeriods          UsagePeriod[]
   featureFlags          FeatureFlag[]
+  inviteTokens          InviteToken[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -1101,6 +1102,35 @@ model UsagePeriod {
   @@map("usage_periods")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PHI Vault — encrypted persistence layer for PIIVault restart resilience
+//
+// Each row stores one patientToken → PatientPHI mapping, encrypted with
+// AES-256-GCM using PHI_ENCRYPTION_KEY from the secret manager.
+// Rows expire at the same time as the in-memory token (TOKEN_TTL_MS, 4 h).
+// On server restart, rehydrate() decrypts all live rows into the in-memory
+// vault so the queue engine can dispatch without re-importing claims.
+//
+// NEVER store plaintext PHI here. Ciphertext, IV, and auth tag only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Encrypted PHI backing store for in-memory PIIVault restart resilience.
+model PhiVaultEntry {
+  /// UUID token — same value stored in InsuranceClaim.patientToken.
+  token      String   @id
+  /// AES-256-GCM ciphertext of JSON.stringify(PatientPHI), hex-encoded.
+  ciphertext String
+  /// Hex-encoded 12-byte random IV.
+  iv         String
+  /// Hex-encoded 16-byte GCM auth tag.
+  authTag    String   @map("auth_tag")
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("phi_vault_entries")
+}
+
 /// Per-practice (or global, when practiceId is null) feature pause state —
 /// e.g. auto-pause on hard usage cap (tiers.ts hardStopAtLimit) or carrier-wide
 /// suspension. Resume requires manual confirmation unless explicitly disabled.
@@ -1219,6 +1249,10 @@ model Prospect {
   painPoints           Json?          @map("pain_points")
   metadata             Json?
   lastVapiCallId       String?        @map("last_vapi_call_id")
+  /// Set when Khalid manually triggers start-trial. Drives trial onboarding sequence.
+  trialStartedAt       DateTime?      @map("trial_started_at")
+  /// Which trial onboarding email has been sent next (0=pre-kickoff through 4=day-60).
+  trialSequenceStep    Int            @default(0) @map("trial_sequence_step")
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
   activities           ProspectActivity[]
@@ -1266,4 +1300,38 @@ model MarketingLearningRun {
 
   @@index([createdAt])
   @@map("marketing_learning_runs")
+}
+
+model AgentRun {
+  id          String   @id @default(cuid())
+  agentName   String   @map("agent_name")
+  runAt       DateTime @default(now()) @map("run_at")
+  severity    String   // CRITICAL | HIGH | MEDIUM | LOW | OK
+  score       Int?     // 0–100 quality/health score where applicable
+  summary     String   @map("summary")
+  findings    Json     @default("[]") // AgentFinding[]
+  downstream  Json     @default("[]") // string[] — agent names this output feeds
+  escalated   Boolean  @default(false)
+  raw         Json?    // full structured output blob
+
+  @@index([agentName, runAt])
+  @@index([severity, runAt])
+  @@index([runAt])
+  @@map("agent_runs")
+}
+
+/// Single-use invite token for staff onboarding. Created by practice_owner/office_manager.
+model InviteToken {
+  id         String       @id @default(uuid())
+  practiceId String
+  email      String
+  role       PracticeRole
+  token      String       @unique @default(uuid())
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime     @default(now())
+  practice   Practice     @relation(fields: [practiceId], references: [id])
+
+  @@index([token])
+  @@index([practiceId])
 }

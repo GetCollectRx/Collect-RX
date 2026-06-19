@@ -116,6 +116,11 @@ export function LoginPage() {
           </button>
         </form>
 
+        <p className="crx-portal-note" style={{ marginTop: '16px' }}>
+          New practice?{' '}
+          <Link to="/signup" className="crx-portal-link">Create an account</Link>
+        </p>
+
         <details className="crx-portal-divider crx-portal-details">
           <summary>Auditor / billing ops / platform admin</summary>
           <p className="crx-portal-note">

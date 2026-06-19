@@ -4,6 +4,8 @@ const PUBLIC_APP_PREFIXES = [
   '/product',
   '/changelog',
   '/reset-password',
+  '/signup',
+  '/accept-invite',
   '/demo',
   '/landing',
   '/how-it-works',
