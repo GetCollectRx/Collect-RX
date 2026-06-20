@@ -2,7 +2,8 @@
  * AgentRunner — Core LLM execution layer for CollectRx's 29-agent system.
  *
  * Each agent is defined by a .md file in $AGENTS_DIR (defaults to
- * ../../agents relative to process.cwd()). The .md becomes the system
+ * ./agents relative to process.cwd() — bundled inside Collect-RX-main/agents/).
+ * The .md becomes the system
  * prompt. The runner injects context data, calls Gemini, parses structured
  * JSON output, and routes actions to Notion / audit log / incident system.
  *
@@ -16,10 +17,11 @@ import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog.js';
 
 // ── Path resolution ───────────────────────────────────────────────────────────
-// On Railway: set AGENTS_DIR to the absolute path where agents/ is deployed.
-// Locally:    defaults to ../../agents relative to Collect-RX-main cwd.
+// agents/ is bundled inside Collect-RX-main/ (copied at repo level, included in Docker image).
+// Railway: AGENTS_DIR=/app/agents (set in env vars).
+// Local dev: defaults to ./agents relative to Collect-RX-main cwd.
 function getAgentsDir(): string {
-  return process.env.AGENTS_DIR ?? path.resolve(process.cwd(), '../../agents');
+  return process.env.AGENTS_DIR ?? path.resolve(process.cwd(), './agents');
 }
 
 export function loadAgentPrompt(agentName: string): string {
