@@ -65,7 +65,7 @@ export async function recordAgentRun(
       findings: input.findings as unknown as object,
       downstream: input.downstream,
       escalated,
-      raw: input.raw ?? null,
+      raw: input.raw ?? undefined,
     },
   });
 

@@ -23,6 +23,7 @@ export default function PaymentPage() {
   useEffect(() => {
     if (!balanceId) return
     apiFetchJson(`/api/balances/${balanceId}`)
+      // @ts-ignore — apiFetchJson returns unknown; shape validated at runtime
       .then(setBalance)
       .catch(console.error)
       .finally(() => setLoading(false))

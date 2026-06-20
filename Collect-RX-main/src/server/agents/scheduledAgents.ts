@@ -40,7 +40,7 @@ interface ScheduledAgent {
 async function buildCarrierIvrContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const outcomes = await prisma.callAttempt.groupBy({
-    by: ['carrierId', 'outcome'],
+    by: ['outcome'],
     where: { completedAt: { gte: since } },
     _count: { _all: true },
   }).catch(() => []);
@@ -50,40 +50,29 @@ async function buildCarrierIvrContext(prisma: PrismaClient) {
 async function buildDatabaseHealthContext(prisma: PrismaClient) {
   const [claimCount, escalationCount, callAttemptCount] = await Promise.all([
     prisma.insuranceClaim.count().catch(() => -1),
-    prisma.escalation.count().catch(() => -1),
+    prisma.claimRecoveryAction.count({ where: { actionType: 'HUMAN_ESCALATION' } }).catch(() => -1),
     prisma.callAttempt.count().catch(() => -1),
   ]);
   return {
-    tableCounts: { insuranceClaim: claimCount, escalation: escalationCount, callAttempt: callAttemptCount },
+    tableCounts: { insuranceClaim: claimCount, humanEscalation: escalationCount, callAttempt: callAttemptCount },
     checkedAt: new Date().toISOString(),
   };
 }
 
 async function buildTierBillingContext(prisma: PrismaClient) {
   const practices = await prisma.practice.findMany({
-    select: {
-      id: true, name: true, tier: true,
-      callAttempts: {
-        where: { createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-        select: { durationSeconds: true },
-      },
-    },
+    select: { id: true, name: true, billingTier: true },
   }).catch(() => []);
   return {
-    practices: practices.map((p) => ({
-      id: p.id, name: p.name, tier: p.tier,
-      minutesUsedThisMonth: Math.round(
-        p.callAttempts.reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0) / 60,
-      ),
-    })),
+    practices: practices.map((p) => ({ id: p.id, name: p.name, tier: p.billingTier })),
   };
 }
 
 async function buildHallucinationContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const recentCalls = await prisma.callAttempt.findMany({
-    where: { completedAt: { gte: since }, outcome: { in: ['RESOLVED', 'DENIED', 'APPROVED_PENDING_PAYMENT'] } },
-    select: { id: true, vapiCallId: true, outcome: true, carrierId: true, claimId: true },
+    where: { completedAt: { gte: since }, outcome: { in: ['RESOLVED', 'DENIED'] } },
+    select: { id: true, vapiCallId: true, outcome: true, claimId: true },
     take: 50,
   }).catch(() => []);
   return { windowHours: 24, highStakesCalls: recentCalls };
@@ -106,37 +95,32 @@ async function buildCallQualityContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const calls = await prisma.callAttempt.findMany({
     where: { completedAt: { gte: since } },
-    select: { id: true, carrierId: true, outcome: true, durationSeconds: true, claimId: true },
+    select: { id: true, outcome: true, durationSeconds: true, claimId: true },
     take: 100,
   }).catch(() => []);
-  const byCarrier = calls.reduce<Record<string, { total: number; resolved: number }>>((acc, c) => {
-    const key = c.carrierId ?? 'unknown';
+  const byOutcome = calls.reduce<Record<string, { total: number; resolved: number }>>((acc, c) => {
+    const key = c.outcome ?? 'UNKNOWN';
     if (!acc[key]) acc[key] = { total: 0, resolved: 0 };
     acc[key].total++;
     if (c.outcome === 'RESOLVED') acc[key].resolved++;
     return acc;
   }, {});
-  return { windowHours: 24, totalCalls: calls.length, byCarrier };
+  return { windowHours: 24, totalCalls: calls.length, byOutcome };
 }
 
 async function buildRiskRadarContext(prisma: PrismaClient) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [recentAlerts, recentEscalations, recentCarrierBlocks] = await Promise.all([
     prisma.auditLog.findMany({
-      where: {
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        action: { contains: 'alert' },
-      },
+      where: { createdAt: { gte: since }, action: { contains: 'alert' } },
       select: { action: true, details: true, createdAt: true },
       take: 50,
     }).catch(() => []),
-    prisma.escalation.count({
-      where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    prisma.claimRecoveryAction.count({
+      where: { actionType: 'HUMAN_ESCALATION', createdAt: { gte: since } },
     }).catch(() => 0),
     prisma.auditLog.count({
-      where: {
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        action: 'carrier.block',
-      },
+      where: { createdAt: { gte: since }, action: 'carrier.block' },
     }).catch(() => 0),
   ]);
   return { windowHours: 24, alertCount: recentAlerts.length, escalationCount: recentEscalations, carrierBlockCount: recentCarrierBlocks };
@@ -144,22 +128,22 @@ async function buildRiskRadarContext(prisma: PrismaClient) {
 
 async function buildCollectionsContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [resolved, total, byCarrier] = await Promise.all([
+  const [resolved, total, byOutcome] = await Promise.all([
     prisma.callAttempt.count({ where: { completedAt: { gte: since }, outcome: 'RESOLVED' } }).catch(() => 0),
     prisma.callAttempt.count({ where: { completedAt: { gte: since } } }).catch(() => 0),
     prisma.callAttempt.groupBy({
-      by: ['carrierId'],
+      by: ['outcome'],
       where: { completedAt: { gte: since } },
       _count: { _all: true },
     }).catch(() => []),
   ]);
-  return { windowDays: 30, resolved, total, successRate: total > 0 ? (resolved / total) : 0, byCarrier };
+  return { windowDays: 30, resolved, total, successRate: total > 0 ? (resolved / total) : 0, byOutcome };
 }
 
 async function buildEscalationTriageContext(prisma: PrismaClient) {
-  const open = await prisma.escalation.findMany({
-    where: { resolvedAt: null },
-    select: { id: true, claimId: true, reason: true, createdAt: true, carrierId: true },
+  const open = await prisma.claimRecoveryAction.findMany({
+    where: { actionType: 'HUMAN_ESCALATION', clearedAt: null },
+    select: { id: true, claimId: true, actionType: true, title: true, detail: true, createdAt: true },
     orderBy: { createdAt: 'asc' },
     take: 50,
   }).catch(() => []);
@@ -183,12 +167,12 @@ async function buildComplianceContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [callCount, practices] = await Promise.all([
     prisma.callAttempt.count({ where: { createdAt: { gte: since } } }).catch(() => 0),
-    prisma.practice.findMany({ select: { id: true, name: true, authorizationSubmitted: true } }).catch(() => []),
+    prisma.practice.findMany({ select: { id: true, name: true, billingTier: true } }).catch(() => []),
   ]);
   return {
     windowDays: 7,
     callsThisWeek: callCount,
-    practices: practices.map((p) => ({ id: p.id, name: p.name, baalSubmitted: p.authorizationSubmitted })),
+    practices: practices.map((p) => ({ id: p.id, name: p.name, billingTier: p.billingTier })),
   };
 }
 
@@ -199,7 +183,7 @@ async function buildWeeklyRoiContext(prisma: PrismaClient) {
     include: { claim: { select: { billedAmount: true } } },
     take: 500,
   }).catch(() => []);
-  const totalRecovered = resolved.reduce((sum, c) => sum + (c.claim?.billedAmount ?? 0), 0);
+  const totalRecovered = resolved.reduce((sum, c) => sum + Number(c.claim?.billedAmount ?? 0), 0);
   return { windowDays: 30, resolvedClaims: resolved.length, totalRecovered };
 }
 
@@ -207,7 +191,7 @@ async function buildTimeSavingsContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const calls = await prisma.callAttempt.findMany({
     where: { completedAt: { gte: since } },
-    select: { durationSeconds: true, practiceId: true },
+    select: { durationSeconds: true },
     take: 1000,
   }).catch(() => []);
   const totalMinutes = calls.reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0) / 60;
@@ -258,7 +242,9 @@ async function buildProductManagerContext(prisma: PrismaClient) {
 }
 
 async function buildProjectManagerContext(prisma: PrismaClient) {
-  const openEscalations = await prisma.escalation.count({ where: { resolvedAt: null } }).catch(() => 0);
+  const openEscalations = await prisma.claimRecoveryAction.count({
+    where: { actionType: 'HUMAN_ESCALATION', clearedAt: null },
+  }).catch(() => 0);
   return { openEscalations, checkType: 'weekly sprint alignment' };
 }
 
@@ -287,18 +273,18 @@ async function buildCompetitiveIntelContext(_prisma: PrismaClient) {
 async function buildVoiceOfCustomerContext(prisma: PrismaClient) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const practices = await prisma.practice.findMany({
-    select: { id: true, name: true, tier: true },
+    select: { id: true, name: true, billingTier: true },
   }).catch(() => []);
-  const escalationCount = await prisma.escalation.count({
-    where: { createdAt: { gte: since } },
+  const escalationCount = await prisma.claimRecoveryAction.count({
+    where: { actionType: 'HUMAN_ESCALATION', createdAt: { gte: since } },
   }).catch(() => 0);
   return { practices, escalationCount, windowDays: 30 };
 }
 
 async function buildClientAcquisitionContext(prisma: PrismaClient) {
   const practices = await prisma.practice.findMany({
-    select: { id: true, name: true, tier: true, createdAt: true },
-    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, billingTier: true },
+    orderBy: { name: 'asc' },
     take: 10,
   }).catch(() => []);
   return { recentPractices: practices, targetICP: 'Canadian dental practices 3–15 chairs' };

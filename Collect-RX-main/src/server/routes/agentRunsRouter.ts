@@ -70,7 +70,7 @@ router.get('/context', requireAgentSecret, async (req, res) => {
 });
 
 // GET /api/agent-runs/digest — HIGH+ findings from last 24 hours for morning digest
-router.get('/digest', requireAgentSecret, async (req, res) => {
+router.get('/digest', requireAgentSecret, async (_req, res) => {
   const prisma = getPrisma();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const runs = await prisma.agentRun.findMany({

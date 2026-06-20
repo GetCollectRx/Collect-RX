@@ -97,6 +97,7 @@ function checkPhiBoundary(): ComplianceCheck[] {
   const hasDetokenize = piiVault.includes('export function detokenize(');
   const vapiWebhook = readSrc('server', 'vapi', 'vapiWebhook.ts');
   const _detokenOnBackend = vapiWebhook.includes('detokenize') || vapiWebhook.includes('piiVault');
+  void _detokenOnBackend;
   results.push(check(
     'A2', 'PHI_BOUNDARY', ['PHIPA', 'PIPEDA'],
     'Detokenization occurs only on the backend after call completion',
@@ -182,6 +183,7 @@ function checkEncryption(): ComplianceCheck[] {
   const phiAesGcm = readSrc('server', 'crypto', 'phiAesGcm.ts');
   const phiAtRest = readSrc('server', 'crypto', 'phiAtRest.ts');
   const _phiKey = readSrc('server', 'crypto', 'phiEncryptionKey.ts');
+  void _phiKey;
   const dbTls = readSrc('server', 'databaseTls.ts');
   const results: ComplianceCheck[] = [];
 
@@ -279,7 +281,9 @@ function checkAccessControl(): ComplianceCheck[] {
   const phiRoutes = readSrc('server', 'accessControl', 'phiRoutes.ts');
   const authenticate = readSrc('server', 'middleware', 'authenticate.ts');
   const _authorizeRole = readSrc('server', 'middleware', 'authorizeRole.ts');
+  void _authorizeRole;
   const _requirePermission = readSrc('server', 'middleware', 'requirePermission.ts');
+  void _requirePermission;
   const results: ComplianceCheck[] = [];
 
   // C1 — RBAC matrix covers all roles

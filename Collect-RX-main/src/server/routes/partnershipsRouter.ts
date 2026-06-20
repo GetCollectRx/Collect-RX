@@ -228,7 +228,7 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
             website: typeof r.website === 'string' ? r.website.trim() : null,
             pmsHint: typeof r.pmsHint === 'string' ? r.pmsHint.trim() : null,
             score: typeof r.score === 'number' ? r.score : 50,
-            source: 'rcdso',
+            source: 'rcdso' as unknown as import('@prisma/client').ProspectSource,
           },
         });
         created++;

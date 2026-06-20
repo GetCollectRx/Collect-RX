@@ -159,6 +159,7 @@ async function processCallEnded(
           carrierId: true,
           claimNumber: true,
           outstandingAmount: true,
+          billedAmount: true,
           daysOutstanding: true,
           status: true,
           patientToken: true,
@@ -320,12 +321,10 @@ async function processCallEnded(
     triggerPostCallDebrief(prisma, callSummary);
     triggerHallucinationDetector(prisma, {
       ...callSummary,
-      referenceNumber: typeof payload.call?.metadata?.referenceNumber === 'string'
-        ? payload.call.metadata.referenceNumber
-        : undefined,
+      referenceNumber: processed.referenceNumber ?? undefined,
     });
 
-    if (processed.outcome === 'ESCALATION_REQUIRED') {
+    if (processed.outcome === 'ESCALATED') {
       triggerEscalationTriage(prisma, {
         claimId: claim.id,
         carrierId: claim.carrierId ?? 'unknown',

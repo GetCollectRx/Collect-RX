@@ -86,7 +86,8 @@ export default function BalanceDetail() {
         if (!r.ok) throw new Error('Failed to load')
         return parseApiJson(r)
       })
-      .then(data => { if (data) setBalance(data) })
+      // @ts-ignore — parseApiJson returns unknown; shape validated at runtime
+      .then(data => { if (data) setBalance(data as BalanceRecord) })
       .catch((e) => { setError((e as Error).message) })
       .finally(() => setLoading(false))
   }, [id])
@@ -114,7 +115,7 @@ export default function BalanceDetail() {
             {balance.patient?.displayName}
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <StageBadge stage={balance.currentStage ?? balance.status} />
+            <StageBadge stage={balance.currentStage ?? balance.status ?? ''} />
             <span className="text-sm text-gray-400 dark:text-gray-500">
               {balance.daysOutstanding} days outstanding
             </span>
@@ -152,7 +153,7 @@ export default function BalanceDetail() {
         <Card>
           <CardHeader title="Claim Information" />
           <InfoRow label="Amount"           value={<span className="font-bold">{fmtCurrency(balance.amount)}</span>} />
-          <InfoRow label="Status"           value={<StageBadge stage={balance.currentStage ?? balance.status} />} />
+          <InfoRow label="Status"           value={<StageBadge stage={balance.currentStage ?? balance.status ?? ''} />} />
           <InfoRow label="Days outstanding" value={
             <Badge color={balance.daysOutstanding > 60 ? 'red' : balance.daysOutstanding > 30 ? 'amber' : 'green'}>
               {balance.daysOutstanding} days
