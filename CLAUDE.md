@@ -80,7 +80,7 @@ Four agents are orchestrated as a squad — they hand off to each other mid-call
 - **Escalation_Closer** — handles denied/disputed claims
 - **Resolution_Closer** — confirms payment, closes the claim
 
-The squad receives only UUID tokens — never real patient names, DOBs, or identifiers. A PIIVault layer detokenizes on the backend after the call.
+The squad receives UUID tokens in metadata — never real patient names, DOBs, or identifiers in metadata. Patient identifiers required for carrier lookup are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens on the backend before the call; PHI is never stored in logs or the database.
 
 ### Eligibility Engine (Phase 3)
 
@@ -131,7 +131,7 @@ A practice can be fully onboarded via CSV with no desktop app required. The Elec
 ## Critical safety rules
 
 ### PHI Boundary
-PHI (patient names, DOBs, health card numbers) **never crosses to Vapi**. The backend tokenizes all identifiers before sending anything to the voice agent. The Vapi squad operates entirely on UUID tokens. Detokenization happens on the backend after call completion. Violating this boundary breaks PHIPA/PIPEDA compliance.
+PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata**. UUID tokens only in metadata. Ephemeral PHI in call `variables` at dispatch time only (see `docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens server-side before the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
 If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.

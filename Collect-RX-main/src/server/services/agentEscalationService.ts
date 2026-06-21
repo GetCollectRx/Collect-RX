@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, Prisma } from '@prisma/client';
 import nodemailer from 'nodemailer';
 
 export interface AgentFinding {
@@ -65,7 +65,7 @@ export async function recordAgentRun(
       findings: input.findings as unknown as object,
       downstream: input.downstream,
       escalated,
-      raw: input.raw ?? undefined,
+      raw: (input.raw ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
 

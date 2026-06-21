@@ -17,10 +17,13 @@
 
 **Current open regulatory risks:**
 - CRTC 2026-132: active consultation — monitor monthly via compliance-checker
-- PHI in Vapi system prompt: P0 open decision — decision pending with Khalid
-- BAAL gate: not enforced in queue engine — decision pending
+- Vendor BAAs (Vapi, Twilio): operator/legal execution pending — see `LEGAL-REVIEW-PROMPT.md`
 
-**Risk level:** HIGH (two P0s open)
+**Closed (2026-06-20):**
+- PHI/Vapi boundary: Option B documented in `PHI-VAPI-BOUNDARY.md`
+- BAAL gate: hard-enforced in `checkCarrierAuthorizationGate()`
+
+**Risk level:** MEDIUM (vendor BAAs pending) / LOW once BAAs executed
 
 ### Domain 2: Carrier Block Risk
 
@@ -155,8 +158,8 @@ FROM "QueueLog";
 | Competitive / Market | 🔴/🟡/🟢 | |
 
 ### Open Decisions Contributing to Risk
-- PHI/Vapi decision: [n] days open — Risk: CRITICAL
-- BAAL gate decision: [n] days open — Risk: HIGH
+- Vendor BAAs (Vapi, Twilio): pending operator/legal execution
+- AbelDent re-engagement: product decision pending
 ```
 
 ---

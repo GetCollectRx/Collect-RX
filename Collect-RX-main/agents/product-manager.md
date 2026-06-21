@@ -22,7 +22,7 @@
 
 ### Tier 1 — Must Have (ship or die)
 Features where absence causes: compliance violation, customer churn, or direct revenue loss.
-Current Tier 1: PHI decision on Vapi prompt, BAAL gate in queue engine, homepage counter fix.
+Current Tier 1: vendor BAA execution (Vapi/Twilio), counsel review of BAAL + Platform Agreement, pilot go-live validation.
 
 ### Tier 2 — Growth Drivers (ship to grow)
 Features that enable: new customer acquisition, upsell to higher tier, or significantly improve retention.

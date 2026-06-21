@@ -30,13 +30,6 @@ export function createBenefitsApiRouter(prisma: PrismaClient): Router {
       if (!carrierCode) {
         return res.status(400).json({ error: 'carrier_code query param is required' });
       }
-      const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken },
-        select: { id: true },
-      });
-      if (!belongs) {
-        return res.status(404).json({ error: 'Patient not found for this practice' });
-      }
       const planYear = await getPlanYear(patientToken, carrierCode);
       if (!planYear) {
         return res.json({ benefits: null, coverage: [], error: 'no_plan_year' });
@@ -90,13 +83,6 @@ export function createBenefitsApiRouter(prisma: PrismaClient): Router {
       const carrierCode = String(body.carrier_code || '').trim();
       if (!patientToken || !carrierCode) {
         return res.status(400).json({ error: 'patient_token and carrier_code are required' });
-      }
-      const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken },
-        select: { id: true },
-      });
-      if (!belongs) {
-        return res.status(404).json({ error: 'Patient not found for this practice' });
       }
       const procs = Array.isArray(body.procedures) ? body.procedures : [];
       if (procs.length === 0) {

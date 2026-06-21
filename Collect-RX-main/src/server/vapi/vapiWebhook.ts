@@ -26,6 +26,7 @@ import {
   triggerHallucinationDetector,
   triggerEscalationTriage,
 } from '../agents/eventAgents.js';
+import { appendAuditLog } from '../audit/auditLog.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -44,7 +45,7 @@ const PHI_TRANSCRIPT_PATTERNS: Array<[RegExp, string]> = [
   [/(?:patient[_ -]?name|member[_ -]?name)[:\s]+[A-Za-z ,.-]+/gi, 'patient_name: [REDACTED-PHI]'],
 ];
 
-function scrubTranscriptPhi(transcript: string): string {
+export function scrubTranscriptPhi(transcript: string): string {
   let scrubbed = transcript;
   for (const [pattern, replacement] of PHI_TRANSCRIPT_PATTERNS) {
     scrubbed = scrubbed.replace(pattern, replacement);
@@ -297,10 +298,32 @@ async function processCallEnded(
   // Delete recording from Vapi (and Twilio if applicable).
   // belt-and-suspenders: recordingEnabled:false was set at call initiation,
   // but we also explicitly delete in case Vapi stored anything.
+  //
+  // M-3: handlePostCallAudioDeletion never throws — it catches all errors and
+  // returns them in result.errors. Awaiting and checking the result ensures
+  // failed deletions are tracked in the audit log for compliance review.
   const recordingUrl = payload.recordingUrl ?? null;
-  handlePostCallAudioDeletion(vapiCallId, recordingUrl).catch((err: unknown) => {
-    console.error('[vapi-webhook] post-call audio deletion error (non-fatal):', err);
-  });
+  try {
+    const deletionResult = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
+    if (deletionResult.errors.length > 0) {
+      console.error(
+        '[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio:',
+        { vapiCallId, errors: deletionResult.errors },
+      );
+      // Write to audit log so the compliance team can investigate and retry.
+      await appendAuditLog(prisma, {
+        practiceId: claim.practiceId,
+        action: 'AUDIO_DELETION_FAILED',
+        subjectType: 'CallAttempt',
+        subjectId: attempt.id,
+        details: { vapiCallId, errors: deletionResult.errors, recordingUrl },
+      }).catch((auditErr: unknown) => {
+        console.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log:', auditErr);
+      });
+    }
+  } catch (deletionErr: unknown) {
+    console.error('[vapi-webhook] post-call audio deletion threw unexpectedly:', deletionErr);
+  }
 
   // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────
   // Fire-and-forget — never block the webhook response.
@@ -330,7 +353,7 @@ async function processCallEnded(
         carrierId: claim.carrierId ?? 'unknown',
         reason: 'outcome: ESCALATION_REQUIRED',
         practiceId: claim.practiceId ?? 'unknown',
-        billedAmount: claim.billedAmount ?? undefined,
+        billedAmount: claim.billedAmount != null ? Number(claim.billedAmount) : undefined,
       });
     }
   }
@@ -351,6 +374,16 @@ export async function processRecoveryCallEnded(
   return processCallEnded(payload, prisma, rawBody);
 }
 
+/**
+ * @deprecated L-1: SUPERSEDED — never mounted, never called.
+ *
+ * The active webhook handler is `src/webhooks/vapi.ts` (HMAC-SHA256 auth,
+ * atomic idempotency via markWebhookProcessed, processVapiDeskWebhook).
+ * This function uses a different auth mechanism (shared-secret header check)
+ * and routes directly to processCallEnded, bypassing the desk event pipeline.
+ * Do NOT add new call sites. Remove this function when the codebase has
+ * confirmed zero test references.
+ */
 export async function handleVapiWebhook(
   req: Request & { vapiRawBody?: Buffer },
   res: Response,

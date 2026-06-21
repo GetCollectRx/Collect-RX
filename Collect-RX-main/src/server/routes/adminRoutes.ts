@@ -111,16 +111,8 @@ router.put('/settings', async (req: Request, res: Response) => {
 
 router.get('/integrations', async (req: Request, res: Response) => {
   try {
-    const practiceId = practiceIdFromSession(req);
     const base = integrationPayload();
-    const acct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
-    if (acct) {
-      base.stripeConnect = {
-        account: true,
-        onboardingComplete: acct.onboardingComplete,
-        chargesEnabled: acct.chargesEnabled,
-      };
-    }
+    // Stripe Connect (patient payment collection) removed — stripeConnect defaults to disabled.
     return res.json(base);
   } catch (err) {
     console.error('[GET /admin/integrations]', err);

@@ -67,9 +67,15 @@ function decryptPhi(ciphertext: string, iv: string, authTag: string): PatientPHI
 
 export interface PatientPHI {
   patientName: string;
-  dateOfBirth: string;
-  subscriberId: string;
-  groupPolicyNumber: string;
+  dateOfBirth: string;         // ISO date YYYY-MM-DD
+  subscriberId: string;        // member/certificate number on the plan card
+  groupPolicyNumber: string;   // employer group/plan number
+  /// Name on the plan when the patient is a dependent. Required by some carriers
+  /// when relationship !== 'self' (e.g. spouse, child) to authenticate the plan holder.
+  subscriberName?: string;
+  /// Date of birth of the plan subscriber — distinct from the patient's DOB when
+  /// the patient is a dependent. Some carriers require this to pull the plan.
+  subscriberDateOfBirth?: string; // ISO date YYYY-MM-DD
   healthCardNumber?: string;
 }
 

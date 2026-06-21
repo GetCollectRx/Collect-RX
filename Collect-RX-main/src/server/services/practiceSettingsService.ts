@@ -17,6 +17,8 @@ function defaultCarrierConfigs(): CarrierConfig[] {
     providerNumber: '',
     authorizationSubmitted: false,
     authorizationSubmittedAt: null,
+    authorizationConfirmationNumber: undefined,
+    languagePreference: 'en' as const,
   }));
 }
 
@@ -80,6 +82,7 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.escalationPhoneNumber === 'string'
       ? { escalationPhoneNumber: o.escalationPhoneNumber }
       : {}),
+    ...(typeof o.billingPhone === 'string' ? { billingPhone: o.billingPhone } : {}),
     ...(o.telusTpaMappings && typeof o.telusTpaMappings === 'object'
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
       : {}),
@@ -129,12 +132,21 @@ export function validatePracticeSettingsUpdate(
   }
   const start = body.callWindowStart ?? '08:00';
   const end = body.callWindowEnd ?? '17:00';
+  // L-4: string comparison is intentionally correct here. The HHMM regex above
+  // enforces zero-padded HH:MM format, so lexicographic order matches
+  // chronological order within the valid range. This is NOT a general pattern —
+  // it only works because the format is strictly validated before this line.
   if (start < '08:00') return 'callWindowStart cannot be before 08:00 Eastern';
   if (end > '17:00') return 'callWindowEnd cannot be after 17:00 Eastern';
   if (start >= end) return 'callWindowStart must be before callWindowEnd';
   if (body.escalationPhoneNumber && body.escalationPhoneNumber.trim()) {
     if (!E164.test(body.escalationPhoneNumber.trim())) {
       return 'escalationPhoneNumber must be valid E.164 (+1...)';
+    }
+  }
+  if (body.billingPhone && body.billingPhone.trim()) {
+    if (!E164.test(body.billingPhone.trim())) {
+      return 'billingPhone must be valid E.164 (+1...)';
     }
   }
   if (body.pmsVendor !== undefined) {
@@ -169,6 +181,16 @@ export function validatePracticeSettingsUpdate(
       if (c.authorizationSubmittedAt !== undefined && c.authorizationSubmittedAt !== null) {
         if (typeof c.authorizationSubmittedAt !== 'string' || Number.isNaN(Date.parse(c.authorizationSubmittedAt))) {
           return `${c.carrierId} authorizationSubmittedAt must be an ISO date string or null`;
+        }
+      }
+      if (c.authorizationConfirmationNumber !== undefined) {
+        if (typeof c.authorizationConfirmationNumber !== 'string' || c.authorizationConfirmationNumber.length > 100) {
+          return `${c.carrierId} authorizationConfirmationNumber must be a string of at most 100 characters`;
+        }
+      }
+      if (c.languagePreference !== undefined) {
+        if (c.languagePreference !== 'en' && c.languagePreference !== 'fr') {
+          return `${c.carrierId} languagePreference must be 'en' or 'fr'`;
         }
       }
     }

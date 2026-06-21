@@ -218,10 +218,19 @@ export async function runAgent(
     throw err;
   }
 
+  // L-3: strip transcript from context before sending to Gemini (Google API).
+  // The scrubber in processCallEnded covers 5 PHI patterns but patient names
+  // spoken organically mid-utterance may pass through. Any residual PHI must
+  // not leave Canadian jurisdiction via a Google API call. Agents needing
+  // transcript analysis should receive only scrubbed summary fields, not the
+  // raw transcript string.
+  const { transcript: _strippedTranscript, ...safeContext } = context;
+  void _strippedTranscript; // intentionally excluded from Gemini payload
+
   const userMessage = `## Context (${new Date().toISOString()})
 
 \`\`\`json
-${JSON.stringify(context, null, 2)}
+${JSON.stringify(safeContext, null, 2)}
 \`\`\`
 
 Analyze the context above per your role. Respond ONLY with a JSON object:

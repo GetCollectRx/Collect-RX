@@ -58,95 +58,70 @@ function scorePriority(input: { staffReviewCount: number; lowPayRate: boolean })
 }
 
 async function buildStoryCandidates(prisma: PrismaClient): Promise<StoryCandidate[]> {
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  // Patient AR, outreach events, and balance models removed.
+  // CollectRx is Practice→Insurance only. Candidates now come from insurance claim data.
   const practices = await prisma.practice.findMany({ select: { id: true, name: true } });
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const candidates: StoryCandidate[] = [];
 
   for (const practice of practices) {
-    const [overdueByCarrier, reminderEvents, openBalances] = await Promise.all([
-      prisma.patientBalance.groupBy({
-        by: ['carrierCode'],
+    const [overdueInsurance, escalatedClaims] = await Promise.all([
+      prisma.insuranceClaim.groupBy({
+        by: ['carrierId'],
         where: {
           practiceId: practice.id,
-          paymentStatus: { not: 'paid' },
-          daysSinceAdjudication: { gte: OVERDUE_DAYS },
-          carrierCode: { not: null },
+          status: { not: 'RESOLVED' },
+          daysOutstanding: { gte: OVERDUE_DAYS },
+          carrierId: { not: null },
         },
         _count: { _all: true },
       }),
-      prisma.outreachEvent.findMany({
+      prisma.insuranceClaim.count({
         where: {
-          sentAt: { gte: since },
-          templateKey: { in: ['NOTIFIED', 'REMINDER_1', 'REMINDER_2'] },
-          balance: { practiceId: practice.id },
+          practiceId: practice.id,
+          status: 'ESCALATED',
+          updatedAt: { gte: since },
         },
-        select: { responseStatus: true, templateKey: true },
-      }),
-      prisma.balance.findMany({
-        where: { practiceId: practice.id, status: 'OPEN' },
-        include: { states: { orderBy: { stageAt: 'desc' }, take: 1 } },
       }),
     ]);
 
-    const topCarrier = overdueByCarrier
+    const topCarrier = overdueInsurance
       .sort((a, b) => b._count._all - a._count._all)
-      .find((row) => row.carrierCode);
+      .find((row) => row.carrierId);
 
     if (topCarrier && topCarrier._count._all >= 8) {
-      const carrierCode = topCarrier.carrierCode as string;
+      const carrierId = topCarrier.carrierId as string;
       candidates.push({
         practiceId: practice.id,
         practiceName: practice.name,
-        title: `[${practice.name}] Reduce ${carrierCode} overdue claim backlog`,
-        summary: `${topCarrier._count._all} unpaid balances are ${OVERDUE_DAYS}+ days old for ${carrierCode}.`,
+        title: `[${practice.name}] Reduce ${carrierId} overdue claim backlog`,
+        summary: `${topCarrier._count._all} unresolved insurance claims are ${OVERDUE_DAYS}+ days old for ${carrierId}.`,
         rationale:
-          'Carrier-specific delays are stacking aged A/R. A focused workflow can improve queue ordering, scripts, and escalation timing.',
+          'Carrier-specific delays are stacking aged insurance A/R. A focused workflow can improve call scripts, queue ordering, and escalation timing.',
         acceptanceCriteria: [
-          `Introduce a carrier playbook for ${carrierCode} with clear call/escalation decision points.`,
+          `Introduce a carrier playbook for ${carrierId} with clear call/escalation decision points.`,
           'Add dashboard visibility for overdue-by-carrier trend over rolling 4 weeks.',
           'Ship one measurable intervention and track reduction in overdue count week-over-week.',
         ],
         priority: 'High',
-        fingerprint: makeFingerprint([practice.id, 'carrier-overdue', carrierCode]),
+        fingerprint: makeFingerprint([practice.id, 'carrier-overdue-insurance', carrierId]),
       });
     }
 
-    if (reminderEvents.length >= 30) {
-      const payResponses = reminderEvents.filter((event) => event.responseStatus === 'PAY').length;
-      const payRate = payResponses / reminderEvents.length;
-      if (payRate < 0.06) {
-        candidates.push({
-          practiceId: practice.id,
-          practiceName: practice.name,
-          title: `[${practice.name}] Improve reminder-to-payment conversion`,
-          summary: `Reminder pay conversion is ${(payRate * 100).toFixed(1)}% over the last ${LOOKBACK_DAYS} days.`,
-          rationale: 'Low payment intent from reminder messaging indicates friction in copy, cadence, or payment-link flow.',
-          acceptanceCriteria: [
-            'Create 2 message variants with explicit behavioral hypothesis.',
-            'Run a 2-week experiment split by template key and capture pay conversion by variant.',
-            'Promote winning variant when it improves conversion by at least 20% relative.',
-          ],
-          priority: scorePriority({ staffReviewCount: 0, lowPayRate: true }),
-          fingerprint: makeFingerprint([practice.id, 'reminder-conversion', String(since.getUTCMonth())]),
-        });
-      }
-    }
-
-    const staffReviewCount = openBalances.filter((balance) => balance.states[0]?.stage === 'STAFF_REVIEW').length;
-    if (staffReviewCount >= 10) {
+    if (escalatedClaims >= 5) {
       candidates.push({
         practiceId: practice.id,
         practiceName: practice.name,
-        title: `[${practice.name}] Decrease manual STAFF_REVIEW load`,
-        summary: `${staffReviewCount} open balances are currently blocked in STAFF_REVIEW.`,
-        rationale: 'Manual review queues can hide repeatable patterns that should be automated with safer policy-based handling.',
+        title: `[${practice.name}] Reduce insurance claim escalation rate`,
+        summary: `${escalatedClaims} claims escalated to staff review in the last ${LOOKBACK_DAYS} days.`,
+        rationale: 'High escalation rate indicates call scripts or auto-resolution logic needs tuning.',
         acceptanceCriteria: [
-          'Classify top 3 STAFF_REVIEW causes from recent audit entries and outcomes.',
-          'Convert at least one cause into a guardrailed automation or routing rule.',
-          'Reduce STAFF_REVIEW volume by 15% over the next month without increasing disputes.',
+          'Classify top escalation reasons from audit log and call transcripts.',
+          'Convert at least one repeat pattern into an automated resolution path.',
+          'Reduce escalation rate by 20% over the next month.',
         ],
-        priority: scorePriority({ staffReviewCount, lowPayRate: false }),
-        fingerprint: makeFingerprint([practice.id, 'staff-review', String(staffReviewCount >= 20)]),
+        priority: scorePriority({ staffReviewCount: escalatedClaims, lowPayRate: false }),
+        fingerprint: makeFingerprint([practice.id, 'insurance-escalations', String(Math.floor(escalatedClaims / 5))]),
       });
     }
   }

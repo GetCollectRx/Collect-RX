@@ -305,6 +305,12 @@ export async function emitRecoveryTerminalEmrEvent(
 /** Rules-engine tick: payment trace recalls when sync never confirmed payment. */
 export async function processPaymentTraceDue(prisma: PrismaClient): Promise<number> {
   const now = new Date();
+  // M-6: compile-time guard — if RecoveryActionStatus enum is ever renamed,
+  // this assignment will fail to compile, surfacing the broken raw SQL below.
+  // Do not remove this line without updating the raw SQL string to match.
+  const _openStatus: import('@prisma/client').RecoveryActionStatus = 'OPEN';
+  void _openStatus; // used only for type-checking
+
   const lockedIds = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM claim_recovery_actions
     WHERE action_type = 'PAYMENT_VERIFY_SYNC'

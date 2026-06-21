@@ -174,7 +174,10 @@ export default function PracticeSettings() {
           </Card>
 
           <Card>
-            <CardHeader title="Voice agent" subtitle="Automation toggles" />
+            <CardHeader
+              title="Voice agent"
+              subtitle="Carrier claim calls require Voice agent enabled, BAAL on file, and provider number per carrier"
+            />
             <div className="space-y-3">
               {(
                 [
@@ -319,17 +322,22 @@ export default function PracticeSettings() {
                             )}
                           </div>
                         ) : (
-                          <input
-                            type="checkbox"
-                            checked={c.authorizationSubmitted}
-                            disabled={isReadOnly}
-                            onChange={(e) =>
-                              updateCarrier(idx, {
-                                authorizationSubmitted: e.target.checked,
-                                authorizationSubmittedAt: e.target.checked ? new Date().toISOString() : null,
-                              })
-                            }
-                          />
+                          <div className="space-y-1">
+                            <input
+                              type="checkbox"
+                              checked={c.authorizationSubmitted}
+                              disabled={isReadOnly}
+                              onChange={(e) =>
+                                updateCarrier(idx, {
+                                  authorizationSubmitted: e.target.checked,
+                                  authorizationSubmittedAt: e.target.checked ? new Date().toISOString() : null,
+                                })
+                              }
+                            />
+                            <p className="text-[10px] leading-tight text-amber-700 dark:text-amber-400 max-w-[140px]">
+                              Carrier calls blocked until signed BAAL is on file. See legal review prompt in docs.
+                            </p>
+                          </div>
                         )}
                       </Td>
                     </Tr>

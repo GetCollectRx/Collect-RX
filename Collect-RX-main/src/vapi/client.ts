@@ -53,6 +53,8 @@ export interface VapiCallParams {
   patientDob: string;           // ISO date YYYY-MM-DD
   policyNumber: string;
   subscriberName?: string;
+  /** ISO date YYYY-MM-DD — required when relationship !== 'self' for some carriers. */
+  subscriberDob?: string;
   relationship?: string;        // e.g. "self", "spouse", "dependent"
   // ─── Claim fields ────────────────────────────────────────────────────────────
   carrierPhone: string;
@@ -60,23 +62,26 @@ export interface VapiCallParams {
   groupNumber?: string;
   /** ISO date string — maps to InsuranceClaim.servicedAt */
   treatmentDate?: string;
-  /** ISO date string — TODO: add InsuranceClaim.submittedAt to schema */
+  /** ISO date string — maps to InsuranceClaim.submittedAt */
   claimSubmittedDate?: string;
   daysOutstanding: number;
   billedAmount: number;
-  /** TODO: add InsuranceClaim.expectedAmount to schema */
+  /** What the practice expected the carrier to pay — maps to InsuranceClaim.expectedAmount */
   amountExpected?: number;
   outstandingAmount: number;
-  /** CDT codes string — TODO: add InsuranceClaim.treatmentCodes to schema */
+  /** CDT codes string — maps to InsuranceClaim.treatmentCodes */
   treatmentCodes?: string;
   // ─── Practice identity ───────────────────────────────────────────────────────
   practiceName: string;
-  /** TODO: add Practice.npi to schema */
+  /** Provincial college registration / billing number (Canadian NPI equivalent). */
   practiceNpi?: string;
-  /** TODO: add Practice.taxId to schema */
+  /** HST/GST business registration number. */
   practiceTaxId?: string;
   providerNumber: string;
+  /** Billing/claims phone line read in CRTC disclosure and given as carrier callback. */
   practicePhone: string;
+  /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
+  languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
 }
 
@@ -227,6 +232,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     patientDob,
     policyNumber,
     subscriberName,
+    subscriberDob,
     relationship,
     // Claim fields
     carrierPhone,
@@ -245,6 +251,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practiceTaxId,
     providerNumber,
     practicePhone,
+    languagePreference,
     carrierIvrInstructions,
   } = params;
 
@@ -284,31 +291,34 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     // system prompt config. When the call ends they cease to exist.
     // PHI boundary: PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY.
     variables: {
-      // Patient identifiers — ephemeral, from piiVault.detokenize()
-      patient_name:          patientName,
-      patient_dob:           patientDob,
-      policy_number:         policyNumber,
-      subscriber_name:       subscriberName ?? '',
-      relationship:          relationship ?? 'self',
-      // Claim reference
-      claim_number:          claimNumber,
-      group_number:          groupNumber ?? '',
-      treatment_date:        treatmentDate ?? '',
-      claim_submitted_date:  claimSubmittedDate ?? '',
-      days_outstanding:      String(daysOutstanding),
-      amount_billed:         billedAmount.toFixed(2),
-      amount_expected:       (amountExpected ?? outstandingAmount).toFixed(2),
-      outstanding_amount:    outstandingAmount.toFixed(2),
-      treatment_codes:       treatmentCodes ?? '',
-      // Practice identity — not PHI
-      practice_name:         practiceName,
-      practice_npi:          practiceNpi ?? '',
-      practice_tax_id:       practiceTaxId ?? '',
-      provider_number:       providerNumber,
-      // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds
-      practice_phone:        practicePhone,
-      disclosure_message:    `Hello, this is an automated calling system contacting you on behalf of ${practiceName}, a dental practice. You can reach us at ${practicePhone}. We are calling regarding an outstanding insurance claim. If you are a representative at the claims department, please stay on the line.`,
-      // Carrier routing
+      // ── Patient identifiers — ephemeral, from piiVault.detokenize() ──────────
+      patient_name:             patientName,
+      patient_dob:              patientDob,
+      policy_number:            policyNumber,
+      subscriber_name:          subscriberName ?? '',
+      subscriber_dob:           subscriberDob ?? '',
+      relationship:             relationship ?? 'self',
+      // ── Claim reference ───────────────────────────────────────────────────────
+      claim_number:             claimNumber,
+      group_number:             groupNumber ?? '',
+      treatment_date:           treatmentDate ?? '',
+      claim_submitted_date:     claimSubmittedDate ?? '',
+      days_outstanding:         String(daysOutstanding),
+      amount_billed:            billedAmount.toFixed(2),
+      amount_expected:          (amountExpected ?? outstandingAmount).toFixed(2),
+      outstanding_amount:       outstandingAmount.toFixed(2),
+      treatment_codes:          treatmentCodes ?? '',
+      // ── Practice identity — not PHI ───────────────────────────────────────────
+      practice_name:            practiceName,
+      practice_npi:             practiceNpi ?? '',
+      practice_tax_id:          practiceTaxId ?? '',
+      provider_number:          providerNumber,
+      // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds.
+      // practice_phone is the billing/claims line, NOT the staff escalation line.
+      practice_phone:           practicePhone,
+      language_preference:      languagePreference ?? 'en',
+      disclosure_message:       `Hello, this is an automated calling system contacting you on behalf of ${practiceName}, a dental practice. You can reach us at ${practicePhone}. We are calling regarding an outstanding insurance claim. If you are a representative at the claims department, please stay on the line.`,
+      // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',
     },

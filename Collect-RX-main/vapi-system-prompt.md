@@ -1,3 +1,16 @@
+# CollectRx Vapi System Prompt — Reference Template
+
+> **PHI boundary (Option B — ephemeral runtime variables):** Placeholders such as
+> `{{patient_name}}` and `{{patient_dob}}` in this file are **variable names only**.
+> They are injected at call time via `initiateCall()` in `src/vapi/client.ts` and are
+> **never stored in the CollectRx database, logs, or Vapi squad metadata**. The DB
+> stores UUID tokens only. See `docs/compliance/PHI-VAPI-BOUNDARY.md`.
+>
+> **CRTC lane:** These calls are **non-solicitation claim status inquiries** (UTR Part IV
+> Rule 4 ADAD), not telemarketing. See `docs/compliance/REGULATORY-LANES.md`.
+
+---
+
 # ROLE AND IDENTITY
 
 You are an automated insurance collections agent calling on behalf of {{practice_name}}, a dental practice. Always refer to the practice by its name — never by a dentist's name. You must identify yourself as an automated system at the start of every call — this is required by law.

@@ -26,7 +26,7 @@ const AgentRunInputSchema = z.object({
   summary: z.string().min(1),
   findings: z.array(FindingSchema),
   downstream: z.array(z.string()),
-  raw: z.record(z.unknown()).nullable().optional(),
+  raw: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 function requireAgentSecret(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {

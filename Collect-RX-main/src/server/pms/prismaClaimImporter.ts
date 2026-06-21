@@ -1,9 +1,12 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import { createHash } from 'crypto';
 import type { PmsImportFamily } from '../../types/pms.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
-import { piiVault } from '../../services/pii-vault.js';
+// Use the main PIIVault (AES-256-GCM, stores full PatientPHI objects).
+// NOTE: do NOT import from '../../services/pii-vault.js' — that is the legacy
+// simple tokenizer that stores only a patientId string and cannot provide PHI
+// to the queue engine at call dispatch time.
+import { piiVault, type PatientPHI } from '../../pii-vault.js';
 
 export interface PrismaImportResult {
   imported: number;
@@ -15,13 +18,28 @@ export interface PrismaImportResult {
   dollarsRecoveredSyncVerified: number;
 }
 
-function stablePatientId(practiceId: string, row: NormalizedPmsClaimRow): string {
-  const key = `${practiceId}|${row.patientFirstName}|${row.patientLastName}|${row.claimNumber}`;
-  return createHash('sha256').update(key).digest('hex').slice(0, 32);
+/**
+ * Build the PatientPHI object from a normalized import row.
+ * Fields sourced from PHI columns in the PMS export — never stored in DB.
+ * All PHI is AES-256-GCM encrypted in the main PIIVault (src/pii-vault.ts).
+ */
+function buildPatientPHI(row: NormalizedPmsClaimRow): PatientPHI {
+  const patientName = [row.patientFirstName, row.patientLastName].filter(Boolean).join(' ');
+  return {
+    patientName: patientName || 'Unknown',
+    dateOfBirth: row.patientDob ?? '',
+    subscriberId: row.subscriberId ?? '',
+    groupPolicyNumber: row.groupPolicyNumber ?? '',
+    ...(row.subscriberName ? { subscriberName: row.subscriberName } : {}),
+    ...(row.subscriberDateOfBirth ? { subscriberDateOfBirth: row.subscriberDateOfBirth } : {}),
+  };
 }
 
-function patientTokenForRow(practiceId: string, row: NormalizedPmsClaimRow): string {
-  return piiVault.tokenize(stablePatientId(practiceId, row));
+function patientTokenForRow(_practiceId: string, row: NormalizedPmsClaimRow): string {
+  // Tokenize full PatientPHI into the main AES-256-GCM vault so the queue engine
+  // can detokenize at call dispatch time. The old services/pii-vault.ts stored only
+  // a string ID and was disconnected from the queue engine — that path is removed.
+  return piiVault.tokenize(buildPatientPHI(row), 'pms-import');
 }
 
 async function upsertInsuranceClaim(
@@ -80,8 +98,11 @@ async function upsertInsuranceClaim(
       patientToken,
       billedAmount: row.billedAmount,
       outstandingAmount: row.outstandingAmount,
+      expectedAmount: row.expectedAmount ?? undefined,
       daysOutstanding,
       servicedAt: row.servicedAt,
+      submittedAt: row.submittedAt,
+      treatmentCodes: row.treatmentCodes ?? undefined,
       status: 'PENDING',
       priority: daysOutstanding > 90 ? 'URGENT' : daysOutstanding > 60 ? 'HIGH' : 'NORMAL',
     },
@@ -91,6 +112,10 @@ async function upsertInsuranceClaim(
       billedAmount: row.billedAmount,
       carrierId,
       servicedAt: row.servicedAt ?? undefined,
+      // Update submittedAt and treatmentCodes if the new import has them and current row doesn't
+      ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
+      ...(row.treatmentCodes ? { treatmentCodes: row.treatmentCodes } : {}),
+      ...(row.expectedAmount != null ? { expectedAmount: row.expectedAmount } : {}),
     },
   });
 
