@@ -7,26 +7,30 @@
 //   /api/insurance/*       insurance.ts  (claims, queue)
 //   /api/calls/*           calls.ts
 //   /api/carriers/*        carriers.ts
-//   /api/analytics/*       analytics.ts (insurance + patient AR KPIs)
+//   /api/analytics/*       analytics.ts (insurance KPIs)
 //   /api/telemetry/*       productTelemetry.ts (ClickHouse usage SDK — optional)
-//   /api/balances*        balancesOutreachRoutes.ts (insurance Balance + outreach + POST /pay sim)
-//   /api/benefits/*       benefitsApi.ts (pre-treatment benefits + estimate)
-//   /api/patients/*        patientArApi.ts (patient balances, reminders, pay links)
+//   /api/benefits/*        benefitsApi.ts (pre-treatment benefits + estimate)
 //   /api/dashboard/*       dashboardRoutes.ts (ops stats)
-//   /api/admin/*           adminRoutes.ts (settings, integrations, audit, CSV)
+//   /api/admin/*           adminRoutes.ts (settings, integrations, audit)
 //   /api/eligibility/*     eligibility.ts
 //   /api/cdcp/*            cdcp.ts (Phase 5: CDCP reconsideration, evidence gap, fee ceiling)
-//   /api/queue/*          queue.ts (priority scores + carrier-order persistence)
-//   /api/public/*        publicPatientPayRoutes.ts (pay token + unsubscribe; publicLimiter 60/min)
+//   /api/queue/*           queue.ts (priority scores + carrier-order persistence)
+//   /api/billing/*         billingRoutes.ts (practice subscription billing)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
-//   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (raw JSON body)
-//   /api/twilio/sms        twilio/inboundSms.ts (urlencoded — after body parsers)
+//   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (prospect engagement only)
+//
+// Removed (Practice→Insurance product — no patient-facing layer):
+//   /api/patients/*        patientArApi.ts
+//   /api/balances/*        balancesOutreachRoutes.ts
+//   /api/public/*          publicPatientPayRoutes.ts
+//   /api/twilio/sms        twilio/inboundSms.ts
+//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding)
 //
 // Safety:
 //   - Webhook route uses raw body parser (HMAC validation requires raw bytes)
 //   - All other routes use express.json()
 //   - Prisma client is singleton from lib/prisma.ts
-//   - piiVault.purgeExpired() runs on boot and hourly
+//   - claimsPiiVault.gc() runs on boot and hourly (main AES-256-GCM vault)
 //   - Rate limiting: standardLimiter on all /api/*, webhookLimiter on webhooks,
 //     healthLimiter on /health + /api/health/*, authLimiter (5/15min) on POST /api/auth/login
 //     (when REDIS_URL is set, limiters use Redis so counts are shared across API replicas)
@@ -59,8 +63,12 @@ import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
-import { piiVault } from '../services/pii-vault';
-// Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot
+// Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
+// H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
+// no longer imported here. The legacy tokenize/detokenize functions are orphaned
+// since prismaClaimImporter.ts was migrated to the main vault. handlePostCallAudioDeletion
+// and LLM_RESIDENCY_HEADERS from that file remain in use via their own direct imports
+// in vapiWebhook.ts and agentRunner.ts — those are unaffected.
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPostgresTlsInProduction } from './databaseTls';
@@ -95,9 +103,6 @@ import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
-import { createPatientArApiRouter } from './routes/patientArApi';
-import { createBalancesOutreachRouter } from './routes/balancesOutreachRoutes';
-import { createPublicPatientPayRouter } from './routes/publicPatientPayRoutes';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
@@ -106,7 +111,7 @@ import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
-import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
+import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
@@ -114,7 +119,7 @@ import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
-import { handleTwilioInboundSms } from './twilio/inboundSms.js';
+
 import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
@@ -241,18 +246,6 @@ app.use(
   createDemoBookingWebhookRouter(prisma),
 );
 
-// urlencoded is intentionally NOT global: only Twilio's signature-verified webhook posts
-// form-encoded bodies. Keeping it off everywhere else shrinks the CSRF surface for the
-// cookie-authenticated JSON API (browsers cannot send cross-site application/json without a
-// CORS preflight, but they CAN send simple cross-site form posts).
-app.post(
-  '/api/twilio/sms',
-  webhookLimiter,
-  express.urlencoded({ extended: false }),
-  (req, res, next) => {
-    handleTwilioInboundSms(req, res, prisma).catch(next);
-  },
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — excluded from /api rate limiting (tests + probes)
@@ -300,7 +293,6 @@ app.use('/api', anonStandardLimiter);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
-app.use('/api/stripe',     createStripeConnectRouter(prisma));
 app.use('/api/insurance',  insuranceRouter);
 app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
@@ -313,10 +305,7 @@ app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
-app.use('/api',            createPublicPatientPayRouter(prisma));
-app.use('/api',            createBalancesOutreachRouter(prisma));
 app.use('/api',            createBenefitsApiRouter(prisma));
-app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
@@ -441,10 +430,14 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
   });
 
-  piiVault.purgeExpired();
+  // Periodic GC on main vault (AES-256-GCM, 4h TTL — holds full PatientPHI for call dispatch).
+  // H-6: legacy vault (services/pii-vault.ts, 24h TTL, simple string tokens) GC removed —
+  // the legacy tokenize/detokenize functions are no longer called and the legacy vault
+  // accumulates no new entries, so purging it is a no-op and creates misleading log output.
+  claimsPiiVault.gc();
   setInterval(() => {
-    const purged = piiVault.purgeExpired();
-    if (purged > 0) console.log(`[piiVault] Purged ${purged} expired tokens`);
+    const purgedMain = claimsPiiVault.gc();
+    if (purgedMain > 0) console.log(`[piiVault] GC: purged ${purgedMain} PHI token(s)`);
   }, 60 * 60 * 1000);
 
   if (process.env.REDIS_URL) {
