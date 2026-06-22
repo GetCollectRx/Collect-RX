@@ -19,6 +19,39 @@ import {
   linkRecoveryActionToCdcpCase,
   tryCdcpFromVapiPayload,
 } from '../recovery/cdcpRecoveryBridge.js';
+import { piiVault } from '../../pii-vault.js';
+import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
+import {
+  triggerPostCallDebrief,
+  triggerHallucinationDetector,
+  triggerEscalationTriage,
+} from '../agents/eventAgents.js';
+import { appendAuditLog } from '../audit/auditLog.js';
+
+// ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
+// Scrub PHI patterns from transcript text before storing in DB.
+// Mirrors the field-level scrubbing in logger.js PHI_FIELD_NAMES/PHI_PATTERNS.
+// This is defence-in-depth: even if PHI slips through, it is masked on persist.
+const PHI_TRANSCRIPT_PATTERNS: Array<[RegExp, string]> = [
+  // ISO dates — DOBs, treatment dates (collateral damage acceptable; dates are restorable from claim)
+  [/\b\d{4}-\d{2}-\d{2}\b/g, '[DATE-REDACTED]'],
+  // Spoken dates: "January 15, 1985" / "Jan 15 1985"
+  [/\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/gi, '[DATE-REDACTED]'],
+  // Policy/group/member numbers: 6–15 digit strings (common in dental insurance)
+  [/\b\d{6,15}\b/g, '[ID-REDACTED]'],
+  // Labeled PHI fields if they somehow appear
+  [/(?:policy[_ -]?number|policy[_ -]?no)[:\s]+[\w-]+/gi, 'policy_number: [REDACTED-PHI]'],
+  [/(?:date[_ -]?of[_ -]?birth|dob)[:\s]+[\w/-]+/gi, 'date_of_birth: [REDACTED-PHI]'],
+  [/(?:patient[_ -]?name|member[_ -]?name)[:\s]+[A-Za-z ,.-]+/gi, 'patient_name: [REDACTED-PHI]'],
+];
+
+export function scrubTranscriptPhi(transcript: string): string {
+  let scrubbed = transcript;
+  for (const [pattern, replacement] of PHI_TRANSCRIPT_PATTERNS) {
+    scrubbed = scrubbed.replace(pattern, replacement);
+  }
+  return scrubbed;
+}
 
 function hashBody(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
@@ -127,6 +160,7 @@ async function processCallEnded(
           carrierId: true,
           claimNumber: true,
           outstandingAmount: true,
+          billedAmount: true,
           daysOutstanding: true,
           status: true,
           patientToken: true,
@@ -163,6 +197,16 @@ async function processCallEnded(
   }
 
   const { claim } = attempt;
+
+  // ── TRANSCRIPT PHI SCRUB ─────────────────────────────────────────────────
+  // Scrub PHI patterns from the transcript before it is used for outcome
+  // classification, logging, or storage. The voice agent may have spoken
+  // patient name, DOB, or policy number aloud — we must not persist those.
+  // See logger.js PHI_FIELD_NAMES for field-level scrubbing on the log layer.
+  if (payload.transcript) {
+    payload.transcript = scrubTranscriptPhi(payload.transcript);
+  }
+
   const processed = resolveOutcomeFromWebhookPayload(payload);
   const structuredStatus = extractStructuredClaimStatus(payload);
   const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
@@ -242,6 +286,78 @@ async function processCallEnded(
 
   await emitRecoveryTerminalEmrEvent(prisma, claim, decision.claimStatus, processed);
 
+  // ── PHI TOKEN REVOCATION ────────────────────────────────────────────────
+  // The call is complete. Revoke the PHI token from piiVault immediately so
+  // the PHI is no longer accessible in memory. The patientToken UUID remains
+  // in the DB for record-keeping — but the PHI it pointed to is gone.
+  if (claim.patientToken) {
+    piiVault.expireToken(claim.patientToken, 'post-call-revocation');
+  }
+
+  // ── ZERO-RETENTION: AUDIO + RECORDING DELETION ──────────────────────────
+  // Delete recording from Vapi (and Twilio if applicable).
+  // belt-and-suspenders: recordingEnabled:false was set at call initiation,
+  // but we also explicitly delete in case Vapi stored anything.
+  //
+  // M-3: handlePostCallAudioDeletion never throws — it catches all errors and
+  // returns them in result.errors. Awaiting and checking the result ensures
+  // failed deletions are tracked in the audit log for compliance review.
+  const recordingUrl = payload.recordingUrl ?? null;
+  try {
+    const deletionResult = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
+    if (deletionResult.errors.length > 0) {
+      console.error(
+        '[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio:',
+        { vapiCallId, errors: deletionResult.errors },
+      );
+      // Write to audit log so the compliance team can investigate and retry.
+      await appendAuditLog(prisma, {
+        practiceId: claim.practiceId,
+        action: 'AUDIO_DELETION_FAILED',
+        subjectType: 'CallAttempt',
+        subjectId: attempt.id,
+        details: { vapiCallId, errors: deletionResult.errors, recordingUrl },
+      }).catch((auditErr: unknown) => {
+        console.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log:', auditErr);
+      });
+    }
+  } catch (deletionErr: unknown) {
+    console.error('[vapi-webhook] post-call audio deletion threw unexpectedly:', deletionErr);
+  }
+
+  // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────
+  // Fire-and-forget — never block the webhook response.
+  // Activated only when AGENTS_ENABLED=true + GEMINI_API_KEY is set.
+  if (process.env.AGENTS_ENABLED === 'true' || process.env.AGENTS_ENABLED === '1') {
+    const callSummary = {
+      vapiCallId,
+      claimId: claim.id,
+      carrierId: claim.carrierId ?? 'unknown',
+      outcome: processed.outcome,
+      durationSeconds: payload.call?.endedAt && payload.call?.startedAt
+        ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+        : undefined,
+      // Transcript already scrubbed by scrubTranscriptPhi() above
+      transcript: payload.transcript ? payload.transcript.slice(0, 2000) : undefined,
+    };
+
+    triggerPostCallDebrief(prisma, callSummary);
+    triggerHallucinationDetector(prisma, {
+      ...callSummary,
+      referenceNumber: processed.referenceNumber ?? undefined,
+    });
+
+    if (processed.outcome === 'ESCALATED') {
+      triggerEscalationTriage(prisma, {
+        claimId: claim.id,
+        carrierId: claim.carrierId ?? 'unknown',
+        reason: 'outcome: ESCALATION_REQUIRED',
+        practiceId: claim.practiceId ?? 'unknown',
+        billedAmount: claim.billedAmount != null ? Number(claim.billedAmount) : undefined,
+      });
+    }
+  }
+
   console.log(
     `[vapi-webhook] call.ended processed: vapiCallId=${vapiCallId} ` +
     `claimId=${claim.id} outcome=${processed.outcome} route=${decision.route} ` +
@@ -258,6 +374,16 @@ export async function processRecoveryCallEnded(
   return processCallEnded(payload, prisma, rawBody);
 }
 
+/**
+ * @deprecated L-1: SUPERSEDED — never mounted, never called.
+ *
+ * The active webhook handler is `src/webhooks/vapi.ts` (HMAC-SHA256 auth,
+ * atomic idempotency via markWebhookProcessed, processVapiDeskWebhook).
+ * This function uses a different auth mechanism (shared-secret header check)
+ * and routes directly to processCallEnded, bypassing the desk event pipeline.
+ * Do NOT add new call sites. Remove this function when the codebase has
+ * confirmed zero test references.
+ */
 export async function handleVapiWebhook(
   req: Request & { vapiRawBody?: Buffer },
   res: Response,

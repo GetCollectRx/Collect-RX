@@ -1,12 +1,6 @@
 import jwt from 'jsonwebtoken';
 import type { CookieOptions, Response } from 'express';
-import type {
-  AuthJwtPayload,
-  PracticeRole,
-  UserAuthPayload,
-  BriefAuthFields,
-} from './accessControl/types.js';
-import { practiceRoleToBrief } from './accessControl/types.js';
+import { practiceRoleToBrief, type AuthJwtPayload, type PracticeRole, type UserAuthPayload, type BriefAuthFields } from './accessControl/types.js';
 import type { UserRole } from '../types/userRole.js';
 
 export const COOKIE_NAME = 'crx_access';

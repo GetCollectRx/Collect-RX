@@ -1,5 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   isLearningLoopEnabled,
   learningFeasibilityMin,

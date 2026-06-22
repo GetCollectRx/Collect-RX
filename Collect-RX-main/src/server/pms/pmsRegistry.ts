@@ -1,9 +1,4 @@
-import type {
-  PmsImportFamily,
-  PmsVendorCatalogEntry,
-  PmsVendorId,
-} from '../../types/pms.js';
-import { PHONE_DECISION_PROFILE } from '../../types/pms.js';
+import { PHONE_DECISION_PROFILE, type PmsImportFamily, type PmsVendorCatalogEntry, type PmsVendorId } from '../../types/pms.js';
 
 export type { PmsVendorId, PmsImportFamily };
 export { PHONE_DECISION_PROFILE };

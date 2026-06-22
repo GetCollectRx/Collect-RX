@@ -5,8 +5,7 @@ import {
   Badge, Button, Card, CardHeader, DataState, Input, Select,
   Table, TableContainer, Tbody, Td, Th, Thead, Tr, TableEmpty,
 } from '../components/ui'
-import type { ProspectListItem, PipelineColumn } from '../types/partnerships'
-import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES } from '../types/partnerships'
+import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES, type ProspectListItem, type PipelineColumn } from '../types/partnerships'
 
 type Stats = { total: number; byStage: Record<string, number> }
 

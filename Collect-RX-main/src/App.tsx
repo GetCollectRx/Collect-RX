@@ -35,6 +35,8 @@ import SystemHealth          from './pages/SystemHealth'
 import UserManagement        from './pages/UserManagement'
 import BreakGlass            from './pages/BreakGlass'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
+import SignupPage              from './pages/SignupPage'
+import AcceptInvitePage        from './pages/AcceptInvitePage'
 import UsersAdmin              from './pages/UsersAdmin'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
@@ -141,6 +143,25 @@ const BILLING_OPS_NAV: NavItem[] = [
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
+const OFFICE_MANAGER_NAV: NavItem[] = [
+  { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
+  { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
+  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
+  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+  { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
+  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+]
+
+const BILLING_COORDINATOR_NAV: NavItem[] = [
+  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
+  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+]
+
 const PLATFORM_ADMIN_NAV: NavItem[] = [
   { to: '/admin', exact: true, label: 'Practices', icon: 'admin' },
   { to: '/admin/partnerships', exact: false, label: 'Partnerships', icon: 'portfolio' },
@@ -230,9 +251,13 @@ function sidebarNavSections(
         ? [{ label: 'Operations', items: BILLING_OPS_NAV }]
         : userRole === 'platform_admin' || isPlatformDev
           ? [{ label: 'Platform', items: PLATFORM_ADMIN_NAV }]
-          : isPracticeOwner
-            ? [{ label: '', items: OWNER_NAV }]
-            : NAV_SECTIONS
+          : userRole === 'office_manager'
+            ? [{ label: '', items: OFFICE_MANAGER_NAV }]
+            : userRole === 'billing_coordinator'
+              ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
+              : isPracticeOwner
+                ? [{ label: '', items: OWNER_NAV }]
+                : NAV_SECTIONS
 
   if (isPlatformDev && userRole !== 'platform_admin') {
     return NAV_SECTIONS.map((section) => ({
@@ -341,12 +366,12 @@ function AppShell() {
           <Route path="/console" element={<ProtectedRoute allowedRoles={['front_desk']}><LiveConsole /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute allowedRoles={['front_desk']}><CallHistory /></ProtectedRoute>} />
           <Route path="/console/history" element={<Navigate to="/history" replace />} />
-          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager']}><Dashboard /></ProtectedRoute>} />
-          <Route path="/reports/aging" element={<ProtectedRoute allowedRoles={['practice_owner', 'auditor', 'billing_ops_manager', 'platform_admin']}><AgingReport /></ProtectedRoute>} />
-          <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/reports/aging" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin']}><AgingReport /></ProtectedRoute>} />
+          <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
           <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
-          <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
+          <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
           <Route path="/admin/partnerships" element={<ProtectedRoute allowedRoles={['platform_admin']}><PartnershipsBoard /></ProtectedRoute>} />
@@ -358,10 +383,10 @@ function AppShell() {
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
-          <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
-          <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
-          <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
-          <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
+          <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
+          <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
+          <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
+          <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/balances" element={<Navigate to="/insurance" replace />} />
           <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
           <Route path="/patient-ar" element={<Navigate to="/insurance" replace />} />
@@ -491,6 +516,8 @@ function App() {
             <Route path="/product" element={<ProductOnePager />} />
             <Route path="/changelog" element={<Changelog />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
             <Route path="/demo" element={<PublicDemoRoute />} />
             <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
             <Route path="/how-it-works" element={<MarketingSite />} />

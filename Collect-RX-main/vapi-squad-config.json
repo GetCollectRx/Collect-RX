@@ -40,7 +40,7 @@
           {
             "type": "assistant",
             "assistantName": "Claims_Agent",
-            "message": "Connecting to claims department representative.",
+            "message": "Connecting you now. This is an automated system calling on behalf of {{practice_name}}.",
             "description": "Transfer to Claims_Agent the moment a human representative answers and begins speaking. Do not wait — hand off immediately on first human speech detected."
           }
         ]
@@ -48,7 +48,7 @@
       {
         "assistant": {
           "name": "Claims_Agent",
-          "firstMessage": "Thank you for taking my call. I'm an automated system calling on behalf of {{practice_name}}'s billing department regarding an outstanding insurance claim. I'd like to follow up on a claim that was submitted {{days_outstanding}} days ago.",
+          "firstMessage": "Thank you for taking my call. I am an automated calling system on behalf of {{practice_name}}'s billing department. You can reach us at {{practice_phone}}. This call may be recorded for quality purposes. I am following up on a claim that was submitted {{days_outstanding}} days ago.",
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",

@@ -1,7 +1,5 @@
-import type { CallQueue, CarrierBlockEvent, InsuranceClaim, CallAttempt, CallTranscriptLine } from '@prisma/client';
-import type { ClaimPriority } from '@prisma/client';
-import type { DeskActiveCall, DeskQueueEntry, DeskTranscriptLine, LiveCallState } from '../../types/frontDesk.js';
-import type { ActiveAgent } from '../../types/frontDesk.js';
+import type { CallQueue, CarrierBlockEvent, InsuranceClaim, CallAttempt, CallTranscriptLine, ClaimPriority } from '@prisma/client'
+import type { DeskActiveCall, DeskQueueEntry, DeskTranscriptLine, LiveCallState, ActiveAgent } from '../../types/frontDesk.js'
 
 const PRIORITY_RANK: Record<ClaimPriority, number> = {
   URGENT: 0,

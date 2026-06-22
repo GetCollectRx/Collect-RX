@@ -43,10 +43,25 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
   const devAck =
     process.env.EMR_OUTBOX_DEV_ACK === '1' || process.env.EMR_OUTBOX_DEV_ACK === 'true';
 
-  const rows = await prisma.emrSyncOutbox.findMany({
-    where: { processedAt: null },
-    orderBy: { createdAt: 'asc' },
-    take: batchSize,
+  // C-4: plain findMany allows concurrent ticks to pull the same rows and
+  // deliver each EMR event twice. Use FOR UPDATE SKIP LOCKED inside an
+  // explicit transaction to atomically select AND claim rows before delivery.
+  // The claim (processedAt = now) is written inside the same transaction so
+  // no other tick can pick the same rows. On delivery failure, processedAt is
+  // reset to null so the row is retried on the next tick.
+  const rows = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM emr_sync_outbox
+      WHERE processed_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    `;
+    if (locked.length === 0) return [];
+    return tx.emrSyncOutbox.findMany({
+      where: { id: { in: locked.map((r) => r.id) } },
+      orderBy: { createdAt: 'asc' },
+    });
   });
 
   if (rows.length === 0) {
@@ -120,6 +135,11 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
         markedProcessed += 1;
         recordEmrOutbox('delivered');
       } else {
+        // Delivery failed — reset processedAt so the row is retried next tick.
+        await prisma.emrSyncOutbox.update({
+          where: { id: row.id },
+          data: { processedAt: null },
+        }).catch(() => {});
         deliveryFailed += 1;
         recordEmrOutbox('failed');
         const snippet = (await res.text()).slice(0, 200);
@@ -128,6 +148,11 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
         );
       }
     } catch (err) {
+      // Network/timeout error — reset for retry next tick.
+      await prisma.emrSyncOutbox.update({
+        where: { id: row.id },
+        data: { processedAt: null },
+      }).catch(() => {});
       deliveryFailed += 1;
       recordEmrOutbox('failed');
       console.error(`[emrOutbox] delivery error id=${row.id}:`, (err as Error).message);

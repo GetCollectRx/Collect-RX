@@ -1,11 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
-import type { AuthRole, PracticeRole } from '../lib/authTypes'
-import { isPracticeRole } from '../lib/authTypes'
+import { isPracticeRole, type AuthRole, type PracticeRole } from '../lib/authTypes'
 import { authRoleToBriefPersona } from '../lib/personaRole'
-import type { UserRole } from '../types/userRole'
-import { isReadOnlyRole } from '../types/userRole'
+import { isReadOnlyRole, type UserRole } from '../types/userRole'
 import { configureApiSession } from '../lib/practiceScopedApi'
 import type { SessionHealthPayload } from '../types/sessionHealth'
 

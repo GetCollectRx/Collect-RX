@@ -26,6 +26,19 @@ model Practice {
   passwordHash  String
   /// Optional JSON: admin UI prefs (e.g. carrier toggles) — see /api/admin/settings
   settings      Json?
+  // ─── Practice identity fields for carrier calls ───────────────────────────
+  /// Billing/claims phone line — what the AI agent reads aloud in the CRTC disclosure
+  /// and what carriers call back. Distinct from escalationPhoneNumber in settings (staff takeover).
+  billingPhone  String?   @map("billing_phone")
+  /// Fax number — required by some carriers for documentation / appeal submissions.
+  faxNumber     String?   @map("fax_number")
+  /// Practice mailing address — some carriers ask for this during identity verification.
+  address       String?
+  /// Provincial college registration / billing number (Canadian NPI equivalent).
+  npi           String?
+  /// HST/GST business registration number — some carriers require for payment processing.
+  taxId         String?   @map("tax_id")
+  // ─── Stripe Billing (platform) ────────────────────────────────────────────
   /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
   stripeCustomerId             String?   @unique
   stripeSubscriptionId         String?   @unique
@@ -43,13 +56,12 @@ model Practice {
   overageConfirmed      Boolean     @default(false)
   overageConfirmedAt    DateTime?
   partnershipProspect   Prospect?
-  patients              Patient[]
-  balances              Balance[]
   ruleSets              RuleSet[]
   eligibilitySnapshots  EligibilitySnapshot[]
   users                 User[]
   usagePeriods          UsagePeriod[]
   featureFlags          FeatureFlag[]
+  inviteTokens          InviteToken[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -71,64 +83,6 @@ model User {
 
   @@index([practiceId])
   @@index([email])
-}
-
-model Patient {
-  id               String    @id @default(uuid())
-  practiceId       String
-  displayName      String
-  preferredChannel String    @default("email")
-  phoneFake        String
-  emailFake        String
-  practice         Practice  @relation(fields: [practiceId], references: [id])
-  balances         Balance[]
-}
-
-model Balance {
-  id                String          @id @default(uuid())
-  practiceId        String
-  patientId         String
-  amountCents       Int
-  createdAt         DateTime        @default(now())
-  dueDate           DateTime
-  status            String          @default("OPEN")
-  source            String          @default("DENTRIX_SYNC")
-  lastDentrixSyncAt DateTime        @default(now())
-  practice          Practice        @relation(fields: [practiceId], references: [id])
-  patient           Patient         @relation(fields: [patientId], references: [id])
-  states            BalanceState[]
-  outreachEvents    OutreachEvent[]
-  paymentEvents     PaymentEvent[]
-}
-
-model BalanceState {
-  id        String   @id @default(uuid())
-  balanceId String
-  stage     String
-  stageAt   DateTime @default(now())
-  balance   Balance  @relation(fields: [balanceId], references: [id])
-}
-
-model OutreachEvent {
-  id             String   @id @default(uuid())
-  balanceId      String
-  channel        String
-  templateKey    String
-  messageBody    String
-  sentAt         DateTime @default(now())
-  deliveryStatus String   @default("SENT")
-  responseStatus String   @default("NONE")
-  balance        Balance  @relation(fields: [balanceId], references: [id])
-}
-
-model PaymentEvent {
-  id          String   @id @default(uuid())
-  balanceId   String
-  amountCents Int
-  paidAt      DateTime @default(now())
-  method      String   @default("LINK")
-  result      String   @default("SUCCESS")
-  balance     Balance  @relation(fields: [balanceId], references: [id])
 }
 
 model RuleSet {
@@ -169,66 +123,6 @@ model CarrierOrder {
   practiceId String   @unique
   order      String   // JSON-serialised String[]
   updatedAt  DateTime @updatedAt
-}
-
-// ─── Patient AR Models ───────────────────────────────────────────────────────
-
-model PatientBalance {
-  id                     String    @id @default(uuid())
-  patientToken           String    @default(uuid())
-  abeldentPatientId      String?
-  patientFirstName       String
-  patientLastName        String
-  patientEmail           String?
-  patientPhone           String?
-  carrierCode            String?
-  procedureCode          String?
-  procedureDescription   String?
-  treatmentDate          DateTime?
-  adjudicationDate       DateTime?
-  amountBilled           Float     @default(0)
-  insurancePaid          Float     @default(0)
-  patientOwes            Float     @default(0)
-  daysSinceAdjudication  Int       @default(0)
-  practiceId             String?
-  reminderStatus         String    @default("none")
-  paymentStatus          String    @default("outstanding")
-  amountPaid             Float     @default(0)
-  stripePaymentLink      String?
-  stripePaymentLinkId    String?
-  stripePaymentIntentId  String?
-  /// Opaque token for /pay/p/:token (no staff session). See PUBLIC_PAY_TOKEN_TTL_DAYS.
-  publicPayToken         String?   @unique
-  publicPayTokenExpiresAt DateTime?
-  lastReminderEmailAt    DateTime?
-  lastReminderSmsAt      DateTime?
-  /// P4-03: set when patient texts STOP to Twilio inbound; blocks future SMS to patientPhone.
-  smsOptOutAt            DateTime?
-  /// P4-02: set on one-click unsubscribe or SendGrid spam/bounce; blocks balance reminder email.
-  emailOptOutAt          DateTime?
-  /// Associate Dentist scoping — populated by AbelDent sync; null means unassigned.
-  providerId             String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-
-  @@index([patientToken])
-  @@index([paymentStatus])
-  @@index([reminderStatus])
-  @@index([practiceId])
-  @@index([providerId])
-  @@index([emailOptOutAt])
-  @@index([patientPhone])
-}
-
-model StripeConnectAccount {
-  id                 String   @id @default(uuid())
-  practiceId         String   @unique
-  stripeAccountId    String   @unique
-  onboardingComplete Boolean  @default(false)
-  chargesEnabled     Boolean  @default(false)
-  payoutsEnabled     Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
 }
 
 /// Deduplicate Stripe webhook deliveries (id is evt_…).
@@ -480,9 +374,18 @@ model InsuranceClaim {
   patientToken      String        @map("patient_token")
   billedAmount      Decimal       @map("billed_amount") @db.Decimal(10, 2)
   outstandingAmount Decimal       @map("outstanding_amount") @db.Decimal(10, 2)
+  /// What the practice expected the carrier to pay. When set, the voice agent
+  /// uses this when discussing the discrepancy — distinct from outstandingAmount.
+  expectedAmount    Decimal?      @map("expected_amount") @db.Decimal(10, 2)
   daysOutstanding   Int           @map("days_outstanding")
   /// Date of service — canonical anchor for carrier appeal deadlines. Prefer PMS backfill over inferred dates.
   servicedAt        DateTime?     @map("serviced_at")
+  /// Date the claim was electronically submitted to the carrier. Carriers ask for this
+  /// during calls and it anchors appeal deadline windows.
+  submittedAt       DateTime?     @map("submitted_at")
+  /// CDT procedure codes billed on this claim, comma-separated (e.g. "D1110,D0274").
+  /// Carriers frequently ask "what procedures were included?" during inquiry calls.
+  treatmentCodes    String?       @map("treatment_codes")
   status            ClaimStatus   @default(PENDING)
   priority          ClaimPriority @default(NORMAL)
   /// Active recovery routing — set by claim router after calls/sync.
@@ -1101,6 +1004,35 @@ model UsagePeriod {
   @@map("usage_periods")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PHI Vault — encrypted persistence layer for PIIVault restart resilience
+//
+// Each row stores one patientToken → PatientPHI mapping, encrypted with
+// AES-256-GCM using PHI_ENCRYPTION_KEY from the secret manager.
+// Rows expire at the same time as the in-memory token (TOKEN_TTL_MS, 4 h).
+// On server restart, rehydrate() decrypts all live rows into the in-memory
+// vault so the queue engine can dispatch without re-importing claims.
+//
+// NEVER store plaintext PHI here. Ciphertext, IV, and auth tag only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Encrypted PHI backing store for in-memory PIIVault restart resilience.
+model PhiVaultEntry {
+  /// UUID token — same value stored in InsuranceClaim.patientToken.
+  token      String   @id
+  /// AES-256-GCM ciphertext of JSON.stringify(PatientPHI), hex-encoded.
+  ciphertext String
+  /// Hex-encoded 12-byte random IV.
+  iv         String
+  /// Hex-encoded 16-byte GCM auth tag.
+  authTag    String   @map("auth_tag")
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("phi_vault_entries")
+}
+
 /// Per-practice (or global, when practiceId is null) feature pause state —
 /// e.g. auto-pause on hard usage cap (tiers.ts hardStopAtLimit) or carrier-wide
 /// suspension. Resume requires manual confirmation unless explicitly disabled.
@@ -1219,6 +1151,10 @@ model Prospect {
   painPoints           Json?          @map("pain_points")
   metadata             Json?
   lastVapiCallId       String?        @map("last_vapi_call_id")
+  /// Set when Khalid manually triggers start-trial. Drives trial onboarding sequence.
+  trialStartedAt       DateTime?      @map("trial_started_at")
+  /// Which trial onboarding email has been sent next (0=pre-kickoff through 4=day-60).
+  trialSequenceStep    Int            @default(0) @map("trial_sequence_step")
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
   activities           ProspectActivity[]
@@ -1266,4 +1202,38 @@ model MarketingLearningRun {
 
   @@index([createdAt])
   @@map("marketing_learning_runs")
+}
+
+model AgentRun {
+  id          String   @id @default(cuid())
+  agentName   String   @map("agent_name")
+  runAt       DateTime @default(now()) @map("run_at")
+  severity    String   // CRITICAL | HIGH | MEDIUM | LOW | OK
+  score       Int?     // 0–100 quality/health score where applicable
+  summary     String   @map("summary")
+  findings    Json     @default("[]") // AgentFinding[]
+  downstream  Json     @default("[]") // string[] — agent names this output feeds
+  escalated   Boolean  @default(false)
+  raw         Json?    // full structured output blob
+
+  @@index([agentName, runAt])
+  @@index([severity, runAt])
+  @@index([runAt])
+  @@map("agent_runs")
+}
+
+/// Single-use invite token for staff onboarding. Created by practice_owner/office_manager.
+model InviteToken {
+  id         String       @id @default(uuid())
+  practiceId String
+  email      String
+  role       PracticeRole
+  token      String       @unique @default(uuid())
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime     @default(now())
+  practice   Practice     @relation(fields: [practiceId], references: [id])
+
+  @@index([token])
+  @@index([practiceId])
 }

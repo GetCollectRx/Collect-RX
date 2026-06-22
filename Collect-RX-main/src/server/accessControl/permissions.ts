@@ -34,6 +34,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   list_practices: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'none',
     billing_ops_manager: 'read_all',
     platform_admin: 'read_all',
     auditor: 'none',
@@ -41,6 +43,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   get_practice: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'none',
     billing_ops_manager: 'read_all',
     platform_admin: 'read_all',
     auditor: 'none',
@@ -48,6 +52,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   update_practice: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'none',
+    billing_coordinator: 'none',
     billing_ops_manager: 'none',
     platform_admin: 'write_all',
     auditor: 'none',
@@ -55,6 +61,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   list_claims: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -62,6 +70,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   get_claim: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -69,6 +79,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   pause_claim: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'write_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -76,6 +88,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   unpause_claim: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'write_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -83,6 +97,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   build_queue: {
     front_desk: 'none',
     practice_owner: 'none',
+    office_manager: 'none',
+    billing_coordinator: 'none',
     billing_ops_manager: 'none',
     platform_admin: 'break_glass',
     auditor: 'none',
@@ -90,6 +106,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   run_queue: {
     front_desk: 'none',
     practice_owner: 'none',
+    office_manager: 'none',
+    billing_coordinator: 'none',
     billing_ops_manager: 'none',
     platform_admin: 'break_glass',
     auditor: 'none',
@@ -97,6 +115,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   get_queue_stats: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'read_all',
     auditor: 'read_all',
@@ -104,6 +124,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   list_escalations: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -111,6 +133,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   resolve_escalation: {
     front_desk: 'own',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'write_all',
     platform_admin: 'grant',
     auditor: 'none',
@@ -118,6 +142,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   get_aging_report: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'read_all',
     auditor: 'read_all',
@@ -125,6 +151,8 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
   get_carrier_stats: {
     front_desk: 'none',
     practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'read_all',
     auditor: 'read_all',
@@ -168,10 +196,11 @@ export function canAccessPractice(
   switch (role) {
     case 'front_desk':
     case 'practice_owner':
+    case 'office_manager':
+    case 'billing_coordinator':
       return Boolean(sessionPracticeId && sessionPracticeId === targetPracticeId);
     case 'billing_ops_manager':
     case 'platform_admin':
-      return true;
     case 'auditor':
       return true;
     default:

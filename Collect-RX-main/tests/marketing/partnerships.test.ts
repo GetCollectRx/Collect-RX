@@ -34,6 +34,8 @@ const baseProspect: Prospect = {
   campaignId: null,
   linkedPracticeId: null,
   optOutAt: null,
+  trialStartedAt: null,
+  trialSequenceStep: 0,
   callSummary: null,
   replyIntent: null,
   suggestedReply: null,
@@ -98,13 +100,13 @@ describe('email templates', () => {
     expect(interpolateSubject('Hello {{practice}}', baseProspect)).toBe('Hello Downtown Dental');
   });
 
-  it('step 1 uses capability copy without social proof or em dashes', async () => {
+  it('step 1 uses founder voice without social proof or em dashes', async () => {
     const { COLD_SEQUENCE } = await import('../../src/server/marketing/emailTemplates.js');
     const html = COLD_SEQUENCE[0]!.buildHtml(baseProspect);
-    expect(html).toContain('two costs');
+    expect(html).toContain('Khalid');
+    expect(html).toContain('collectrx.ca/demo');
     expect(html).not.toContain('—');
     expect(html.toLowerCase()).not.toContain('colleague');
-    expect(html.toLowerCase()).not.toContain('patients');
     expect(html.toLowerCase()).not.toContain('mentioned');
   });
 });
@@ -141,13 +143,23 @@ describe('branded email layout', () => {
 });
 
 describe('reply templates', () => {
-  it('returns capability-focused positive reply without social proof', async () => {
+  it('returns 3A-style positive reply with booking link', async () => {
     const { getReplyTemplate } = await import('../../src/server/marketing/replyTemplates.js');
     const tpl = getReplyTemplate('positive', baseProspect, 'Yes interested');
-    expect(tpl?.text).toContain('outstanding insurance AR');
+    expect(tpl?.text).toContain('Good to hear from you');
+    expect(tpl?.text).toContain('calendly.com/collectrx/pilot-setup');
     expect(tpl?.text.toLowerCase()).not.toContain('colleague');
-    expect(tpl?.text.toLowerCase()).not.toContain('focuses on patients');
     expect(tpl?.autoSend).toBe(true);
+  });
+
+  it('detects pricing objection variant', async () => {
+    const { detectObjectionVariant } = await import('../../src/server/marketing/replyTemplates.js');
+    expect(detectObjectionVariant('What does it cost?')).toBe('pricing');
+  });
+
+  it('detects biller/has_solution objection variant', async () => {
+    const { detectObjectionVariant } = await import('../../src/server/marketing/replyTemplates.js');
+    expect(detectObjectionVariant('We already have someone handling this')).toBe('has_solution');
   });
 
   it('detects too-small objection variant', async () => {
@@ -181,7 +193,7 @@ describe('email preview', () => {
     const { previewColdEmail } = await import('../../src/server/marketing/emailTemplates.js');
     const preview = previewColdEmail(baseProspect, 1);
     expect(preview?.subject).toContain('Downtown Dental');
-    expect(preview?.text).toContain('two costs');
+    expect(preview?.text).toContain('Khalid');
     expect(preview?.html).not.toContain('—');
   });
 });
@@ -194,13 +206,38 @@ describe('merge-field personalization', () => {
   });
 });
 
+describe('subject A/B', () => {
+  it('assigns deterministic variant and interpolates city in T1-A', async () => {
+    const { pickSubjectVariant, resolveColdSubject } = await import('../../src/server/marketing/emailTemplates.js');
+    const variant = pickSubjectVariant(baseProspect.id);
+    expect(['a', 'b']).toContain(variant);
+    const subject = resolveColdSubject(1, baseProspect);
+    expect(subject.length).toBeGreaterThan(10);
+    if (variant === 'a') {
+      expect(subject).toContain('Toronto');
+    } else {
+      expect(subject).toContain('Downtown Dental');
+    }
+  });
+});
+
+describe('post-demo follow-up', () => {
+  it('builds 5A interested draft', async () => {
+    const { buildPostDemoFollowUp } = await import('../../src/server/marketing/emailTemplates.js');
+    const email = buildPostDemoFollowUp(baseProspect, 'interested', { agreementSendDay: 'Friday' });
+    expect(email.text).toContain('60-day free trial');
+    expect(email.text).toContain('Friday');
+  });
+});
+
 describe('pre-demo email', () => {
   it('includes scheduled time when set', async () => {
     const { buildPreDemoEmail } = await import('../../src/server/marketing/emailTemplates.js');
     const demoAt = new Date('2026-06-15T18:00:00Z');
     const email = buildPreDemoEmail({ ...baseProspect, demoScheduledAt: demoAt });
-    expect(email.subject).toContain('Downtown Dental');
-    expect(email.text).toContain('CollectRx demo');
+    expect(email.subject).toContain('CollectRx call');
+    expect(email.text).toContain('Downtown Dental');
+    expect(email.text).toContain('free trial');
   });
 });
 

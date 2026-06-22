@@ -240,13 +240,75 @@ export async function checkCarrierBlock(
 }
 
 /**
+ * Hard gate: practice must be authorized to call this carrier before dispatch.
+ *   - Voice agent enabled for the practice
+ *   - Carrier enabled in practice settings
+ *   - Billing Agent Authorization Letter (BAAL) on file
+ *   - Provider number configured for the carrier
+ */
+export async function checkCarrierAuthorizationGate(
+  prisma: PrismaClient,
+  practiceId: string,
+  carrierId: CarrierId,
+): Promise<DispatchGuard> {
+  const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+  const settings = await getPracticeSettings(prisma, practiceId);
+  const displayName = CARRIER_CONFIGS[carrierId]?.displayName ?? carrierId;
+
+  if (!settings.voiceAgentEnabled) {
+    return {
+      allowed: false,
+      reason:
+        'Voice agent is disabled for this practice. Enable it in Practice Settings before placing carrier calls.',
+    };
+  }
+
+  const carrierConfig = settings.carrierConfigs.find((c) => c.carrierId === carrierId);
+  if (!carrierConfig) {
+    return {
+      allowed: false,
+      reason: `${displayName} is not configured for this practice. Add carrier settings before calling.`,
+    };
+  }
+
+  if (!carrierConfig.enabled) {
+    return {
+      allowed: false,
+      reason: `${displayName} is disabled in Practice Settings. Enable the carrier before calling.`,
+    };
+  }
+
+  if (!carrierConfig.authorizationSubmitted) {
+    return {
+      allowed: false,
+      reason:
+        `Billing Agent Authorization Letter (BAAL) not on file for ${displayName}. ` +
+        'Submit authorization in Practice Settings before calling this carrier.',
+    };
+  }
+
+  const providerNumber = carrierConfig.providerNumber?.trim();
+  if (!providerNumber) {
+    return {
+      allowed: false,
+      reason:
+        `Provider number not configured for ${displayName}. ` +
+        'Add your carrier provider number in Practice Settings before calling.',
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Days outstanding (< 30 → reject, > 90 → escalate)
- *   4. TELUS-specific minimum days (when applicable)
- *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   4. Days outstanding (< 30 → reject, > 90 → escalate)
+ *   5. TELUS-specific minimum days (when applicable)
+ *   6. Max attempts (>= 3 → reject)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -282,28 +344,33 @@ export async function validateDispatch(
     return recoveryGate;
   }
 
-  // 3. Claims under 30 days old — do not queue
+  const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
+  if (!authGate.allowed) {
+    return authGate;
+  }
+
+  // 4. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
     return { allowed: false, reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 4. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
+  // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
     return { allowed: false, reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
-  // 5. Claims over 90 days — escalate to human, skip AI
+  // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 6. Max 3 attempts
+  // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   const easternHour = getEasternHour(callTime);
   const dayOfWeek = getEasternDayOfWeek(callTime);
@@ -366,6 +433,7 @@ export const carrierAdapter = {
   CARRIER_CONFIGS,
   TELUS_TPA_CONFIGS,
   checkCarrierBlock,
+  checkCarrierAuthorizationGate,
   validateDispatch,
   getTelusTpa,
   getTpaDisplayName,

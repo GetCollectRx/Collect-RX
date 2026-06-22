@@ -18,24 +18,17 @@ function practiceId(req: Request): string {
   return practiceIdFromSession(req);
 }
 
-export function createBenefitsApiRouter(prisma: PrismaClient): Router {
+export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
   const r = Router();
   useOwnerPracticeApiAuthOnly(r);
 
   r.get('/benefits/:patientToken', async (req: Request, res: Response) => {
     try {
-      const pid = practiceId(req);
+      practiceId(req);
       const patientToken = req.params.patientToken;
       const carrierCode = String((req.query.carrier_code as string) || '').trim();
       if (!carrierCode) {
         return res.status(400).json({ error: 'carrier_code query param is required' });
-      }
-      const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken },
-        select: { id: true },
-      });
-      if (!belongs) {
-        return res.status(404).json({ error: 'Patient not found for this practice' });
       }
       const planYear = await getPlanYear(patientToken, carrierCode);
       if (!planYear) {
@@ -80,7 +73,7 @@ export function createBenefitsApiRouter(prisma: PrismaClient): Router {
 
   r.post('/benefits/estimate', async (req: Request, res: Response) => {
     try {
-      const pid = practiceId(req);
+      practiceId(req);
       const body = req.body as {
         patient_token?: string;
         carrier_code?: string;
@@ -90,13 +83,6 @@ export function createBenefitsApiRouter(prisma: PrismaClient): Router {
       const carrierCode = String(body.carrier_code || '').trim();
       if (!patientToken || !carrierCode) {
         return res.status(400).json({ error: 'patient_token and carrier_code are required' });
-      }
-      const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken },
-        select: { id: true },
-      });
-      if (!belongs) {
-        return res.status(404).json({ error: 'Patient not found for this practice' });
       }
       const procs = Array.isArray(body.procedures) ? body.procedures : [];
       if (procs.length === 0) {

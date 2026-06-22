@@ -82,8 +82,8 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
       }
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2500)
-    } catch (err: any) {
-      setErrorMsg(err.message)
+    } catch (err: unknown) {
+      setErrorMsg((err as Error).message)
       setSaveState('error')
     }
   }

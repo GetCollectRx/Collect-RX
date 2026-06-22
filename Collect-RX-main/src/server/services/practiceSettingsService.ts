@@ -14,7 +14,23 @@ function defaultCarrierConfigs(): CarrierConfig[] {
     callWindowStart: '08:00',
     callWindowEnd: '17:00',
     notes: '',
+    providerNumber: '',
+    authorizationSubmitted: false,
+    authorizationSubmittedAt: null,
+    authorizationConfirmationNumber: undefined,
+    languagePreference: 'en' as const,
   }));
+}
+
+const DEFAULT_CARRIER_CONFIG_BY_ID = new Map(defaultCarrierConfigs().map((c) => [c.carrierId, c]));
+
+/** Backfill fields added after a practice's settings were first saved (e.g. providerNumber). */
+function normalizeCarrierConfig(raw: unknown): CarrierConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Partial<CarrierConfig>;
+  const fallback = DEFAULT_CARRIER_CONFIG_BY_ID.get(c.carrierId as CarrierId);
+  if (!fallback) return undefined;
+  return { ...fallback, ...c };
 }
 
 export function defaultPracticeSettings(): PracticeSettings {
@@ -66,11 +82,16 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.escalationPhoneNumber === 'string'
       ? { escalationPhoneNumber: o.escalationPhoneNumber }
       : {}),
+    ...(typeof o.billingPhone === 'string' ? { billingPhone: o.billingPhone } : {}),
     ...(o.telusTpaMappings && typeof o.telusTpaMappings === 'object'
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
       : {}),
     ...(Array.isArray(o.carrierConfigs)
-      ? { carrierConfigs: o.carrierConfigs as CarrierConfig[] }
+      ? {
+          carrierConfigs: o.carrierConfigs
+            .map(normalizeCarrierConfig)
+            .filter((c): c is CarrierConfig => c !== undefined),
+        }
       : {}),
     ...(typeof o.pmsVendor === 'string'
       ? (() => {
@@ -111,12 +132,21 @@ export function validatePracticeSettingsUpdate(
   }
   const start = body.callWindowStart ?? '08:00';
   const end = body.callWindowEnd ?? '17:00';
+  // L-4: string comparison is intentionally correct here. The HHMM regex above
+  // enforces zero-padded HH:MM format, so lexicographic order matches
+  // chronological order within the valid range. This is NOT a general pattern —
+  // it only works because the format is strictly validated before this line.
   if (start < '08:00') return 'callWindowStart cannot be before 08:00 Eastern';
   if (end > '17:00') return 'callWindowEnd cannot be after 17:00 Eastern';
   if (start >= end) return 'callWindowStart must be before callWindowEnd';
   if (body.escalationPhoneNumber && body.escalationPhoneNumber.trim()) {
     if (!E164.test(body.escalationPhoneNumber.trim())) {
       return 'escalationPhoneNumber must be valid E.164 (+1...)';
+    }
+  }
+  if (body.billingPhone && body.billingPhone.trim()) {
+    if (!E164.test(body.billingPhone.trim())) {
+      return 'billingPhone must be valid E.164 (+1...)';
     }
   }
   if (body.pmsVendor !== undefined) {
@@ -139,6 +169,29 @@ export function validatePracticeSettingsUpdate(
       }
       if (c.maxAttempts < 1 || c.maxAttempts > 3) {
         return 'maxAttempts must be between 1 and 3';
+      }
+      if (c.providerNumber !== undefined) {
+        if (typeof c.providerNumber !== 'string' || c.providerNumber.length > 50) {
+          return `${c.carrierId} providerNumber must be a string of at most 50 characters`;
+        }
+      }
+      if (c.authorizationSubmitted !== undefined && typeof c.authorizationSubmitted !== 'boolean') {
+        return `${c.carrierId} authorizationSubmitted must be a boolean`;
+      }
+      if (c.authorizationSubmittedAt !== undefined && c.authorizationSubmittedAt !== null) {
+        if (typeof c.authorizationSubmittedAt !== 'string' || Number.isNaN(Date.parse(c.authorizationSubmittedAt))) {
+          return `${c.carrierId} authorizationSubmittedAt must be an ISO date string or null`;
+        }
+      }
+      if (c.authorizationConfirmationNumber !== undefined) {
+        if (typeof c.authorizationConfirmationNumber !== 'string' || c.authorizationConfirmationNumber.length > 100) {
+          return `${c.carrierId} authorizationConfirmationNumber must be a string of at most 100 characters`;
+        }
+      }
+      if (c.languagePreference !== undefined) {
+        if (c.languagePreference !== 'en' && c.languagePreference !== 'fr') {
+          return `${c.carrierId} languagePreference must be 'en' or 'fr'`;
+        }
       }
     }
   }

@@ -66,6 +66,10 @@ export default function ProspectDetailPage() {
   const [preview, setPreview] = useState<EmailPreview | null>(null)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [postDemoOutcome, setPostDemoOutcome] = useState<'interested' | 'thinking' | 'not_fit'>('interested')
+  const [postDemoConcern, setPostDemoConcern] = useState('')
+  const [postDemoConcernResponse, setPostDemoConcernResponse] = useState('')
+  const [postDemoAgreementDay, setPostDemoAgreementDay] = useState('Friday')
 
   const load = useCallback(() => {
     if (!id) return
@@ -194,6 +198,57 @@ export default function ProspectDetailPage() {
       setTimeout(() => setCopied(false), 2000)
     } catch {
       setMsg('Could not copy to clipboard')
+    }
+  }
+
+  const sendSuggestedReply = async () => {
+    if (!id || !prospect?.suggestedReply) return
+    if (!window.confirm('Send the suggested reply via SendGrid from khalid@collectrx.ca?')) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await apiFetch(`/api/admin/partnerships/prospects/${id}/send-suggested-reply`, {
+        method: 'POST',
+      })
+      const body = await res.json() as { error?: string; data?: { sent: boolean } }
+      if (!res.ok) throw new Error(body.error || 'Send failed')
+      setMsg(body.data?.sent ? 'Reply sent via SendGrid' : 'Send logged (SendGrid not configured)')
+      load()
+    } catch (e) {
+      setMsg((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sendPostDemoFollowUp = async (send: boolean) => {
+    if (!id) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await apiFetch(`/api/admin/partnerships/prospects/${id}/post-demo-follow-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outcome: postDemoOutcome,
+          concern: postDemoConcern.trim() || undefined,
+          concernResponse: postDemoConcernResponse.trim() || undefined,
+          agreementSendDay: postDemoAgreementDay.trim() || undefined,
+          send,
+        }),
+      })
+      const body = await res.json() as { error?: string; data?: { sent: boolean; draftOnly: boolean } }
+      if (!res.ok) throw new Error(body.error || 'Post-demo action failed')
+      if (body.data?.draftOnly) {
+        setMsg('Draft saved to suggested reply — review and send when ready')
+      } else {
+        setMsg(body.data?.sent ? 'Post-demo follow-up sent' : 'Post-demo follow-up logged')
+      }
+      load()
+    } catch (e) {
+      setMsg((e as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -333,9 +388,18 @@ export default function ProspectDetailPage() {
                         <p className="mt-2 p-3 rounded bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                           {prospect.suggestedReply}
                         </p>
-                        <Button variant="ghost" size="sm" className="mt-2" onClick={() => void copySuggestedReply()}>
-                          {copied ? 'Copied' : 'Copy suggested reply'}
-                        </Button>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Button variant="ghost" size="sm" onClick={() => void copySuggestedReply()}>
+                            {copied ? 'Copied' : 'Copy'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={busy || Boolean(prospect.optOutAt)}
+                            onClick={() => void sendSuggestedReply()}
+                          >
+                            Send via SendGrid
+                          </Button>
+                        </div>
                       </>
                     )}
                   </div>
@@ -345,6 +409,81 @@ export default function ProspectDetailPage() {
                     {(prospect.painPoints as string[]).map((p) => <li key={p}>{p}</li>)}
                   </ul>
                 )}
+              </div>
+            </Card>
+          )}
+
+          {(prospect.demoScheduledAt || prospect.stage === 'demo_booked' || prospect.stage === 'qualified') && (
+            <Card>
+              <CardHeader
+                title="Post-demo follow-up"
+                subtitle="Template 5A/5B/5C — sends from khalid@collectrx.ca when SendGrid is configured"
+              />
+              <div className="px-4 pb-4 space-y-3 text-sm">
+                <Select
+                  label="Call outcome"
+                  value={postDemoOutcome}
+                  disabled={busy}
+                  onChange={(e) => setPostDemoOutcome(e.target.value as typeof postDemoOutcome)}
+                >
+                  <option value="interested">Interested — send 5A (trial agreement next)</option>
+                  <option value="thinking">Thinking it over — 5B (needs concern)</option>
+                  <option value="not_fit">Not the right fit — 5C</option>
+                </Select>
+                {postDemoOutcome === 'interested' && (
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Agreement send day</span>
+                    <input
+                      className="mt-1 w-full rounded border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
+                      value={postDemoAgreementDay}
+                      disabled={busy}
+                      onChange={(e) => setPostDemoAgreementDay(e.target.value)}
+                      placeholder="Friday"
+                    />
+                  </label>
+                )}
+                {postDemoOutcome === 'thinking' && (
+                  <>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Their concern (required to send)</span>
+                      <textarea
+                        className="mt-1 w-full rounded border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm min-h-[72px]"
+                        value={postDemoConcern}
+                        disabled={busy}
+                        onChange={(e) => setPostDemoConcern(e.target.value)}
+                        placeholder="e.g. worried about patient data"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Your response</span>
+                      <textarea
+                        className="mt-1 w-full rounded border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm min-h-[72px]"
+                        value={postDemoConcernResponse}
+                        disabled={busy}
+                        onChange={(e) => setPostDemoConcernResponse(e.target.value)}
+                        placeholder="Honest answer to their specific concern"
+                      />
+                    </label>
+                  </>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={busy || Boolean(prospect.optOutAt)}
+                    onClick={() => void sendPostDemoFollowUp(true)}
+                  >
+                    Send follow-up email
+                  </Button>
+                  {postDemoOutcome === 'thinking' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void sendPostDemoFollowUp(false)}
+                    >
+                      Save draft only
+                    </Button>
+                  )}
+                </div>
               </div>
             </Card>
           )}

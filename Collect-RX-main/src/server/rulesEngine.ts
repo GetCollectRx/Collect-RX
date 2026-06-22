@@ -69,11 +69,23 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
 export function startRulesEngine(prisma: PrismaClient) {
   console.log('🤖 Insurance ops engine started — evaluating every 60 seconds (in-process)');
 
+  // M-2: prevent concurrent ticks — if a tick takes longer than 60 seconds
+  // (large EMR outbox batch, many practices), the next interval fires but
+  // returns immediately rather than running syncWorkItems / outbox drain twice.
+  let isRunning = false;
+
   const evaluateRules = async () => {
+    if (isRunning) {
+      console.warn('[rulesEngine] previous tick still running — skipping');
+      return;
+    }
+    isRunning = true;
     try {
       await runRulesEngineTick(prisma);
     } catch (error) {
       console.error('❌ Rules engine error:', error);
+    } finally {
+      isRunning = false;
     }
   };
 

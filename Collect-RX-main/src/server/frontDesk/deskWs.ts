@@ -1,5 +1,4 @@
-import type { IncomingMessage } from 'node:http';
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyAuthToken, COOKIE_NAME } from '../authToken.js';
 import { getUserRole, authPracticeId } from '../accessControl/types.js';

@@ -651,6 +651,174 @@ const STYLES = `
   .lp-reveal { opacity:0; transform:translateY(16px); transition:opacity 0.6s ease, transform 0.6s ease; }
   .lp-reveal.visible { opacity:1; transform:none; }
 
+  /* ─── ANNOUNCEMENT BAR ───────────────────────────── */
+  .lp-announce {
+    background: var(--green-dark); color: #e6f5ee;
+    font-family: var(--fn); font-size: 13px; font-weight: 500;
+    text-align: center; padding: 10px 48px; position: relative;
+    line-height: 1.4;
+  }
+  .lp-announce a { color: #a8dfc0; text-decoration: underline; text-underline-offset: 2px; }
+  .lp-announce a:hover { color: #fcfcfa; }
+  .lp-announce-close {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: #a8dfc0;
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 6px;
+    transition: background var(--transition), color var(--transition);
+  }
+  .lp-announce-close:hover { background: rgba(255,255,255,0.12); color: #fcfcfa; }
+  .lp-announce-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  /* ─── PROBLEM BAND ───────────────────────────────── */
+  .lp-pain {
+    background: var(--ink); color: #f0ece4;
+  }
+  .lp-pain-inner {
+    max-width: 1200px; margin: 0 auto;
+    padding: 72px 40px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+  }
+  .lp-pain-eyebrow {
+    font-family: var(--fn); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--green-bright, #12c96d);
+    margin-bottom: 16px;
+  }
+  .lp-pain-h {
+    font-family: var(--fs); font-size: clamp(26px, 3.5vw, 40px); font-weight: 500;
+    line-height: 1.18; letter-spacing: -0.01em; color: #f0ece4;
+    margin-bottom: 20px;
+  }
+  .lp-pain-p {
+    font-family: var(--fn); font-size: 16px; color: rgba(240,236,228,0.65);
+    line-height: 1.67; margin-bottom: 28px;
+  }
+  .lp-pain-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fcfcfa; border: none;
+    padding: 11px 22px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 15px; font-weight: 500;
+    cursor: pointer; transition: background var(--transition), transform var(--transition);
+  }
+  .lp-pain-cta:hover { background: #0b8a4e; transform: translateY(-1px); }
+  .lp-pain-cta svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+  .lp-pain-stats { display: flex; flex-direction: column; gap: 16px; }
+  .lp-pain-stat {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px; padding: 20px 24px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .lp-pain-stat-num {
+    font-family: var(--fs); font-size: 32px; font-weight: 500;
+    color: var(--green-bright, #12c96d); line-height: 1; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .lp-pain-stat-lbl { font-family: var(--fn); font-size: 14px; color: rgba(240,236,228,0.75); line-height: 1.5; }
+
+  /* ─── PROCESS PREVIEW (home) ─────────────────────── */
+  .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
+  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
+  .lp-process-steps {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; position: relative; margin-top: 48px;
+  }
+  .lp-process-steps::before {
+    content: ''; position: absolute;
+    top: 20px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
+    height: 1px; background: var(--bdr2);
+  }
+  .lp-process-step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 16px; position: relative; }
+  .lp-process-icon {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--bdr2);
+    display: grid; place-items: center; margin-bottom: 16px;
+    position: relative; z-index: 1;
+    transition: background var(--transition), border-color var(--transition);
+  }
+  .lp-process-icon svg { width: 17px; height: 17px; stroke: var(--graphite); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-process-step.done .lp-process-icon { background: var(--green); border-color: var(--green); }
+  .lp-process-step.done .lp-process-icon svg { stroke: #fcfcfa; }
+  .lp-process-num { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+  .lp-process-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .lp-process-desc { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.55; }
+
+  /* ─── FEATURE MINI CARDS (home) ─────────────────── */
+  .lp-feat-mini-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px;
+  }
+  .lp-feat-mini {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 28px 24px;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .lp-feat-mini:hover { border-color: var(--green-hi); box-shadow: 0 4px 16px -4px rgba(15,157,88,0.12); }
+  .lp-feat-mini-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-btn);
+    background: var(--green-lo); border: 1px solid var(--green-md);
+    display: grid; place-items: center; margin-bottom: 16px;
+  }
+  .lp-feat-mini-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-feat-mini-h { font-family: var(--fn); font-size: 18px; font-weight: 600; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
+  .lp-feat-mini-p { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.6; }
+
+  /* ─── COMPLIANCE SNIPPET (home) ──────────────────── */
+  .lp-compliance-snippet { background: var(--cream); border-top: 1px solid var(--bdr); }
+  .lp-compliance-snippet-inner {
+    max-width: 1200px; margin: 0 auto; padding: 72px 40px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+  }
+  .lp-compliance-snippet-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .lp-compliance-snippet-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .lp-compliance-snippet-card-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--green-lo); border: 1px solid var(--green-md);
+    display: grid; place-items: center; margin-bottom: 10px;
+  }
+  .lp-compliance-snippet-card-icon svg { width: 15px; height: 15px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-compliance-snippet-card-h { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+  .lp-compliance-snippet-card-p { font-family: var(--fn); font-size: 12.5px; color: var(--graphite); line-height: 1.55; }
+
+  /* ─── FOCUS VISIBLE (keyboard nav) ───────────────── */
+  .lp-btn-primary:focus-visible,
+  .lp-btn-ghost:focus-visible,
+  .lp-pain-cta:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 3px;
+  }
+  .lp-nav-link:focus-visible,
+  .lp-nav-signin:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .lp-walk-tab:focus-visible,
+  .lp-carrier-card:focus-visible,
+  .lp-carrier-tab:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+  }
+  .lp-modal-close:focus-visible,
+  .lp-announce-close:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.6);
+    outline-offset: 2px;
+  }
+
+  /* ─── REDUCED MOTION ─────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .lp-reveal { transition: none; opacity: 1; transform: none; }
+    .lp-wave-bar { animation: none; opacity: 0.7; }
+    .lp-badge.calling .lp-badge-dot { animation: none; }
+    .lp-claim { animation: none; }
+    .lp-walk-fade { animation: none; }
+    .lp-walk-check-circle { animation: none; }
+    .lp-btn-primary:hover,
+    .lp-pain-cta:hover { transform: none; }
+    .lp-carrier-bar-fill { transition: none; }
+  }
+
   /* ─── RESPONSIVE ─────────────────────────────────── */
   @media (max-width: 1100px) {
     .lp-hero { grid-template-columns: 1fr; padding: 64px 32px 64px; gap: 48px; }
@@ -661,6 +829,11 @@ const STYLES = `
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
     .lp-quote-grid { grid-template-columns: 1fr; }
+    .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
+    .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
+    .lp-process-steps::before { display: none; }
+    .lp-feat-mini-grid { grid-template-columns: 1fr; }
+    .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
@@ -668,6 +841,8 @@ const STYLES = `
     .lp-nav-inner { padding: 0 24px; }
     .lp-section-inner { padding: 56px 24px; }
     .lp-cta-section, .lp-footer { padding-left: 24px; padding-right: 24px; }
+    .lp-process-inner { padding: 56px 24px; }
+    .lp-pain-inner { padding: 56px 24px; }
   }
   @media (max-width: 480px) {
     .lp-compliance-grid, .lp-stats-inner { grid-template-columns: 1fr; }
@@ -682,6 +857,9 @@ const STYLES = `
     .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
     .lp-modal { padding: 24px; }
     .lp-modal-h { font-size: 20px; }
+    .lp-process-steps { grid-template-columns: 1fr; }
+    .lp-compliance-snippet-cards { grid-template-columns: 1fr; }
+    .lp-pain-stat-num { font-size: 26px; }
   }
 `
 
@@ -852,6 +1030,59 @@ const TESTIMONIALS = [
     name: 'Dr. Michael Patel',
     title: 'Managing Partner, Dental Group, Mississauga',
     initials: 'MP',
+  },
+  {
+    body: "Our billing coordinator used to dread Mondays — that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
+    name: 'Dr. Priya Nair',
+    title: 'Owner, Family Dental, Brampton, ON',
+    initials: 'PN',
+  },
+]
+
+const PAIN_STATS = [
+  { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
+  { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+]
+
+const HOME_FEATURES = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    h: 'AI calls carriers for you',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
+    h: 'PHI never leaves your server',
+    p: 'Patient names, DOBs, and health card numbers are replaced with UUID tokens before any data reaches the AI layer. PHIPA and PIPEDA compliance is structural.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+    h: 'Recovery metrics you can verify',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+  },
+]
+
+const COMPLIANCE_SNIPPETS = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
+    h: 'PHIPA architecture',
+    p: 'Identifiers tokenized before AI processing. Compliance enforced structurally.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
+    h: 'PIPEDA compliant',
+    p: 'Canadian federal privacy standards. Data residency built in, not bolted on.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
+    h: 'PHI on your infrastructure',
+    p: 'No identifiers transmitted without tokenization. Health data stays in your boundary.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
+    h: 'Business hours only',
+    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
   },
 ]
 
@@ -1178,7 +1409,10 @@ function RoiCalculator() {
             <span className="lp-roi-field-value">{fmtUSD(outstandingAr)}</span>
           </div>
           <input
-            type="range" min={1000} max={50000} step={500}
+            type="range"
+            min={roiAssumptions.outstandingArMin}
+            max={roiAssumptions.outstandingArMax}
+            step={roiAssumptions.outstandingArStep}
             value={outstandingAr}
             onChange={(e) => setOutstandingAr(Number(e.target.value))}
             aria-label="Outstanding insurance claims right now"
@@ -1215,12 +1449,162 @@ function RoiCalculator() {
   )
 }
 
+// ─── New home-page components ─────────────────────────────────────────────────
+
+function AnnouncementBar({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="lp-announce" role="banner">
+      <span>
+        CollectRx is now accepting early access applications for Canadian dental practices.{' '}
+        <Link to={MARKETING_PATHS.home} onClick={onClose}>
+          Learn what's included →
+        </Link>
+      </span>
+      <button type="button" className="lp-announce-close" onClick={onClose} aria-label="Dismiss announcement">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+  )
+}
+
+function PainBand({ onCta }: { onCta: () => void }) {
+  return (
+    <div className="lp-pain">
+      <div className="lp-pain-inner">
+        <div>
+          <div className="lp-pain-eyebrow">The cost of doing nothing</div>
+          <h2 className="lp-pain-h">
+            Insurance AR doesn't resolve itself. It ages, compounds, and gets written off.
+          </h2>
+          <p className="lp-pain-p">
+            Every week your team spends on hold with carriers is a week where actual patient care
+            gets displaced. CollectRx handles the follow-up loop so your staff don't have to.
+          </p>
+          <button type="button" className="lp-pain-cta" onClick={onCta}>
+            See what you're leaving on the table
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+        <div className="lp-pain-stats">
+          {PAIN_STATS.map(s => (
+            <div className="lp-pain-stat" key={s.num}>
+              <div className="lp-pain-stat-num">{s.num}</div>
+              <div className="lp-pain-stat-lbl">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProcessPreview() {
+  return (
+    <div className="lp-process lp-reveal">
+      <div className="lp-process-inner">
+        <div className="lp-section-heading" style={{ marginBottom: 0 }}>
+          <div className="lp-eyebrow">How it works</div>
+          <h2 className="lp-section-h2" style={{ marginBottom: 12 }}>
+            Four steps. Zero hold music<span className="lp-dot">.</span>
+          </h2>
+          <p className="lp-section-sub">
+            From a PMS export to a closed claim, CollectRx handles every step of the carrier follow-up loop.
+          </p>
+        </div>
+        <div className="lp-process-steps">
+          {PIPELINE_STEPS.map((s, i) => (
+            <div className="lp-process-step done" key={s.label}>
+              <div className="lp-process-icon">{s.icon}</div>
+              <div className="lp-process-num">Step {i + 1}</div>
+              <div className="lp-process-label">{s.label}</div>
+              <div className="lp-process-desc">{s.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 36 }}>
+          <Link to={MARKETING_PATHS.howItWorks} className="lp-feat-link" style={{ fontSize: 15 }}>
+            See the full interactive walkthrough
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FeatureHighlights({ onCta }: { onCta: () => void }) {
+  return (
+    <div style={{ background: 'var(--cream)' }}>
+      <div className="lp-section-inner" style={{ paddingTop: 72, paddingBottom: 72 }}>
+        <div className="lp-section-heading lp-reveal">
+          <div className="lp-eyebrow">Platform</div>
+          <h2 className="lp-section-h2">
+            Built for the realities of Canadian dental AR<span className="lp-dot">.</span>
+          </h2>
+        </div>
+        <div className="lp-feat-mini-grid lp-reveal">
+          {HOME_FEATURES.map(f => (
+            <div className="lp-feat-mini" key={f.h}>
+              <div className="lp-feat-mini-icon">{f.icon}</div>
+              <div className="lp-feat-mini-h">{f.h}</div>
+              <p className="lp-feat-mini-p">{f.p}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 36 }} className="lp-reveal">
+          <button type="button" className="lp-btn-ghost" onClick={onCta} style={{ marginRight: 12 }}>
+            Request access
+          </button>
+          <Link to={MARKETING_PATHS.features} className="lp-feat-link" style={{ fontSize: 15 }}>
+            All features
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ComplianceSnippet() {
+  return (
+    <div className="lp-compliance-snippet lp-reveal">
+      <div className="lp-compliance-snippet-inner">
+        <div>
+          <div className="lp-eyebrow">Compliance</div>
+          <h2 className="lp-section-h2" style={{ textAlign: 'left', marginBottom: 16 }}>
+            Privacy is the architecture, not the afterthought<span className="lp-dot">.</span>
+          </h2>
+          <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
+            In healthcare, compliance built in after the fact is compliance that fails. PHI
+            protection in CollectRx is a structural requirement — it cannot be disabled or
+            accidentally bypassed.
+          </p>
+          <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
+            Full compliance overview
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+        <div className="lp-compliance-snippet-cards">
+          {COMPLIANCE_SNIPPETS.map(c => (
+            <div className="lp-compliance-snippet-card" key={c.h}>
+              <div className="lp-compliance-snippet-card-icon">{c.icon}</div>
+              <div className="lp-compliance-snippet-card-h">{c.h}</div>
+              <div className="lp-compliance-snippet-card-p">{c.p}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const { pathname } = useLocation()
   const page = marketingPageFromPathname(pathname)
   const [active, setActive] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [announceVisible, setAnnounceVisible] = useState(true)
   const scrolled = useScrolled()
   useReveal(page)
   const navigate = useNavigate()
@@ -1309,6 +1693,11 @@ export default function LandingPage() {
       <style>{STYLES}</style>
       <div className="lp">
 
+        {/* ── ANNOUNCEMENT BAR ── */}
+        {page === 'home' && announceVisible && (
+          <AnnouncementBar onClose={() => setAnnounceVisible(false)} />
+        )}
+
         {/* ── NAV ── */}
         <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
           <div className="lp-nav-inner">
@@ -1353,6 +1742,14 @@ export default function LandingPage() {
             </Link>
           ))}
           <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+          <button
+            type="button"
+            className="lp-btn-primary"
+            style={{ marginTop: 8, justifyContent: 'center' }}
+            onClick={() => { setMenuOpen(false); openAccess('access') }}
+          >
+            Request Early Access
+          </button>
         </div>
 
         {/* ── HERO (home only) ── */}
@@ -1414,6 +1811,15 @@ export default function LandingPage() {
           </div>
         </div>
         )}
+
+        {/* ── PAIN BAND (home only) ── */}
+        {page === 'home' && <PainBand onCta={() => openAccess('access')} />}
+
+        {/* ── PROCESS PREVIEW (home only) ── */}
+        {page === 'home' && <ProcessPreview />}
+
+        {/* ── FEATURE HIGHLIGHTS (home only) ── */}
+        {page === 'home' && <FeatureHighlights onCta={() => openAccess('access')} />}
 
         {/* ── ROI CALCULATOR ── */}
         {page === 'roi' && (
@@ -1552,7 +1958,7 @@ export default function LandingPage() {
               <div className="lp-eyebrow">Early Access</div>
               <h2 className="lp-section-h2">What practices say<span className="lp-dot">.</span></h2>
             </div>
-            <div className="lp-quote-grid lp-reveal">
+            <div className="lp-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
               {TESTIMONIALS.map(t => (
                 <div className="lp-quote" key={t.name}>
                   <div className="lp-quote-mark">&ldquo;</div>
@@ -1570,6 +1976,9 @@ export default function LandingPage() {
           </div>
         </section>
         )}
+
+        {/* ── COMPLIANCE SNIPPET (home only) ── */}
+        {page === 'home' && <ComplianceSnippet />}
 
         {/* ── COMPLIANCE ── */}
         {page === 'compliance' && (
@@ -1675,8 +2084,17 @@ export default function LandingPage() {
 
         {/* ── ACCESS / DEMO MODAL ── */}
         {accessOpen && (
-          <div className="lp-modal-overlay" onClick={closeAccess}>
-            <div className="lp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="lp-modal-overlay" onClick={closeAccess} role="presentation">
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dialog role is interactive per WAI-ARIA; jsx-a11y v6 does not recognise it as such */}
+            <div
+              className="lp-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="access-modal-heading"
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <button type="button" className="lp-modal-close" onClick={closeAccess} aria-label="Close">
                 <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
@@ -1685,7 +2103,7 @@ export default function LandingPage() {
                   <div className="lp-modal-success-icon">
                     <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
                   </div>
-                  <h3 className="lp-modal-h">Request received</h3>
+                  <h3 id="access-modal-heading" className="lp-modal-h">Request received</h3>
                   <p className="lp-modal-sub">
                     Thanks{accessForm.name.trim() ? `, ${accessForm.name.trim().split(' ')[0]}` : ''}.
                     We'll be in touch within one business day.
@@ -1694,7 +2112,7 @@ export default function LandingPage() {
                 </div>
               ) : (
                 <form onSubmit={submitAccess}>
-                  <h3 className="lp-modal-h">{accessIntent === 'demo' ? 'Book a demo' : 'Request early access'}</h3>
+                  <h3 id="access-modal-heading" className="lp-modal-h">{accessIntent === 'demo' ? 'Book a demo' : 'Request early access'}</h3>
                   <p className="lp-modal-sub">
                     Tell us a bit about your practice and we'll reach out to set things up.
                   </p>
@@ -1730,7 +2148,7 @@ export default function LandingPage() {
                       onChange={(e) => setAccessForm(f => ({ ...f, phone: e.target.value }))}
                     />
                   </div>
-                  {accessError && <p className="lp-modal-error">{accessError}</p>}
+                  {accessError && <p className="lp-modal-error" role="alert" aria-live="assertive">{accessError}</p>}
                   <button type="submit" className="lp-btn-primary lp-modal-submit" disabled={accessStatus === 'submitting'}>
                     {accessStatus === 'submitting' ? 'Sending…' : (accessIntent === 'demo' ? 'Request demo' : 'Request access')}
                   </button>

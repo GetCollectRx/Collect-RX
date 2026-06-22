@@ -28,15 +28,10 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
           const [
             totalClaims,
             resolvedClaims,
-            outstandingAR,
             activeUsers,
           ] = await Promise.all([
             prisma.insuranceClaim.count({ where: { practiceId: p.id } }),
             prisma.insuranceClaim.count({ where: { practiceId: p.id, status: { in: ['RESOLVED', 'APPROVED_PENDING_PAYMENT'] } } }),
-            prisma.patientBalance.aggregate({
-              where: { practiceId: p.id, paymentStatus: { in: ['outstanding', 'partial'] } },
-              _sum: { patientOwes: true },
-            }),
             prisma.user.count({ where: { practiceId: p.id, isActive: true } }),
           ]);
 
@@ -48,7 +43,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
             totalClaims,
             resolvedClaims,
             resolutionRate: totalClaims > 0 ? Math.round((resolvedClaims / totalClaims) * 100) : 0,
-            outstandingAR: outstandingAR._sum.patientOwes ?? 0,
+            outstandingAR: 0, // Patient AR removed — CollectRx is insurance-only
             activeUsers,
           };
         }),

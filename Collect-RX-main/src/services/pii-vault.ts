@@ -1,15 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CollectRx — PIIVault
+// CollectRx — PIIVault (LEGACY — services/pii-vault.ts)
 //
-// PHI boundary enforcer. All patient identifiers (names, DOBs, health card
-// numbers) are tokenized to UUIDs before leaving this layer. The UUID tokens
-// are the ONLY patient identifiers that ever reach Vapi voice agents or are
-// stored in insurance_claims / call_attempts / call_queue tables.
+// ⚠️  DEPRECATED — do NOT import tokenize() or detokenize() from this file.
 //
-// Detokenization happens ONLY on the backend after call completion — never
-// in transit to Vapi, and never stored back into the call-related tables.
+// The main PHI vault is src/pii-vault.ts (AES-256-GCM, 4h TTL, full PatientPHI
+// struct, encrypted DB persistence, rehydrate on restart). Use that instead.
 //
-// PHIPA/PIPEDA compliance depends on this boundary being inviolable.
+// This file remains because:
+//   - handlePostCallAudioDeletion() — still used by vapiWebhook.ts (post-call
+//     zero-retention deletion of Vapi/Twilio recordings). Not a vault function.
+//   - LLM_RESIDENCY_HEADERS — data-residency constants for external LLM calls.
+//   - isReadyForAudioDeletion() — utility used by zero-retention gate logic.
+//
+// tokenize() and detokenize() in this file are orphaned. They use a 24h TTL
+// simple string → UUID map (no PHI, no encryption). No code creates tokens
+// here any longer. Do not add new callers.
+//
+// PHIPA/PIPEDA compliance depends on using src/pii-vault.ts exclusively
+// for PHI tokenization.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { randomUUID } from 'crypto';

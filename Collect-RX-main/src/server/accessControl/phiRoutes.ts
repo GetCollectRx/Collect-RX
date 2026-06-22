@@ -1,6 +1,5 @@
 import type { Request } from 'express';
-import { isPlatformDev, isUserSession } from './types.js';
-import type { AuthJwtPayload, UserAuthPayload } from './types.js';
+import { isPlatformDev, isUserSession, type AuthJwtPayload, type UserAuthPayload } from './types.js'
 
 /** Paths (pathname only) that must never be served to `platform_dev` sessions. */
 const PHI_PATH_PREFIXES = [

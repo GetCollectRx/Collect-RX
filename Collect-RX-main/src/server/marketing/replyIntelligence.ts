@@ -25,12 +25,22 @@ export async function processInboundReply(
   const template = getReplyTemplate(analysis.intent, prospect, replyText);
   const suggestedReply = template?.text ?? analysis.suggestedReply;
 
+  const existingMeta =
+    prospect.metadata && typeof prospect.metadata === 'object' && !Array.isArray(prospect.metadata)
+      ? (prospect.metadata as Record<string, unknown>)
+      : {};
+
   await prisma.prospect.update({
     where: { id: prospect.id },
     data: {
       replyIntent: analysis.intent,
       suggestedReply: suggestedReply ?? null,
       lastEngagedAt: new Date(),
+      metadata: {
+        ...existingMeta,
+        lastInboundReply: replyText.slice(0, 4000),
+        suggestedReplySubject: template?.subject ?? null,
+      },
     },
   });
 
@@ -146,4 +156,68 @@ async function advanceStage(
     where: { id: prospectId },
     data: { stage, lastEngagedAt: new Date() },
   });
+}
+
+/** Send the suggested reply draft via SendGrid (one-click from admin UI). */
+export async function sendSuggestedReply(
+  prisma: PrismaClient,
+  prospectId: string,
+): Promise<{ sent: boolean }> {
+  const prospect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospectId } });
+  if (!prospect.email || prospect.optOutAt) {
+    throw new Error('Prospect has no email or has opted out');
+  }
+  if (!prospect.suggestedReply?.trim()) {
+    throw new Error('No suggested reply on file');
+  }
+
+  const meta =
+    prospect.metadata && typeof prospect.metadata === 'object' && !Array.isArray(prospect.metadata)
+      ? (prospect.metadata as Record<string, unknown>)
+      : {};
+  const lastReply =
+    typeof meta.lastInboundReply === 'string' ? meta.lastInboundReply : prospect.suggestedReply;
+  const intent = (prospect.replyIntent || 'neutral') as ReplyIntent;
+  const template = getReplyTemplate(intent, prospect, lastReply);
+
+  if (!template) {
+    throw new Error('Could not build reply template');
+  }
+
+  const subject =
+    typeof meta.suggestedReplySubject === 'string' && meta.suggestedReplySubject.trim()
+      ? meta.suggestedReplySubject.trim()
+      : template.subject;
+
+  const sent = await sendProspectEmail(
+    prospect,
+    {
+      subject,
+      html: template.html,
+      text: template.text,
+      activityType: 'reply_manual_send',
+    },
+    prisma,
+  );
+
+  if (!sent && process.env.SENDGRID_API_KEY) {
+    throw new Error('SendGrid send failed');
+  }
+
+  await logProspectActivity(prisma, prospectId, 'reply_sent', subject, { manual: true });
+
+  if (intent === 'positive') {
+    await advanceStage(prisma, prospectId, 'engaged');
+    await prisma.prospect.update({
+      where: { id: prospectId },
+      data: { sequenceCompleted: true, suggestedReply: null },
+    });
+  } else {
+    await prisma.prospect.update({
+      where: { id: prospectId },
+      data: { suggestedReply: null },
+    });
+  }
+
+  return { sent: sent || !process.env.SENDGRID_API_KEY };
 }

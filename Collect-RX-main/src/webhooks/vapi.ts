@@ -19,14 +19,19 @@
 
 import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import {
   hashWebhookBody,
-  isWebhookDuplicate,
   markWebhookProcessed,
 } from '../server/vapi/vapiWebhook.js';
+
+// H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
 
 const router = Router();
 
@@ -79,17 +84,27 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  const bodyHash = hashWebhookBody(rawBody);
-  if (await isWebhookDuplicate(prisma, bodyHash)) {
-    return res.status(200).json({ received: true, duplicate: true });
-  }
-
   // ── 2. Parse payload ─────────────────────────────────────────────────────
   let payload: VapiWebhookPayload;
   try {
     payload = JSON.parse(rawBody.toString('utf-8')) as VapiWebhookPayload;
   } catch {
     return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+
+  // H-4: atomically claim this webhook delivery before processing.
+  // markWebhookProcessed inserts a row with a unique bodyHash constraint.
+  // The first concurrent request to INSERT wins; the second gets P2002 and
+  // is dropped. This prevents two Vapi retries from both running recovery logic.
+  const bodyHash = hashWebhookBody(rawBody);
+  try {
+    await markWebhookProcessed(prisma, bodyHash);
+  } catch (claimErr) {
+    if (isUniqueConstraintError(claimErr)) {
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+    console.error('[vapi-webhook] Failed to claim webhook delivery:', claimErr);
+    return res.status(500).json({ error: 'Internal error' });
   }
 
   // Acknowledge immediately — Vapi expects a fast 200
@@ -101,7 +116,6 @@ router.post('/', async (req: Request, res: Response) => {
     if (!handledAsProspect) {
       await processVapiDeskWebhook(prisma, payload, { rawBody });
     }
-    await markWebhookProcessed(prisma, bodyHash);
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);
   }

@@ -1,24 +1,36 @@
 import type { PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS } from '../../carriers/adapter.js';
-import { initiateCall } from '../../vapi/client.js';
-import { isWithinCallWindow } from '../../carriers/adapter.js';
+import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
+import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
+import { getPracticeSettings } from '../services/practiceSettingsService.js';
+import { piiVault } from '../../pii-vault.js';
+import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+// C-2: prevent concurrent ticks from dual-dispatching the same claim.
+// If a tick takes longer than 60 seconds (slow DB, slow Vapi), the next tick
+// fires but immediately returns rather than running a parallel dispatch loop.
+let isTickRunning = false;
 
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
   tickTimer = setInterval(() => {
-    void runDeskQueueTick(prisma).catch((err) => {
-      console.error('[deskQueueEngine] tick error:', err);
-    });
+    if (isTickRunning) {
+      logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
+      return;
+    }
+    isTickRunning = true;
+    void runDeskQueueTick(prisma)
+      .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
+      .finally(() => { isTickRunning = false; });
   }, 60_000);
-  void runDeskQueueTick(prisma).catch((err) => {
-    console.error('[deskQueueEngine] initial tick error:', err);
-  });
+  isTickRunning = true;
+  void runDeskQueueTick(prisma)
+    .catch((err) => { console.error('[deskQueueEngine] initial tick error:', err); })
+    .finally(() => { isTickRunning = false; });
 }
 
 export function stopDeskQueueEngine(): void {
@@ -62,6 +74,11 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     });
     if (inProgress > 0) continue;
 
+    // M-7: architectural constraint — one simultaneous call per practice at a time.
+    // Any in-progress call attempt (completedAt = null) blocks dispatch of all other
+    // claims for this practice until the call ends and the webhook closes the attempt.
+    // This is intentional to avoid concurrent calls sharing the same carrier rep's
+    // attention and to simplify carrier block detection scope.
     const activeAttempt = await prisma.callAttempt.findFirst({
       where: {
         completedAt: null,
@@ -119,43 +136,131 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
-    const vapiResult = await initiateCall({
+
+    const practice = await prisma.practice.findUnique({
+      where: { id: practiceId },
+      select: { name: true, billingPhone: true, npi: true, taxId: true },
+    });
+    const practiceSettings = await getPracticeSettings(prisma, practiceId);
+    const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
+      (c) => c.carrierId === next.claim.carrierId,
+    );
+
+    // ── PHI RESOLUTION ─────────────────────────────────────────────────────────
+    // Detokenize the UUID stored in DB to get the real patient PHI.
+    // PHI lives in piiVault (in-memory, 4-hour TTL) only — never in the DB.
+    // If the token has expired (e.g. server restart) we skip this claim and
+    // log the error so a re-tokenization pass can recover it.
+    const phiResult = piiVault.detokenize(
+      next.claim.patientToken,
+      'queue-engine',
+    );
+    if (!phiResult.success || !phiResult.phi) {
+      logger.warn('[deskQueueEngine] PHI token expired or missing — skipping claim', {
+        claimId: next.claimId,
+        patientToken: next.claim.patientToken,
+        error: phiResult.error,
+      });
+      continue;
+    }
+    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+      claimId: next.claimId,
+      patientToken: next.claim.patientToken,
+      callerContext: 'queue-engine',
+      phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+
+    // billingPhone is the CRTC disclosure / carrier callback number.
+    // escalationPhoneNumber is for staff takeover — do not use for disclosure.
+    const practicePhone =
+      practiceSettings.billingPhone?.trim() ||
+      practiceSettings.escalationPhoneNumber;
+
+    // Build IVR instructions from carrier adapter knowledge base.
+    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+
+    const callParams: VapiCallParams = {
       claimId: next.claim.id,
       carrierId: next.claim.carrierId,
       patientToken: next.claim.patientToken,
-      carrierPhone: carrierConfig.phone,
-      claimNumber: next.claim.claimNumber,
-      billedAmount: Number(next.claim.billedAmount),
-      outstandingAmount: Number(next.claim.outstandingAmount),
+      // ── PHI — resolved from piiVault.detokenize() above; ephemeral, never stored ──
+      patientName:            phiResult.phi.patientName,
+      patientDob:             phiResult.phi.dateOfBirth,
+      policyNumber:           phiResult.phi.subscriberId,
+      groupNumber:            phiResult.phi.groupPolicyNumber,
+      subscriberName:         phiResult.phi.subscriberName,
+      subscriberDob:          phiResult.phi.subscriberDateOfBirth,
+      // ── Claim fields ──────────────────────────────────────────────────────────
+      carrierPhone:           carrierConfig.phone,
+      claimNumber:            next.claim.claimNumber,
+      billedAmount:           Number(next.claim.billedAmount),
+      outstandingAmount:      Number(next.claim.outstandingAmount),
+      amountExpected:         next.claim.expectedAmount ? Number(next.claim.expectedAmount) : undefined,
+      daysOutstanding:        next.claim.daysOutstanding,
+      treatmentDate:          next.claim.servicedAt?.toISOString().split('T')[0],
+      claimSubmittedDate:     next.claim.submittedAt?.toISOString().split('T')[0],
+      treatmentCodes:         next.claim.treatmentCodes ?? undefined,
+      // ── Practice identity ─────────────────────────────────────────────────────
       practiceId,
-    });
+      practiceName:           practice?.name ?? '',
+      practiceNpi:            practice?.npi ?? undefined,
+      practiceTaxId:          practice?.taxId ?? undefined,
+      providerNumber:         practiceCarrierConfig?.providerNumber ?? '',
+      practicePhone,
+      languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
+      carrierIvrInstructions,
+    };
 
-    const attempt = await prisma.callAttempt.create({
-      data: {
-        claimId: next.claimId,
-        vapiCallId: vapiResult.vapiCallId,
-        initiatedAt: new Date(),
-        liveState: 'dialing',
-        activeAgent: 'IVR_Navigator',
-      },
-    });
+    // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
+    // All subsequent DB writes are wrapped so that if they fail, we immediately
+    // cancel the live Vapi call rather than leaving an orphan call with no DB record.
+    const vapiResult = await initiateCall(callParams);
 
-    await prisma.$transaction([
-      prisma.insuranceClaim.update({
-        where: { id: next.claimId },
-        data: { status: 'CALLING' },
-      }),
-      prisma.callQueue.update({
-        where: { id: next.id },
+    try {
+      const attempt = await prisma.callAttempt.create({
         data: {
-          status: 'IN_PROGRESS',
-          attempts: { increment: 1 },
-          lastAttemptAt: new Date(),
+          claimId: next.claimId,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+          liveState: 'dialing',
+          activeAgent: 'IVR_Navigator',
         },
-      }),
-    ]);
+      });
 
-    const call = mapActiveCall(attempt, next.claim, next.attempts + 1);
-    broadcastDesk(practiceId, { type: 'call.started', data: { call } });
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: next.claimId },
+          data: { status: 'CALLING' },
+        }),
+        prisma.callQueue.update({
+          where: { id: next.id },
+          data: {
+            status: 'IN_PROGRESS',
+            attempts: { increment: 1 },
+            lastAttemptAt: new Date(),
+          },
+        }),
+      ]);
+
+      const call = mapActiveCall(attempt, next.claim, next.attempts + 1);
+      broadcastDesk(practiceId, { type: 'call.started', data: { call } });
+    } catch (postDispatchErr) {
+      // DB write failed after Vapi call was already live — cancel the call
+      // immediately to prevent an orphan call whose webhooks would be silently
+      // dropped (no callAttempt row to look up).
+      logger.error('[deskQueueEngine] post-dispatch DB write failed — cancelling Vapi call', {
+        vapiCallId: vapiResult.vapiCallId,
+        claimId: next.claimId,
+        error: postDispatchErr,
+      });
+      try {
+        await endVapiCall(vapiResult.vapiCallId);
+      } catch (cancelErr) {
+        logger.error('[deskQueueEngine] CRITICAL: orphan Vapi call — cancel also failed', {
+          vapiCallId: vapiResult.vapiCallId,
+          cancelError: cancelErr,
+        });
+      }
+    }
   }
 }

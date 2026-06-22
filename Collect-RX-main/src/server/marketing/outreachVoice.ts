@@ -12,7 +12,8 @@
  * - "I hope this finds you well", hype, exclamation marks, em dashes, AI filler phrases
  */
 
-export const OUTREACH_SIGNOFF = 'The CollectRx team';
+export const OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca';
+export const OUTREACH_SIGNOFF_HTML = 'Khalid<br>khalid@collectrx.ca';
 
 export type CapabilityTier = 'core' | 'operational' | 'trust' | 'proof';
 

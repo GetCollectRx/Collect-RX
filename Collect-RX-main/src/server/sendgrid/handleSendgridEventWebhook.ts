@@ -1,7 +1,7 @@
 /**
- * P4-01 / P4-02 — SendGrid Event Webhook: bounces, drops, spam reports, opens/clicks.
- * Patient balances: opt-out on bounce/spam/unsubscribe.
- * Prospects: engagement tracking + stage advancement (prospect_id custom arg).
+ * SendGrid Event Webhook: bounces, drops, spam reports, opens/clicks.
+ * Prospects (dental practice owners): engagement tracking + stage advancement (prospect_id custom arg).
+ * Patient balance opt-out removed — CollectRx is Practice → Insurance carrier recovery only.
  */
 import { createRequire } from 'module';
 import type { PrismaClient } from '@prisma/client';
@@ -23,13 +23,8 @@ type SgEvent = {
   reason?: string;
   url?: string;
   /** custom_args from SendGrid v3 */
-  balance_id?: string;
   prospect_id?: string;
 };
-
-function patientOptOutRelevant(e: string | undefined) {
-  return e === 'bounce' || e === 'dropped' || e === 'spamreport' || e === 'unsubscribe';
-}
 
 function prospectEngagementRelevant(e: string | undefined) {
   return (
@@ -92,39 +87,6 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
           await handleProspectSendGridEvent(prisma, ev);
         } catch (e) {
           console.error('[sendgrid/webhook] prospect event error', (e as Error).message);
-        }
-        continue;
-      }
-
-      if (!patientOptOutRelevant(ev.event)) {
-        continue;
-      }
-
-      const balId = ev.balance_id;
-      if (balId && typeof balId === 'string') {
-        try {
-          await prisma.patientBalance.updateMany({
-            where: { id: balId },
-            data: { emailOptOutAt: new Date() },
-          });
-          console.log('[sendgrid/webhook] email opt-out by balance', { event: ev.event, balanceId: balId });
-        } catch (e) {
-          console.error('[sendgrid/webhook] db error', (e as Error).message);
-        }
-        continue;
-      }
-      const em = (ev.email || '').toLowerCase().trim();
-      if (em) {
-        try {
-          const r = await prisma.patientBalance.updateMany({
-            where: { patientEmail: { equals: em, mode: 'insensitive' } },
-            data: { emailOptOutAt: new Date() },
-          });
-          if (r.count) {
-            console.log('[sendgrid/webhook] email opt-out by address', { event: ev.event, count: r.count });
-          }
-        } catch (e) {
-          console.error('[sendgrid/webhook] db error', (e as Error).message);
         }
       }
     }

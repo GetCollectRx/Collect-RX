@@ -18,14 +18,8 @@ export async function runDailyArCloseForPractice(
   });
   const queueOpenTotal = openItems.reduce((s, i) => s + Number(i.dollarsAtRisk), 0);
 
-  const payments = await prisma.paymentEvent.findMany({
-    where: {
-      paidAt: { gte: dayStart, lt: dayEnd },
-      balance: { practiceId },
-    },
-    select: { amountCents: true },
-  });
-  const paymentsReceived = payments.reduce((s, p) => s + p.amountCents / 100, 0);
+  // Patient payment events removed — CollectRx is insurance-only.
+  const paymentsReceived = 0;
 
   const claimPayments = await prisma.insuranceClaim.findMany({
     where: {
@@ -64,7 +58,7 @@ export async function runDailyArCloseForPractice(
       variancePct,
       validationPassed,
       details: {
-        outreachPayments: paymentsReceived,
+        patientArPayments: 0,
         insuranceResolvedValue: insurancePaidToday,
         openWorkItemCount: openItems.length,
       },
@@ -76,7 +70,7 @@ export async function runDailyArCloseForPractice(
       variancePct,
       validationPassed,
       details: {
-        outreachPayments: paymentsReceived,
+        patientArPayments: 0,
         insuranceResolvedValue: insurancePaidToday,
         openWorkItemCount: openItems.length,
       },

@@ -12,6 +12,7 @@ import {
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { redactPriorityScoreRow } from '../server/accessControl/redaction.js';
+import { appendAuditLog } from '../server/audit/auditLog';
 
 const DEFAULT_CARRIER_ORDER = [
   'sun_life',
@@ -128,6 +129,14 @@ router.get('/priority-scores', async (req: Request, res: Response) => {
 
     const ranked = await buildPriorityQueue(prisma, practiceId);
     const data = ranked.map((row) => redactPriorityScoreRow(row as unknown as Record<string, unknown>, req.auth));
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'phi.view',
+      subjectType: 'queue',
+      subjectId: practiceId,
+      details: { claimCount: ranked.length },
+      req,
+    });
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /queue/priority-scores]', err);

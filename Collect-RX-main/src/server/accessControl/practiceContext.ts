@@ -1,6 +1,5 @@
 import type { Request } from 'express';
-import { authPracticeId, isCrossPracticeReader } from './types.js';
-import type { AuthJwtPayload } from './types.js';
+import { authPracticeId, isCrossPracticeReader, type AuthJwtPayload } from './types.js'
 
 export const PRACTICE_CONTEXT_ERROR =
   'practiceId query parameter (or X-Practice-Id header) is required for cross-practice sessions';
