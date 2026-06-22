@@ -189,7 +189,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const { date } = req.query as { date?: string };
       const snapshotDate = date ?? new Date().toISOString().slice(0, 10);
 
-      const rows = await prisma.$queryRaw<any[]>`
+      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
         SELECT * FROM phase5_kpi_snapshots
         WHERE practice_id = ${practiceId}::integer
           AND snapshot_date <= ${snapshotDate}::date

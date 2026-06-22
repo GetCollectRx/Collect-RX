@@ -12,7 +12,7 @@ type DataStateProps = {
 };
 
 /**
- * P3-14 — shared loading / error / empty shell for data-driven pages.
+ * P3-14, shared loading / error / empty shell for data-driven pages.
  */
 export function DataState({
   loading,

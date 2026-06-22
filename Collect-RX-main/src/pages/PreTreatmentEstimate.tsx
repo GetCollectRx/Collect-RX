@@ -2,9 +2,8 @@ import { useState, useCallback } from 'react'
 import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
-  Card, CardHeader, Button, Input, InlineToast, useToast, Divider, DataState,
+  Card, CardHeader, Button, Input, InlineToast, useToast, Divider, DataState, ProgressBar,
 } from '../components/ui'
-import { ProgressBar } from '../components/ui'
 import AnnualMaxTracker  from '../components/AnnualMaxTracker'
 import CoverageBreakdown from '../components/CoverageBreakdown'
 import { HelpTip } from '../components/HelpTip'

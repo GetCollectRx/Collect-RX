@@ -2,31 +2,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500&family=DM+Mono:ital,wght@0,400;0,500&display=swap');
 
 .crx-app {
-  --crx-bg0: #1f1f1f;
-  --crx-cream: #fcfcfa;
-  --crx-bg1: var(--crx-cream);
-  --crx-bg2: #fcfcfa;
-  --crx-bg3: #f8f5ee;
+  --crx-bg0: var(--brand-ink);
+  --crx-cream: var(--brand-cream);
+  --crx-bg1: var(--brand-cream);
+  --crx-bg2: var(--brand-card);
+  --crx-bg3: var(--brand-parchment);
   --crx-bg4: #f0ece1;
-  --crx-ring: #cacac8;
-  --crx-green: #0f9d58;
-  --crx-green-bright: #12c96d;
-  --crx-green-lo: rgba(15, 157, 88, 0.1);
-  --crx-green-md: rgba(15, 157, 88, 0.16);
-  --crx-green-hi: rgba(15, 157, 88, 0.28);
-  --crx-gold: #c98f12;
-  --crx-blue: #3b7fd4;
-  --crx-red: #d64545;
-  --crx-t0: #1f1f1f;
-  --crx-t1: #1f1f1f;
-  --crx-t2: #60605f;
+  --crx-ring: var(--brand-mist);
+  --crx-green: var(--brand-green);
+  --crx-green-bright: var(--brand-green-bright);
+  --crx-green-lo: var(--brand-green-lo);
+  --crx-green-md: var(--brand-green-md);
+  --crx-green-hi: var(--brand-green-hi);
+  --crx-gold: var(--brand-gold);
+  --crx-blue: var(--brand-blue);
+  --crx-red: var(--brand-red);
+  --crx-t0: var(--brand-ink);
+  --crx-t1: var(--brand-ink);
+  --crx-t2: var(--brand-graphite);
   --crx-t3: #8a8a88;
-  --crx-t4: #cacac8;
-  --crx-bdr: rgba(31, 31, 31, 0.08);
-  --crx-bdr2: rgba(31, 31, 31, 0.16);
-  --crx-fn: 'Inter', 'DM Sans', system-ui, sans-serif;
-  --crx-fd: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --crx-fm: 'DM Mono', ui-monospace, monospace;
+  --crx-t4: var(--brand-mist);
+  --crx-bdr: var(--brand-bdr);
+  --crx-bdr2: var(--brand-bdr2);
+  --crx-fn: var(--brand-fn);
+  --crx-fd: var(--brand-fs);
+  --crx-fm: var(--brand-fm);
   --crx-shadow-panel: 0 0 0 1px var(--crx-bdr);
   --crx-shadow-lift: 0 0 0 1px var(--crx-green-hi);
   --crx-sidebar-w: 272px;
@@ -95,7 +95,8 @@
   flex-direction: column;
   background: rgba(252, 252, 250, 0.98);
   border-right: 1px solid var(--crx-bdr);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
 
 .crx-app .crx-app-main {
@@ -135,7 +136,7 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--crx-green);
+  background: transparent;
   color: #f4fff8;
   display: flex;
   align-items: center;
@@ -144,16 +145,16 @@
 }
 
 .crx-app .crx-sidebar-brand-mark svg {
-  width: 15px;
-  height: 15px;
+  width: 28px;
+  height: 28px;
 }
 
 .crx-app .crx-sidebar-logo {
   font-family: var(--crx-fn);
-  font-weight: 700;
-  font-size: 0.9375rem;
-  color: var(--crx-bg0);
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--crx-t0);
+  letter-spacing: -0.01em;
   line-height: 1.1;
 }
 
@@ -270,9 +271,10 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(250, 248, 244, 0.92);
+  background: rgba(252, 252, 250, 0.92);
   border-bottom: 1px solid var(--crx-bdr);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
 
 .crx-app .crx-topbar-inner {
@@ -624,10 +626,11 @@
 }
 
 .crx-app .living-stat-card {
+  opacity: 1;
   background: linear-gradient(160deg, #ffffff 0%, var(--crx-bg2) 100%);
   border: 1px solid var(--crx-bdr);
   box-shadow: var(--crx-shadow-panel);
-  animation: crx-rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: crx-rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   transition:
     transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
     border-color 0.25s ease,
@@ -923,6 +926,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .crx-app .page-enter,
   .crx-app .living-stat-card,
   .crx-app .living-chart-panel,
   .crx-app .living-flow-col,
@@ -934,9 +938,898 @@
   .crx-app .living-pulse-dot,
   .crx-app .living-hero-title {
     animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   .crx-app .living-arc {
     stroke-dashoffset: 0;
   }
 }
+
+/* ─── Page shell typography (Tailwind legacy classes → editorial) ─────────── */
+
+.crx-app .page-title {
+  font-family: var(--crx-fd);
+  font-size: 1.375rem;
+  font-weight: 500;
+  color: var(--crx-t0);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.crx-app .page-subtitle {
+  font-size: 0.875rem;
+  color: var(--crx-t2);
+  margin-top: 0.25rem;
+  line-height: 1.55;
+}
+
+.crx-app .page-header {
+  border-bottom-color: var(--crx-bdr);
+  background: var(--crx-cream);
+}
+
+.crx-app .page-enter {
+  opacity: 1;
+  animation: crx-rise-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.crx-app .card-hover:hover {
+  border-color: var(--crx-green-hi);
+  box-shadow: var(--crx-shadow-lift);
+}
+
+.crx-app .bg-gray-50,
+.crx-app .bg-gray-100 {
+  background-color: var(--crx-bg3) !important;
+}
+
+.crx-app .rounded-2xl,
+.crx-app .rounded-xl {
+  border-color: var(--crx-bdr);
+}
+
+.crx-app .text-crx-500,
+.crx-app .text-crx-600 {
+  color: var(--crx-green) !important;
+}
+
+.crx-app .bg-crx-500 {
+  background-color: var(--crx-green) !important;
+}
+
+.crx-app .crx-btn-secondary {
+  background: var(--crx-bg2) !important;
+  color: var(--crx-t1) !important;
+  border-color: var(--crx-bdr2) !important;
+}
+
+.crx-app .crx-btn-secondary:hover {
+  background: var(--crx-green-lo) !important;
+  border-color: var(--crx-green-hi) !important;
+}
+
+.crx-app .crx-btn-ghost:hover {
+  background: var(--crx-green-lo) !important;
+  color: var(--crx-t1) !important;
+}
+
+/* ─── Public portal (login) — matches landing editorial card ─────────────── */
+
+.crx-portal {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: var(--brand-cream);
+  background-image: linear-gradient(
+    257deg,
+    rgba(15, 157, 88, 0.05) -32%,
+    rgba(15, 157, 88, 0.08) 24%,
+    rgba(15, 157, 88, 0.02) 80%,
+    transparent 100%
+  );
+  font-family: var(--brand-fn);
+  color: var(--brand-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.crx-portal-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--brand-cream);
+  border: 1px solid var(--brand-bdr);
+  border-radius: var(--brand-radius-card);
+  box-shadow: 0 24px 64px -24px rgba(31, 31, 31, 0.14);
+  padding: 2rem 1.75rem;
+}
+
+.crx-portal-logo-mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  box-shadow: none;
+}
+
+.crx-portal-logo-mark svg {
+  width: 48px;
+  height: 48px;
+}
+
+.crx-portal-brand {
+  font-family: var(--brand-fn);
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: -0.02em;
+  color: var(--brand-ink);
+  margin-bottom: 0.25rem;
+}
+
+.crx-portal-brand span {
+  color: var(--brand-green);
+}
+
+.crx-portal-tagline {
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--brand-graphite);
+  margin-bottom: 1.75rem;
+}
+
+.crx-portal-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--brand-ink);
+  margin-bottom: 0.375rem;
+}
+
+.crx-portal-input {
+  width: 100%;
+  font-family: var(--brand-fn);
+  font-size: 0.9375rem;
+  color: var(--brand-ink);
+  background: var(--brand-cream);
+  border: 1px solid var(--brand-bdr2);
+  border-radius: var(--brand-radius-btn);
+  padding: 0.625rem 0.75rem;
+  outline: none;
+  transition: border-color var(--brand-transition);
+}
+
+.crx-portal-input:focus {
+  border-color: var(--brand-green);
+}
+
+.crx-portal-field {
+  margin-bottom: 1rem;
+}
+
+.crx-portal-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.6875rem 1rem;
+  font-family: var(--brand-fn);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #fcfcfa;
+  background: var(--brand-green);
+  border: none;
+  border-radius: var(--brand-radius-btn);
+  cursor: pointer;
+  transition: background var(--brand-transition), transform var(--brand-transition);
+}
+
+.crx-portal-btn:hover:not(:disabled) {
+  background: var(--brand-green-dark);
+  transform: translateY(-1px);
+}
+
+.crx-portal-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.crx-portal-btn-secondary {
+  width: 100%;
+  padding: 0.6875rem 1rem;
+  font-family: var(--brand-fn);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--brand-green-dark);
+  background: transparent;
+  border: 1.5px solid var(--brand-green);
+  border-radius: var(--brand-radius-btn);
+  cursor: pointer;
+  transition: background var(--brand-transition);
+}
+
+.crx-portal-btn-secondary:hover:not(:disabled) {
+  background: var(--brand-green-lo);
+}
+
+.crx-portal-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.crx-portal-note {
+  font-size: 0.75rem;
+  color: var(--brand-graphite);
+  line-height: 1.5;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.crx-portal-note code {
+  font-family: var(--brand-fm);
+  font-size: 0.6875rem;
+}
+
+.crx-portal-alert {
+  font-size: 0.8125rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--brand-radius-btn);
+  margin-bottom: 1rem;
+}
+
+.crx-portal-alert.info {
+  color: #92400e;
+  background: rgba(201, 143, 18, 0.1);
+  border: 1px solid rgba(201, 143, 18, 0.25);
+}
+
+.crx-portal-alert.error {
+  color: #b91c1c;
+  background: rgba(214, 69, 69, 0.08);
+  border: 1px solid rgba(214, 69, 69, 0.25);
+}
+
+.crx-portal-divider {
+  border-top: 1px solid var(--brand-bdr);
+  margin: 1.25rem 0;
+  padding-top: 1rem;
+}
+
+.crx-portal-details summary {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-graphite);
+  cursor: pointer;
+  list-style: none;
+}
+
+.crx-portal-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.crx-portal-foot {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.8125rem;
+  color: var(--brand-graphite);
+}
+
+.crx-portal-foot a {
+  color: var(--brand-green-dark);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.crx-portal-foot a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ─── Startup health check splash ─────────────────────────────────────────── */
+
+.crx-startup {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: var(--brand-cream);
+  background-image: linear-gradient(
+    257deg,
+    rgba(15, 157, 88, 0.05) -32%,
+    rgba(15, 157, 88, 0.08) 24%,
+    rgba(15, 157, 88, 0.02) 80%,
+    transparent 100%
+  );
+  font-family: var(--brand-fn);
+  color: var(--brand-ink);
+}
+
+.crx-startup-inner {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.crx-startup-logo {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 0.75rem;
+  background: transparent;
+  box-shadow: none;
+}
+
+.crx-startup-logo svg {
+  width: 44px;
+  height: 44px;
+}
+
+.crx-startup-brand {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.75rem;
+  color: var(--brand-ink);
+}
+
+.crx-startup-brand span {
+  color: var(--brand-green);
+}
+
+.crx-startup-bar-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(31, 31, 31, 0.08);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.crx-startup-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand-green);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.crx-startup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.crx-startup-step {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--brand-mist);
+  transition: color 0.25s ease;
+}
+
+.crx-startup-step.is-running,
+.crx-startup-step.is-done {
+  color: var(--brand-graphite);
+}
+
+.crx-startup-step.is-done {
+  color: var(--brand-ink);
+}
+
+.crx-startup-step.is-error {
+  color: #b45309;
+}
+
+.crx-startup-step-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.crx-startup-step-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.crx-startup-step.is-done .crx-startup-step-icon {
+  color: var(--brand-green);
+}
+
+.crx-startup-step.is-error .crx-startup-step-icon {
+  color: #b45309;
+}
+
+.crx-startup-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-mist);
+}
+
+.crx-startup-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(15, 157, 88, 0.2);
+  border-top-color: var(--brand-green);
+  border-radius: 50%;
+  animation: crx-startup-spin 0.7s linear infinite;
+}
+
+@keyframes crx-startup-spin {
+  to { transform: rotate(360deg); }
+}
+
+.crx-startup-ready {
+  animation: crx-rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  padding-top: 0.5rem;
+}
+
+.crx-startup-ready-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--brand-green-lo);
+  border: 1px solid var(--brand-green-hi);
+  color: var(--brand-green);
+  display: grid;
+  place-items: center;
+  margin: 0 auto 1rem;
+}
+
+.crx-startup-ready-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.crx-startup-ready-msg {
+  font-family: var(--brand-fs);
+  font-size: 1.375rem;
+  font-weight: 500;
+  color: var(--brand-ink);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+/* ─── Practice health brief (dentist home) ──────────────────────────────── */
+
+.crx-app .practice-health-brief {
+  padding: 1.25rem 1.5rem 2rem;
+  max-width: 1120px;
+}
+
+.crx-app .practice-health-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.crx-app .practice-health-status {
+  max-width: 320px;
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--crx-bdr);
+  background: var(--crx-bg2);
+}
+
+.crx-app .practice-health-status--good {
+  border-color: var(--crx-green-hi);
+  background: var(--crx-green-lo);
+}
+
+.crx-app .practice-health-status--watch {
+  border-color: rgba(201, 143, 18, 0.35);
+  background: rgba(201, 143, 18, 0.08);
+}
+
+.crx-app .practice-health-status--action {
+  border-color: rgba(214, 69, 69, 0.35);
+  background: rgba(214, 69, 69, 0.06);
+}
+
+.crx-app .practice-health-status-label {
+  display: block;
+  font-family: var(--crx-fm);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--crx-t2);
+  margin-bottom: 0.35rem;
+}
+
+.crx-app .practice-health-status-copy {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--crx-t1);
+  margin: 0;
+}
+
+.crx-app .practice-health-answers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .crx-app .practice-health-answers {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crx-app .practice-health-card {
+  padding: 1.125rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid var(--crx-bdr);
+  background: var(--crx-bg2);
+  box-shadow: var(--crx-shadow-panel);
+}
+
+.crx-app .practice-health-card.is-loading {
+  opacity: 0.92;
+}
+
+.crx-app .practice-health-value--skeleton {
+  display: block;
+  width: min(8rem, 70%);
+  height: 1.75rem;
+  margin: 0.125rem 0 0.375rem;
+  border-radius: 0.375rem;
+  background: linear-gradient(
+    90deg,
+    var(--crx-bg3) 0%,
+    color-mix(in srgb, var(--crx-t2) 12%, var(--crx-bg3)) 50%,
+    var(--crx-bg3) 100%
+  );
+  background-size: 200% 100%;
+  animation: practice-health-shimmer 1.2s ease-in-out infinite;
+}
+
+.crx-app .practice-health-inline-skeleton {
+  display: inline-block;
+  width: 1.5rem;
+  height: 0.875rem;
+  vertical-align: middle;
+  border-radius: 0.25rem;
+  background: var(--crx-bg3);
+  animation: practice-health-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes practice-health-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.crx-app .practice-health-q {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t2);
+  line-height: 1.45;
+  margin: 0 0 0.625rem;
+}
+
+.crx-app .practice-health-value {
+  font-family: var(--crx-fd);
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--crx-t0);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 0.375rem;
+}
+
+.crx-app .practice-health-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+}
+
+.crx-app .practice-health-link {
+  display: inline-block;
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-green);
+  text-decoration: none;
+}
+
+.crx-app .practice-health-link:hover {
+  text-decoration: underline;
+}
+
+.crx-app .practice-health-note {
+  font-size: 0.75rem;
+  color: var(--crx-gold);
+  margin: 0.375rem 0 0;
+}
+
+.crx-app .practice-health-actions {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid rgba(201, 143, 18, 0.35);
+  background: rgba(201, 143, 18, 0.06);
+}
+
+.crx-app .practice-health-actions-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--crx-t0);
+  margin: 0 0 0.75rem;
+}
+
+.crx-app .practice-health-action-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.crx-app .practice-health-action {
+  display: block;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  background: var(--crx-bg2);
+  border: 1px solid var(--crx-bdr);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.crx-app .practice-health-action:hover {
+  border-color: var(--crx-green-hi);
+}
+
+.crx-app .practice-health-action--urgent {
+  border-left: 3px solid var(--crx-red);
+}
+
+.crx-app .practice-health-action-title {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+}
+
+.crx-app .practice-health-action-detail {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--crx-t2);
+  margin-top: 0.125rem;
+}
+
+.crx-app .practice-health-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--crx-bdr);
+}
+
+.crx-app .practice-health-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ─── Demo walkthrough (dashboard presenter layer) ───────────────────────── */
+
+.crx-app .practice-demo-story {
+  margin: 0 1.5rem 1.5rem;
+  max-width: 1120px;
+  padding: 1.25rem 1.25rem 1.5rem;
+  border-radius: 16px;
+  border: 1px solid var(--crx-green-hi);
+  background: linear-gradient(180deg, var(--crx-green-lo) 0%, var(--crx-bg2) 100%);
+}
+
+.crx-app .practice-demo-story--collapsed {
+  padding: 0;
+  border: none;
+  background: transparent;
+  margin-bottom: 0.75rem;
+}
+
+.crx-app .practice-demo-story-reopen {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-green);
+  background: var(--crx-green-lo);
+  border: 1px dashed var(--crx-green-hi);
+  border-radius: 10px;
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.crx-app .practice-demo-story-reopen:hover {
+  background: var(--crx-bg2);
+}
+
+.crx-app .practice-demo-story-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.crx-app .practice-demo-story-title {
+  font-family: var(--crx-fd);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.crx-app .practice-demo-story-lede {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--crx-t1);
+  max-width: 52rem;
+  margin: 0;
+}
+
+.crx-app .practice-demo-story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.crx-app .practice-demo-story-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .crx-app .practice-demo-story-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crx-app .practice-demo-story-card {
+  background: var(--crx-cream);
+  border: 1px solid var(--crx-bdr);
+  border-radius: 12px;
+  padding: 1rem 1.125rem;
+}
+
+.crx-app .practice-demo-story-pain {
+  font-family: var(--crx-fm);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--crx-red);
+  margin: 0 0 0.75rem;
+}
+
+.crx-app .practice-demo-story-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .crx-app .practice-demo-story-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crx-app .practice-demo-story-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--crx-t2);
+  margin: 0 0 0.35rem;
+}
+
+.crx-app .practice-demo-story-label--good {
+  color: var(--crx-green);
+}
+
+.crx-app .practice-demo-story-copy {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--crx-t1);
+  margin: 0;
+}
+
+.crx-app .practice-demo-story-proof {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  margin: 0 0 0.5rem;
+  line-height: 1.45;
+}
+
+.crx-app .practice-demo-story-link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-green);
+  text-decoration: none;
+}
+
+.crx-app .practice-demo-story-link:hover {
+  text-decoration: underline;
+}
+
+.crx-app .practice-demo-story-flow {
+  padding: 1rem 1.125rem;
+  border-radius: 12px;
+  background: var(--crx-cream);
+  border: 1px solid var(--crx-bdr);
+  margin-bottom: 1rem;
+}
+
+.crx-app .practice-demo-story-flow-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--crx-t0);
+  margin: 0 0 0.5rem;
+}
+
+.crx-app .practice-demo-story-flow-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--crx-t1);
+}
+
+.crx-app .practice-demo-story-flow-steps li + li {
+  margin-top: 0.35rem;
+}
+
+.crx-app .practice-demo-story-notes-toggle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--crx-t2);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.crx-app .practice-demo-story-notes-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--crx-t1);
+}
+
+.crx-app .practice-demo-story-notes-list li + li {
+  margin-top: 0.35rem;
+}
+

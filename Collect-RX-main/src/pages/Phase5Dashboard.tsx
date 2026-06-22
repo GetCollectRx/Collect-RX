@@ -140,10 +140,10 @@ const MOCK_KPI_DIMENSIONS: KpiDimension[] = [
 
 const MOCK_RECONSIDERATIONS: ReconsiderationRow[] = [
   { claimId: 'CLM-2847', denialDate: '2026-04-01', deadline: '2026-05-31', daysRemaining: 16, procedure: 'D2750 Crown (Porc-fused-metal)', denialCode: 'F-010', status: 'urgent', province: 'ON' },
-  { claimId: 'CLM-2831', denialDate: '2026-04-08', deadline: '2026-06-07', daysRemaining: 23, procedure: 'D3310 Endo — Anterior', denialCode: 'F-010', status: 'eligible', province: 'AB' },
-  { claimId: 'CLM-2819', denialDate: '2026-04-12', deadline: '2026-06-11', daysRemaining: 27, procedure: 'D4341 SRP — 4+ teeth', denialCode: 'F-011', status: 'submitted', province: 'BC' },
+  { claimId: 'CLM-2831', denialDate: '2026-04-08', deadline: '2026-06-07', daysRemaining: 23, procedure: 'D3310 Endo, Anterior', denialCode: 'F-010', status: 'eligible', province: 'AB' },
+  { claimId: 'CLM-2819', denialDate: '2026-04-12', deadline: '2026-06-11', daysRemaining: 27, procedure: 'D4341 SRP, 4+ teeth', denialCode: 'F-011', status: 'submitted', province: 'BC' },
   { claimId: 'CLM-2801', denialDate: '2026-04-20', deadline: '2026-06-19', daysRemaining: 35, procedure: 'D2790 Crown (Full-cast)', denialCode: 'F-010', status: 'eligible', province: 'ON' },
-  { claimId: 'CLM-2788', denialDate: '2026-04-22', deadline: '2026-06-21', daysRemaining: 37, procedure: 'D3330 Endo — Molar', denialCode: 'F-010', status: 'approved', province: 'AB' },
+  { claimId: 'CLM-2788', denialDate: '2026-04-22', deadline: '2026-06-21', daysRemaining: 37, procedure: 'D3330 Endo, Molar', denialCode: 'F-010', status: 'approved', province: 'AB' },
   { claimId: 'CLM-2762', denialDate: '2026-03-10', deadline: '2026-05-09', daysRemaining: 0, procedure: 'D2740 Crown (Porcelain)', denialCode: 'F-014', status: 'expired', province: 'ON' },
 ];
 
@@ -257,10 +257,10 @@ export default function Phase5Dashboard() {
               denialDate: t.record.denialDate.slice(0, 10),
               deadline: t.record.deadlineDate.slice(0, 10),
               daysRemaining,
-              procedure: t.cdtCode ? `CDT ${t.cdtCode}` : '—',
+              procedure: t.cdtCode ? `CDT ${t.cdtCode}` : 'N/A',
               denialCode: t.record.denialReasonCode,
               status: (t.priority === 'urgent' ? 'urgent' : t.record.status) as ReconsiderationRow['status'],
-              province: t.province ?? '—',
+              province: t.province ?? 'N/A',
             };
           }),
         );
@@ -358,7 +358,7 @@ export default function Phase5Dashboard() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Phase 5 — CDCP Reconsideration</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Phase 5, CDCP Reconsideration</h1>
             <p className="text-sm text-gray-500 mt-1">
               High-Precision Adjudication Module · KPI source: {kpiSource === 'live' ? 'live insurance analytics' : 'demo mock (no calls yet)'}
             </p>
@@ -394,7 +394,7 @@ export default function Phase5Dashboard() {
         </div>
       </div>
 
-      {/* Overview Tab — 8 KPI Cards */}
+      {/* Overview Tab, 8 KPI Cards */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {dims.map(dim => <KpiCard key={dim.id} dim={dim} />)}

@@ -22,6 +22,10 @@ const B = {
 
 const PRACTICE = 'Tenth Line Family Dentistry'
 
+/** PMS-agnostic setup copy — AbelDent, Dentrix, ClearDent, etc. use the same connector/export path. */
+const PMS_CONNECT_LINE = 'your practice management software'
+const PMS_CONNECT_SHORT = 'your PMS'
+
 // ─── SVG icon pack ────────────────────────────────────────────────────────────
 
 type IconName = 'dollar'|'clock'|'shield'|'eye'|'phone'|'warning'|'x-circle'|'check-circle'|'chevron-right'|'arrow-right'|'refresh'|'pause'|'play'
@@ -493,7 +497,7 @@ function ActClose() {
         <Card style={{ padding: '16px 18px' }}>
           <p style={{ color: B.textMuted, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>What it takes</p>
           {[
-            { icon: 'clock'       as IconName, text: 'One afternoon to connect Abeldent (we do it together)', accent: false },
+            { icon: 'clock'       as IconName, text: `One afternoon to connect ${PMS_CONNECT_LINE} (we do it together)`, accent: false },
             { icon: 'refresh'     as IconName, text: '30 days to see real results in your AR', accent: false },
             { icon: 'check-circle'as IconName, text: 'Zero cost during the pilot', accent: true },
           ].map((item, i) => (
@@ -524,7 +528,7 @@ function ActClose() {
           <div style={{ background: B.greenDk, borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
             <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>The ask</p>
             <p style={{ color: '#fff', fontWeight: 800, fontSize: 'clamp(16px, 2.5vw, 22px)', letterSpacing: '-0.5px', lineHeight: 1.3, marginBottom: 8 }}>
-              One afternoon to connect Abeldent.<br />Calls start the next business morning.
+              One afternoon to connect {PMS_CONNECT_SHORT}.<br />Calls start the next business morning.
             </p>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 20 }}>
               At today's pace: $18,580 in one morning. Five mornings a week.
@@ -625,9 +629,14 @@ export default function PilotDemo() {
             <p style={{ color: B.textMuted, fontSize: 14, maxWidth: 360, margin: '0 auto 28px', lineHeight: 1.65 }}>
               A 60-second walkthrough of exactly how CollectRx fixes that, using your practice's numbers.
             </p>
-            <button onClick={() => setAct('problem')} style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}>
-              Show me <Icon name="arrow-right" size={16} color="#fff" />
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+              <button onClick={() => setAct('problem')} style={{ background: B.green, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 40px', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${B.green}55` }}>
+                Show me <Icon name="arrow-right" size={16} color="#fff" />
+              </button>
+              <a href="/demo/process" style={{ color: B.green, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                Or watch the live process demo →
+              </a>
+            </div>
           </div>
         </div>
       )}

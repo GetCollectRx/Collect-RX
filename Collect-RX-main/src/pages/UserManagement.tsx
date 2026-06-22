@@ -154,7 +154,7 @@ export default function UserManagement() {
                   <Tr key={u.id}>
                     <Td bold>{u.email}</Td>
                     <Td>{USER_ROLE_LABELS[u.userRole]}</Td>
-                    <Td muted>{u.practiceId ?? '—'}</Td>
+                    <Td muted>{u.practiceId ?? 'N/A'}</Td>
                     <Td>
                       <Badge color={u.active ? 'green' : 'gray'}>
                         {u.active ? 'Active' : 'Inactive'}

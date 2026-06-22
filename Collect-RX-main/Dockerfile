@@ -5,7 +5,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # Bump when Railway keeps serving a stale cached layer.
-ARG CACHEBUST=20260609a
+ARG CACHEBUST=20260614b
 
 WORKDIR /app
 
@@ -20,7 +20,11 @@ RUN npx prisma generate
 
 COPY . .
 
-RUN npm run build
+RUN npm run build \
+  && test -f dist/resources/index.html \
+  && test -f dist/resources/dental-insurance-follow-up-canada/index.html \
+  && test -f dist/resources/canadian-dental-carriers-follow-up/index.html \
+  && test -f dist/resources/cdcp-claims-canada/index.html
 
 EXPOSE 3000
 

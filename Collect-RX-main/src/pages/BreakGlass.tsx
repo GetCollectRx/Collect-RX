@@ -40,7 +40,7 @@ export default function BreakGlass() {
       <div>
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Break Glass</h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-          Emergency queue operations — all actions are audited
+          Emergency queue operations, all actions are audited
         </p>
       </div>
 

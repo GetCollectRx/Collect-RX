@@ -31,11 +31,18 @@ export default tseslint.config(
     files: ['**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'warn',
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-debugger': 'error',
+      'eqeqeq': ['error', 'smart'],
+      'no-var': 'error',
+      'prefer-const': 'error',
+      'no-duplicate-imports': 'error',
     },
   }
 )

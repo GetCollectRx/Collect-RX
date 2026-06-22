@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
-import type { AuthJwtPayload, UserAuthPayload } from '../accessControl/types.js';
-import { getUserRole } from '../accessControl/types.js';
+import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 import { prisma } from '../../lib/prisma.js';

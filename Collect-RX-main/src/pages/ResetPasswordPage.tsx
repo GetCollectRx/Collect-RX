@@ -29,10 +29,10 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, newPassword: password }),
       })
       const body = await res.json() as { ok?: boolean; error?: string }
-      if (!res.ok) { setError(body.error ?? 'Reset failed — the link may have expired'); return }
+      if (!res.ok) { setError(body.error ?? 'Reset failed, the link may have expired'); return }
       setDone(true)
     } catch {
-      setError('Network error — please try again')
+      setError('Network error, please try again')
     } finally {
       setBusy(false)
     }

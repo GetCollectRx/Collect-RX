@@ -82,7 +82,7 @@ const STATUS_COLORS: Record<DimensionStatus, string> = {
 }
 
 function formatDimensionValue(d: DimensionMetric): string {
-  if (d.value == null) return '—'
+  if (d.value == null) return 'N/A'
   if (d.unit === 'pct') return `${d.value}%`
   if (d.unit === 'cad') return `CA$${d.value.toLocaleString('en-CA')}`
   if (d.unit === 'days') return `${d.value}d`
@@ -242,7 +242,7 @@ export default function CanadianExpansion() {
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             CDCP reconsideration window, precision gap estimates, Quebec readiness disclosures, and PMS write-back
-            coordination — CollectRx Phase 2 roadmap modules MOD-01–MOD-05.
+            coordination, CollectRx Phase 2 roadmap modules MOD-01–MOD-05.
           </p>
         </div>
 
@@ -280,7 +280,7 @@ export default function CanadianExpansion() {
         )}
 
         <Card>
-          <CardHeader title="MOD-01 — CDCP reconsideration (60-day window)" subtitle="Track denied pre-auths; exclusions mirror Appendix E–style categories." />
+          <CardHeader title="MOD-01: CDCP reconsideration (60-day window)" subtitle="Track denied pre-auths; exclusions mirror Appendix E–style categories." />
           <div className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
@@ -328,7 +328,7 @@ export default function CanadianExpansion() {
                   {cases.map((row) => (
                     <Tr key={row.id}>
                       <Td className="font-mono text-xs">{row.claimRef}</Td>
-                      <Td>{row.procedureCode ?? '—'}</Td>
+                      <Td>{row.procedureCode ?? 'N/A'}</Td>
                       <Td>{row.status}</Td>
                       <Td>
                         {row.windowExpired ? (
@@ -342,7 +342,7 @@ export default function CanadianExpansion() {
                   {cases.length === 0 && (
                     <TableEmpty
                       colSpan={4}
-                      message="No cases yet — add a denied CDCP predetermination to start the countdown."
+                      message="No cases yet, add a denied CDCP predetermination to start the countdown."
                     />
                   )}
                 </Tbody>
@@ -353,7 +353,7 @@ export default function CanadianExpansion() {
 
         <Card>
           <CardHeader
-            title="MOD-03 — 2026 precision gap estimator"
+            title="MOD-03: 2026 precision gap estimator"
             subtitle="Office fee vs bundled CDCP schedule & provincial illustrative fees (expand JSON dataset for production)."
           />
           <div className="p-4 space-y-4">
@@ -416,7 +416,7 @@ export default function CanadianExpansion() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <CardHeader title="MOD-02 — Compliance disclosures" subtitle="Law 25 / voluntary AI transparency blocks for carriers & Quebec readiness." />
+            <CardHeader title="MOD-02: Compliance disclosures" subtitle="Law 25 / voluntary AI transparency blocks for carriers & Quebec readiness." />
             <div className="p-4 text-sm text-gray-700 dark:text-gray-300 space-y-3 max-h-[420px] overflow-y-auto">
               {compliance ? (
                 <>
@@ -441,7 +441,7 @@ export default function CanadianExpansion() {
           </Card>
 
           <Card>
-            <CardHeader title="MOD-04 — PMS write-back log" subtitle="Cloud audit trail; execute SQL UPDATE on-prem via AbelDent connector." />
+            <CardHeader title="MOD-04: PMS write-back log" subtitle="Cloud audit trail; execute SQL UPDATE on-prem via AbelDent connector." />
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 gap-2">
                 <div>
@@ -559,7 +559,7 @@ export default function CanadianExpansion() {
           <Card>
             <CardHeader
               title="ITRANS 2.0 readiness"
-              subtitle="ITRANS 1 retires June 30, 2026 — CDAnet traffic must move to ITRANS 2 endpoints."
+              subtitle="ITRANS 1 retires June 30, 2026, CDAnet traffic must move to ITRANS 2 endpoints."
             />
             <div className="p-4 space-y-2">
               <div className="flex flex-wrap gap-3 items-center">
@@ -577,7 +577,7 @@ export default function CanadianExpansion() {
                 <span className="text-sm tabular-nums">
                   {metrics.itrans2.daysUntilItrans1Retires > 0
                     ? `${metrics.itrans2.daysUntilItrans1Retires} days until ITRANS 1 retirement`
-                    : 'ITRANS 1 retirement date passed — verify ITRANS 2 is fully live'}
+                    : 'ITRANS 1 retirement date passed, verify ITRANS 2 is fully live'}
                 </span>
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-300">

@@ -28,7 +28,7 @@ export function recoveryRouteBadgeColor(
 }
 
 export function recallDueLabel(iso: string | null | undefined): string {
-  if (!iso) return '—';
+  if (!iso) return 'N/A';
   const t = new Date(iso).getTime();
   const diff = t - Date.now();
   if (diff <= 0) return 'Due now';
@@ -40,10 +40,10 @@ export function recallDueLabel(iso: string | null | undefined): string {
 
 export function mapTriggerCallError(raw: string): string {
   if (raw.includes('30 days') || raw.includes('too recent')) {
-    return 'Claim is under 30 days — calls start at day 31.';
+    return 'Claim is under 30 days, calls start at day 31.';
   }
   if (raw.includes('90 days') || raw.includes('escalate')) {
-    return 'Over 90 days — escalated for human follow-up.';
+    return 'Over 90 days, escalated for human follow-up.';
   }
   if (raw.includes('3 attempt') || raw.includes('max attempt')) {
     return 'Maximum 3 call attempts reached.';
@@ -52,7 +52,7 @@ export function mapTriggerCallError(raw: string): string {
     return 'Calls only Mon–Fri 8am–5pm Eastern.';
   }
   if (raw.includes('CARRIER_BLOCK') || raw.includes('blocked')) {
-    return 'Carrier blocked — unblock in Settings.';
+    return 'Carrier blocked, unblock in Settings.';
   }
   if (raw.includes('already') || raw.includes('CALLING')) {
     return 'Call already in progress.';

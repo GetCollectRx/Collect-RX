@@ -51,7 +51,7 @@ export function CarrierBlockModal({ block, practiceId, onClose, onCleared }: Pro
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
       <div className="bg-white dark:bg-gray-950 rounded-xl shadow-xl max-w-md w-full p-5 border border-gray-200 dark:border-gray-800">
         <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">
-          Carrier block — {CARRIER_LABELS[block.carrierId] ?? block.carrierId}
+          Carrier block, {CARRIER_LABELS[block.carrierId] ?? block.carrierId}
         </h2>
         <p className="text-xs text-gray-500 mt-1">
           Blocked {new Date(block.blockedAt).toLocaleString()}

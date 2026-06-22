@@ -1,11 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
-import type { AuthRole, PracticeRole } from '../lib/authTypes'
-import { isPracticeRole } from '../lib/authTypes'
+import { isPracticeRole, type AuthRole, type PracticeRole } from '../lib/authTypes'
 import { authRoleToBriefPersona } from '../lib/personaRole'
-import type { UserRole } from '../types/userRole'
-import { isReadOnlyRole } from '../types/userRole'
+import { isReadOnlyRole, type UserRole } from '../types/userRole'
 import { configureApiSession } from '../lib/practiceScopedApi'
 import type { SessionHealthPayload } from '../types/sessionHealth'
 
@@ -151,6 +149,14 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])
 
+  const applySessionHealth = useCallback((health?: SessionHealthPayload | null) => {
+    if (health) {
+      setSessionHealth(health)
+      return
+    }
+    void fetchSessionHealth()
+  }, [fetchSessionHealth])
+
   const refreshSession = useCallback(async () => {
     const r = await fetch(resolveApiUrl('/api/auth/me'), { credentials: 'include' })
     if (r.status === 401) { clearState(stateSetters); return }
@@ -178,7 +184,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       applySessionConfig('platform_dev', pid)
       setSessionUser(null)
       setAuthState('ready')
-      void fetchSessionHealth()
+      applySessionHealth(data.health)
       return
     }
 
@@ -196,8 +202,8 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     applySessionConfig(sessionRole, pid)
     setSessionUser(data.user ?? null)
     setAuthState('ready')
-    void fetchSessionHealth()
-  }, [fetchSessionHealth])
+    applySessionHealth(data.health)
+  }, [applySessionHealth, fetchSessionHealth])
 
   useEffect(() => {
     void refreshSession().catch(() => { setAuthState('anon') })

@@ -1,5 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import roiAssumptions from '../config/roi-assumptions.json'
+import {
+  MARKETING_NAV_TABS,
+  MARKETING_PAGE_TITLES,
+  MARKETING_PATHS,
+  marketingPageFromPathname,
+  type MarketingPageId,
+} from '../website/marketingPaths'
+
+const HASH_TO_PATH: Record<string, string> = {
+  'how-it-works': MARKETING_PATHS.howItWorks,
+  roi: MARKETING_PATHS.roi,
+  features: MARKETING_PATHS.features,
+  carriers: MARKETING_PATHS.carriers,
+  compliance: MARKETING_PATHS.compliance,
+  cta: MARKETING_PATHS.home,
+  'early-access': MARKETING_PATHS.home,
+}
 
 // ─── Design tokens / styles ───────────────────────────────────────────────────
 // HubSpot-inspired editorial system: warm cream/parchment canvas, hairline
@@ -80,6 +98,7 @@ const STYLES = `
   .lp-nav-links { display: flex; align-items: center; gap: 32px; }
   .lp-nav-link { font-family: var(--fn); font-size: 16px; font-weight: 400; color: var(--ink); cursor: pointer; text-decoration: none; transition: color var(--transition); background: none; border: none; }
   .lp-nav-link:hover { color: var(--green); }
+  .lp-nav-link.active { color: var(--green-dark); font-weight: 600; }
   .lp-nav-right { display: flex; align-items: center; gap: 10px; }
   .lp-nav-signin {
     font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--ink);
@@ -87,6 +106,30 @@ const STYLES = `
     transition: color var(--transition), background var(--transition);
   }
   .lp-nav-signin:hover { color: var(--green-dark); background: var(--green-lo); }
+
+  .lp-nav-menu-btn {
+    display: none;
+    background: none; border: none; cursor: pointer;
+    padding: 8px; border-radius: 8px; color: var(--ink);
+  }
+  .lp-nav-menu-btn:hover { background: var(--green-lo); }
+  .lp-nav-menu-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+  .lp-nav-mobile {
+    display: none;
+    position: fixed; top: 68px; left: 0; right: 0; z-index: 199;
+    background: rgba(252,252,250,0.98);
+    border-bottom: 1px solid var(--bdr);
+    backdrop-filter: blur(20px);
+    padding: 12px 24px 20px;
+    flex-direction: column; gap: 4px;
+  }
+  .lp-nav-mobile.open { display: flex; }
+  .lp-nav-mobile .lp-nav-link {
+    padding: 12px 8px; font-size: 17px;
+    border-bottom: 1px solid var(--bdr);
+  }
+  .lp-nav-mobile .lp-nav-link:last-child { border-bottom: none; }
 
   /* ─── BUTTONS ────────────────────────────────────── */
   .lp-btn-primary {
@@ -608,6 +651,174 @@ const STYLES = `
   .lp-reveal { opacity:0; transform:translateY(16px); transition:opacity 0.6s ease, transform 0.6s ease; }
   .lp-reveal.visible { opacity:1; transform:none; }
 
+  /* ─── ANNOUNCEMENT BAR ───────────────────────────── */
+  .lp-announce {
+    background: var(--green-dark); color: #e6f5ee;
+    font-family: var(--fn); font-size: 13px; font-weight: 500;
+    text-align: center; padding: 10px 48px; position: relative;
+    line-height: 1.4;
+  }
+  .lp-announce a { color: #a8dfc0; text-decoration: underline; text-underline-offset: 2px; }
+  .lp-announce a:hover { color: #fcfcfa; }
+  .lp-announce-close {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: #a8dfc0;
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 6px;
+    transition: background var(--transition), color var(--transition);
+  }
+  .lp-announce-close:hover { background: rgba(255,255,255,0.12); color: #fcfcfa; }
+  .lp-announce-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  /* ─── PROBLEM BAND ───────────────────────────────── */
+  .lp-pain {
+    background: var(--ink); color: #f0ece4;
+  }
+  .lp-pain-inner {
+    max-width: 1200px; margin: 0 auto;
+    padding: 72px 40px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+  }
+  .lp-pain-eyebrow {
+    font-family: var(--fn); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--green-bright, #12c96d);
+    margin-bottom: 16px;
+  }
+  .lp-pain-h {
+    font-family: var(--fs); font-size: clamp(26px, 3.5vw, 40px); font-weight: 500;
+    line-height: 1.18; letter-spacing: -0.01em; color: #f0ece4;
+    margin-bottom: 20px;
+  }
+  .lp-pain-p {
+    font-family: var(--fn); font-size: 16px; color: rgba(240,236,228,0.65);
+    line-height: 1.67; margin-bottom: 28px;
+  }
+  .lp-pain-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fcfcfa; border: none;
+    padding: 11px 22px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 15px; font-weight: 500;
+    cursor: pointer; transition: background var(--transition), transform var(--transition);
+  }
+  .lp-pain-cta:hover { background: #0b8a4e; transform: translateY(-1px); }
+  .lp-pain-cta svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+  .lp-pain-stats { display: flex; flex-direction: column; gap: 16px; }
+  .lp-pain-stat {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px; padding: 20px 24px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .lp-pain-stat-num {
+    font-family: var(--fs); font-size: 32px; font-weight: 500;
+    color: var(--green-bright, #12c96d); line-height: 1; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .lp-pain-stat-lbl { font-family: var(--fn); font-size: 14px; color: rgba(240,236,228,0.75); line-height: 1.5; }
+
+  /* ─── PROCESS PREVIEW (home) ─────────────────────── */
+  .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
+  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
+  .lp-process-steps {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; position: relative; margin-top: 48px;
+  }
+  .lp-process-steps::before {
+    content: ''; position: absolute;
+    top: 20px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
+    height: 1px; background: var(--bdr2);
+  }
+  .lp-process-step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 16px; position: relative; }
+  .lp-process-icon {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--bdr2);
+    display: grid; place-items: center; margin-bottom: 16px;
+    position: relative; z-index: 1;
+    transition: background var(--transition), border-color var(--transition);
+  }
+  .lp-process-icon svg { width: 17px; height: 17px; stroke: var(--graphite); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-process-step.done .lp-process-icon { background: var(--green); border-color: var(--green); }
+  .lp-process-step.done .lp-process-icon svg { stroke: #fcfcfa; }
+  .lp-process-num { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+  .lp-process-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .lp-process-desc { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.55; }
+
+  /* ─── FEATURE MINI CARDS (home) ─────────────────── */
+  .lp-feat-mini-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px;
+  }
+  .lp-feat-mini {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 28px 24px;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .lp-feat-mini:hover { border-color: var(--green-hi); box-shadow: 0 4px 16px -4px rgba(15,157,88,0.12); }
+  .lp-feat-mini-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-btn);
+    background: var(--green-lo); border: 1px solid var(--green-md);
+    display: grid; place-items: center; margin-bottom: 16px;
+  }
+  .lp-feat-mini-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-feat-mini-h { font-family: var(--fn); font-size: 18px; font-weight: 600; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
+  .lp-feat-mini-p { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.6; }
+
+  /* ─── COMPLIANCE SNIPPET (home) ──────────────────── */
+  .lp-compliance-snippet { background: var(--cream); border-top: 1px solid var(--bdr); }
+  .lp-compliance-snippet-inner {
+    max-width: 1200px; margin: 0 auto; padding: 72px 40px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+  }
+  .lp-compliance-snippet-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .lp-compliance-snippet-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .lp-compliance-snippet-card-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--green-lo); border: 1px solid var(--green-md);
+    display: grid; place-items: center; margin-bottom: 10px;
+  }
+  .lp-compliance-snippet-card-icon svg { width: 15px; height: 15px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-compliance-snippet-card-h { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+  .lp-compliance-snippet-card-p { font-family: var(--fn); font-size: 12.5px; color: var(--graphite); line-height: 1.55; }
+
+  /* ─── FOCUS VISIBLE (keyboard nav) ───────────────── */
+  .lp-btn-primary:focus-visible,
+  .lp-btn-ghost:focus-visible,
+  .lp-pain-cta:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 3px;
+  }
+  .lp-nav-link:focus-visible,
+  .lp-nav-signin:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .lp-walk-tab:focus-visible,
+  .lp-carrier-card:focus-visible,
+  .lp-carrier-tab:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+  }
+  .lp-modal-close:focus-visible,
+  .lp-announce-close:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.6);
+    outline-offset: 2px;
+  }
+
+  /* ─── REDUCED MOTION ─────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .lp-reveal { transition: none; opacity: 1; transform: none; }
+    .lp-wave-bar { animation: none; opacity: 0.7; }
+    .lp-badge.calling .lp-badge-dot { animation: none; }
+    .lp-claim { animation: none; }
+    .lp-walk-fade { animation: none; }
+    .lp-walk-check-circle { animation: none; }
+    .lp-btn-primary:hover,
+    .lp-pain-cta:hover { transform: none; }
+    .lp-carrier-bar-fill { transition: none; }
+  }
+
   /* ─── RESPONSIVE ─────────────────────────────────── */
   @media (max-width: 1100px) {
     .lp-hero { grid-template-columns: 1fr; padding: 64px 32px 64px; gap: 48px; }
@@ -618,12 +829,20 @@ const STYLES = `
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
     .lp-quote-grid { grid-template-columns: 1fr; }
+    .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
+    .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
+    .lp-process-steps::before { display: none; }
+    .lp-feat-mini-grid { grid-template-columns: 1fr; }
+    .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
+    .lp-nav-menu-btn { display: grid; place-items: center; }
     .lp-nav-inner { padding: 0 24px; }
     .lp-section-inner { padding: 56px 24px; }
     .lp-cta-section, .lp-footer { padding-left: 24px; padding-right: 24px; }
+    .lp-process-inner { padding: 56px 24px; }
+    .lp-pain-inner { padding: 56px 24px; }
   }
   @media (max-width: 480px) {
     .lp-compliance-grid, .lp-stats-inner { grid-template-columns: 1fr; }
@@ -638,6 +857,9 @@ const STYLES = `
     .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
     .lp-modal { padding: 24px; }
     .lp-modal-h { font-size: 20px; }
+    .lp-process-steps { grid-template-columns: 1fr; }
+    .lp-compliance-snippet-cards { grid-template-columns: 1fr; }
+    .lp-pain-stat-num { font-size: 26px; }
   }
 `
 
@@ -716,9 +938,9 @@ const FEATURES = [
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-    h: 'AR intelligence reporting',
-    p: 'Weekly summaries show collected revenue, pending adjudication by carrier, denial rates, and claims requiring human attention, organized by type and aging bucket.',
-    check: 'Delivered weekly, broken down by carrier',
+    h: 'Collections metrics',
+    p: 'Sync-verified dollars recovered, open insurance outstanding, and claims in follow-up. Compare CollectRx results to your PMS aging reports.',
+    check: 'Recovery metrics in your dashboard',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" /></svg>,
@@ -732,7 +954,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
     h: 'PHIPA architecture',
-    p: 'Patient health information is tokenized before it reaches the AI layer. Compliance is enforced structurally, not by policy.',
+    p: 'Identifiers are tokenized before data is processed outside your controlled environment. Compliance is enforced structurally, not by policy.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
@@ -742,7 +964,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
     h: 'PHI on your infrastructure',
-    p: 'No patient identifiers are transmitted to any external service or US-hosted AI. Health data stays within your system boundaries.',
+    p: 'No identifiers are transmitted to external services without tokenization. Health data stays within your system boundaries.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
@@ -809,19 +1031,83 @@ const TESTIMONIALS = [
     title: 'Managing Partner, Dental Group, Mississauga',
     initials: 'MP',
   },
+  {
+    body: "Our billing coordinator used to dread Mondays — that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
+    name: 'Dr. Priya Nair',
+    title: 'Owner, Family Dental, Brampton, ON',
+    initials: 'PN',
+  },
+]
+
+const PAIN_STATS = [
+  { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
+  { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+]
+
+const HOME_FEATURES = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    h: 'AI calls carriers for you',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
+    h: 'PHI never leaves your server',
+    p: 'Patient names, DOBs, and health card numbers are replaced with UUID tokens before any data reaches the AI layer. PHIPA and PIPEDA compliance is structural.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+    h: 'Recovery metrics you can verify',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+  },
+]
+
+const COMPLIANCE_SNIPPETS = [
+  {
+    icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
+    h: 'PHIPA architecture',
+    p: 'Identifiers tokenized before AI processing. Compliance enforced structurally.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
+    h: 'PIPEDA compliant',
+    p: 'Canadian federal privacy standards. Data residency built in, not bolted on.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
+    h: 'PHI on your infrastructure',
+    p: 'No identifiers transmitted without tokenization. Health data stays in your boundary.',
+  },
+  {
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
+    h: 'Business hours only',
+    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
+  },
 ]
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────────
-function useReveal() {
+function useReveal(page: MarketingPageId) {
   useEffect(() => {
-    const els = document.querySelectorAll('.lp-reveal')
-    const obs = new IntersectionObserver(
-      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') }),
-      { threshold: 0.08 }
-    )
-    els.forEach(el => obs.observe(el))
-    return () => obs.disconnect()
-  }, [])
+    let obs: IntersectionObserver | null = null
+    const frame = requestAnimationFrame(() => {
+      const els = document.querySelectorAll('.lp-reveal')
+      if (page !== 'home') {
+        els.forEach(el => el.classList.add('visible'))
+        return
+      }
+      els.forEach(el => el.classList.remove('visible'))
+      obs = new IntersectionObserver(
+        entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') }),
+        { threshold: 0.08 },
+      )
+      els.forEach(el => obs!.observe(el))
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      obs?.disconnect()
+    }
+  }, [page])
 }
 
 function useCounter(target: number) {
@@ -1110,9 +1396,9 @@ function RoiCalculator() {
   const [holdHours, setHoldHours] = useState(8)
 
   const hoursPerYear = holdHours * 52
-  const timeValuePerYear = hoursPerYear * 25
-  const atRiskLow = outstandingAr * 0.10
-  const atRiskHigh = outstandingAr * 0.25
+  const timeValuePerYear = hoursPerYear * roiAssumptions.hourlyRateCAD
+  const atRiskLow = outstandingAr * roiAssumptions.writeOffRateLow
+  const atRiskHigh = outstandingAr * roiAssumptions.writeOffRateHigh
 
   return (
     <div className="lp-roi-card">
@@ -1123,7 +1409,10 @@ function RoiCalculator() {
             <span className="lp-roi-field-value">{fmtUSD(outstandingAr)}</span>
           </div>
           <input
-            type="range" min={1000} max={50000} step={500}
+            type="range"
+            min={roiAssumptions.outstandingArMin}
+            max={roiAssumptions.outstandingArMax}
+            step={roiAssumptions.outstandingArStep}
             value={outstandingAr}
             onChange={(e) => setOutstandingAr(Number(e.target.value))}
             aria-label="Outstanding insurance claims right now"
@@ -1146,7 +1435,7 @@ function RoiCalculator() {
         <div className="lp-roi-output">
           <div className="lp-roi-output-num">{hoursPerYear.toLocaleString()} hrs / year</div>
           <div className="lp-roi-output-lbl">
-            Front-desk time freed up, worth roughly {fmtUSD(timeValuePerYear)}/year at $25/hr
+            Front-desk time freed up, worth roughly {fmtUSD(timeValuePerYear)}/year at ${roiAssumptions.hourlyRateCAD}/hr
           </div>
         </div>
         <div className="lp-roi-output">
@@ -1160,14 +1449,187 @@ function RoiCalculator() {
   )
 }
 
+// ─── New home-page components ─────────────────────────────────────────────────
+
+function AnnouncementBar({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="lp-announce" role="banner">
+      <span>
+        CollectRx is now accepting early access applications for Canadian dental practices.{' '}
+        <Link to={MARKETING_PATHS.home} onClick={onClose}>
+          Learn what's included →
+        </Link>
+      </span>
+      <button type="button" className="lp-announce-close" onClick={onClose} aria-label="Dismiss announcement">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+  )
+}
+
+function PainBand({ onCta }: { onCta: () => void }) {
+  return (
+    <div className="lp-pain">
+      <div className="lp-pain-inner">
+        <div>
+          <div className="lp-pain-eyebrow">The cost of doing nothing</div>
+          <h2 className="lp-pain-h">
+            Insurance AR doesn't resolve itself. It ages, compounds, and gets written off.
+          </h2>
+          <p className="lp-pain-p">
+            Every week your team spends on hold with carriers is a week where actual patient care
+            gets displaced. CollectRx handles the follow-up loop so your staff don't have to.
+          </p>
+          <button type="button" className="lp-pain-cta" onClick={onCta}>
+            See what you're leaving on the table
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+        <div className="lp-pain-stats">
+          {PAIN_STATS.map(s => (
+            <div className="lp-pain-stat" key={s.num}>
+              <div className="lp-pain-stat-num">{s.num}</div>
+              <div className="lp-pain-stat-lbl">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProcessPreview() {
+  return (
+    <div className="lp-process lp-reveal">
+      <div className="lp-process-inner">
+        <div className="lp-section-heading" style={{ marginBottom: 0 }}>
+          <div className="lp-eyebrow">How it works</div>
+          <h2 className="lp-section-h2" style={{ marginBottom: 12 }}>
+            Four steps. Zero hold music<span className="lp-dot">.</span>
+          </h2>
+          <p className="lp-section-sub">
+            From a PMS export to a closed claim, CollectRx handles every step of the carrier follow-up loop.
+          </p>
+        </div>
+        <div className="lp-process-steps">
+          {PIPELINE_STEPS.map((s, i) => (
+            <div className="lp-process-step done" key={s.label}>
+              <div className="lp-process-icon">{s.icon}</div>
+              <div className="lp-process-num">Step {i + 1}</div>
+              <div className="lp-process-label">{s.label}</div>
+              <div className="lp-process-desc">{s.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 36 }}>
+          <Link to={MARKETING_PATHS.howItWorks} className="lp-feat-link" style={{ fontSize: 15 }}>
+            See the full interactive walkthrough
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FeatureHighlights({ onCta }: { onCta: () => void }) {
+  return (
+    <div style={{ background: 'var(--cream)' }}>
+      <div className="lp-section-inner" style={{ paddingTop: 72, paddingBottom: 72 }}>
+        <div className="lp-section-heading lp-reveal">
+          <div className="lp-eyebrow">Platform</div>
+          <h2 className="lp-section-h2">
+            Built for the realities of Canadian dental AR<span className="lp-dot">.</span>
+          </h2>
+        </div>
+        <div className="lp-feat-mini-grid lp-reveal">
+          {HOME_FEATURES.map(f => (
+            <div className="lp-feat-mini" key={f.h}>
+              <div className="lp-feat-mini-icon">{f.icon}</div>
+              <div className="lp-feat-mini-h">{f.h}</div>
+              <p className="lp-feat-mini-p">{f.p}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 36 }} className="lp-reveal">
+          <button type="button" className="lp-btn-ghost" onClick={onCta} style={{ marginRight: 12 }}>
+            Request access
+          </button>
+          <Link to={MARKETING_PATHS.features} className="lp-feat-link" style={{ fontSize: 15 }}>
+            All features
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ComplianceSnippet() {
+  return (
+    <div className="lp-compliance-snippet lp-reveal">
+      <div className="lp-compliance-snippet-inner">
+        <div>
+          <div className="lp-eyebrow">Compliance</div>
+          <h2 className="lp-section-h2" style={{ textAlign: 'left', marginBottom: 16 }}>
+            Privacy is the architecture, not the afterthought<span className="lp-dot">.</span>
+          </h2>
+          <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
+            In healthcare, compliance built in after the fact is compliance that fails. PHI
+            protection in CollectRx is a structural requirement — it cannot be disabled or
+            accidentally bypassed.
+          </p>
+          <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
+            Full compliance overview
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+        <div className="lp-compliance-snippet-cards">
+          {COMPLIANCE_SNIPPETS.map(c => (
+            <div className="lp-compliance-snippet-card" key={c.h}>
+              <div className="lp-compliance-snippet-card-icon">{c.icon}</div>
+              <div className="lp-compliance-snippet-card-h">{c.h}</div>
+              <div className="lp-compliance-snippet-card-p">{c.p}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const { pathname } = useLocation()
+  const page = marketingPageFromPathname(pathname)
   const [active, setActive] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [announceVisible, setAnnounceVisible] = useState(true)
   const scrolled = useScrolled()
-  useReveal()
+  useReveal(page)
+  const navigate = useNavigate()
 
-  const scrollTo = (id: string) =>
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  useEffect(() => {
+    document.title = MARKETING_PAGE_TITLES[page]
+  }, [page])
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (page !== 'home') return
+    const hash = window.location.hash.replace('#', '')
+    const dest = HASH_TO_PATH[hash]
+    if (dest) navigate(dest, { replace: true })
+  }, [page, navigate])
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [page])
+
+  const navClass = (id: MarketingPageId) =>
+    `lp-nav-link${page === id ? ' active' : ''}`
 
   // ── Request Early Access / Book a Demo modal ──────────────────────────────
   const [accessOpen, setAccessOpen] = useState(false)
@@ -1231,23 +1693,40 @@ export default function LandingPage() {
       <style>{STYLES}</style>
       <div className="lp">
 
+        {/* ── ANNOUNCEMENT BAR ── */}
+        {page === 'home' && announceVisible && (
+          <AnnouncementBar onClose={() => setAnnounceVisible(false)} />
+        )}
+
         {/* ── NAV ── */}
         <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
           <div className="lp-nav-inner">
-            <div className="lp-logo">
+            <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
                 <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
-            </div>
+            </Link>
             <div className="lp-nav-links">
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('how-it-works')}>How it Works</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('roi')}>ROI Calculator</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('features')}>Features</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('carriers')}>Carriers</button>
-              <button type="button" className="lp-nav-link" onClick={() => scrollTo('compliance')}>Compliance</button>
+              {MARKETING_NAV_TABS.map(tab => (
+                <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
+              ))}
+              <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
             </div>
             <div className="lp-nav-right">
+              <button
+                type="button"
+                className="lp-nav-menu-btn"
+                aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(o => !o)}
+              >
+                {menuOpen ? (
+                  <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+                )}
+              </button>
               <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
               <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Access
@@ -1256,23 +1735,41 @@ export default function LandingPage() {
           </div>
         </nav>
 
-        {/* ── HERO ── */}
-        <div className="lp-hero-wrap">
+        <div className={`lp-nav-mobile${menuOpen ? ' open' : ''}`} role="navigation" aria-label="Mobile navigation">
+          {MARKETING_NAV_TABS.map(tab => (
+            <Link key={tab.id} to={tab.path} className={navClass(tab.id)} onClick={() => setMenuOpen(false)}>
+              {tab.label}
+            </Link>
+          ))}
+          <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+          <button
+            type="button"
+            className="lp-btn-primary"
+            style={{ marginTop: 8, justifyContent: 'center' }}
+            onClick={() => { setMenuOpen(false); openAccess('access') }}
+          >
+            Request Early Access
+          </button>
+        </div>
+
+        {/* ── HERO (home only) ── */}
+        {page === 'home' && (
+        <div className="lp-hero-wrap" data-testid="marketing-home-hero">
           <section className="lp-hero">
             {/* Left */}
             <div>
               <div className="lp-ai-badge">
                 <svg viewBox="0 0 24 24"><path d="M12 0l2.5 9.5L24 12l-9.5 2.5L12 24l-2.5-9.5L0 12l9.5-2.5z" /></svg>
-                Canadian Dental AR Automation · Early Access
+                Canadian Insurance AR Automation · Early Access
               </div>
               <h1 className="lp-h1">
-                Your insurance AR,<br />
-                resolved automatically<span className="lp-dot">.</span>
+                Collect outstanding insurance AR<br />
+                without staff on hold<span className="lp-dot">.</span>
               </h1>
               <p className="lp-hero-body">
-                CollectRx runs outstanding claims through a complete AI follow-up pipeline:
-                carrier-specific IVR navigation, live adjudication tracking, and denial
-                escalation, without your staff on hold.
+                Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
+                that never lands. CollectRx runs follow-up to six major Canadian insurers, tracks
+                claim status, and handles denials, from a simple PMS export.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
@@ -1280,9 +1777,9 @@ export default function LandingPage() {
                     Request Early Access
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                   </button>
-                  <button className="lp-btn-ghost" onClick={() => scrollTo('how-it-works')}>
+                  <Link to="/demo" className="lp-btn-ghost">
                     See how it works
-                  </button>
+                  </Link>
                 </div>
               </div>
               <div className="lp-trust-row">
@@ -1301,19 +1798,32 @@ export default function LandingPage() {
             <OpsPanel active={active} onSelect={setActive} />
           </section>
         </div>
+        )}
 
-        {/* ── STATS BAND ── */}
+        {/* ── STATS BAND (home only) ── */}
+        {page === 'home' && (
         <div className="lp-stats lp-reveal">
           <div className="lp-stats-inner">
-            <StatNum target={6}  suffix=" carriers" label="Major Canadian carriers integrated" />
+            <StatNum target={6}  suffix=" carriers" label="Major Canadian insurers integrated" />
             <StatNum target={78} suffix="%"          label="Private dental market covered" />
-            <StatNum target={12} suffix="h"          label="Front-desk hours recovered per week" />
+            <StatNum target={100} suffix="%"         label="Insurance AR focus (not patient balances)" />
             <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
           </div>
         </div>
+        )}
+
+        {/* ── PAIN BAND (home only) ── */}
+        {page === 'home' && <PainBand onCta={() => openAccess('access')} />}
+
+        {/* ── PROCESS PREVIEW (home only) ── */}
+        {page === 'home' && <ProcessPreview />}
+
+        {/* ── FEATURE HIGHLIGHTS (home only) ── */}
+        {page === 'home' && <FeatureHighlights onCta={() => openAccess('access')} />}
 
         {/* ── ROI CALCULATOR ── */}
-        <section className="lp-roi" id="roi">
+        {page === 'roi' && (
+        <section className="lp-roi" style={{ paddingTop: 88 }} data-testid="marketing-roi">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Your numbers</div>
@@ -1334,18 +1844,20 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* ── HOW IT WORKS ── */}
-        <section className="lp-pipeline" id="how-it-works">
+        {page === 'how-it-works' && (
+        <section className="lp-pipeline" style={{ paddingTop: 88 }} data-testid="marketing-how-it-works">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">How it Works</div>
               <h2 className="lp-section-h2">
-                Four steps. Zero staff time<span className="lp-dot">.</span>
+                Four steps. Less staff time on hold<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 From the moment a claim ages into the queue to the moment its status is
-                written back, the entire follow-up runs without a phone call from your team.
+                written back, insurance follow-up runs without your team calling carriers.
                 Click a step, or watch it run on its own.
               </p>
             </div>
@@ -1357,9 +1869,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── FEATURES (Product Hub Cards) ── */}
-        <section className="lp-features" id="features">
+        {/* ── FEATURES ── */}
+        {page === 'features' && (
+        <section className="lp-features" style={{ paddingTop: 88 }} data-testid="marketing-features">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Platform</div>
@@ -1386,9 +1900,11 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── CARRIERS (feature split) ── */}
-        <section className="lp-carriers" id="carriers">
+        {/* ── CARRIERS ── */}
+        {page === 'carriers' && (
+        <section className="lp-carriers" style={{ paddingTop: 88 }} data-testid="marketing-carriers">
           <div className="lp-section-inner">
             <div className="lp-split lp-reveal">
               <div>
@@ -1402,7 +1918,7 @@ export default function LandingPage() {
                 </p>
                 <p className="lp-split-p">
                   Select a carrier to preview how CollectRx processes its claims in the
-                  Operations Center above.
+                  live operations view below.
                 </p>
                 <p className="lp-carriers-note">
                   Together these carriers represent approximately 78% of Canadian private dental insurance.
@@ -1414,7 +1930,7 @@ export default function LandingPage() {
                     type="button"
                     key={c.name}
                     className={`lp-carrier-card${i === active ? ' active' : ''}`}
-                    onClick={() => { setActive(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    onClick={() => setActive(i)}
                   >
                     <div className="lp-carrier-row">
                       <span className="lp-carrier-name">{c.name}</span>
@@ -1427,17 +1943,22 @@ export default function LandingPage() {
                 ))}
               </div>
             </div>
+            <div className="lp-reveal" style={{ marginTop: 48 }}>
+              <OpsPanel active={active} onSelect={setActive} />
+            </div>
           </div>
         </section>
+        )}
 
-        {/* ── TESTIMONIALS ── */}
+        {/* ── TESTIMONIALS (home only) ── */}
+        {page === 'home' && (
         <section className="lp-quotes">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Early Access</div>
               <h2 className="lp-section-h2">What practices say<span className="lp-dot">.</span></h2>
             </div>
-            <div className="lp-quote-grid lp-reveal">
+            <div className="lp-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
               {TESTIMONIALS.map(t => (
                 <div className="lp-quote" key={t.name}>
                   <div className="lp-quote-mark">&ldquo;</div>
@@ -1454,9 +1975,14 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
+
+        {/* ── COMPLIANCE SNIPPET (home only) ── */}
+        {page === 'home' && <ComplianceSnippet />}
 
         {/* ── COMPLIANCE ── */}
-        <section className="lp-compliance" id="compliance">
+        {page === 'compliance' && (
+        <section className="lp-compliance" style={{ paddingTop: 88 }} data-testid="marketing-compliance">
           <div className="lp-section-inner">
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Compliance</div>
@@ -1479,28 +2005,30 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── CTA ── */}
-        <div className="lp-cta-section" id="cta">
+        {/* ── CTA (home only) ── */}
+        {page === 'home' && (
+        <div className="lp-cta-section">
           <div className="lp-cta-inner lp-reveal">
             <div className="lp-cta-tag">Early Access</div>
             <h2 className="lp-cta-h">
               The AR work is already getting done<span className="lp-dot">.</span>
             </h2>
             <p className="lp-cta-body">
-              Now live with Canadian dental practices. No setup fees.
-              No long-term contract. If CollectRx doesn't recover revenue you were
-              already leaving behind, you pay nothing.
+              Annual partnership for Canadian dental practices. No setup fees.
+              Collections metrics show what we recovered on your outstanding insurance AR.
             </p>
             <div className="lp-cta-actions">
               <button className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Early Access
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
               </button>
-              <button className="lp-btn-ghost" onClick={() => openAccess('demo')}>Book a Demo</button>
+              <Link to="/demo" className="lp-btn-ghost">See the product demo</Link>
             </div>
           </div>
         </div>
+        )}
 
         {/* ── FOOTER ── */}
         <footer className="lp-footer">
@@ -1518,16 +2046,26 @@ export default function LandingPage() {
               <div className="lp-footer-cols">
                 <div className="lp-footer-col">
                   <h4>Platform</h4>
-                  <button type="button" onClick={() => scrollTo('how-it-works')}>How it Works</button>
-                  <button type="button" onClick={() => scrollTo('features')}>Features</button>
-                  <button type="button" onClick={() => scrollTo('carriers')}>Carriers</button>
-                  <button type="button" onClick={() => scrollTo('compliance')}>Compliance</button>
+                  <Link to={MARKETING_PATHS.howItWorks}>How it Works</Link>
+                  <Link to={MARKETING_PATHS.demo}>Product demo</Link>
+                  <Link to={MARKETING_PATHS.features}>Features</Link>
+                  <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
+                  <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
+                  <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
                   <Link to="/login">Practice sign in</Link>
                   <button type="button" onClick={() => openAccess('access')}>Request access</button>
-                  <button type="button" onClick={() => openAccess('demo')}>Book a demo</button>
+                  <Link to="/demo">Watch demo</Link>
+                  <button type="button" onClick={() => openAccess('demo')}>Book a setup call</button>
+                </div>
+                <div className="lp-footer-col">
+                  <h4>Resources</h4>
+                  <a href="/resources/">All guides</a>
+                  <a href="/resources/dental-insurance-follow-up-canada/">Why claims sit unpaid</a>
+                  <a href="/resources/canadian-dental-carriers-follow-up/">Carrier follow-up</a>
+                  <a href="/resources/cdcp-claims-canada/">CDCP claims guide</a>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Legal</h4>
@@ -1546,8 +2084,17 @@ export default function LandingPage() {
 
         {/* ── ACCESS / DEMO MODAL ── */}
         {accessOpen && (
-          <div className="lp-modal-overlay" onClick={closeAccess}>
-            <div className="lp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="lp-modal-overlay" onClick={closeAccess} role="presentation">
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dialog role is interactive per WAI-ARIA; jsx-a11y v6 does not recognise it as such */}
+            <div
+              className="lp-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="access-modal-heading"
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <button type="button" className="lp-modal-close" onClick={closeAccess} aria-label="Close">
                 <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
@@ -1556,7 +2103,7 @@ export default function LandingPage() {
                   <div className="lp-modal-success-icon">
                     <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
                   </div>
-                  <h3 className="lp-modal-h">Request received</h3>
+                  <h3 id="access-modal-heading" className="lp-modal-h">Request received</h3>
                   <p className="lp-modal-sub">
                     Thanks{accessForm.name.trim() ? `, ${accessForm.name.trim().split(' ')[0]}` : ''}.
                     We'll be in touch within one business day.
@@ -1565,7 +2112,7 @@ export default function LandingPage() {
                 </div>
               ) : (
                 <form onSubmit={submitAccess}>
-                  <h3 className="lp-modal-h">{accessIntent === 'demo' ? 'Book a demo' : 'Request early access'}</h3>
+                  <h3 id="access-modal-heading" className="lp-modal-h">{accessIntent === 'demo' ? 'Book a demo' : 'Request early access'}</h3>
                   <p className="lp-modal-sub">
                     Tell us a bit about your practice and we'll reach out to set things up.
                   </p>
@@ -1601,7 +2148,7 @@ export default function LandingPage() {
                       onChange={(e) => setAccessForm(f => ({ ...f, phone: e.target.value }))}
                     />
                   </div>
-                  {accessError && <p className="lp-modal-error">{accessError}</p>}
+                  {accessError && <p className="lp-modal-error" role="alert" aria-live="assertive">{accessError}</p>}
                   <button type="submit" className="lp-btn-primary lp-modal-submit" disabled={accessStatus === 'submitting'}>
                     {accessStatus === 'submitting' ? 'Sending…' : (accessIntent === 'demo' ? 'Request demo' : 'Request access')}
                   </button>

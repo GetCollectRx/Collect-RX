@@ -212,7 +212,7 @@ export default function Admin() {
 
       <AdminOnboardingChecklist practiceId={practiceId} />
 
-      {/* P4 — go-live integration health (no secrets shown) */}
+      {/* P4, go-live integration health (no secrets shown) */}
       <Card>
         <CardHeader
           title="Integrations (go-live)"
@@ -245,7 +245,7 @@ export default function Admin() {
                   {integrations.escalation.immediateStaffNotify ? 'ready' : 'not configured'}
                 </li>
                 <li>
-                  Staff number(s) in env: {integrations.escalation.staffPhone ? 'set' : 'missing — add ESCALATION_STAFF_PHONE'}
+                  Staff number(s) in env: {integrations.escalation.staffPhone ? 'set' : 'missing, add ESCALATION_STAFF_PHONE'}
                 </li>
                 <li>
                   Voice ring mode: <code className="text-xs">{integrations.escalation.voiceRing}</code> (urgent | all |
@@ -257,7 +257,7 @@ export default function Admin() {
               <p className="font-medium text-gray-800 dark:text-gray-200">Stripe (P4-04)</p>
               <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
                 <li>Secret key: {integrations.stripe.secretKey ? 'set' : 'missing'}</li>
-                <li>Mode: {integrations.stripe.testMode ? 'test (sk_test_…)' : integrations.stripe.secretKey ? 'live' : '—'}</li>
+                <li>Mode: {integrations.stripe.testMode ? 'test (sk_test_…)' : integrations.stripe.secretKey ? 'live' : 'N/A'}</li>
                 <li>Connect account: {integrations.stripeConnect.account ? 'present' : 'missing'}</li>
                 <li>Connect onboarding: {integrations.stripeConnect.onboardingComplete ? 'complete' : 'incomplete'}</li>
                 <li>Charges enabled: {integrations.stripeConnect.chargesEnabled ? 'yes' : 'no'}</li>
@@ -283,7 +283,7 @@ export default function Admin() {
       <Card>
         <CardHeader
           title="What your team sees when something fails"
-          subtitle="Share this with the front desk — not engineering jargon."
+          subtitle="Share this with the front desk: not engineering jargon."
         />
         <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-3 list-disc list-inside">
           <li>
@@ -294,7 +294,7 @@ export default function Admin() {
           <li>
             <strong className="text-gray-800 dark:text-gray-200">Sync / stale balances:</strong> The{' '}
             <Link to="/" className="text-crx-600 dark:text-crx-400 underline">Dashboard</Link> PMS banner shows your
-            last import time; tray icon errors mean data may not match your PMS — note the message and contact support.
+            last import time; tray icon errors mean data may not match your PMS, note the message and contact support.
           </li>
           <li>
             <strong className="text-gray-800 dark:text-gray-200">Carrier block:</strong> The{' '}
@@ -343,10 +343,10 @@ export default function Admin() {
                     </td>
                     <td className="py-1.5 pr-2 align-top font-mono text-crx-700 dark:text-crx-400">{row.action}</td>
                     <td className="py-1.5 pr-2 align-top text-gray-600 dark:text-gray-300">
-                      {row.subjectType && row.subjectId ? `${row.subjectType} ${row.subjectId.slice(0, 8)}…` : '—'}
+                      {row.subjectType && row.subjectId ? `${row.subjectType} ${row.subjectId.slice(0, 8)}…` : 'N/A'}
                     </td>
                     <td className="py-1.5 align-top text-gray-500 max-w-xs truncate" title={JSON.stringify(row.details ?? {})}>
-                      {row.details != null ? JSON.stringify(row.details) : '—'}
+                      {row.details != null ? JSON.stringify(row.details) : 'N/A'}
                     </td>
                   </tr>
                 ))}
@@ -425,8 +425,8 @@ export default function Admin() {
             <p className="font-medium text-gray-800 dark:text-gray-200">
               {csvResult.imported} new, {csvResult.updated} updated, {csvResult.skipped} skipped
               {csvResult.errors.length > 0
-                ? ` — ${csvResult.errors.length} row issue(s) below`
-                : ' — no row errors.'}
+                ? `, ${csvResult.errors.length} row issue(s) below`
+                : ', no row errors.'}
             </p>
             {csvResult.errors.length > 0 && (
               <ul className="mt-2 max-h-48 overflow-y-auto space-y-1.5 text-gray-700 dark:text-gray-300 list-disc list-inside">
@@ -443,22 +443,22 @@ export default function Admin() {
         )}
       </Card>
 
-      {/* Rules engine status */}
+      {/* Insurance recovery engine status */}
       <Card>
-        <CardHeader title="Rules Engine" subtitle="Evaluates and escalates balances every 60 seconds" />
+        <CardHeader title="Insurance recovery engine" subtitle="Call queue, payment trace, and work-queue sync every 60 seconds" />
         <div className="flex items-center gap-2 mb-4">
           <span className="w-2 h-2 rounded-full bg-crx-500 animate-pulse" aria-hidden="true" />
           <span className="text-sm font-medium text-crx-600 dark:text-crx-400">Running</span>
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 space-y-2">
-          <p className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Active Rules</p>
+          <p className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Active loops</p>
           {[
-            'On BALANCE_CREATED → Send NOTIFIED message immediately',
-            'After 5 days in NOTIFIED → Send REMINDER_1',
-            'After 10 days in REMINDER_1 → Send REMINDER_2',
-            'After 20 days in REMINDER_2 OR amount ≥ $500 → ESCALATED + STAFF_REVIEW',
-          ].map(rule => (
+            'Priority sync — ranks open claims for the next carrier call batch',
+            'Payment trace — recalls carriers when approved claims await PMS balance drop',
+            'Practice gates — blocks re-call until resubmit, docs, or verify is cleared',
+            'Work queue — mirrors open insurance claims by dollars at risk and aging',
+          ].map((rule) => (
             <div key={rule} className="flex items-start gap-2">
               <span className="text-crx-500 flex-shrink-0 mt-0.5">→</span>
               <span>{rule}</span>
@@ -548,7 +548,7 @@ export default function Admin() {
               <li>Secrets: host variables only; rotation runbook in docs/operations/SECRETS-GO-LIVE.md</li>
             </ul>
           )}
-          {!integrations && !integrationsLoading && <p>Load failed — refresh the page.</p>}
+          {!integrations && !integrationsLoading && <p>Load failed, refresh the page.</p>}
         </div>
       </Card>
     </div>

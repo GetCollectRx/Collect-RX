@@ -34,7 +34,7 @@ function storageKey(practiceId: string | null) {
 }
 
 /**
- * P9-03 — new practice checklist (import → verify → go live). Progress stored in localStorage per practice.
+ * P9-03, new practice checklist (import → verify → go live). Progress stored in localStorage per practice.
  */
 export function AdminOnboardingChecklist({ practiceId }: { practiceId: string | null }) {
   const [done, setDone] = useState<Record<string, boolean>>({})

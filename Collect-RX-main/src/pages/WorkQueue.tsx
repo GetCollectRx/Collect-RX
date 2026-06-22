@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import {
   Button, Select, Input, DataState,
@@ -26,9 +27,10 @@ interface WorkItemRow {
 }
 
 export default function WorkQueue() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId } = usePractice()
+  const { canFetch, pageBusy, pageError } = usePracticePageGate()
   const [items, setItems] = useState<WorkItemRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ itemType: '', aging: '', gatesDueToday: false })
@@ -50,7 +52,10 @@ export default function WorkQueue() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [practiceId, filters])
+  useEffect(() => {
+    if (!canFetch) return
+    load()
+  }, [practiceId, filters, canFetch])
 
   const syncQueue = async () => {
     setSyncing(true)
@@ -82,18 +87,9 @@ export default function WorkQueue() {
     load()
   }
 
-  const linkFor = (row: WorkItemRow) => {
-    if (row.sourceType === 'insurance_claim') return `/insurance/${row.sourceId}`
-    if (row.sourceType === 'patient_balance') return '/patient-ar'
-    return `/balances/${row.sourceId}`
-  }
+  const linkFor = (row: WorkItemRow) => `/insurance/${row.sourceId}`
 
-  const typeColor = (t: string): 'blue' | 'green' | 'amber' | 'gray' => {
-    if (t === 'insurance') return 'blue'
-    if (t === 'patient_ar') return 'green'
-    if (t === 'outreach') return 'amber'
-    return 'gray'
-  }
+  const typeColor = (): 'blue' => 'blue'
 
   const scoreLabel = (score: number) => {
     if (score >= 80) return { label: 'Critical', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
@@ -103,13 +99,13 @@ export default function WorkQueue() {
   }
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
         {/* ── Page header ── */}
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="page-title">Work Queue</h1>
-            <p className="page-subtitle mt-0.5">All open AR ranked by dollars at risk, aging, and carrier denial risk.</p>
+            <p className="page-subtitle mt-0.5">Open insurance claims ranked by dollars at risk, aging, and carrier denial risk.</p>
           </div>
           <Button size="sm" onClick={() => void syncQueue()} disabled={syncing}>
             {syncing ? 'Syncing…' : 'Refresh from sources'}
@@ -119,12 +115,6 @@ export default function WorkQueue() {
         <div className="p-6 space-y-5 max-w-6xl">
           {/* ── Filters ── */}
           <div className="flex flex-wrap gap-2.5 items-center">
-            <Select value={filters.itemType} onChange={(e) => setFilters((f) => ({ ...f, itemType: e.target.value }))} aria-label="Type">
-              <option value="">All types</option>
-              <option value="insurance">Insurance</option>
-              <option value="patient_ar">Patient AR</option>
-              <option value="outreach">Outreach</option>
-            </Select>
             <Select value={filters.aging} onChange={(e) => setFilters((f) => ({ ...f, aging: e.target.value }))} aria-label="Aging">
               <option value="">All aging</option>
               <option value="30">30–59 days</option>
@@ -165,7 +155,7 @@ export default function WorkQueue() {
               </Thead>
               <Tbody>
                 {items.length === 0 ? (
-                  <TableEmpty colSpan={9} message="Queue is empty — run Refresh from sources after a PMS import." />
+                  <TableEmpty colSpan={9} message="Queue is empty, run Refresh from sources after a PMS import." />
                 ) : (
                   items.map((row) => {
                     const { label, color } = scoreLabel(row.rankScore)
@@ -181,15 +171,15 @@ export default function WorkQueue() {
                         </Td>
                         <Td bold>{row.title ?? row.sourceId.slice(0, 8)}</Td>
                         <Td>
-                          <Badge color={typeColor(row.itemType)} dot>
-                            {row.itemType.replace('_', ' ')}
+                          <Badge color={typeColor()} dot>
+                            Insurance
                           </Badge>
                         </Td>
                         <Td className="text-xs max-w-[140px]">
                           {row.recoveryRoute ? (
                             <span className="font-mono text-gray-500">{row.recoveryRoute}</span>
                           ) : (
-                            '—'
+                            'N/A'
                           )}
                           {row.blockingGateTitle && (
                             <p className="text-amber-700 dark:text-amber-400 truncate mt-0.5" title={row.blockingGateTitle}>
@@ -209,7 +199,7 @@ export default function WorkQueue() {
                           {editingRepId === row.id ? (
                             <Input value={rep} onChange={(e) => setRep(e.target.value)} className="text-xs" />
                           ) : (
-                            row.assignedRep ?? <span className="text-gray-300 dark:text-gray-700">—</span>
+                            row.assignedRep ?? <span className="text-gray-300 dark:text-gray-700">N/A</span>
                           )}
                         </Td>
                         <Td className="max-w-xs">

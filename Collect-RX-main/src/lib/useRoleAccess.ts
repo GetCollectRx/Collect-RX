@@ -63,8 +63,8 @@ function accessForRole(role: AuthRole | null): RoleAccess {
     case 'practice_owner':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: true, canViewPatientAR: true, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: true, canViewCdcp: true,
+        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
+        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: true, canEditAdmin: false,
@@ -77,10 +77,10 @@ function accessForRole(role: AuthRole | null): RoleAccess {
     case 'office_manager':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: true, canViewPatientAR: true, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: true, canViewCdcp: true,
+        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
+        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
-        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: true,
+        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: true, canManageUsers: true, canEditAdmin: true,
         ...noDeskOps,
         canResolveEscalations: true,
@@ -91,10 +91,10 @@ function accessForRole(role: AuthRole | null): RoleAccess {
     case 'billing_coordinator':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: true, canViewPatientAR: true, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: true, canViewCdcp: true,
+        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
+        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: true,
+        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         isPatientLookupOnly: false, isReadOnly: false,
@@ -104,7 +104,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
     case 'associate_dentist':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: true, canViewEstimate: true,
+        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
         canViewAnalytics: true, canViewOutbox: false, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
@@ -133,7 +133,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
         canViewAnalytics: false, canViewOutbox: false, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: true, canSendReminders: true,
+        canInitiateCalls: false, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...deskOperator,
         isPatientLookupOnly: false, isReadOnly: false,

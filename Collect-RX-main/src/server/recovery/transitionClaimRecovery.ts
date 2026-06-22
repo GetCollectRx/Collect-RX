@@ -108,8 +108,11 @@ export async function transitionClaimRecovery(
         where: { id: input.claimId },
         data: { status: 'IN_QUEUE', recoveryRoute: 'CALL_CARRIER' },
       }),
+      // H-2: filter out BLOCKED and COMPLETED entries — resetting a BLOCKED
+      // queue entry back to PENDING would re-dispatch to a carrier that blocked
+      // the practice, worsening the carrier block situation.
       prisma.callQueue.updateMany({
-        where: { claimId: input.claimId },
+        where: { claimId: input.claimId, status: { notIn: ['BLOCKED', 'COMPLETED'] } },
         data: { status: 'PENDING', scheduledFor: recallAt },
       }),
     ]);
@@ -215,9 +218,12 @@ export async function transitionClaimRecovery(
       .filter(Boolean)
       .join(' ');
 
+    // H-1: outstandingAmount must be zeroed on resolution or the PMS will
+    // receive the pre-resolution balance in the EMR outbox event and continue
+    // treating the claim as outstanding, triggering phantom payment re-verification.
     await prisma.insuranceClaim.update({
       where: { id: input.claimId },
-      data: { status: 'RESOLVED', recoveryRoute: 'STOP' },
+      data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0 },
     });
 
     await clearAllOpenRecoveryActions(prisma, input.claimId);
@@ -242,7 +248,7 @@ export async function transitionClaimRecovery(
           notes: resolutionNote,
           at: now.toISOString(),
           resolvedByHuman: true,
-          outstandingAfter: Number(claim.outstandingAmount),
+          outstandingAfter: 0,
         },
       });
     } catch (emrErr) {
@@ -253,7 +259,7 @@ export async function transitionClaimRecovery(
       claimId: input.claimId,
       claimStatus: 'RESOLVED',
       recoveryRoute: 'STOP',
-      outstandingAmount: Number(claim.outstandingAmount),
+      outstandingAmount: 0,
       scheduledRecallAt: null,
       eventType: 'MANUAL_ESCALATION_RESOLVED',
     };

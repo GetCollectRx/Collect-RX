@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getUserRole, authUserId } from '../accessControl/types.js';
+import { getUserRole, authUserId, isAuditor } from '../accessControl/types.js'
 import type { CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -27,7 +27,6 @@ import type { ActiveAgent } from '../../types/frontDesk.js';
 import { requireFrontDeskOnly, blockAuditorWrites } from '../middleware/requireUserRole.js';
 import { assertPlatformAdminClaimGrant } from '../middleware/grantChecks.js';
 import { listEscalations, resolveEscalation } from '../services/escalationService.js';
-import { isAuditor } from '../accessControl/types.js';
 import type { EscalationResolution } from '../../types/practiceSettings.js';
 
 const router = Router();

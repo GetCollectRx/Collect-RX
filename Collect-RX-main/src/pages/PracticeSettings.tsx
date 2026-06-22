@@ -135,7 +135,7 @@ export default function PracticeSettings() {
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
           {isReadOnly && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view — changes are disabled.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
           )}
 
           <Card>
@@ -168,13 +168,16 @@ export default function PracticeSettings() {
               )}
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Phone decisions use profile <code className="text-2xs">{pmsInfo?.phoneDecisionProfile ?? 'carrier_recovery_v1'}</code>
-                {' '}— not PMS-specific logic.
+                {' '}(not PMS-specific logic).
               </p>
             </div>
           </Card>
 
           <Card>
-            <CardHeader title="Voice agent" subtitle="Automation toggles" />
+            <CardHeader
+              title="Voice agent"
+              subtitle="Carrier claim calls require Voice agent enabled, BAAL on file, and provider number per carrier"
+            />
             <div className="space-y-3">
               {(
                 [
@@ -236,6 +239,8 @@ export default function PracticeSettings() {
                     <Th align="right">Max attempts</Th>
                     <Th>Window</Th>
                     <Th>Notes</Th>
+                    <Th>Provider number</Th>
+                    <Th>Auth submitted</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -281,6 +286,59 @@ export default function PracticeSettings() {
                           disabled={isReadOnly}
                           onChange={(e) => updateCarrier(idx, { notes: e.target.value })}
                         />
+                      </Td>
+                      <Td>
+                        <input
+                          type="text"
+                          className="w-full text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+                          value={c.providerNumber}
+                          disabled={isReadOnly}
+                          maxLength={50}
+                          placeholder="e.g. ON-123456"
+                          onChange={(e) => updateCarrier(idx, { providerNumber: e.target.value })}
+                        />
+                      </Td>
+                      <Td>
+                        {c.authorizationSubmitted ? (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-green-700 dark:text-green-400">
+                              Submitted{c.authorizationSubmittedAt
+                                ? ` ${new Date(c.authorizationSubmittedAt).toLocaleDateString()}`
+                                : ''}
+                            </span>
+                            {!isReadOnly && (
+                              <button
+                                type="button"
+                                className="text-gray-500 underline hover:text-gray-700 dark:hover:text-gray-300"
+                                onClick={() =>
+                                  updateCarrier(idx, {
+                                    authorizationSubmitted: false,
+                                    authorizationSubmittedAt: null,
+                                  })
+                                }
+                              >
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <input
+                              type="checkbox"
+                              checked={c.authorizationSubmitted}
+                              disabled={isReadOnly}
+                              onChange={(e) =>
+                                updateCarrier(idx, {
+                                  authorizationSubmitted: e.target.checked,
+                                  authorizationSubmittedAt: e.target.checked ? new Date().toISOString() : null,
+                                })
+                              }
+                            />
+                            <p className="text-[10px] leading-tight text-amber-700 dark:text-amber-400 max-w-[140px]">
+                              Carrier calls blocked until signed BAAL is on file. See legal review prompt in docs.
+                            </p>
+                          </div>
+                        )}
                       </Td>
                     </Tr>
                   ))}

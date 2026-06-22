@@ -64,7 +64,7 @@ function fmtMoney(cents: number): string {
 }
 
 function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return 'N/A'
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -233,7 +233,7 @@ export default function PracticeBillingPage() {
 
         {subscribed && (
           <p className="text-sm text-emerald-700 dark:text-emerald-400 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border border-emerald-200 dark:border-emerald-800">
-            Payment received — updating your account…
+            Payment received, updating your account…
           </p>
         )}
         {canceled && (

@@ -1,14 +1,14 @@
 /**
- * AnalyticsDashboard — CollectRx Product Analytics
+ * AnalyticsDashboard, CollectRx Product Analytics
  *
  * Four panels covering the full user-behaviour picture:
- *   1. Summary bar       — headline numbers (sessions, active users, events today)
- *   2. Time on page      — horizontal bar chart; reveals where users actually spend time
- *   3. Click heatmap     — ranked table of every button/link clicked
- *   4. Funnel drop-off   — step-by-step completion funnel for key CollectRx journeys
- *   5. Session replay    — recent session path sequences (lightweight breadcrumb trace)
+ *   1. Summary bar      , headline numbers (sessions, active users, events today)
+ *   2. Time on page     , horizontal bar chart; reveals where users actually spend time
+ *   3. Click heatmap    , ranked table of every button/link clicked
+ *   4. Funnel drop-off  , step-by-step completion funnel for key CollectRx journeys
+ *   5. Session replay   , recent session path sequences (lightweight breadcrumb trace)
  *
- * All data is fetched from /api/telemetry/* — productTelemetry routes.
+ * All data is fetched from /api/telemetry/*, productTelemetry routes.
  * The component is self-contained: no external chart library required.
  * It uses plain SVG + CSS variables so it inherits the app's theme.
  *
@@ -206,7 +206,7 @@ function ClickTable({ clicks, total }: ClickTableProps) {
                 {c.count.toLocaleString()}
               </td>
               <td style={{ padding: '9px 12px', textAlign: 'right', color: GREY }}>
-                {total > 0 ? `${((c.count / total) * 100).toFixed(1)}%` : '—'}
+                {total > 0 ? `${((c.count / total) * 100).toFixed(1)}%` : 'N/A'}
               </td>
               <td style={{ padding: '9px 12px' }}>
                 <div style={{ height: 6, background: '#F1F5F9', borderRadius: 3, overflow: 'hidden' }}>
@@ -603,7 +603,7 @@ export default function ProductUsageAnalytics() {
             Product Analytics
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: GREY }}>
-            How users actually use CollectRx — clicks, page time, and drop-off
+            How users actually use CollectRx, clicks, page time, and drop-off
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -649,7 +649,7 @@ export default function ProductUsageAnalytics() {
           }}
         >
           <AlertCircle size={16} />
-          {error} — is the analytics API running?
+          {error}, is the analytics API running?
         </div>
       )}
 
@@ -667,7 +667,7 @@ export default function ProductUsageAnalytics() {
         </Panel>
       </div>
 
-      {/* Funnel — full width */}
+      {/* Funnel, full width */}
       <Panel title="User Journey Funnels" icon={<TrendingDown size={16} color={RED} />}>
         <FunnelViz funnels={data.funnels} />
       </Panel>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import type { PmsVendorCatalogEntry, PracticePmsInfo } from '../types/pms'
 import {
@@ -23,9 +23,9 @@ interface ImportRun {
 }
 
 export default function SyncOpsDashboard() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
   const [runs, setRuns] = useState<ImportRun[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
@@ -53,7 +53,10 @@ export default function SyncOpsDashboard() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [practiceId])
+  useEffect(() => {
+    if (!canFetch) return
+    load()
+  }, [practiceId, canFetch])
 
   const upload = async (pmsVendor: string, file: File) => {
     setUploading(pmsVendor)
@@ -95,7 +98,7 @@ export default function SyncOpsDashboard() {
         ]
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter p-6 space-y-6 max-w-5xl">
         <header className="flex items-center gap-3">
           <Link to="/admin"><Button variant="ghost" size="sm">← Admin</Button></Link>
@@ -116,7 +119,7 @@ export default function SyncOpsDashboard() {
         )}
 
         <Card>
-          <CardHeader title="Upload claim export" subtitle="CSV from your PMS — column names are mapped automatically" />
+          <CardHeader title="Upload claim export" subtitle="CSV from your PMS, column names are mapped automatically" />
           <div className="px-4 pb-4 flex flex-wrap gap-4">
             {vendors.map((v) => (
               <label key={v.id} className="text-sm">
@@ -172,8 +175,8 @@ export default function SyncOpsDashboard() {
                     <Td><Badge>{run.status}</Badge></Td>
                     <Td>{run.recordsImported}/{run.recordsTotal}</Td>
                     <Td>{run.recordsFailed}</Td>
-                    <Td>{run.driftPct != null ? `${(run.driftPct * 100).toFixed(2)}%` : '—'}</Td>
-                    <Td>{run.validationPassed == null ? '—' : run.validationPassed ? '✓' : '✗'}</Td>
+                    <Td>{run.driftPct != null ? `${(run.driftPct * 100).toFixed(2)}%` : 'N/A'}</Td>
+                    <Td>{run.validationPassed == null ? 'N/A' : run.validationPassed ? '✓' : '✗'}</Td>
                     <Td>
                       <Button
                         variant="ghost"

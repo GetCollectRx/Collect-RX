@@ -2,6 +2,8 @@
 export type UserRole =
   | 'front_desk'
   | 'practice_owner'
+  | 'office_manager'
+  | 'billing_coordinator'
   | 'auditor'
   | 'billing_ops_manager'
   | 'platform_admin';
@@ -9,6 +11,8 @@ export type UserRole =
 export const HOME_ROUTE: Record<UserRole, string> = {
   front_desk: '/console',
   practice_owner: '/dashboard',
+  office_manager: '/dashboard',
+  billing_coordinator: '/billing',
   auditor: '/reports/aging',
   billing_ops_manager: '/portfolio',
   platform_admin: '/admin',
@@ -17,6 +21,8 @@ export const HOME_ROUTE: Record<UserRole, string> = {
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   front_desk: 'Front Desk',
   practice_owner: 'Practice Owner',
+  office_manager: 'Office Manager',
+  billing_coordinator: 'Billing Coordinator',
   auditor: 'Auditor',
   billing_ops_manager: 'Billing Ops',
   platform_admin: 'Platform Admin',
@@ -31,5 +37,10 @@ export function isReadOnlyRole(role: UserRole): boolean {
 }
 
 export function practiceScopedRole(role: UserRole): boolean {
-  return role === 'front_desk' || role === 'practice_owner';
+  return (
+    role === 'front_desk' ||
+    role === 'practice_owner' ||
+    role === 'office_manager' ||
+    role === 'billing_coordinator'
+  );
 }

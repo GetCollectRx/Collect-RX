@@ -28,7 +28,10 @@ import {
   redactInsuranceClaimsList,
 } from '../server/accessControl/redaction.js';
 import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
+import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { piiVault } from '../pii-vault.js';
+import logger from '../logger.cjs';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -224,7 +227,12 @@ router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response
 
     const updated = await prisma.insuranceClaim.findUnique({ where: { id } });
 
-    return res.json({ success: true, data: updated, recovery: result });
+    // M-4: apply redaction consistent with all other claim-returning endpoints.
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+      recovery: result,
+    });
   } catch (err) {
     console.error('[POST /insurance/claims/:id/resolve-escalation]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -335,6 +343,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
 //
 // Respects all safety rules:
 //   - CARRIER_BLOCK check
+//   - BAAL + provider number + voice agent enabled (via validateDispatch)
 //   - Days outstanding rules (< 30 reject, > 90 escalate)
 //   - Max 3 attempts
 //   - Business hours (Mon–Fri 08:00–17:00 Eastern)
@@ -397,19 +406,85 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
 
-    // Initiate Vapi call
+    const [practice, practiceSettings] = await Promise.all([
+      prisma.practice.findUnique({
+        where: { id: practiceId },
+        select: { name: true, billingPhone: true, npi: true, taxId: true },
+      }),
+      getPracticeSettings(prisma, practiceId),
+    ]);
+    const carrierSettings = practiceSettings.carrierConfigs.find(
+      (c) => c.carrierId === claim.carrierId,
+    );
+
+    // ── PHI RESOLUTION ────────────────────────────────────────────────────────
+    // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
+    // only — never stored in DB, never in logs. Token must still be live in
+    // piiVault (4-hour TTL from import time).
+    const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger');
+    if (!phiResult.success || !phiResult.phi) {
+      logger.warn?.('[insurance trigger] PHI token expired or missing', {
+        claimId,
+        patientToken: claim.patientToken,
+        error: phiResult.error,
+      });
+      return res.status(422).json({
+        success: false,
+        error: 'PHI token has expired — re-import the claim to refresh it',
+      });
+    }
+    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+      claimId,
+      patientToken: claim.patientToken,
+      callerContext: 'insurance-trigger',
+      phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+
+    // billingPhone is the CRTC disclosure / carrier callback number.
+    // escalationPhoneNumber is for staff takeover — do not conflate.
+    const practicePhone =
+      practice?.billingPhone?.trim() ||
+      practiceSettings.billingPhone?.trim() ||
+      practiceSettings.escalationPhoneNumber;
+
+    // Build IVR instructions from carrier adapter knowledge base
+    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+
+    // Initiate Vapi call — PHI injected as ephemeral call variables
     const vapiResult = await vapiClient.initiateCall({
       claimId: claim.id,
       carrierId: claim.carrierId,
       practiceId,
-      patientToken: claim.patientToken,  // UUID from PIIVault — no real PHI
-      carrierPhone: carrierConfig.phone,
-      claimNumber: claim.claimNumber,
-      billedAmount: Number(claim.billedAmount),
-      outstandingAmount: Number(claim.outstandingAmount),
+      patientToken: claim.patientToken,
+      // ── PHI — from piiVault.detokenize() above; ephemeral, never stored ──────
+      patientName:        phiResult.phi.patientName,
+      patientDob:         phiResult.phi.dateOfBirth,
+      policyNumber:       phiResult.phi.subscriberId,
+      groupNumber:        phiResult.phi.groupPolicyNumber,
+      subscriberName:     phiResult.phi.subscriberName,
+      subscriberDob:      phiResult.phi.subscriberDateOfBirth,
+      // ── Claim fields ──────────────────────────────────────────────────────────
+      carrierPhone:       carrierConfig.phone,
+      claimNumber:        claim.claimNumber,
+      billedAmount:       Number(claim.billedAmount),
+      outstandingAmount:  Number(claim.outstandingAmount),
+      amountExpected:     claim.expectedAmount ? Number(claim.expectedAmount) : undefined,
+      daysOutstanding:    claim.daysOutstanding,
+      treatmentDate:      claim.servicedAt?.toISOString().split('T')[0],
+      claimSubmittedDate: claim.submittedAt?.toISOString().split('T')[0],
+      treatmentCodes:     claim.treatmentCodes ?? undefined,
+      // ── Practice identity ─────────────────────────────────────────────────────
+      practiceName:           practice?.name ?? '',
+      practiceNpi:            practice?.npi ?? undefined,
+      practiceTaxId:          practice?.taxId ?? undefined,
+      providerNumber:         carrierSettings?.providerNumber ?? '',
+      practicePhone,
+      languagePreference:     carrierSettings?.languagePreference ?? 'en',
+      carrierIvrInstructions,
     });
 
-    // Update claim status, create CallAttempt row, and update queue atomically
+    // Update claim status, create CallAttempt row, and update queue atomically.
+    // NOTE: Only ONE callAttempt.create per dispatch — vapiCallId has @unique constraint.
     await prisma.$transaction([
       prisma.callAttempt.create({
         data: {
@@ -423,13 +498,6 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       prisma.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },
-      }),
-      prisma.callAttempt.create({
-        data: {
-          claimId,
-          vapiCallId: vapiResult.vapiCallId,
-          initiatedAt: new Date(),
-        },
       }),
       prisma.callQueue.upsert({
         where: { claimId },

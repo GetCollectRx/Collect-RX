@@ -24,12 +24,7 @@ export async function registerArJobSchedulers(): Promise<void> {
 
   await q.add('RULES_TICK', {}, { repeat: { every: RULES_EVERY_MS } });
 
-  const pattern = process.env.REMINDER_CRON || '0 9 * * *';
-  if (!cron.validate(pattern)) {
-    console.error(`[registerSchedulers] Invalid REMINDER_CRON "${pattern}" — reminder job not registered`);
-  } else {
-    await q.add('REMINDER_CYCLE', {}, { repeat: { pattern } });
-  }
+  // REMINDER_CYCLE (patient SMS/email) intentionally not registered — insurance-only product.
 
   const learningPattern = (process.env.LEARNING_CRON || '0 6 * * *').trim();
   const learningOn = ['1', 'true', 'yes'].includes(
@@ -45,8 +40,31 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
+  const marketingEveryMs = parseInt(process.env.MARKETING_TICK_MS || '3600000', 10);
+  if (process.env.MARKETING_LOOP_ENABLED !== '0') {
+    await q.add('MARKETING_SEQUENCE_TICK', {}, { repeat: { every: marketingEveryMs } });
+  }
+
+  const marketingLearningPattern = (process.env.MARKETING_LEARNING_CRON || '0 7 * * 1').trim();
+  const marketingLearningOn = ['1', 'true', 'yes'].includes(
+    (process.env.MARKETING_LEARNING_ENABLED ?? '1').trim().toLowerCase(),
+  );
+  if (marketingLearningOn && process.env.MARKETING_LOOP_ENABLED !== '0') {
+    if (!cron.validate(marketingLearningPattern)) {
+      console.error(
+        `[registerSchedulers] Invalid MARKETING_LEARNING_CRON "${marketingLearningPattern}" — MARKETING_LEARNING_CYCLE not registered`,
+      );
+    } else {
+      await q.add('MARKETING_LEARNING_CYCLE', {}, { repeat: { pattern: marketingLearningPattern } });
+    }
+  }
+
   console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, REMINDER cron "${pattern}"` +
-      (learningOn ? `, LEARNING cron "${learningPattern}"` : ''),
+    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms` +
+      (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
+      (process.env.MARKETING_LOOP_ENABLED !== '0'
+        ? `, MARKETING every ${marketingEveryMs}ms` +
+          (marketingLearningOn ? `, MARKETING_LEARNING cron "${marketingLearningPattern}"` : '')
+        : ''),
   );
 }

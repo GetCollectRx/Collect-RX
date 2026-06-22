@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRunOutput",
+  "description": "Canonical output structure every CollectRx autonomous agent must produce and POST to /api/agent-runs",
+  "type": "object",
+  "required": ["agentName", "severity", "summary", "findings", "downstream"],
+  "properties": {
+    "agentName": {
+      "type": "string",
+      "description": "Kebab-case name matching the agent file. E.g. 'analytics-pipeline', 'risk-radar'."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "OK"],
+      "description": "Highest severity finding in this run. OK means no issues found."
+    },
+    "score": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Optional 0–100 health/quality score. Include only when the agent defines a scoring rubric."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph plain-English summary of what the agent found. Readable by Khalid without context."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "domain", "description", "action"],
+        "properties": {
+          "id":          { "type": "string", "description": "Stable finding ID. E.g. 'RR-2026-06-19-001'" },
+          "severity":    { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+          "domain":      { "type": "string", "description": "Which risk/quality domain. E.g. 'PHI Breach', 'Carrier Block', 'Financial Integrity'" },
+          "description": { "type": "string", "description": "What was found. Specific, citable." },
+          "action":      { "type": "string", "description": "Exact next step. Imperative. Who does what by when." },
+          "evidence":    { "type": ["string", "null"], "description": "SQL result, log excerpt, or metric value that triggered the finding." }
+        }
+      }
+    },
+    "downstream": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Agent names that should read this output as input. Triggers are handled by the runtime."
+    },
+    "raw": {
+      "type": ["object", "null"],
+      "description": "Full structured payload (metrics, SQL results, transcripts) for downstream agents to query. Not shown to Khalid directly."
+    }
+  }
+}

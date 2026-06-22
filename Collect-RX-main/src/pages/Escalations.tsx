@@ -128,7 +128,7 @@ export default function Escalations() {
                       ) : e.status === 'resolved' ? (
                         <Badge color="green">{e.resolution ?? 'resolved'}</Badge>
                       ) : (
-                        <span className="text-xs text-gray-400">—</span>
+                        <span className="text-xs text-gray-400">N/A</span>
                       )}
                     </Td>
                   </Tr>

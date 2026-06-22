@@ -47,7 +47,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
         <p className="text-amber-800/90 dark:text-amber-200/90 mt-1">
           {pms.inferredFromLastImport
             ? `We detected ${pms.displayName} from a prior import. Confirm it in settings, then upload a fresh claim export so carrier follow-up has current balances.`
-            : `Set your PMS (${pms.displayName}) and upload a claim export — CollectRx uses that data for calls; carrier phone rules are the same for every system.`}
+            : `Set your PMS (${pms.displayName}) and upload a claim export, CollectRx uses that data for calls; carrier phone rules are the same for every system.`}
         </p>
         {canManageSync && (
           <p className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
@@ -76,7 +76,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
         : 'Confirm your PMS vendor'
 
     const detail = importFailed
-      ? `${lastImport.sourceDisplayName} import on ${formatSyncTime(lastImport.at)} — status ${lastImport.status}` +
+      ? `${lastImport.sourceDisplayName} import on ${formatSyncTime(lastImport.at)}, status ${lastImport.status}` +
         (lastImport.recordsFailed > 0 ? ` (${lastImport.recordsFailed} row errors).` : '.')
       : stale
         ? `Last sync from ${lastImport.sourceDisplayName} was ${formatSyncTime(lastImport.at)}. Upload a new export before the voice queue works stale claims.`
@@ -122,7 +122,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
         </span>
       </p>
       <p className="crx-sub mt-1 text-xs">
-        Carrier calls use the same recovery rules for every PMS — only how we read your export changes.
+        Carrier calls use the same recovery rules for every PMS, only how we read your export changes.
         {canManageSync && (
           <>
             {' '}

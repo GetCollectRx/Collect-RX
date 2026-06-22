@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { useRoleAccess } from '../lib/useRoleAccess'
 import {
@@ -44,10 +44,10 @@ function fmtMoney(v: string | number) {
 }
 
 export default function InsuranceClaims() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
   const { isReadOnly, canInitiateCalls } = useRoleAccess()
   const [claims, setClaims] = useState<InsuranceClaimRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({ carrier: '', status: '', aging: '', recoveryRoute: '' })
   const [denialSummary, setDenialSummary] = useState<{ carrierId: string; denialRate: number }[]>([])
@@ -79,8 +79,9 @@ export default function InsuranceClaims() {
   }
 
   useEffect(() => {
+    if (!canFetch) return
     load()
-  }, [practiceId, filters])
+  }, [canFetch, filters])
 
   const triggerCall = async (claim: InsuranceClaimRow) => {
     if (claim.canCallCarrier === false) return
@@ -109,7 +110,7 @@ export default function InsuranceClaims() {
   const openGateCount = claims.filter((c) => c.blockingGateTitle).length
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -220,7 +221,7 @@ export default function InsuranceClaims() {
                             {RECOVERY_ROUTE_LABELS[c.recoveryRoute] ?? c.recoveryRoute}
                           </Badge>
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-gray-400">N/A</span>
                         )}
                         {c.blockingGateTitle && (
                           <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5" title={c.blockingGateTitle}>

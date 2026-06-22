@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { useRoleAccess } from '../lib/useRoleAccess'
 import {
@@ -44,10 +44,10 @@ function fmtMoney(v: number) {
 }
 
 export default function RecoveryGatesInbox() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
   const { isReadOnly } = useRoleAccess()
   const [gates, setGates] = useState<GateRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [clearingId, setClearingId] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
@@ -63,8 +63,9 @@ export default function RecoveryGatesInbox() {
   }, [practiceId])
 
   useEffect(() => {
+    if (!canFetch) return
     load()
-  }, [load])
+  }, [canFetch, load])
 
   const clearGate = async (gate: GateRow) => {
     setClearingId(gate.id)
@@ -79,7 +80,7 @@ export default function RecoveryGatesInbox() {
       if (!r.ok) throw new Error(j.error ?? 'Could not clear gate')
       setActionMsg(
         j.scheduledRecallAt
-          ? `Gate cleared — follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
+          ? `Gate cleared, follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
           : 'Gate cleared',
       )
       load()
@@ -91,13 +92,13 @@ export default function RecoveryGatesInbox() {
   }
 
   return (
-    <DataState loading={practiceLoading || loading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="page-title">Practice gate inbox</h1>
             <p className="page-subtitle mt-0.5">
-              Blocking recovery actions — complete in PMS, then mark ready to re-call.
+              Blocking recovery actions, complete in PMS, then mark ready to re-call.
             </p>
           </div>
           <div className="flex gap-2">
@@ -139,7 +140,7 @@ export default function RecoveryGatesInbox() {
                 {gates.length === 0 ? (
                   <TableEmpty
                     colSpan={6}
-                    message="No open gates — carrier calls will proceed when dispatch rules allow."
+                    message="No open gates, carrier calls will proceed when dispatch rules allow."
                   />
                 ) : (
                   gates.map((g) => (

@@ -13,6 +13,7 @@ import {
   computeQueueStats,
   computePortfolioSummary,
 } from '../services/platformReports.js';
+import { getDenialAnalytics } from '../../services/insurance-denial-analytics.js';
 import {
   getPracticeSettings,
   updatePracticeSettings,
@@ -80,8 +81,11 @@ export function createPracticeReportsRouter(): Router {
         }
         const practiceId = practiceIdFromSession(req);
         const timeframe = (req.query.timeframe as '30d' | '90d' | 'all') || '30d';
-        const data = await computeCarrierStats(prisma, practiceId, timeframe);
-        res.json({ success: true, data });
+        const [carrierStats, denialAnalytics] = await Promise.all([
+          computeCarrierStats(prisma, practiceId, timeframe),
+          getDenialAnalytics(prisma, practiceId),
+        ]);
+        res.json({ success: true, data: { ...carrierStats, denialAnalytics } });
       } catch (err) {
         res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
       }
