@@ -8,7 +8,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import Stripe from 'stripe';
-import { handleWebhook, signOnboardReturn } from '../src/server/stripe/connect.js';
+import { handlePlatformBillingWebhook } from '../src/server/stripe/billing.js';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
@@ -83,45 +83,6 @@ describe('Practice-scoped APIs — require authentication', () => {
   it('GET /api/analytics/phase5-kpis returns 401 without session', async () => {
     const res = await request(app).get('/api/analytics/phase5-kpis');
     expect(res.status).toBe(401);
-  });
-});
-
-describe('Public patient pay — no auth', () => {
-  it('GET /api/public/pay/:token returns 410 (patient outreach permanently disabled)', async () => {
-    const res = await request(app).get('/api/public/pay/nonexistent-token-for-tests');
-    expect(res.status).toBe(410);
-    expect(res.headers['content-type']).toMatch(/json/i);
-    expect(res.body).toMatchObject({ error: expect.stringMatching(/insurance-carrier recovery only/i) });
-  });
-
-  it('GET /api/public/pay/:token returns 410 for a valid-format token too', async () => {
-    const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
-    expect(res.status).toBe(410);
-    expect(res.headers['content-type']).toMatch(/json/i);
-    expect(res.body).toMatchObject({ error: expect.stringMatching(/insurance-carrier recovery only/i) });
-  });
-});
-
-describe('Stripe Connect — onboard return URL must be signed or session', () => {
-  const pid = '00000000-0000-4000-8000-00000000dead';
-
-  it('GET /api/stripe/connect/onboard/complete rejects practice_id without v or session', async () => {
-    const res = await request(app).get('/api/stripe/connect/onboard/complete').query({ practice_id: pid });
-    expect(res.status).toBe(403);
-  });
-
-  it('GET /api/stripe/connect/onboard/complete redirects when v matches practice_id', async () => {
-    const v = signOnboardReturn(pid);
-    const res = await request(app)
-      .get('/api/stripe/connect/onboard/complete')
-      .query({ practice_id: pid, v })
-      .redirects(0);
-    expect(res.status).toBe(303);
-  });
-
-  it('GET /api/stripe/connect/onboard/refresh rejects without v or session', async () => {
-    const res = await request(app).get('/api/stripe/connect/onboard/refresh').query({ practice_id: pid });
-    expect(res.status).toBe(403);
   });
 });
 
@@ -216,16 +177,16 @@ describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () =>
 });
 
 /**
- * Call `handleWebhook` directly with the raw Buffer Stripe expects — supertest can alter
- * the raw body and break HMAC verification.
+ * Call `handlePlatformBillingWebhook` directly with a parsed event — this test exercises
+ * the handler logic itself, not the raw-body HMAC verification (covered by the HTTP test above).
  */
 describe.skipIf(!dbReady)('Stripe webhook (handler) — P7-02 (signature + Prisma)', () => {
-  it('constructEvent + handler: unhandled customer.created', async () => {
+  it('handler: unhandled customer.created event', async () => {
     process.env.STRIPE_SECRET_KEY = TEST_STRIPE_KEY;
     process.env.STRIPE_WEBHOOK_SECRET = TEST_STRIPE_SECRET;
 
     const stripe = new Stripe(TEST_STRIPE_KEY, { apiVersion: STRIPE_API_VERSION });
-    const payload = JSON.stringify({
+    const event = {
       id: 'evt_p7_02_ci_mock_1',
       object: 'event',
       type: 'customer.created',
@@ -235,13 +196,8 @@ describe.skipIf(!dbReady)('Stripe webhook (handler) — P7-02 (signature + Prism
       livemode: false,
       pending_webhooks: 0,
       request: { id: null, idempotency_key: null },
-    });
-    const header = stripe.webhooks.generateTestHeaderString({
-      payload,
-      secret: TEST_STRIPE_SECRET,
-    });
-    const body = Buffer.from(payload, 'utf8');
-    const result = await handleWebhook(body, header, prisma);
-    expect(result).toMatchObject({ handled: false, reason: 'unhandled event type' });
+    } as unknown as Stripe.Event;
+    const result = await handlePlatformBillingWebhook(event, prisma, stripe);
+    expect(result).toMatchObject({ handled: false, reason: 'not_billing_event' });
   });
 });

@@ -43,8 +43,8 @@ describe('initiateCall', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
 
-    expect(body.variables.practiceName).toBe('Downtown Dental');
-    expect(body.variables.providerNumber).toBe('ON-123456');
+    expect(body.variables.practice_name).toBe('Downtown Dental');
+    expect(body.variables.provider_number).toBe('ON-123456');
   });
 
   it('refuses to dial a number that is not a known carrier claims line', async () => {
