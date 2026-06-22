@@ -80,21 +80,12 @@ router.get('/insurance', async (req: Request, res: Response) => {
   }
 });
 
-function weekStartUtc(d: Date): string {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = x.getUTCDay();
-  const diff = (day + 6) % 7; // Monday = 0
-  x.setUTCDate(x.getUTCDate() - diff);
-  return x.toISOString().slice(0, 10);
-}
-
 router.get('/collection-rate', async (req: Request, res: Response) => {
   try {
     const qPractice = req.query.practiceId as string | undefined;
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     // Patient AR removed — CollectRx is Practice→Insurance only.
     return res.json({ totalCount: 0, paidCount: 0, collectionRate: 0, avgDaysToPayment: 0, totalCollected: 0 });
   } catch (err) {
@@ -109,7 +100,6 @@ router.get('/stage-funnel', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     return res.json({ funnel: [] });
   } catch (err) {
     console.error('[GET /analytics/stage-funnel]', err);
@@ -123,7 +113,6 @@ router.get('/priority-balances', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     return res.json({ priorityBalances: [] });
   } catch (err) {
     console.error('[GET /analytics/priority-balances]', err);
@@ -137,7 +126,6 @@ router.get('/message-effectiveness', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     return res.json({ effectiveness: [] });
   } catch (err) {
     console.error('[GET /analytics/message-effectiveness]', err);
@@ -151,7 +139,6 @@ router.get('/payment-trends', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     return res.json({ trends: [] });
   } catch (err) {
     console.error('[GET /analytics/payment-trends]', err);
@@ -165,7 +152,6 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    const practiceId = practiceIdFromSession(req);
     return res.json({ performance: [] });
   } catch (err) {
     console.error('[GET /analytics/carrier-performance]', err);

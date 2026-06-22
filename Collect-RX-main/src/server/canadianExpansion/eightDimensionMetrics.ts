@@ -31,7 +31,6 @@ export async function computeEightDimensions(
   practiceId: string
 ): Promise<DimensionMetric[]> {
   const now = new Date();
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 86_400_000);
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
   // 1. CDCP adjudication success rate — won vs (won + lost) in active reconsideration cases

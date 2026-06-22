@@ -72,9 +72,8 @@ async function buildStoryCandidates(prisma: PrismaClient): Promise<StoryCandidat
           practiceId: practice.id,
           status: { not: 'RESOLVED' },
           daysOutstanding: { gte: OVERDUE_DAYS },
-          carrierId: { not: null },
         },
-        _count: { _all: true },
+        _count: true,
       }),
       prisma.insuranceClaim.count({
         where: {
@@ -85,17 +84,15 @@ async function buildStoryCandidates(prisma: PrismaClient): Promise<StoryCandidat
       }),
     ]);
 
-    const topCarrier = overdueInsurance
-      .sort((a, b) => b._count._all - a._count._all)
-      .find((row) => row.carrierId);
+    const topCarrier = overdueInsurance.sort((a, b) => b._count - a._count)[0];
 
-    if (topCarrier && topCarrier._count._all >= 8) {
+    if (topCarrier && topCarrier._count >= 8) {
       const carrierId = topCarrier.carrierId as string;
       candidates.push({
         practiceId: practice.id,
         practiceName: practice.name,
         title: `[${practice.name}] Reduce ${carrierId} overdue claim backlog`,
-        summary: `${topCarrier._count._all} unresolved insurance claims are ${OVERDUE_DAYS}+ days old for ${carrierId}.`,
+        summary: `${topCarrier._count} unresolved insurance claims are ${OVERDUE_DAYS}+ days old for ${carrierId}.`,
         rationale:
           'Carrier-specific delays are stacking aged insurance A/R. A focused workflow can improve call scripts, queue ordering, and escalation timing.',
         acceptanceCriteria: [

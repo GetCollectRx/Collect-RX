@@ -109,7 +109,7 @@ router.put('/settings', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/integrations', async (req: Request, res: Response) => {
+router.get('/integrations', async (_req: Request, res: Response) => {
   try {
     const base = integrationPayload();
     // Stripe Connect (patient payment collection) removed — stripeConnect defaults to disabled.

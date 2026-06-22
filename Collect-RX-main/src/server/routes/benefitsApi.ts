@@ -18,13 +18,13 @@ function practiceId(req: Request): string {
   return practiceIdFromSession(req);
 }
 
-export function createBenefitsApiRouter(prisma: PrismaClient): Router {
+export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
   const r = Router();
   useOwnerPracticeApiAuthOnly(r);
 
   r.get('/benefits/:patientToken', async (req: Request, res: Response) => {
     try {
-      const pid = practiceId(req);
+      practiceId(req);
       const patientToken = req.params.patientToken;
       const carrierCode = String((req.query.carrier_code as string) || '').trim();
       if (!carrierCode) {
@@ -73,7 +73,7 @@ export function createBenefitsApiRouter(prisma: PrismaClient): Router {
 
   r.post('/benefits/estimate', async (req: Request, res: Response) => {
     try {
-      const pid = practiceId(req);
+      practiceId(req);
       const body = req.body as {
         patient_token?: string;
         carrier_code?: string;
