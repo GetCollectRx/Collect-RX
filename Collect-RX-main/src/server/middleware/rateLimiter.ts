@@ -54,14 +54,18 @@ function hasValidSession(req: Request): boolean {
   }
 }
 
-function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
+function makeLimiter(name: string, opts: Partial<Options>): RateLimitRequestHandler {
   const redis = getOptionalRateLimitRedis();
   const storeOpts: Partial<Options> = redis
     ? {
         store: new RedisStore({
           sendCommand: (command: string, ...args: string[]) =>
             redis.call(command, ...args) as Promise<RedisReply>,
-          prefix: 'collectrx:rl:',
+          // Each tier needs its own key namespace — sharing one prefix across
+          // limiter instances means two tiers hit by the same client (same
+          // keyGenerator output) collide on the same Redis key, which trips
+          // express-rate-limit's own double-increment detection (ERR_ERL_DOUBLE_COUNT).
+          prefix: `collectrx:rl:${name}:`,
         }),
       }
     : {};
@@ -100,7 +104,7 @@ function makeLimiter(opts: Partial<Options>): RateLimitRequestHandler {
  * Applied to POST /api/auth/login to prevent credential brute-forcing.
  * Intentionally strict: legitimate users won't hit this in normal use.
  */
-export const authLimiter: RateLimitRequestHandler = makeLimiter({
+export const authLimiter: RateLimitRequestHandler = makeLimiter('auth', {
   windowMs: 15 * 60 * 1000, // 15-minute window
   max: 5,
   handler: makeHandler(
@@ -112,7 +116,7 @@ export const authLimiter: RateLimitRequestHandler = makeLimiter({
  * strictLimiter — 10 requests per minute per IP.
  * Applied to expensive or mutation-heavy endpoints (queue triggers, imports).
  */
-export const strictLimiter: RateLimitRequestHandler = makeLimiter({
+export const strictLimiter: RateLimitRequestHandler = makeLimiter('strict', {
   windowMs: 60 * 1000,
   max: 10,
   handler: makeHandler(
@@ -123,7 +127,7 @@ export const strictLimiter: RateLimitRequestHandler = makeLimiter({
 /**
  * sessionStandardLimiter — signed-in app traffic: 600 req/min per user.
  */
-export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter({
+export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter('session-standard', {
   windowMs: 60 * 1000,
   max: 600,
   skip: (req) => !hasValidSession(req),
@@ -135,7 +139,7 @@ export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter({
 /**
  * anonStandardLimiter — anonymous / pre-login API traffic: 120 req/min per IP.
  */
-export const anonStandardLimiter: RateLimitRequestHandler = makeLimiter({
+export const anonStandardLimiter: RateLimitRequestHandler = makeLimiter('anon-standard', {
   windowMs: 60 * 1000,
   max: 120,
   skip: (req) => hasValidSession(req),
@@ -151,7 +155,7 @@ export const standardLimiter: RateLimitRequestHandler = anonStandardLimiter;
  * webhookLimiter — 300 requests per minute per IP.
  * Applied to Vapi webhook routes which legitimately fire in batches.
  */
-export const webhookLimiter: RateLimitRequestHandler = makeLimiter({
+export const webhookLimiter: RateLimitRequestHandler = makeLimiter('webhook', {
   windowMs: 60 * 1000,
   max: 300,
   handler: makeHandler(
@@ -163,7 +167,7 @@ export const webhookLimiter: RateLimitRequestHandler = makeLimiter({
  * publicLimiter — unauthenticated patient pay + email unsubscribe.
  * Tighter than standardLimiter to slow token / UUID enumeration.
  */
-export const publicLimiter: RateLimitRequestHandler = makeLimiter({
+export const publicLimiter: RateLimitRequestHandler = makeLimiter('public', {
   windowMs: 60 * 1000,
   max: 60,
   handler: makeHandler(
@@ -175,7 +179,7 @@ export const publicLimiter: RateLimitRequestHandler = makeLimiter({
  * healthLimiter — cheap endpoints still need a ceiling (metrics + DB ping abuse).
  * Applied to /health and /api/health/* only.
  */
-export const healthLimiter: RateLimitRequestHandler = makeLimiter({
+export const healthLimiter: RateLimitRequestHandler = makeLimiter('health', {
   windowMs: 60 * 1000,
   max: 120,
   handler: makeHandler(
@@ -187,7 +191,7 @@ export const healthLimiter: RateLimitRequestHandler = makeLimiter({
  * telemetryEventsLimiter — product analytics SDK batches (5 s per tab).
  * Applied only to POST /api/telemetry/events before the global /api limiter.
  */
-export const telemetryEventsLimiter: RateLimitRequestHandler = makeLimiter({
+export const telemetryEventsLimiter: RateLimitRequestHandler = makeLimiter('telemetry-events', {
   windowMs: 60 * 1000,
   max: 1000,
   handler: makeHandler('Telemetry rate limit exceeded. Please slow down.'),

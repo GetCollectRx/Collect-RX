@@ -134,6 +134,20 @@ import { complianceRouter } from './routes/complianceRoutes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
+// Without these, an uncaught error anywhere (e.g. a background async path) kills the
+// process silently — Railway then just sees the healthcheck fail with no indication why.
+// Per Node's own guidance, the process is in an unknown state after either event, so we
+// log full detail for visibility in Railway logs and then exit so the platform restarts
+// the container cleanly, instead of leaving a half-broken process running.
+process.on('uncaughtException', (err) => {
+  console.error('[server] FATAL: uncaughtException —', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] FATAL: unhandledRejection —', reason);
+  process.exit(1);
+});
+
 // Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.hostname === 'collectrx.ca') {
