@@ -31,7 +31,7 @@ import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { piiVault } from '../pii-vault.js';
-import logger from '../logger.js';
+import logger from '../logger.cjs';
 
 const router = Router();
 useOwnerPracticeApi(router);

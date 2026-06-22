@@ -7,7 +7,7 @@ import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
-import logger from '../../logger.js';
+import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
