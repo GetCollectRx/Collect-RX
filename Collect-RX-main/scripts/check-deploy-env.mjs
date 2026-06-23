@@ -19,6 +19,63 @@ let bad = 0;
 console.log(`NODE_ENV=${process.env.NODE_ENV || '(unset)'}\n`);
 
 bad += !ok('DATABASE_URL', Boolean((process.env.DATABASE_URL || '').trim()), 'required') ? 1 : 0;
+
+/** Same rules as src/server/databaseTls.ts — Postgres in prod must use TLS on the wire */
+function postgresUrlUsesStrictSsl(databaseUrl) {
+  const trimmed = (databaseUrl || '').trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (!lower.startsWith('postgresql://') && !lower.startsWith('postgres://')) return true;
+  const qIndex = trimmed.indexOf('?');
+  if (qIndex === -1) return false;
+  const query = trimmed.slice(qIndex + 1).split('#')[0];
+  try {
+    const params = new URLSearchParams(query);
+    const sslmode = (params.get('sslmode') || '').toLowerCase();
+    if (['require', 'verify-ca', 'verify-full'].includes(sslmode)) return true;
+    if (params.get('ssl') === 'true') return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+if (prod) {
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  if (dbUrl && !postgresUrlUsesStrictSsl(dbUrl)) {
+    bad += !ok(
+      'DATABASE_URL (TLS)',
+      false,
+      'PostgreSQL URL must include sslmode=require (or verify-full / verify-ca) or ssl=true — see docs/operations/DATA-ENCRYPTION.md',
+    )
+      ? 1
+      : 0;
+  }
+}
+
+function phiEncryptionKeyValid() {
+  const raw = (process.env.PHI_ENCRYPTION_KEY || '').trim();
+  if (!raw) return false;
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) return true;
+  try {
+    return Buffer.from(raw, 'base64').length === 32;
+  } catch {
+    return false;
+  }
+}
+
+const phiAtRestEnabled = ['1', 'true', 'yes'].includes(
+  (process.env.PHI_ENCRYPTION_AT_REST || '').trim().toLowerCase(),
+);
+if (prod && phiAtRestEnabled) {
+  bad += !ok(
+    'PHI_ENCRYPTION_KEY',
+    phiEncryptionKeyValid(),
+    'required when PHI_ENCRYPTION_AT_REST is on — 64 hex chars or base64 of 32 bytes; load from KMS — see docs/operations/DATA-ENCRYPTION.md',
+  )
+    ? 1
+    : 0;
+}
 if (prod) {
   bad += !ok('JWT_SECRET', Boolean((process.env.JWT_SECRET || '').trim()), 'required in production') ? 1 : 0;
   bad += !ok(
@@ -31,6 +88,17 @@ if (prod) {
     Boolean((process.env.SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY || '').trim()),
     'required — unsigned webhooks get 401',
   ) ? 1 : 0;
+  const sk = (process.env.STRIPE_SECRET_KEY || '').trim();
+  if (sk.startsWith('sk_live_')) {
+    bad += !ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').trim()), 'required with live Stripe key') ? 1 : 0;
+  }
+  const emrUrl = (process.env.EMR_SYNC_WEBHOOK_URL || '').trim();
+  if (emrUrl && !emrUrl.toLowerCase().startsWith('https://')) {
+    bad += !ok('EMR_SYNC_WEBHOOK_URL (https)', false, 'must use https in production') ? 1 : 0;
+  }
+  if (process.env.EMR_OUTBOX_DEV_ACK === '1' || process.env.EMR_OUTBOX_DEV_ACK === 'true') {
+    bad += !ok('EMR_OUTBOX_DEV_ACK', false, 'must not be enabled in production') ? 1 : 0;
+  }
 } else {
   ok('JWT_SECRET', Boolean((process.env.JWT_SECRET || '').trim()), 'set a strong value before production');
   ok(
@@ -65,6 +133,18 @@ ok(
 );
 
 ok('REDIS_URL', Boolean((process.env.REDIS_URL || '').trim()), 'optional — enables shared rate limits + worker');
+
+ok(
+  'PHI_ENCRYPTION_KEY',
+  !phiAtRestEnabled || phiEncryptionKeyValid(),
+  phiAtRestEnabled ? 'required when PHI_ENCRYPTION_AT_REST is on' : 'optional unless PHI_ENCRYPTION_AT_REST',
+);
+
+ok(
+  'HEALTH_METRICS_TOKEN',
+  Boolean((process.env.HEALTH_METRICS_TOKEN || '').trim()),
+  prod ? 'recommended — protects /api/health/metrics deployment flags' : 'optional in dev',
+);
 
 ok('TWILIO_AUTH_TOKEN', Boolean((process.env.TWILIO_AUTH_TOKEN || '').trim()), 'optional — inbound SMS signature verification');
 ok('TWILIO_SMS_INBOUND_URL', Boolean((process.env.TWILIO_SMS_INBOUND_URL || '').trim()), 'must match Twilio webhook URL exactly when using signature verify');

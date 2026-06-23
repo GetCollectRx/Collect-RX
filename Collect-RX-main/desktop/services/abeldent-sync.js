@@ -181,7 +181,7 @@ async function runClaimsSync() {
   try {
     const rows = await fetchFromAbeldent();
     const result = await postToRailway(
-      { records: rows, pmsSource: 'abeldent' },
+      { records: rows, pmsVendor: 'abeldent', pmsSource: 'abeldent' },
       '/api/insurance/claims/import',
     );
     try {

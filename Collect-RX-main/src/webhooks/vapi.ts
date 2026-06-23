@@ -19,15 +19,19 @@
 
 import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { piiVault } from '../services/pii-vault';
-import { sendCarrierBlockAlert } from '../services/alerts';
-import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../outcome/webhookOutcomeResolver.js';
-import { recordVapiWebhook } from '../server/observability/metrics.js';
-import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
 import type { VapiWebhookPayload } from '../vapi/client';
-import type { CarrierId } from '@prisma/client';
-import { claimStatusFromCallOutcome } from '../server/claimStatusFromCallOutcome.js';
+import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
+import {
+  hashWebhookBody,
+  markWebhookProcessed,
+} from '../server/vapi/vapiWebhook.js';
+
+// H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
 
 const router = Router();
 
@@ -88,273 +92,33 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid JSON payload' });
   }
 
+  // H-4: atomically claim this webhook delivery before processing.
+  // markWebhookProcessed inserts a row with a unique bodyHash constraint.
+  // The first concurrent request to INSERT wins; the second gets P2002 and
+  // is dropped. This prevents two Vapi retries from both running recovery logic.
+  const bodyHash = hashWebhookBody(rawBody);
+  try {
+    await markWebhookProcessed(prisma, bodyHash);
+  } catch (claimErr) {
+    if (isUniqueConstraintError(claimErr)) {
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+    console.error('[vapi-webhook] Failed to claim webhook delivery:', claimErr);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+
   // Acknowledge immediately — Vapi expects a fast 200
   res.status(200).json({ received: true });
 
-  // ── 3. Only process call.ended events ────────────────────────────────────
-  if (payload.type !== 'call.ended') {
-    // Silently accept other event types (call.started, transcript, etc.)
-    return;
-  }
-
-  const vapiCallId = payload.call?.id;
-  if (!vapiCallId) {
-    console.error('[vapi-webhook] call.ended event missing call.id');
-    return;
-  }
-
-  // ── 4. Idempotency check — deduplicate on vapiCallId ─────────────────────
-  const existing = await prisma.callAttempt.findUnique({
-    where: { vapiCallId },
-    select: { id: true },
-  });
-
-  if (existing) {
-    recordVapiWebhook('duplicate');
-    console.log(`[vapi-webhook] Duplicate event for vapiCallId=${vapiCallId} — ignoring`);
-    return;
-  }
-
-  // ── 5. Resolve claim from metadata ───────────────────────────────────────
-  const metadata = payload.metadata;
-  if (!metadata?.claimId) {
-    console.error(`[vapi-webhook] No claimId in metadata for call ${vapiCallId}`);
-    return;
-  }
-
-  const claim = await prisma.insuranceClaim.findUnique({
-    where: { id: metadata.claimId },
-    select: {
-      id: true,
-      practiceId: true,
-      carrierId: true,
-      patientToken: true,
-      status: true,
-      outstandingAmount: true,
-    },
-  });
-
-  if (!claim) {
-    console.error(`[vapi-webhook] Claim ${metadata.claimId} not found for call ${vapiCallId}`);
-    return;
-  }
-
-  const validInFlightStatuses = ['CALLING', 'IN_QUEUE', 'PENDING'];
-  if (!validInFlightStatuses.includes(claim.status)) {
-    console.warn(
-      `[vapi-webhook] Claim ${claim.id} status is ${claim.status} (not in-flight) — ignoring call ${vapiCallId}`,
-    );
-    return;
-  }
-
-  recordVapiWebhook('call_ended');
-
-  // ── 6. Classify outcome (structured `collectrx` preferred over transcript regex)
-  const processed = resolveOutcomeFromWebhookPayload(payload);
-  const structuredClaimStatus = extractStructuredClaimStatus(payload);
-
-  // ── 7. Persist CallAttempt (idempotent — unique on vapiCallId) ───────────
   try {
-    await prisma.callAttempt.create({
-      data: {
-        claimId:              claim.id,
-        vapiCallId,
-        initiatedAt:          payload.call.startedAt
-                                ? new Date(payload.call.startedAt)
-                                : new Date(),
-        completedAt:          payload.call.endedAt
-                                ? new Date(payload.call.endedAt)
-                                : new Date(),
-        durationSeconds:      processed.durationSeconds,
-        outcome:              processed.outcome,
-        outcomeDetail:        processed.outcomeDetail,
-        repName:              processed.repName,
-        referenceNumber:      processed.referenceNumber,
-        transcriptUrl:        processed.transcriptUrl,
-        carrierBlockDetected: processed.carrierBlockDetected,
-      },
-    });
-  } catch (err: unknown) {
-    // Race condition: another process inserted same vapiCallId
-    if ((err as { code?: string }).code === 'P2002') {
-      console.log(`[vapi-webhook] Concurrent duplicate for vapiCallId=${vapiCallId} — skipping`);
-      return;
+    const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
+    const handledAsProspect = await tryProcessProspectVapiWebhook(prisma, payload);
+    if (!handledAsProspect) {
+      await processVapiDeskWebhook(prisma, payload, { rawBody });
     }
-    throw err;
+  } catch (err) {
+    console.error('[vapi-webhook] Processing error:', err);
   }
-
-  // ── 8. CARRIER_BLOCK protocol ────────────────────────────────────────────
-  // This is the highest-risk path. Must execute completely before any other
-  // state updates. One block detection suspends ALL calls to that carrier.
-  if (processed.carrierBlockDetected) {
-    console.error(
-      `[vapi-webhook] CARRIER_BLOCK DETECTED — carrierId=${claim.carrierId} practiceId=${claim.practiceId}`,
-    );
-
-    recordVapiWebhook('carrier_block');
-
-    // Lock the carrier_block_events row (if one exists) to serialize concurrent
-    // block detections for the same practice+carrier pair.
-    const alreadyBlocked = await prisma.$transaction(async (tx) => {
-      // Acquire advisory-style serialization: lock any existing active block row
-      // for this practice+carrier so a concurrent handler waits here.
-      const existingBlock = await tx.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT id FROM carrier_block_events
-         WHERE practice_id = $1 AND carrier_id = $2 AND resumed_at IS NULL
-         FOR UPDATE`,
-        claim.practiceId,
-        claim.carrierId,
-      );
-
-      if (existingBlock.length > 0) {
-        return true; // block already active — skip duplicate creation
-      }
-
-      // a. Write CarrierBlockEvent
-      await tx.carrierBlockEvent.create({
-        data: {
-          practiceId: claim.practiceId,
-          carrierId:  claim.carrierId,
-          notes:      `Auto-detected from call ${vapiCallId}. Outcome: ${processed.outcomeDetail}`,
-        },
-      });
-
-      // b. Suspend all PENDING queue entries for this practice+carrier
-      await tx.callQueue.updateMany({
-        where: {
-          status: 'PENDING',
-          claim: {
-            practiceId: claim.practiceId,
-            carrierId:  claim.carrierId,
-          },
-        },
-        data: { status: 'BLOCKED' },
-      });
-
-      // c. Mark the triggering claim as BLOCKED
-      await tx.insuranceClaim.update({
-        where: { id: claim.id },
-        data:  { status: 'BLOCKED' },
-      });
-
-      return false;
-    });
-
-    // d. Send alert only if we created a new block (outside transaction — non-fatal)
-    if (!alreadyBlocked) {
-      try {
-        await sendCarrierBlockAlert({
-          practiceId:   claim.practiceId,
-          carrierId:    claim.carrierId as CarrierId,
-          vapiCallId,
-          outcomeDetail: processed.outcomeDetail,
-        });
-      } catch (alertErr) {
-        console.error('[vapi-webhook] Failed to send carrier block alert:', alertErr);
-      }
-    } else {
-      console.log(
-        `[vapi-webhook] CARRIER_BLOCK already active for carrierId=${claim.carrierId} — skipping duplicate`,
-      );
-    }
-
-    return;  // Do not update claim status further — it's BLOCKED
-  }
-
-  // ── 9–10. Persist claim + queue status
-  // APPROVED_PENDING_PAYMENT: close the *carrier automation* queue row (COMPLETED) — payment
-  // tracking is practice AR, not repeat carrier dials. Claim row stays open for dashboards / AR.
-  //
-  // Uses SELECT FOR UPDATE to serialize concurrent webhook handlers that target
-  // the same claim (e.g. two different vapiCallIds for one claim finishing at once).
-  const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
-  const newClaimStatus = claimStatusFromCallOutcome(
-    processed.outcome,
-    processed.outcomeDetail,
-    outstandingCents,
-    structuredClaimStatus,
-  );
-
-  const newQueueStatus =
-    newClaimStatus === 'RESOLVED' ||
-    newClaimStatus === 'DENIED' ||
-    newClaimStatus === 'APPROVED_PENDING_PAYMENT'
-      ? 'COMPLETED'
-      : newClaimStatus === 'ESCALATED' || processed.outcome === 'ESCALATED'
-        ? 'ESCALATED'
-        : 'PENDING';
-
-  await prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe(
-      `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
-      claim.id,
-    );
-
-    await tx.callQueue.updateMany({
-      where: { claimId: claim.id },
-      data:  {
-        status:        newQueueStatus,
-        lastAttemptAt: new Date(),
-      },
-    });
-
-    await tx.insuranceClaim.update({
-      where: { id: claim.id },
-      data:  { status: newClaimStatus },
-    });
-  });
-
-  recordVapiWebhook('claim_updated');
-
-  if (newClaimStatus === 'RESOLVED') {
-    try {
-      await enqueueEmrClaimEvent(prisma, {
-        practiceId: claim.practiceId,
-        claimId: claim.id,
-        eventType: 'CLAIM_RESOLVED',
-        payload: {
-          vapiCallId,
-          resolvedAt: new Date().toISOString(),
-          outcomeDetail: processed.outcomeDetail,
-        },
-      });
-    } catch (emrErr) {
-      console.error('[vapi-webhook] EMR outbox enqueue failed:', emrErr);
-    }
-  }
-
-  // ── 11. Detokenize for practice record updates (if needed) ───────────────
-  // Only called if downstream practice systems need the real patientId.
-  // The resolved patientId is NEVER stored back into any call-related table.
-  try {
-    await enqueueEmrClaimEvent(prisma, {
-      practiceId: claim.practiceId,
-      claimId: claim.id,
-      eventType: 'CALL_OUTCOME',
-      payload: {
-        vapiCallId,
-        claimStatus: newClaimStatus,
-        outcome: processed.outcome,
-        outcomeDetail: processed.outcomeDetail,
-        at: new Date().toISOString(),
-      },
-    });
-  } catch (emrErr) {
-    console.error('[vapi-webhook] EMR outbox enqueue (call outcome):', emrErr);
-  }
-
-  if (newClaimStatus === 'RESOLVED' && metadata.patientToken) {
-    try {
-      const realPatientId = piiVault.detokenize(metadata.patientToken);
-      console.log(`[vapi-webhook] Claim ${claim.id} resolved for patient (internal ID: ${realPatientId})`);
-    } catch (vaultErr) {
-      console.warn('[vapi-webhook] PIIVault detokenize failed (token may have expired):', vaultErr);
-    }
-  }
-
-  console.log(
-    `[vapi-webhook] Processed call ${vapiCallId} — outcome: ${processed.outcome} — claim: ${claim.id}`,
-  );
 });
 
 export default router;

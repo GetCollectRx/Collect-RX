@@ -53,6 +53,61 @@ CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
 
 ---
 
+## Branch strategy & PRD coding standards
+
+### Branch flow
+
+```
+feature/* → dev (CI gate: typecheck + tests) → prd (strict gate: all checks below)
+```
+
+- **`dev`** — integration branch. Feature branches merge here. CI must pass.
+- **`prd`** — production. Only receives merges from `dev`. Every item below must be true before touching prd-bound code.
+
+### PRD is the standard of perfection — non-negotiable rules for all coding agents
+
+These rules apply to **any code that will be merged to `prd`**. As a coding agent (Claude, Cursor, or any other), you must not generate or accept code that violates them, regardless of what the user asks for in the moment.
+
+**TypeScript**
+- Zero `any` types. No exceptions. `unknown` with a type guard, or a proper interface.
+- All TypeScript strict checks pass (`tsc --noEmit` with `strict: true`, `noUnusedLocals`, `noUnusedParameters`).
+- No non-null assertions (`!`) unless there is a proven invariant — and the reason must be stated.
+
+**Lint — zero errors required**
+- `no-explicit-any` — error
+- `no-unused-vars` — error (prefix with `_` only if intentionally unused and the reason is clear)
+- `no-debugger` — error
+- `eqeqeq` smart — error (always `===`/`!==` except null checks)
+- `no-var` — error
+- `prefer-const` — error
+- `no-duplicate-imports` — error
+- `no-console` — `console.log` and `console.debug` are warnings; use `console.warn`/`console.error` for server logging
+
+**Tests**
+- All Vitest tests pass with no skips.
+- New behaviour must have test coverage — do not ship untested paths to prd.
+
+**Build**
+- Frontend Vite build succeeds with no errors.
+- Prisma generate and migrate run cleanly.
+
+**PHI boundary (PHIPA/PIPEDA — never negotiate this)**
+- Patient names, DOBs, health card numbers never leave the backend. Vapi receives UUID tokens only.
+- Detokenization happens server-side after call completion, never in transit.
+- Any code that routes data to an external service must be reviewed against this rule before merging.
+
+**CARRIER_BLOCK**
+- Any code touching call scheduling, retry logic, or Vapi webhooks must check the `CARRIER_BLOCK` flag first. This is the most critical operational safety rule.
+
+**Code quality**
+- No `TODO` or `FIXME` comments in prd-bound code — resolve them or track in GitHub Issues.
+- No dead code — unused functions, variables, and imports are a lint error.
+- Comments explain WHY, never WHAT. Well-named identifiers explain what. Task-referencing comments (`// added for issue #123`) are not allowed.
+
+**If you are unsure whether code meets these standards — do not merge to prd. Merge to dev first and flag the uncertainty.**
+
+---
+
 ## Architecture
 
 ### Layers

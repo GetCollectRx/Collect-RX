@@ -21,6 +21,7 @@ Program-level notes: [PHI_DATA_CLASSIFICATION.md](../PHI_DATA_CLASSIFICATION.md)
 
 - **PostgreSQL:** Rely on **hosting provider** disk/DB encryption (e.g. Railway/managed Postgres). Document in your **Data Processing Agreement** with the host.
 - **Application:** TLS for HTTPS in front of the API; secrets not on disk in prod images except env injection.
+- **Optional app-layer PHI:** AES-256-GCM helpers + PHIPA-style crypto audit lines — `Collect-RX-main/src/server/crypto/` and [DATA-ENCRYPTION.md](../../Collect-RX-main/docs/operations/DATA-ENCRYPTION.md). Enable per field with migrations + KMS-backed `PHI_ENCRYPTION_KEY` when a customer or regulator requires it.
 
 **Operator:** enable encryption-at-rest for the prod database in the host console; capture evidence for audits.
 
@@ -28,8 +29,8 @@ Program-level notes: [PHI_DATA_CLASSIFICATION.md](../PHI_DATA_CLASSIFICATION.md)
 
 ## P5-03 — Field-level encryption (if required)
 
-- **v1 product:** no application-layer field encryption; access control = login + `practiceId` scoping.
-- If a **regulator or customer** requires app-layer encryption for specific columns, add KMS + design in a new ticket; do not silently enable without key management.
+- **Default product path:** access control = login + `practiceId` scoping; most columns remain plaintext at the ORM layer unless you opt in.
+- **When required:** use `phiAtRest` (`encryptPhiAtRest` / `decryptPhiAtRest`) + `PHI_ENCRYPTION_KEY` from KMS / secret manager; turn on `PHI_ENCRYPTION_AT_REST=1` in production only when the key is managed. Do not enable without key management and a migration plan for read/write paths.
 
 ---
 
@@ -55,7 +56,7 @@ Use an internal or external **HIPAA Security/ Privacy Rule** checklist; track ga
 
 ## P5-07 — Canada: PIPEDA / provincial
 
-If Canadian patients: document **jurisdiction** (federal PIPEDA vs provincial private-sector laws), **breach notification** process, and contact for privacy requests. [PIPEDA-PROVINCIAL.md](PIPEDA-PROVINCIAL.md) is a short starter.
+If Canadian patients: document **jurisdiction** (federal PIPEDA vs provincial private-sector laws), **breach notification** process, and contact for privacy requests. [PIPEDA-PROVINCIAL.md](PIPEDA-PROVINCIAL.md) is a short starter. For a **Canada + US launch** scrutiny map (technical vs legal artifacts), see [LAUNCH-DATA-PROTECTION-CA-US.md](LAUNCH-DATA-PROTECTION-CA-US.md).
 
 ---
 

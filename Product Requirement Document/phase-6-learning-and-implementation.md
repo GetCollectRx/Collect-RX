@@ -49,7 +49,7 @@ flowchart LR
 | Stage | Output |
 |-------|--------|
 | **Pull** | Candidate rows from Notion (`Ready for research`, `Backlog`, or configured statuses) |
-| **Research** | `researchNotes`: keywords, codebase hits, block summary |
+| **Research** | `researchNotes`: keywords, codebase hits, **optional external** (NotebookLM web research → Gemini Google Search grounding → skip if unset), `sources[]`, `provider` |
 | **Bucket** | `product` \| `engineering` \| `ops` \| `growth` \| `compliance` |
 | **Rank** | `rankScore` = weighted impact × urgency ÷ effort |
 | **Feasibility** | `feasibilityScore` 0–100; gate default **65** |
@@ -69,6 +69,14 @@ flowchart LR
 | `LEARNING_FEASIBILITY_MIN` | Minimum score to implement (default `65`) |
 | `LEARNING_MAX_IMPLEMENT_PER_CYCLE` | Cap per run (default `3`) |
 | `LEARNING_NOTION_STATUS_RESEARCH` | Comma-separated Notion statuses to pull |
+| `LEARNING_RESEARCH_PROVIDER` | `notebooklm` (default) \| `gemini` \| `local` |
+| `LEARNING_RESEARCH_TIMEOUT_MS` | Per-provider timeout (default `20000`) |
+| `NOTEBOOKLM_NOTEBOOK_ID` | Target notebook for NotebookLM **Research** (required for that provider) |
+| `NOTEBOOKLM_COOKIES` / `NOTEBOOKLM_COOKIES_FILE` | Session material for `notebooklm-sdk` (or use `npx notebooklm-sdk login` → `~/.notebooklm/session.json` on dev) |
+| `NOTEBOOKLM_RESEARCH_SOURCE` | `web` (default) or `drive` |
+| `NOTEBOOKLM_RESEARCH_MODE` | `fast` (default) or `deep` |
+| `GEMINI_API_KEY` | Google AI / Gemini API key (alias: `GOOGLE_API_KEY`) — enables grounding fallback or primary |
+| `GEMINI_MODEL` | Override model id (default `gemini-2.0-flash`) |
 | `ALERT_SMS_TO` | SMS recipients (shared with ops alerts) |
 
 ---

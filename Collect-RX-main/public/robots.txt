@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+Disallow: /console
+Disallow: /history
+Disallow: /dashboard
+Disallow: /reports/
+Disallow: /settings
+Disallow: /escalations
+Disallow: /portfolio
+Disallow: /admin
+Disallow: /work-queue
+Disallow: /insurance
+Disallow: /balances
+Disallow: /patient-ar
+Disallow: /estimate
+Disallow: /analytics
+Disallow: /usage-insights
+Disallow: /billing
+Disallow: /outbox
+Disallow: /pay/
+Disallow: /cdcp
+Disallow: /reset-password
+
+Sitemap: https://www.collectrx.ca/sitemap.xml

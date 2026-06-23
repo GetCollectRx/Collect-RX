@@ -34,14 +34,20 @@ const SERVER_PREFIXES = [
   '/api/stripe/',
   '/api/insurance/',
   '/api/calls/',
+  '/api/desk/',
+  '/api/practices/',
+  '/api/reports/',
+  '/api/canadian/',
   '/api/carriers/',
   '/api/analytics/',
+  '/api/telemetry/',
   '/api/eligibility/',
   '/api/queue/',
   '/api/dashboard/',
   '/api/admin/',
   '/api/cdcp/',
   '/api/work-queue/',
+  '/api/pms/',
   '/api/benefits/',
   '/api/patients/',
   '/api/balances',
@@ -51,6 +57,7 @@ const SERVER_PREFIXES = [
   '/api/webhooks/',
   '/api/twilio/',
   '/api/health',
+  '/api/group/',
 ];
 
 /** Exact paths or prefix patterns not covered by SERVER_PREFIXES alone. */
@@ -68,7 +75,10 @@ const SERVER_EXTRA = [
   /^\/api\/public\/email-unsubscribe$/,
   /^\/api\/work-queue$/,
   /^\/api\/work-queue\//,
+  /^\/api\/early-access$/,
   /^\/api\/admin\/sync\//,
+  /^\/api\/telemetry$/,
+  /^\/api\/telemetry\//,
 ];
 
 function walkFiles(absDir, acc) {

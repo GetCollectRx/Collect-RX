@@ -1,5 +1,4 @@
-import type { AuthJwtPayload } from './types.js';
-import { isPlatformDev } from './types.js';
+import { isPlatformDev, type AuthJwtPayload } from './types.js'
 
 /** Mask claim numbers for platform dev (keep last segment for support correlation). */
 export function maskClaimNumber(claimNumber: string): string {
@@ -21,7 +20,7 @@ export function redactInsuranceClaim<T extends Record<string, unknown>>(
     ...rest,
     claimNumber: maskClaimNumber(String(claim.claimNumber ?? '')),
     patientToken: null,
-  } as T;
+  } as unknown as T;
 }
 
 export function redactInsuranceClaimsList<T extends Record<string, unknown>>(

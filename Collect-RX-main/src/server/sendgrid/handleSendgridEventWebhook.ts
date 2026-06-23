@@ -1,10 +1,12 @@
 /**
- * P4-01 / P4-02 — SendGrid Event Webhook: bounces, drops, spam reports.
- * https://docs.sendgrid.com/for-developers/tracking-events/event
+ * SendGrid Event Webhook: bounces, drops, spam reports, opens/clicks.
+ * Prospects (dental practice owners): engagement tracking + stage advancement (prospect_id custom arg).
+ * Patient balance opt-out removed — CollectRx is Practice → Insurance carrier recovery only.
  */
 import { createRequire } from 'module';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { handleProspectSendGridEvent } from '../marketing/prospectEngagement.js';
 
 const require = createRequire(import.meta.url);
 const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook') as {
@@ -19,12 +21,20 @@ type SgEvent = {
   email?: string;
   event?: string;
   reason?: string;
+  url?: string;
   /** custom_args from SendGrid v3 */
-  balance_id?: string;
+  prospect_id?: string;
 };
 
-function optOutRelevant(e: string | undefined) {
-  return e === 'bounce' || e === 'dropped' || e === 'spamreport' || e === 'unsubscribe';
+function prospectEngagementRelevant(e: string | undefined) {
+  return (
+    e === 'open' ||
+    e === 'click' ||
+    e === 'bounce' ||
+    e === 'dropped' ||
+    e === 'spamreport' ||
+    e === 'unsubscribe'
+  );
 }
 
 function getHeader(req: Request, name: string): string {
@@ -72,45 +82,11 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
     }
 
     for (const ev of events) {
-      if (!optOutRelevant(ev.event)) {
-        continue;
-      }
-        const balId = ev.balance_id;
-      if (balId && typeof balId === 'string') {
+      if (ev.prospect_id && prospectEngagementRelevant(ev.event)) {
         try {
-          await prisma.patientBalance.updateMany({
-            where: { id: balId },
-            data: { emailOptOutAt: new Date() },
-          });
-          console.log('[sendgrid/webhook] email opt-out by balance', { event: ev.event, balanceId: balId });
+          await handleProspectSendGridEvent(prisma, ev);
         } catch (e) {
-          console.error('[sendgrid/webhook] db error', (e as Error).message);
-        }
-        continue;
-      }
-      const em = (ev.email || '').toLowerCase().trim();
-      const practiceId = (ev as Record<string, unknown>).practice_id as string | undefined;
-      if (em) {
-        try {
-          const where: Record<string, unknown> = {
-            patientEmail: { equals: em, mode: 'insensitive' },
-          };
-          if (practiceId) {
-            where.practiceId = practiceId;
-          }
-          const r = await prisma.patientBalance.updateMany({
-            where,
-            data: { emailOptOutAt: new Date() },
-          });
-          if (r.count) {
-            console.log('[sendgrid/webhook] email opt-out by address', {
-              event: ev.event,
-              count: r.count,
-              scoped: !!practiceId,
-            });
-          }
-        } catch (e) {
-          console.error('[sendgrid/webhook] db error', (e as Error).message);
+          console.error('[sendgrid/webhook] prospect event error', (e as Error).message);
         }
       }
     }

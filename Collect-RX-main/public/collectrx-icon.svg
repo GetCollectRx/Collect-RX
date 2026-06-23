@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="90" fill="#0f9d58"/>
+  <circle cx="100" cy="100" r="78" fill="none" stroke="#12c96d" stroke-width="2" opacity="0.55"/>
+  <path d="M100 38 A62 62 0 1 0 100 162" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+  <text x="85" y="116" font-family="Georgia, serif" font-size="54" font-weight="700" fill="#fcfcfa" letter-spacing="-2">Rx</text>
+</svg>

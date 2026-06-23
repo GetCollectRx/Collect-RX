@@ -1,0 +1,30 @@
+/**
+ * CollectRx brand tokens — shared by marketing site (.lp) and desktop app (.crx-app).
+ * Landing page editorial system: warm cream canvas, Source Serif headlines, CollectRx green.
+ */
+:root {
+  --brand-cream: #fcfcfa;
+  --brand-parchment: #f8f5ee;
+  --brand-card: #fcfcfa;
+  --brand-ink: #1f1f1f;
+  --brand-graphite: #60605f;
+  --brand-mist: #cacac8;
+  --brand-green: #0f9d58;
+  --brand-green-dark: #0b5b47;
+  --brand-green-bright: #12c96d;
+  --brand-green-lo: rgba(15, 157, 88, 0.08);
+  --brand-green-md: rgba(15, 157, 88, 0.14);
+  --brand-green-hi: rgba(15, 157, 88, 0.28);
+  --brand-gold: #c98f12;
+  --brand-blue: #3b7fd4;
+  --brand-red: #d64545;
+  --brand-bdr: rgba(31, 31, 31, 0.10);
+  --brand-bdr2: rgba(31, 31, 31, 0.18);
+  --brand-fn: 'Inter', system-ui, sans-serif;
+  --brand-fs: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --brand-fm: 'DM Mono', ui-monospace, monospace;
+  --brand-radius-card: 16px;
+  --brand-radius-btn: 8px;
+  --brand-radius-badge: 4px;
+  --brand-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}

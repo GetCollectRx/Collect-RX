@@ -104,6 +104,9 @@ PRACTICE_EMAIL=...
 | `LEARNING_CRON` | `0 6 * * *` (daily 6:00 UTC — adjust as needed) |
 | `LEARNING_FEASIBILITY_MIN` | `65` |
 | `LEARNING_MAX_IMPLEMENT_PER_CYCLE` | `3` |
+| `GEMINI_API_KEY` | **Recommended on Railway** — Gemini + Google Search grounding (fallback if NotebookLM fails). Also accepts `GOOGLE_API_KEY`. |
+| `LEARNING_RESEARCH_PROVIDER` | `notebooklm` (default) or `gemini` or `local` — see [PHASE6-LEARNING-LOOP.md](./PHASE6-LEARNING-LOOP.md) |
+| `NOTEBOOKLM_NOTEBOOK_ID` | Optional — if set + session cookies, runs NotebookLM **Research** first (unofficial SDK; harder to keep alive on servers) |
 
 SMS summaries use the same Twilio vars as `ALERT_SMS_TO`.
 
@@ -166,10 +169,26 @@ Worker processes:
 
 ## Step 5 — Custom domain (for selling)
 
-1. **collectrx-web** → **Settings → Networking** → add `www.collectrx.ca` (or your domain)
-2. DNS at your registrar → CNAME to Railway’s target
+1. **collectrx-web** → **Settings → Networking** → add **both**:
+   - `www.collectrx.ca` (subdomain)
+   - `collectrx.ca` (apex / bare domain)
+2. DNS at your registrar:
+   - **www** → CNAME to Railway’s target (`collect-rx-production.up.railway.app` or the value Railway shows)
+   - **@ (apex)** → remove GoDaddy/domain “forwarding” if present; point to Railway per Railway’s apex instructions (A/ALIAS records Railway provides when you add the apex custom domain)
 3. Update `PUBLIC_APP_URL`, `ALLOWED_ORIGINS`, `SERVER_URL` to `https://www.collectrx.ca`
 4. Redeploy
+
+**Why both hostnames matter:** If only `www` points at Railway, `https://collectrx.ca/carriers` never hits your app (tabs break, assets 404). The server redirects apex → www, but only after apex DNS reaches Railway.
+
+Verify after DNS propagates:
+
+```bash
+curl -sI https://collectrx.ca/carriers | grep -i location
+# Expect: Location: https://www.collectrx.ca/carriers
+
+curl -sL https://www.collectrx.ca/assets/index-*.js | grep -c marketing-carriers
+# Expect: 1 (confirms latest marketing build)
+```
 
 Clients and the desktop app should only ever see this HTTPS URL.
 

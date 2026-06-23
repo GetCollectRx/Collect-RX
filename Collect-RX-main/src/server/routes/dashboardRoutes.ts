@@ -1,20 +1,21 @@
 import { Router, type Request, type Response } from 'express';
 import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../middleware/requirePracticeSession';
-import { redactDashboardRecentPayment } from '../accessControl/redaction.js';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
+import { computeCarrierStats } from '../services/platformReports.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
+import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { getPracticePmsContext } from '../pms/practicePmsContext.js';
+import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 const OPEN_STATUSES: ClaimStatus[] = [
   'PENDING',
@@ -49,16 +50,22 @@ router.get('/stats', async (req: Request, res: Response) => {
       _count: true,
     });
 
-    const lastImport = await prisma.pmsImportRun.findFirst({
-      where: { practiceId },
-      orderBy: { startedAt: 'desc' },
-      select: {
-        startedAt: true,
-        status: true,
-        pmsSource: true,
-        validationPassed: true,
-      },
-    });
+    const [lastImport, pms] = await Promise.all([
+      prisma.pmsImportRun.findFirst({
+        where: { practiceId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          startedAt: true,
+          status: true,
+          pmsSource: true,
+          validationPassed: true,
+          recordsImported: true,
+          recordsTotal: true,
+          recordsFailed: true,
+        },
+      }),
+      getPracticePmsContext(prisma, practiceId),
+    ]);
 
     const claims = await prisma.insuranceClaim.findMany({
       where: { practiceId, status: { in: OPEN_STATUSES } },
@@ -119,22 +126,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
 
-    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
-    const payments = await prisma.paymentEvent.findMany({
-      where: { balance: { practiceId }, paidAt: { gte: weekAgo } },
-      include: { balance: { include: { patient: true } } },
-      orderBy: { paidAt: 'desc' },
-      take: 12,
-    });
-
-    let revenueToday = 0;
+    const revenueToday = 0;
     let revenueThisWeek = 0;
-    const todayMs = startOfUtcDay.getTime();
-    for (const p of payments) {
-      const cents = p.amountCents / 100;
-      revenueThisWeek += cents;
-      if (p.paidAt.getTime() >= todayMs) revenueToday += cents;
-    }
 
     const callsPlacedToday = await prisma.callAttempt.count({
       where: {
@@ -152,24 +145,25 @@ router.get('/stats', async (req: Request, res: Response) => {
       name: CARRIER_CONFIGS[b.carrierId]?.displayName ?? b.carrierId,
     }));
 
-    const stripeAcct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
-    const patientPaymentsReady = Boolean(
-      stripeAcct?.chargesEnabled && process.env.STRIPE_SECRET_KEY?.trim(),
-    );
-
-    const recentPayments = payments.slice(0, 8).map((p) =>
-      redactDashboardRecentPayment(
-        {
-          id: p.id,
-          amount: p.amountCents / 100,
-          paidAt: p.paidAt.toISOString(),
-          patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
-        },
-        req.auth,
-      ),
-    );
+    let decliningCarriers: { code: string; name: string; successRate: number }[] = [];
+    try {
+      const { stats } = await computeCarrierStats(prisma, practiceId, '30d');
+      decliningCarriers = stats
+        .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
+        .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
+    } catch (carrierStatsErr) {
+      console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
+    }
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
+
+    let recoveryMetrics = null;
+    try {
+      recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
+      revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
+    } catch (recoveryErr) {
+      console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
+    }
 
     return res.json({
       totalOpenAR: useUnifiedAr ? unifiedOpenAR : totalOpenAR,
@@ -179,22 +173,29 @@ router.get('/stats', async (req: Request, res: Response) => {
       openWorkItemCount: workAgg._count,
       insuranceOpenAR: totalOpenAR,
       unifiedAr: useUnifiedAr,
+      recoveryMetrics,
+      pms,
       lastPmsImport: lastImport
         ? {
             at: lastImport.startedAt.toISOString(),
             status: lastImport.status,
             source: lastImport.pmsSource,
+            sourceDisplayName: vendorDisplayName(
+              normalizePmsVendorId(lastImport.pmsSource) ?? 'other',
+            ),
             validationPassed: lastImport.validationPassed,
+            recordsImported: lastImport.recordsImported,
+            recordsTotal: lastImport.recordsTotal,
+            recordsFailed: lastImport.recordsFailed,
           }
         : null,
       claimsResolvedToday,
       revenueToday,
       revenueThisWeek,
       telephony: { callsPlacedToday, activeCalls: [] as unknown[] },
-      recentPayments,
       operationalAlerts: {
         blockedCarriers,
-        patientPaymentsReady,
+        decliningCarriers,
       },
     });
   } catch (err) {

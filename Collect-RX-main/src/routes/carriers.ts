@@ -10,18 +10,16 @@ import { Router, Request, Response } from 'express';
 import { CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CARRIER_CONFIGS } from '../carriers/adapter';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { carrierUnblockBodySchema, formatZodError } from '../server/validation/zodSchemas.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/carriers/health
@@ -103,9 +101,6 @@ router.get('/health', async (req: Request, res: Response) => {
       };
     }
 
-    let totalDurationSeconds = 0;
-    let callsWithDuration = 0;
-
     for (const a of attempts) {
       const cid = a.claim.carrierId;
       if (!stats[cid]) continue;
@@ -114,9 +109,6 @@ router.get('/health', async (req: Request, res: Response) => {
       if (a.outcome === 'RESOLVED') stats[cid].resolvedCalls++;
       if (a.carrierBlockDetected) stats[cid].blockDetections++;
       if (a.durationSeconds) {
-        totalDurationSeconds += a.durationSeconds;
-        callsWithDuration++;
-        // Update avg hold with actual data
         stats[cid].avgHoldMinutes = Math.round(
           (stats[cid].avgHoldMinutes + a.durationSeconds / 60) / 2,
         );

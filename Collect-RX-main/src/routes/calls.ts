@@ -8,17 +8,15 @@
 import { Router, Request, Response } from 'express';
 import { CallOutcome, CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/calls

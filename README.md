@@ -12,6 +12,7 @@ From the **repository root** (after `npm install` — installs the **Collect-RX-
 |--------|----------------|
 | `npm run dev` | Same as `dev:collectrx` — Vite + API for **Collect-RX-main** |
 | `npm run ci:collectrx` | Typecheck, lint, test, production build (run before PRs) |
+| `npm run diagnose -w dental-ar-system` | **What broke?** — one report: typecheck, env, DB, tests, optional live smoke |
 | `npm run db:migrate:collectrx` | `prisma migrate deploy` in Collect-RX-main (needs `DATABASE_URL`) |
 | `docker compose up -d` | **Optional** — local Postgres 16 in Docker ([docs/DATABASE.md](docs/DATABASE.md)); skip if you already have Postgres |
 | `npm run dev:prototype` | Legacy: root `server.js` |

@@ -8,8 +8,7 @@
 
 import type { CallOutcome, ClaimStatus } from '@prisma/client';
 import type { VapiWebhookPayload, CollectrxWebhookStructured } from '../vapi/client';
-import { classifyOutcome } from './processor';
-import type { ProcessedOutcome } from './processor';
+import { classifyOutcome, type ProcessedOutcome } from './processor'
 
 const CALL_OUTCOMES = new Set<string>([
   'RESOLVED',

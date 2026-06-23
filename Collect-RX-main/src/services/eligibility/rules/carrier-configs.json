@@ -414,7 +414,35 @@
           "description": "Exam annually"
         }
       ],
-      "notes": "Federal program launched 2024. Pre-auth (T11) required for major. Balance billing above CDCP fee grid prohibited. Level 1 Reconsideration within 60 days."
+      "cdcpApril2026Overhaul": {
+        "effectiveDate": "2026-04-01",
+        "scheduleB_requiresPreauth": {
+          "desensitization": {
+            "cdaCodes": ["41301", "41302"],
+            "requiresPreauth": true,
+            "note": "All units now require preauth (previously 2 units/visit exempt). Effective April 1 2026."
+          }
+        },
+        "scheduleA_noPreauth": {
+          "completeImmediateDentures": {
+            "cdaCodes": ["51301", "51302", "51303", "51611", "51612", "51613"],
+            "requiresPreauth": false,
+            "note": "Complete immediate dentures moved to Schedule A — preauth no longer required. Effective April 1 2026."
+          },
+          "dentureLiners": {
+            "cdaCodes": ["51104", "56601"],
+            "requiresPreauth": false,
+            "note": "Denture liners moved to Schedule A — preauth no longer required. Effective April 1 2026."
+          }
+        }
+      },
+      "renewalWarning": {
+        "windowStart": "04-15",
+        "windowEnd": "06-30",
+        "message": "CDCP annual renewal window open. Patient coverage may have gaps starting July 1 if renewal is not completed. Verify active coverage before scheduling major procedures.",
+        "note": "Display this warning when today's date falls between April 15 and June 30 (inclusive) in any year."
+      },
+      "notes": "Federal program launched 2024. Pre-auth (T11) required for major and desensitization (April 2026). Complete dentures and liners moved to Schedule A (no preauth). Balance billing above CDCP fee grid prohibited. Level 1 Reconsideration within 60 days."
     }
   },
   "provincialFeeGuides2026": {
@@ -444,10 +472,10 @@
     },
     "QC": {
       "province": "Quebec",
-      "incrementPct": 3.0,
-      "multiplier": 1.03,
+      "incrementPct": 3.40,
+      "multiplier": 1.034,
       "cdcpReimbursementPct": 90,
-      "cdcpCeilingMultiplier": 0.927,
+      "cdcpCeilingMultiplier": 0.9306,
       "effectiveDate": "2026-01-01"
     },
     "MB": {

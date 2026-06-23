@@ -118,8 +118,10 @@ This is the most hands-off option — migrations run on every deploy automatical
 
 Open two URLs in your browser:
 
-1. `https://YOUR_SERVICE.up.railway.app/api/health` → should return `{"status":"ok"}` or similar
-2. `https://YOUR_SERVICE.up.railway.app/api/health/ready` → should return OK once migrations are done
+1. `https://YOUR_SERVICE.up.railway.app/api/health` → liveness (`{"status":"ok"}`) — should respond as soon as the process binds `PORT`, even while the DB is still connecting
+2. `https://YOUR_SERVICE.up.railway.app/api/health/ready` → readiness (503 until Postgres is reachable and migrations have run)
+
+If the Railway healthcheck fails but the image built: open **Deploy logs** for `FATAL` lines (missing `VAPI_WEBHOOK_SECRET`, `JWT_SECRET`, `DATABASE_URL` without `?sslmode=require`, invalid `PHI_ENCRYPTION_KEY`, etc.). Run `npm run check:env` locally with production-like env.
 3. `https://YOUR_SERVICE.up.railway.app` → should load the CollectRx dashboard UI (React app)
 
 If you see the Railway "404 train" page at step 3 but step 1 works, the SPA static serving
@@ -212,6 +214,14 @@ QUEUE_MAX_CALLS_PER_RUN=20
 ```
 
 Keep `TEST_PHONE_OVERRIDE` **deleted** (not blank — deleted) before going live.
+
+---
+
+## Practice partnerships (outbound sales)
+
+See **[docs/marketing/PARTNERSHIPS-DEPLOY.md](docs/marketing/PARTNERSHIPS-DEPLOY.md)** for the full checklist (SendGrid inbound + events, Vapi sales qualifier, cadence dry run).
+
+CASL policy: **[docs/marketing/CASL-OUTREACH.md](docs/marketing/CASL-OUTREACH.md)**
 
 ---
 

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#FAF7F0"/>
+  <rect width="1200" height="630" fill="none" stroke="#0F6E56" stroke-width="2" opacity="0.08"/>
+
+  <!-- Logo -->
+  <g transform="translate(90,165) scale(1.5)">
+    <circle cx="100" cy="100" r="90" fill="#2D6A4F"/>
+    <circle cx="100" cy="100" r="78" fill="none" stroke="#40916C" stroke-width="2" opacity="0.5"/>
+    <path d="M100 38 A62 62 0 1 0 100 162" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+    <text x="85" y="116" font-family="Georgia, serif" font-size="54" font-weight="700" fill="#FAF7F0" letter-spacing="-2">Rx</text>
+    <path d="M72 155 Q78 148 85 152 Q92 156 100 149 Q108 156 115 152 Q122 148 128 155 Q125 168 120 172 Q115 175 110 170 Q105 165 100 168 Q95 165 90 170 Q85 175 80 172 Q75 168 72 155Z" fill="#EBF5EF" opacity="0.25"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="430" y="290" font-family="Inter, -apple-system, sans-serif" font-size="72" font-weight="700" fill="#13231C">CollectRx</text>
+
+  <!-- Headline -->
+  <text x="430" y="360" font-family="Inter, -apple-system, sans-serif" font-size="36" font-weight="600" fill="#13231C">Your insurance AR, resolved automatically.</text>
+
+  <!-- Subline -->
+  <text x="430" y="410" font-family="Inter, -apple-system, sans-serif" font-size="24" font-weight="400" fill="#5B6B63">AI follow-up for Canadian dental insurance claims</text>
+  <text x="430" y="446" font-family="Inter, -apple-system, sans-serif" font-size="24" font-weight="400" fill="#5B6B63">Sun Life · Canada Life · Manulife · Green Shield · RBC · TELUS</text>
+
+  <!-- Badge -->
+  <rect x="430" y="478" width="220" height="40" rx="20" fill="#E8F5F0"/>
+  <text x="540" y="504" font-family="Inter, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#0F6E56" text-anchor="middle">PHIPA &amp; PIPEDA compliant</text>
+</svg>

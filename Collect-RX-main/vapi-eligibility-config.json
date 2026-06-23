@@ -6,7 +6,7 @@
       {
         "assistant": {
           "name": "Eligibility_IVR_Navigator",
-          "firstMessage": "{{disclosure_message}}",
+          "firstMessage": "Hello, this is an automated calling system contacting you on behalf of {{practice_name}}, a dental practice. You can reach us at {{practice_phone}}. This call may be recorded for quality purposes. We are calling to verify patient insurance eligibility and benefits.",
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
@@ -67,7 +67,7 @@
           {
             "type": "assistant",
             "assistantName": "Eligibility_Agent",
-            "message": "Connecting to benefits department representative.",
+            "message": "Connecting you now. This is an automated system calling on behalf of {{practice_name}}.",
             "description": "Transfer to Eligibility_Agent the moment a human representative answers and begins speaking. Do not wait — hand off immediately on first human speech detected."
           }
         ]
@@ -76,7 +76,7 @@
       {
         "assistant": {
           "name": "Eligibility_Agent",
-          "firstMessage": "Thank you for taking my call. I am an automated system calling on behalf of {{practice_name}} dental practice to verify patient benefits and eligibility.",
+          "firstMessage": "Thank you for taking my call. I am an automated calling system on behalf of {{practice_name}} dental practice. You can reach us at {{practice_phone}}. This call may be recorded for quality purposes. I am calling to verify patient insurance eligibility and benefits.",
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",

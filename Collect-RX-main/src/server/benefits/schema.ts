@@ -246,28 +246,13 @@ export async function upsertPlanYear(patientToken: string, carrierCode: string, 
   });
 }
 
-// Pending claims for annual max calculation
-export async function getPendingClaimsTotal(patientToken: string, carrierCode: string, planYearStart: Date, planYearEnd: Date) {
-  const balances = await prisma.patientBalance.findMany({
-    where: {
-      patientToken,
-      carrierCode,
-      treatmentDate: {
-        gte: planYearStart,
-        lte: planYearEnd,
-      },
-    },
-  });
-
-  let paid = 0;
-  let pending = 0;
-
-  for (const b of balances) {
-    paid += Number(b.insurancePaid) || 0;
-    if (b.paymentStatus === 'outstanding') {
-      pending += Number(b.patientOwes) || 0;
-    }
-  }
-
-  return { paid, pending };
+// Patient AR removed — CollectRx is Practice→Insurance only.
+// Returns zeroes so benefits estimate calculations remain functional.
+export async function getPendingClaimsTotal(
+  _patientToken: string,
+  _carrierCode: string,
+  _planYearStart: Date,
+  _planYearEnd: Date,
+): Promise<{ paid: number; pending: number }> {
+  return { paid: 0, pending: 0 };
 }

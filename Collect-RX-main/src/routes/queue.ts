@@ -5,14 +5,14 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { buildPriorityQueue } from '../server/services/priorityEngine';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
-  requirePracticeContext,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { redactPriorityScoreRow } from '../server/accessControl/redaction.js';
+import { appendAuditLog } from '../server/audit/auditLog';
 
 const DEFAULT_CARRIER_ORDER = [
   'sun_life',
@@ -36,8 +36,7 @@ function parseCarrierOrderJson(raw: string): string[] {
 }
 
 const router = Router();
-router.use(authenticate);
-router.use(requirePracticeContext);
+useOwnerPracticeApi(router);
 
 // GET /api/queue/carrier-order?practiceId=… — persisted drag order for CarrierPriorityPanel
 router.get('/carrier-order', async (req: Request, res: Response) => {
@@ -129,7 +128,15 @@ router.get('/priority-scores', async (req: Request, res: Response) => {
     const practiceId = practiceIdFromSession(req);
 
     const ranked = await buildPriorityQueue(prisma, practiceId);
-    const data = ranked.map((row) => redactPriorityScoreRow(row as Record<string, unknown>, req.auth));
+    const data = ranked.map((row) => redactPriorityScoreRow(row as unknown as Record<string, unknown>, req.auth));
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'phi.view',
+      subjectType: 'queue',
+      subjectId: practiceId,
+      details: { claimCount: ranked.length },
+      req,
+    });
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /queue/priority-scores]', err);
