@@ -173,7 +173,15 @@ const STYLES = `
     background: var(--cream);
     background-image: linear-gradient(257deg, rgba(15,157,88,0.05) -32%, rgba(15,157,88,0.10) 24%, rgba(15,157,88,0.03) 80%, transparent 100%);
     padding-top: 68px;
+    position: relative;
   }
+  .lp-hero-wrap::before {
+    content: '';
+    position: absolute; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.025; mix-blend-mode: multiply; pointer-events: none;
+  }
+  .lp-hero-wrap > * { position: relative; z-index: 1; }
   .lp-hero {
     max-width: 1200px; margin: 0 auto;
     padding: 72px 40px 96px;
@@ -491,6 +499,18 @@ const STYLES = `
   .lp-roi-output-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.5; }
   .lp-roi-note { font-family: var(--fn); font-size: 13px; color: var(--mist); text-align: center; margin-top: 24px; }
 
+  /* ─── PATIENT COST ESTIMATOR ──────────────────────── */
+  .lp-estimate-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lp-estimate-pill {
+    font-family: var(--fn); font-size: 13px; font-weight: 500; color: var(--graphite);
+    background: var(--card); border: 1px solid var(--bdr2); border-radius: 999px;
+    padding: 7px 14px; cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+  }
+  .lp-estimate-pill:hover { border-color: var(--green-hi); color: var(--ink); }
+  .lp-estimate-pill.active { background: var(--green); border-color: var(--green); color: #fcfcfa; }
+  .lp-estimate-example { font-family: var(--fn); font-size: 12.5px; color: var(--mist); margin-top: 8px; }
+
   /* ─── CARRIERS (feature split) ───────────────────── */
   .lp-carriers { background: var(--cream); }
   .lp-carrier-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -718,29 +738,6 @@ const STYLES = `
   /* ─── PROCESS PREVIEW (home) ─────────────────────── */
   .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
   .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
-  .lp-process-steps {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 0; position: relative; margin-top: 48px;
-  }
-  .lp-process-steps::before {
-    content: ''; position: absolute;
-    top: 20px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
-    height: 1px; background: var(--bdr2);
-  }
-  .lp-process-step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 16px; position: relative; }
-  .lp-process-icon {
-    width: 40px; height: 40px; border-radius: 50%;
-    background: var(--card); border: 1px solid var(--bdr2);
-    display: grid; place-items: center; margin-bottom: 16px;
-    position: relative; z-index: 1;
-    transition: background var(--transition), border-color var(--transition);
-  }
-  .lp-process-icon svg { width: 17px; height: 17px; stroke: var(--graphite); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .lp-process-step.done .lp-process-icon { background: var(--green); border-color: var(--green); }
-  .lp-process-step.done .lp-process-icon svg { stroke: #fcfcfa; }
-  .lp-process-num { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
-  .lp-process-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
-  .lp-process-desc { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.55; }
 
   /* ─── FEATURE MINI CARDS (home) ─────────────────── */
   .lp-feat-mini-grid {
@@ -796,7 +793,8 @@ const STYLES = `
   }
   .lp-walk-tab:focus-visible,
   .lp-carrier-card:focus-visible,
-  .lp-carrier-tab:focus-visible {
+  .lp-carrier-tab:focus-visible,
+  .lp-estimate-pill:focus-visible {
     outline: 2px solid var(--green);
     outline-offset: 2px;
   }
@@ -830,8 +828,6 @@ const STYLES = `
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
     .lp-quote-grid { grid-template-columns: 1fr; }
     .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
-    .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
-    .lp-process-steps::before { display: none; }
     .lp-feat-mini-grid { grid-template-columns: 1fr; }
     .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
   }
@@ -857,7 +853,6 @@ const STYLES = `
     .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
     .lp-modal { padding: 24px; }
     .lp-modal-h { font-size: 20px; }
-    .lp-process-steps { grid-template-columns: 1fr; }
     .lp-compliance-snippet-cards { grid-template-columns: 1fr; }
     .lp-pain-stat-num { font-size: 26px; }
   }
@@ -872,6 +867,26 @@ const CARRIERS = [
   { name: 'RBC Insurance',    share: '4%',  pct:  4 },
   { name: 'TELUS AdjudiCare', share: '2%',  pct:  2 },
 ]
+
+// Simplified, illustrative rates derived from src/services/eligibility/rules/carrier-configs.json.
+// This is a marketing-page approximation for visitors to play with — not the production
+// eligibility engine, which also applies annual max, frequency limits, and waiting periods.
+const ESTIMATE_CARRIERS: Record<string, { coveragePercent: Record<'preventive' | 'basic' | 'major', number>; deductible: number }> = {
+  'Sun Life':         { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 50 },
+  'Canada Life':      { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 75 },
+  'Manulife':         { coveragePercent: { preventive: 100, basic: 85, major: 60 }, deductible: 0 },
+  'Green Shield':     { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 50 },
+  'RBC Insurance':    { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 100 },
+  'TELUS AdjudiCare': { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 50 },
+}
+
+const ESTIMATE_TIER_IDS = ['preventive', 'basic', 'major'] as const
+type EstimateTierId = typeof ESTIMATE_TIER_IDS[number]
+const ESTIMATE_TIERS: Record<EstimateTierId, { label: string; example: string; defaultFee: number }> = {
+  preventive: { label: 'Preventive', example: 'Cleaning, exam, X-rays',       defaultFee: 180 },
+  basic:      { label: 'Basic',      example: 'Filling, scaling, extraction', defaultFee: 420 },
+  major:      { label: 'Major',      example: 'Crown, bridge, root canal',    defaultFee: 1240 },
+}
 
 const CLAIM_DATA: Record<string, { id: string; desc: string; amt: string; status: 'approved' | 'calling' | 'pending' }[]> = {
   'Sun Life': [
@@ -1143,6 +1158,45 @@ function useScrolled() {
   return scrolled
 }
 
+/** Tracks viewport visibility so timed/looping animations only run while scrolled into view. */
+function useInView<T extends HTMLElement>(threshold = 0.35) {
+  const ref = useRef<T>(null)
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [threshold])
+  return { ref, inView }
+}
+
+/** Subtle cursor-follow pull on desktop pointers only; inert for touch and prefers-reduced-motion. */
+function useMagnetic<T extends HTMLElement>(strength = 14) {
+  const ref = useRef<T>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (window.matchMedia('(pointer: coarse)').matches) return
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      const x = ((e.clientX - rect.left - rect.width / 2) / rect.width) * strength
+      const y = ((e.clientY - rect.top - rect.height / 2) / rect.height) * strength
+      el.style.transform = `translate(${x}px, ${y}px)`
+    }
+    const onLeave = () => { el.style.transform = '' }
+    el.addEventListener('mousemove', onMove)
+    el.addEventListener('mouseleave', onLeave)
+    return () => {
+      el.removeEventListener('mousemove', onMove)
+      el.removeEventListener('mouseleave', onLeave)
+    }
+  }, [strength])
+  return ref
+}
+
 // ─── Components ────────────────────────────────────────────────────────────────
 function Waveform() {
   return (
@@ -1160,9 +1214,13 @@ function ClaimWalkthrough() {
   const [step, setStep] = useState(0)
   const [progress, setProgress] = useState(0)
   const [lineCount, setLineCount] = useState(1)
+  const { ref: viewRef, inView } = useInView<HTMLDivElement>(0.4)
 
   // Auto-advance through the four steps on a loop, with a progress bar per tab.
+  // Gated on viewport visibility so it doesn't run (or burn battery) off-screen,
+  // and restarts cleanly each time the section is scrolled back into view.
   useEffect(() => {
+    if (!inView) return
     setProgress(0)
     let elapsed = 0
     const id = setInterval(() => {
@@ -1173,17 +1231,17 @@ function ClaimWalkthrough() {
       }
     }, TICK)
     return () => clearInterval(id)
-  }, [step])
+  }, [step, inView])
 
   // Reveal the IVR transcript line-by-line while "Carrier called" is active.
   useEffect(() => {
-    if (step !== 2) { setLineCount(1); return }
+    if (!inView || step !== 2) { setLineCount(1); return }
     setLineCount(1)
     const id = setInterval(() => {
       setLineCount(n => (n < IVR_TRANSCRIPT.length ? n + 1 : n))
     }, 750)
     return () => clearInterval(id)
-  }, [step])
+  }, [step, inView])
 
   const stateClass = ['state-pending', 'state-tokenize', 'state-calling', 'state-approved'][step]
   const badge = [
@@ -1194,7 +1252,7 @@ function ClaimWalkthrough() {
   ][step]
 
   return (
-    <div className="lp-walk">
+    <div className="lp-walk" ref={viewRef}>
       <div className="lp-walk-tabs">
         {PIPELINE_STEPS.map((s, i) => (
           <button
@@ -1449,6 +1507,89 @@ function RoiCalculator() {
   )
 }
 
+function PatientCostEstimator() {
+  const carrierNames = Object.keys(ESTIMATE_CARRIERS)
+  const [carrierName, setCarrierName] = useState(carrierNames[0])
+  const [tierId, setTierId] = useState<EstimateTierId>('major')
+  const tier = ESTIMATE_TIERS[tierId]
+  const [fee, setFee] = useState(tier.defaultFee)
+
+  const carrier = ESTIMATE_CARRIERS[carrierName]
+  const coveragePct = carrier.coveragePercent[tierId]
+  const deductible = tierId === 'preventive' ? 0 : carrier.deductible
+  const insuredBase = Math.max(fee - deductible, 0)
+  const insurancePays = Math.round(insuredBase * (coveragePct / 100))
+  const patientPays = Math.max(fee - insurancePays, 0)
+
+  const selectTier = (id: EstimateTierId) => {
+    setTierId(id)
+    setFee(ESTIMATE_TIERS[id].defaultFee)
+  }
+
+  return (
+    <div className="lp-roi-card">
+      <div className="lp-roi-inputs">
+        <div className="lp-roi-field">
+          <div className="lp-roi-field-label"><span>Carrier</span></div>
+          <div className="lp-estimate-pills">
+            {carrierNames.map(name => (
+              <button
+                key={name}
+                type="button"
+                className={`lp-estimate-pill${name === carrierName ? ' active' : ''}`}
+                onClick={() => setCarrierName(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="lp-roi-field">
+          <div className="lp-roi-field-label"><span>Procedure tier</span></div>
+          <div className="lp-estimate-pills">
+            {ESTIMATE_TIER_IDS.map(id => (
+              <button
+                key={id}
+                type="button"
+                className={`lp-estimate-pill${id === tierId ? ' active' : ''}`}
+                onClick={() => selectTier(id)}
+                title={ESTIMATE_TIERS[id].example}
+              >
+                {ESTIMATE_TIERS[id].label}
+              </button>
+            ))}
+          </div>
+          <p className="lp-estimate-example">e.g. {tier.example}</p>
+        </div>
+        <div className="lp-roi-field">
+          <div className="lp-roi-field-label">
+            <span>Treatment fee</span>
+            <span className="lp-roi-field-value">{fmtUSD(fee)}</span>
+          </div>
+          <input
+            type="range" min={50} max={3000} step={10}
+            value={fee}
+            onChange={(e) => setFee(Number(e.target.value))}
+            aria-label="Treatment fee"
+          />
+        </div>
+      </div>
+      <div className="lp-roi-outputs">
+        <div className="lp-roi-output">
+          <div className="lp-roi-output-num">{fmtUSD(insurancePays)}</div>
+          <div className="lp-roi-output-lbl">
+            {carrierName} pays — {coveragePct}% coverage{deductible > 0 ? ` after a ${fmtUSD(deductible)} deductible` : ''}
+          </div>
+        </div>
+        <div className="lp-roi-output" style={{ background: 'var(--cream)', borderColor: 'var(--bdr2)' }}>
+          <div className="lp-roi-output-num">{fmtUSD(patientPays)}</div>
+          <div className="lp-roi-output-lbl">Patient pays at chairside</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── New home-page components ─────────────────────────────────────────────────
 
 function AnnouncementBar({ onClose }: { onClose: () => void }) {
@@ -1508,22 +1649,16 @@ function ProcessPreview() {
             Four steps. Zero hold music<span className="lp-dot">.</span>
           </h2>
           <p className="lp-section-sub">
-            From a PMS export to a closed claim, CollectRx handles every step of the carrier follow-up loop.
+            This is the same claim, live. Click a step or let it run — it's the real
+            walkthrough, not a screenshot of one.
           </p>
         </div>
-        <div className="lp-process-steps">
-          {PIPELINE_STEPS.map((s, i) => (
-            <div className="lp-process-step done" key={s.label}>
-              <div className="lp-process-icon">{s.icon}</div>
-              <div className="lp-process-num">Step {i + 1}</div>
-              <div className="lp-process-label">{s.label}</div>
-              <div className="lp-process-desc">{s.desc}</div>
-            </div>
-          ))}
+        <div style={{ marginTop: 48 }}>
+          <ClaimWalkthrough />
         </div>
         <div style={{ textAlign: 'center', marginTop: 36 }}>
           <Link to={MARKETING_PATHS.howItWorks} className="lp-feat-link" style={{ fontSize: 15 }}>
-            See the full interactive walkthrough
+            Open the full product demo
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
           </Link>
         </div>
@@ -1608,6 +1743,8 @@ export default function LandingPage() {
   const scrolled = useScrolled()
   useReveal(page)
   const navigate = useNavigate()
+  const heroCtaRef = useMagnetic<HTMLButtonElement>()
+  const footerCtaRef = useMagnetic<HTMLButtonElement>()
 
   useEffect(() => {
     document.title = MARKETING_PAGE_TITLES[page]
@@ -1773,7 +1910,7 @@ export default function LandingPage() {
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
-                  <button className="lp-btn-primary" onClick={() => openAccess('access')}>
+                  <button ref={heroCtaRef} className="lp-btn-primary" onClick={() => openAccess('access')}>
                     Request Early Access
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                   </button>
@@ -1820,6 +1957,31 @@ export default function LandingPage() {
 
         {/* ── FEATURE HIGHLIGHTS (home only) ── */}
         {page === 'home' && <FeatureHighlights onCta={() => openAccess('access')} />}
+
+        {/* ── PATIENT COST ESTIMATOR (home only) ── */}
+        {page === 'home' && (
+        <section className="lp-roi" style={{ paddingTop: 0 }} data-testid="marketing-cost-estimator">
+          <div className="lp-section-inner" style={{ paddingTop: 72, paddingBottom: 72 }}>
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Try it</div>
+              <h2 className="lp-section-h2">
+                What does a patient actually pay<span className="lp-dot">?</span>
+              </h2>
+              <p className="lp-section-sub">
+                Pick a carrier and a procedure tier. This runs the same coverage math
+                CollectRx uses to generate pre-treatment estimates.
+              </p>
+            </div>
+            <div className="lp-reveal">
+              <PatientCostEstimator />
+              <p className="lp-roi-note">
+                Illustrative only — the production estimate engine also applies annual
+                maximums, frequency limits, and waiting periods per plan.
+              </p>
+            </div>
+          </div>
+        </section>
+        )}
 
         {/* ── ROI CALCULATOR ── */}
         {page === 'roi' && (
@@ -2020,7 +2182,7 @@ export default function LandingPage() {
               Collections metrics show what we recovered on your outstanding insurance AR.
             </p>
             <div className="lp-cta-actions">
-              <button className="lp-btn-primary" onClick={() => openAccess('access')}>
+              <button ref={footerCtaRef} className="lp-btn-primary" onClick={() => openAccess('access')}>
                 Request Early Access
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
               </button>
