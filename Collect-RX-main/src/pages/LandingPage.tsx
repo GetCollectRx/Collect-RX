@@ -738,6 +738,29 @@ const STYLES = `
   /* ─── PROCESS PREVIEW (home) ─────────────────────── */
   .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
   .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
+  .lp-process-steps {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; position: relative; margin-top: 48px;
+  }
+  .lp-process-steps::before {
+    content: ''; position: absolute;
+    top: 20px; left: calc(12.5% + 20px); right: calc(12.5% + 20px);
+    height: 1px; background: var(--bdr2);
+  }
+  .lp-process-step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 16px; position: relative; }
+  .lp-process-icon {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--bdr2);
+    display: grid; place-items: center; margin-bottom: 16px;
+    position: relative; z-index: 1;
+    transition: background var(--transition), border-color var(--transition);
+  }
+  .lp-process-icon svg { width: 17px; height: 17px; stroke: var(--graphite); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .lp-process-step.done .lp-process-icon { background: var(--green); border-color: var(--green); }
+  .lp-process-step.done .lp-process-icon svg { stroke: #fcfcfa; }
+  .lp-process-num { font-family: var(--fn); font-size: 11px; font-weight: 600; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+  .lp-process-label { font-family: var(--fn); font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .lp-process-desc { font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.55; }
 
   /* ─── FEATURE MINI CARDS (home) ─────────────────── */
   .lp-feat-mini-grid {
@@ -828,6 +851,8 @@ const STYLES = `
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
     .lp-quote-grid { grid-template-columns: 1fr; }
     .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
+    .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
+    .lp-process-steps::before { display: none; }
     .lp-feat-mini-grid { grid-template-columns: 1fr; }
     .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
   }
@@ -853,6 +878,7 @@ const STYLES = `
     .lp-nav-right .lp-btn-primary { padding: 8px 12px; font-size: 13px; }
     .lp-modal { padding: 24px; }
     .lp-modal-h { font-size: 20px; }
+    .lp-process-steps { grid-template-columns: 1fr; }
     .lp-compliance-snippet-cards { grid-template-columns: 1fr; }
     .lp-pain-stat-num { font-size: 26px; }
   }
@@ -869,7 +895,7 @@ const CARRIERS = [
 ]
 
 // Simplified, illustrative rates derived from src/services/eligibility/rules/carrier-configs.json.
-// This is a marketing-page approximation for visitors to play with — not the production
+// This is a marketing-page approximation for visitors to play with, not the production
 // eligibility engine, which also applies annual max, frequency limits, and waiting periods.
 const ESTIMATE_CARRIERS: Record<string, { coveragePercent: Record<'preventive' | 'basic' | 'major', number>; deductible: number }> = {
   'Sun Life':         { coveragePercent: { preventive: 100, basic: 80, major: 50 }, deductible: 50 },
@@ -984,7 +1010,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours enforcement',
-    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
+    p: 'All carrier calls are placed Mon-Fri, 8am-5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
   },
 ]
 
@@ -1047,7 +1073,7 @@ const TESTIMONIALS = [
     initials: 'MP',
   },
   {
-    body: "Our billing coordinator used to dread Mondays — that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
+    body: "Our billing coordinator used to dread Mondays, that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
     name: 'Dr. Priya Nair',
     title: 'Owner, Family Dental, Brampton, ON',
     initials: 'PN',
@@ -1057,14 +1083,14 @@ const TESTIMONIALS = [
 const PAIN_STATS = [
   { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
   { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
-  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery, most never needed to be' },
 ]
 
 const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
     h: 'AI calls carriers for you',
-    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back, without your team touching a phone.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
@@ -1074,7 +1100,7 @@ const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
     h: 'Recovery metrics you can verify',
-    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes, all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
   },
 ]
 
@@ -1097,7 +1123,7 @@ const COMPLIANCE_SNIPPETS = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours only',
-    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
+    p: 'All calls Mon-Fri 8am-5pm Eastern. Scheduling windows enforced at system level.',
   },
 ]
 
@@ -1578,7 +1604,7 @@ function PatientCostEstimator() {
         <div className="lp-roi-output">
           <div className="lp-roi-output-num">{fmtUSD(insurancePays)}</div>
           <div className="lp-roi-output-lbl">
-            {carrierName} pays — {coveragePct}% coverage{deductible > 0 ? ` after a ${fmtUSD(deductible)} deductible` : ''}
+            {carrierName} pays: {coveragePct}% coverage{deductible > 0 ? ` after a ${fmtUSD(deductible)} deductible` : ''}
           </div>
         </div>
         <div className="lp-roi-output" style={{ background: 'var(--cream)', borderColor: 'var(--bdr2)' }}>
@@ -1649,16 +1675,22 @@ function ProcessPreview() {
             Four steps. Zero hold music<span className="lp-dot">.</span>
           </h2>
           <p className="lp-section-sub">
-            This is the same claim, live. Click a step or let it run — it's the real
-            walkthrough, not a screenshot of one.
+            From a PMS export to a closed claim, CollectRx handles every step of the carrier follow-up loop.
           </p>
         </div>
-        <div style={{ marginTop: 48 }}>
-          <ClaimWalkthrough />
+        <div className="lp-process-steps">
+          {PIPELINE_STEPS.map((s, i) => (
+            <div className="lp-process-step done" key={s.label}>
+              <div className="lp-process-icon">{s.icon}</div>
+              <div className="lp-process-num">Step {i + 1}</div>
+              <div className="lp-process-label">{s.label}</div>
+              <div className="lp-process-desc">{s.desc}</div>
+            </div>
+          ))}
         </div>
         <div style={{ textAlign: 'center', marginTop: 36 }}>
           <Link to={MARKETING_PATHS.howItWorks} className="lp-feat-link" style={{ fontSize: 15 }}>
-            Open the full product demo
+            See the full interactive walkthrough
             <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
           </Link>
         </div>
@@ -1711,7 +1743,7 @@ function ComplianceSnippet() {
           </h2>
           <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
             In healthcare, compliance built in after the fact is compliance that fails. PHI
-            protection in CollectRx is a structural requirement — it cannot be disabled or
+            protection in CollectRx is a structural requirement, it cannot be disabled or
             accidentally bypassed.
           </p>
           <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
@@ -1975,7 +2007,7 @@ export default function LandingPage() {
             <div className="lp-reveal">
               <PatientCostEstimator />
               <p className="lp-roi-note">
-                Illustrative only — the production estimate engine also applies annual
+                Illustrative only: the production estimate engine also applies annual
                 maximums, frequency limits, and waiting periods per plan.
               </p>
             </div>
