@@ -4,8 +4,8 @@ ADD COLUMN "transcript_text" TEXT;
 
 -- 2. Create guardrail_audit_outbox table
 CREATE TABLE "guardrail_audit_outbox" (
-  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "call_attempt_id" UUID NOT NULL UNIQUE REFERENCES "call_attempts"("id") ON DELETE CASCADE,
+  "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "call_attempt_id" TEXT NOT NULL UNIQUE REFERENCES "call_attempts"("id") ON DELETE CASCADE,
   "enqueued_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "processed_at" TIMESTAMPTZ,
   "attempts" INTEGER NOT NULL DEFAULT 0,
@@ -17,8 +17,8 @@ CREATE INDEX "idx_guardrail_audit_outbox_processed_at" ON "guardrail_audit_outbo
 
 -- 3. Create guardrail_audits table
 CREATE TABLE "guardrail_audits" (
-  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "call_attempt_id" UUID NOT NULL REFERENCES "call_attempts"("id") ON DELETE CASCADE,
+  "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "call_attempt_id" TEXT NOT NULL REFERENCES "call_attempts"("id") ON DELETE CASCADE,
   "rules_version" TEXT NOT NULL,
   "ran_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "risk_score" NUMERIC(4,3) NOT NULL,
