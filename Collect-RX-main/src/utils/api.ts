@@ -18,7 +18,7 @@ export async function apiFetch<T = unknown>(
   const res = await fetch(url, { credentials: apiCredentials, ...options })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error((err as any).error ?? res.statusText)
+    throw new Error((err as { error?: string }).error ?? res.statusText)
   }
   return res.json() as Promise<T>
 }

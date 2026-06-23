@@ -1,4 +1,4 @@
-import { VapiWebhookPayload } from '../../../vapi/client';
+import { VapiWebhookPayload } from '../../vapi/client';
 import { WebhookGuardResult } from './types';
 import { writeAuditLog } from './audit';
 import rulesJson from './rules.json';
@@ -14,18 +14,6 @@ const PHI_PATTERNS = [
 
 function containsPhi(text: string): boolean {
   return PHI_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function sanitizeForLog(obj: unknown, depth = 0): string {
-  if (depth > 2) return '[...]';
-  if (typeof obj === 'string') {
-    if (obj.length > 100) return obj.substring(0, 100) + '...';
-    return obj;
-  }
-  if (typeof obj === 'object' && obj !== null) {
-    return JSON.stringify(obj, null, 2).substring(0, 200);
-  }
-  return String(obj);
 }
 
 export async function webhookGuardScanMetadata(payload: VapiWebhookPayload): Promise<WebhookGuardResult> {
@@ -52,6 +40,7 @@ export async function webhookGuardScanMetadata(payload: VapiWebhookPayload): Pro
         metadataKeys: Object.keys(metadata),
       },
       rulesVersion: RULES.version,
+      practiceId: 'system',
     });
   }
 
@@ -63,7 +52,8 @@ export async function webhookGuardScanPayload(payload: VapiWebhookPayload): Prom
   const findings: string[] = [];
 
   // Spot-check summary and transcript for obvious PHI
-  if (payload.summary && containsPhi(payload.summary)) {
+  const summary = payload.analysis?.summary;
+  if (summary && containsPhi(summary)) {
     findings.push('Summary contains PHI-like pattern');
   }
 
@@ -86,6 +76,7 @@ export async function webhookGuardScanPayload(payload: VapiWebhookPayload): Prom
       subjectId: payload.call?.id || 'unknown',
       details: { findings },
       rulesVersion: RULES.version,
+      practiceId: 'system',
     });
   }
 

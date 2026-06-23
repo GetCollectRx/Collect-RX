@@ -1,7 +1,7 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PracticeRole, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
-/** Deterministic test password for factory-created practices (P7-04). */
+/** Deterministic test password for factory-created practices/users (P7-04). */
 export const FIXTURE_PRACTICE_PASSWORD = 'test-factory-pw-e2e';
 
 /**
@@ -17,4 +17,38 @@ export async function createPracticeForTests(prisma: PrismaClient) {
       passwordHash,
     },
   });
+}
+
+/**
+ * Create a practice plus a login-able user (email + password) for tests that exercise
+ * the current email-based `/api/auth/login` flow. Returns the credentials to post.
+ *
+ * Cleanup: delete the user(s) before the practice (FK), e.g.
+ *   await prisma.user.deleteMany({ where: { practiceId: practice.id } });
+ *   await prisma.practice.delete({ where: { id: practice.id } });
+ * or call `cleanupPracticeWithUsers`.
+ */
+export async function createPracticeWithOwnerForTests(
+  prisma: PrismaClient,
+  opts: { role?: PracticeRole } = {},
+) {
+  const practice = await createPracticeForTests(prisma);
+  const passwordHash = await bcrypt.hash(FIXTURE_PRACTICE_PASSWORD, 4);
+  const email = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@fixture.test`;
+  const user = await prisma.user.create({
+    data: {
+      practiceId: practice.id,
+      email,
+      passwordHash,
+      role: opts.role ?? 'practice_owner',
+      displayName: 'Fixture User',
+    },
+  });
+  return { practice, user, email, password: FIXTURE_PRACTICE_PASSWORD };
+}
+
+/** Delete a practice and all its users, in FK-safe order. */
+export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId: string) {
+  await prisma.user.deleteMany({ where: { practiceId } });
+  await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);
 }

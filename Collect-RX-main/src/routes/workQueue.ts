@@ -1,19 +1,23 @@
 import { Router, Request, Response } from 'express';
 import type { CarrierId, WorkItemSource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { requireClaimScope } from '../server/middleware/requireClaimScope.js';
+import { redactWorkItem } from '../server/accessControl/redaction.js';
 import {
   listWorkItems,
   syncWorkItemsForPractice,
   type WorkQueueFilters,
 } from '../server/services/workQueueService.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApi(router);
+router.use(requireClaimScope('list_claims'));
 
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -31,13 +35,17 @@ router.get('/', async (req: Request, res: Response) => {
       aging: req.query.aging as WorkQueueFilters['aging'],
       assignedRep: req.query.assignedRep as string | undefined,
       status: (req.query.status as string) || 'open',
+      gatesDueToday: req.query.gatesDueToday === 'true' || req.query.gatesDueToday === '1',
     };
 
     const result = await listWorkItems(prisma, practiceId, filters, page, limit);
-    return res.json({ success: true, ...result });
+    const items = result.items.map((row) =>
+      redactWorkItem(row as unknown as Record<string, unknown>, req.auth),
+    );
+    return res.json({ success: true, ...result, items });
   } catch (err) {
     console.error('[GET /work-queue]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -53,9 +61,12 @@ router.get('/by-source/:sourceType/:sourceId', async (req: Request, res: Respons
         status: 'open',
       },
     });
-    return res.json({ success: true, data: item });
+    return res.json({
+      success: true,
+      data: item ? redactWorkItem(item as Record<string, unknown>, req.auth) : null,
+    });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -65,7 +76,7 @@ router.post('/sync', async (req: Request, res: Response) => {
     const result = await syncWorkItemsForPractice(prisma, practiceId);
     return res.json({ success: true, ...result });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -99,9 +110,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactWorkItem(updated as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

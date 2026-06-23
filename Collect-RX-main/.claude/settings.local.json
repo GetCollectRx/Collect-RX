@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(curl:*)",
+      "Bash(psql:*)",
+      "WebFetch(domain:docs.vapi.ai)",
+      "Bash(node:*)"
+    ]
+  }
+}

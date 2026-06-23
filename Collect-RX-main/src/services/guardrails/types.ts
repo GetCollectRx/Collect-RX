@@ -31,6 +31,8 @@ export interface GuardrailAuditEvent {
   subjectId: string;
   details: Record<string, unknown>;
   rulesVersion: string;
+  /** 'system' for cross-practice events (e.g. raw webhook scans before a claim is resolved). */
+  practiceId: string;
 }
 
 export interface WebhookGuardResult {

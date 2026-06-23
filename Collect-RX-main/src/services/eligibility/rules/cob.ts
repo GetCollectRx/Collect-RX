@@ -9,8 +9,8 @@ import {
   EligibilitySnapshot,
   InsurancePlan,
   Patient,
+  CarrierConfig,
 } from '../types';
-import { CarrierConfig } from '../types';
 import { buildAnnualMaxState } from './annual-max';
 
 // ---------------------------------------------------------------------------

@@ -30,3 +30,24 @@ export function notionStatusesToPull(): string[] {
 export function learningRepoRoot(): string {
   return process.env.LEARNING_REPO_ROOT || process.cwd();
 }
+
+export type LearningResearchProviderName = 'notebooklm' | 'gemini' | 'local';
+
+/**
+ * Default order: NotebookLM (user explicitly asked for it) → Gemini grounding
+ * (production-grade Workspace path) → local codebase fallback.
+ * Override via LEARNING_RESEARCH_PROVIDER=notebooklm|gemini|local.
+ */
+export function learningResearchProvider(): LearningResearchProviderName {
+  const v = (process.env.LEARNING_RESEARCH_PROVIDER || 'notebooklm')
+    .trim()
+    .toLowerCase();
+  if (v === 'gemini' || v === 'gemini-grounding' || v === 'vertex') return 'gemini';
+  if (v === 'local' || v === 'codebase' || v === 'off') return 'local';
+  return 'notebooklm';
+}
+
+export function learningResearchTimeoutMs(): number {
+  const n = parseInt(process.env.LEARNING_RESEARCH_TIMEOUT_MS ?? '20000', 10);
+  return Number.isFinite(n) ? Math.max(2000, Math.min(120_000, n)) : 20_000;
+}

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
+import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
   StatTile, Card, CardHeader, StageBadge, Badge,
@@ -10,7 +11,7 @@ import {
 } from '../components/ui'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types — Insurance AI analytics
+// Types, Insurance AI analytics
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PriorityRankRow {
@@ -32,6 +33,24 @@ interface PriorityRankRow {
 
 type CarrierPerfRow = { carrier: string; rate: number; resolved: number; total: number }
 
+interface CollectionRate {
+  totalCollected: number
+  totalCount: number
+  collectionRate: number
+  paidCount: number
+  avgDaysToPayment: number
+}
+interface FunnelStage { stage: string; count: number; dropOff: number }
+interface PriorityBalance {
+  id: string | number
+  patient: { displayName: string }
+  daysOutstanding: number
+  amount: number
+  currentStage: string
+}
+interface MsgEffectRow { messageType: string; paymentRate: number }
+interface PaymentTrendRow { week: string; totalAmount?: number }
+
 interface InsuranceAnalytics {
   timeSaved: {
     completedCalls: number
@@ -40,6 +59,11 @@ interface InsuranceAnalytics {
     avgManualCallMinutes: number
   }
   dollarsRecovered: {
+    resolvedClaimsCount: number
+    dollarsRecovered: number
+    currency: 'CAD'
+  }
+  callOutcomeRecovery?: {
     resolvedClaimsCount: number
     dollarsRecovered: number
     currency: 'CAD'
@@ -59,6 +83,16 @@ interface InsuranceAnalytics {
     resolved: number
     failed: number
   }>
+  syncVerifiedRecovery?: {
+    dollarsRecoveredSyncVerified: number
+    dollarsRecoveredSyncVerifiedLast30Days: number
+    paymentsVerifiedBySync: number
+    cohortRecoveryRatePct: number | null
+    medianTimeToSyncVerifyHours: number | null
+    medianGateClearanceHours: number | null
+    blockingGatesOpen: number
+    awaitingSyncVerification: number
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,7 +147,7 @@ function CallQueuePriorityTable({ practiceId }: { practiceId: string }) {
   return (
     <Card>
       <CardHeader
-        title="Call queue — priority engine"
+        title="Call queue, priority engine"
         subtitle="Top open claims by composite score (age, amount, appeal window, attempts, status). Carrier deadline = days until appeal window from date of service."
       />
       {loading && <p className="text-sm text-gray-500 dark:text-gray-400 py-4 px-1">Loading priority scores…</p>}
@@ -177,9 +211,19 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
     const { from, to } = dateRange(rangeDays)
     apiFetch(`/api/analytics/insurance?practiceId=${practiceId}&from=${from}&to=${to}`)
       .then(async (r) => {
-        const body = await parseApiJson<InsuranceAnalytics & { error?: string }>(r)
+        const body = await parseApiJson<{
+          success?: boolean
+          data?: InsuranceAnalytics
+          error?: string
+        }>(r)
         if (!r.ok) throw new Error(body.error ?? 'Failed to load insurance analytics')
-        return body
+        if (!body.data) throw new Error('Missing analytics payload')
+        const d = body.data
+        return {
+          ...d,
+          dollarsRecovered: d.callOutcomeRecovery ?? d.dollarsRecovered,
+          carrierRates: d.carrierRates ?? (d as { resolutionByCarrier?: InsuranceAnalytics['carrierRates'] }).resolutionByCarrier ?? [],
+        } satisfies InsuranceAnalytics
       })
       .then(setData)
       .catch((e) => setError((e as Error).message))
@@ -215,7 +259,7 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            Insurance AI — Claims Recovery
+            Insurance AI, Claims Recovery
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             Time saved and dollars recovered by the AI voice agent
@@ -265,13 +309,23 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
               trend={{ value: 'vs. manual calling', dir: 'up' }}
             />
             <StatTile
-              label="Dollars Recovered"
+              label="Call outcome recovery"
               value={`$${data.dollarsRecovered.dollarsRecovered.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
-              sub={`${data.dollarsRecovered.resolvedClaimsCount} claims resolved · CAD`}
-              icon="💰"
-              accent="green"
-              trend={{ value: 'outstanding claims paid', dir: 'up' }}
+              sub={`${data.dollarsRecovered.resolvedClaimsCount} claims marked resolved on call · CAD`}
+              icon="📞"
+              accent="blue"
+              trend={{ value: 'carrier-reported', dir: 'neutral' }}
             />
+            {data.syncVerifiedRecovery && (
+              <StatTile
+                label="PMS sync-verified recovery"
+                value={`$${data.syncVerifiedRecovery.dollarsRecoveredSyncVerifiedLast30Days.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
+                sub={`${data.syncVerifiedRecovery.paymentsVerifiedBySync} all-time · balance confirmed in PMS`}
+                icon="💰"
+                accent="green"
+                trend={{ value: 'source of truth', dir: 'up' }}
+              />
+            )}
             <StatTile
               label="AI Calls Made"
               value={data.timeSaved.completedCalls}
@@ -280,13 +334,60 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
               accent="blue"
             />
             <StatTile
-              label="Avg Resolution Rate"
-              value={avgRate !== null ? `${avgRate}%` : '—'}
-              sub="across all 6 carriers"
+              label="Avg call resolution rate"
+              value={avgRate !== null ? `${avgRate}%` : 'N/A'}
+              sub="call outcomes only, not sync verified"
               icon="✓"
               accent={avgRate === null ? 'default' : avgRate >= 70 ? 'green' : avgRate >= 50 ? 'amber' : 'red'}
             />
           </div>
+
+          {data.syncVerifiedRecovery && (
+            <Card className="mb-6">
+              <CardHeader
+                title="Recovery loop: sync truth"
+                subtitle="North-star metrics from PAYMENT_VERIFIED_SYNC events (PMS balance drop), separate from call status."
+              />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-4 pb-4">
+                <StatTile
+                  label="Cohort recovery rate (30d)"
+                  value={
+                    data.syncVerifiedRecovery.cohortRecoveryRatePct != null
+                      ? `${data.syncVerifiedRecovery.cohortRecoveryRatePct}%`
+                      : 'N/A'
+                  }
+                  sub="verified $ / (verified + still open)"
+                  accent="green"
+                />
+                <StatTile
+                  label="Median time to sync verify"
+                  value={
+                    data.syncVerifiedRecovery.medianTimeToSyncVerifyHours != null
+                      ? `${data.syncVerifiedRecovery.medianTimeToSyncVerifyHours}h`
+                      : 'N/A'
+                  }
+                  sub="WAIT_SYNC → PAYMENT_VERIFIED_SYNC"
+                  accent="blue"
+                />
+                <StatTile
+                  label="Gate clearance SLA"
+                  value={
+                    data.syncVerifiedRecovery.medianGateClearanceHours != null
+                      ? `${data.syncVerifiedRecovery.medianGateClearanceHours}h`
+                      : 'N/A'
+                  }
+                  sub="blocking gate → cleared"
+                  accent="amber"
+                />
+                <StatTile
+                  label="Awaiting PMS sync"
+                  value={data.syncVerifiedRecovery.awaitingSyncVerification}
+                  sub={`${data.syncVerifiedRecovery.blockingGatesOpen} practice gates open`}
+                  accent={data.syncVerifiedRecovery.blockingGatesOpen > 0 ? 'amber' : 'default'}
+                />
+              </div>
+            </Card>
+          )}
 
           {/* Charts */}
           {!noData && (
@@ -310,8 +411,8 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
 
               <Card>
                 <CardHeader
-                  title="Resolution Rate by Carrier"
-                  subtitle="% of AI calls that resolved the claim"
+                  title="Call resolution rate by carrier"
+                  subtitle="% of AI calls marked resolved, not PMS-verified payment"
                 />
                 {carrierBarData.length > 0 ? (
                   <BarChart
@@ -331,7 +432,7 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
           <Card>
             <CardHeader
               title="Carrier Health"
-              subtitle="All 6 Canadian carriers — Sun Life, Canada Life, Manulife, Green Shield, RBC, TELUS"
+              subtitle="All 6 Canadian carriers, Sun Life, Canada Life, Manulife, Green Shield, RBC, TELUS"
             />
             {data.carrierRates.every((c) => c.totalCalls === 0) ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 py-6 px-1">
@@ -354,10 +455,10 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
                     {data.carrierRates.map((c) => (
                       <Tr key={c.carrierId}>
                         <Td bold>{c.displayName}</Td>
-                        <Td align="right" muted>{c.totalCalls === 0 ? '—' : c.totalCalls}</Td>
-                        <Td align="right">{c.resolvedCalls === 0 ? '—' : c.resolvedCalls}</Td>
-                        <Td align="right" muted>{c.deniedCalls === 0 ? '—' : c.deniedCalls}</Td>
-                        <Td align="right" muted>{c.escalatedCalls === 0 ? '—' : c.escalatedCalls}</Td>
+                        <Td align="right" muted>{c.totalCalls === 0 ? 'N/A' : c.totalCalls}</Td>
+                        <Td align="right">{c.resolvedCalls === 0 ? 'N/A' : c.resolvedCalls}</Td>
+                        <Td align="right" muted>{c.deniedCalls === 0 ? 'N/A' : c.deniedCalls}</Td>
+                        <Td align="right" muted>{c.escalatedCalls === 0 ? 'N/A' : c.escalatedCalls}</Td>
                         <Td>
                           {c.totalCalls === 0 ? (
                             <span className="text-xs text-gray-400 dark:text-gray-600">No calls yet</span>
@@ -404,13 +505,29 @@ function InsuranceSection({ practiceId }: { practiceId: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Analytics() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, loading: practiceLoading, isPlatformDev } = usePractice()
+
+  if (isPlatformDev) {
+    return (
+      <div className="page-enter p-6 space-y-6 max-w-6xl">
+        <div>
+          <h1 className="page-title">Analytics</h1>
+          <p className="page-subtitle">
+            Insurance recovery metrics only, patient-level reports are hidden in developer sessions.
+          </p>
+        </div>
+        {practiceId ? <InsuranceSection practiceId={practiceId} /> : (
+          <p className="text-sm text-gray-500">Select a practice in the sidebar to load metrics.</p>
+        )}
+      </div>
+    )
+  }
   const [loading,        setLoading]       = useState(false)
-  const [collectionRate, setCollectionRate] = useState<any>(null)
-  const [funnel,         setFunnel]        = useState<any[]>([])
-  const [priorityBal,    setPriorityBal]   = useState<any[]>([])
-  const [msgEffect,      setMsgEffect]     = useState<any[]>([])
-  const [paymentTrends,  setPaymentTrends] = useState<any[]>([])
+  const [collectionRate, setCollectionRate] = useState<CollectionRate | null>(null)
+  const [funnel,         setFunnel]        = useState<FunnelStage[]>([])
+  const [priorityBal,    setPriorityBal]   = useState<PriorityBalance[]>([])
+  const [msgEffect,      setMsgEffect]     = useState<MsgEffectRow[]>([])
+  const [paymentTrends,  setPaymentTrends] = useState<PaymentTrendRow[]>([])
   const [carrierPerf,    setCarrierPerf]   = useState<CarrierPerfRow[]>([])
   const [practicePerf, setPracticePerf]   = useState<{
     openArTotal: number
@@ -426,29 +543,32 @@ export default function Analytics() {
     if (!practiceId) return
     setLoading(true)
     setError(null)
-    Promise.all([
-      apiFetch(`/api/analytics/collection-rate?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/stage-funnel?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/priority-balances?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/message-effectiveness?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/payment-trends?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/carrier-performance?practiceId=${practiceId}`),
-      apiFetch(`/api/analytics/practice-performance?practiceId=${practiceId}`),
-    ])
+    const endpoints = [
+      `/api/analytics/collection-rate?practiceId=${practiceId}`,
+      `/api/analytics/stage-funnel?practiceId=${practiceId}`,
+      `/api/analytics/priority-balances?practiceId=${practiceId}`,
+      `/api/analytics/message-effectiveness?practiceId=${practiceId}`,
+      `/api/analytics/payment-trends?practiceId=${practiceId}`,
+      `/api/analytics/carrier-performance?practiceId=${practiceId}`,
+      `/api/analytics/practice-performance?practiceId=${practiceId}`,
+    ] as const
+    Promise.all(endpoints.map((url) => apiFetch(url)))
       .then(async (rs) => {
         const parsed = await Promise.all(
           rs.map(async (r) => {
             const data = await parseApiJson(r)
-            if (!r.ok) {
-              throw new Error((data as { error?: string }).error || 'Analytics request failed')
-            }
-            return data
+            return { ok: r.ok, data, status: r.status }
           }),
         )
-        return parsed
-      })
-      .then((results) => {
-        const [col, fun, pri, eff, trends, car, perf] = results as [
+        const failed = parsed.filter((p) => !p.ok)
+        if (failed.length === parsed.length) {
+          throw new Error(
+            (failed[0]?.data as { error?: string })?.error || 'Analytics unavailable',
+          )
+        }
+        const [col, fun, pri, eff, trends, car, perf] = parsed.map((p) =>
+          p.ok ? p.data : {},
+        ) as [
           Record<string, unknown>,
           { funnel?: unknown[] },
           { priorityBalances?: unknown[] },
@@ -457,13 +577,22 @@ export default function Analytics() {
           { performance?: CarrierPerfRow[] },
           { success?: boolean; data?: typeof practicePerf },
         ]
+        // @ts-ignore — col shape validated at runtime; API response typed loosely
         setCollectionRate(col)
+        // @ts-ignore
         setFunnel(fun.funnel ?? [])
+        // @ts-ignore
         setPriorityBal(pri.priorityBalances ?? [])
+        // @ts-ignore
         setMsgEffect(eff.effectiveness ?? [])
+        // @ts-ignore
         setPaymentTrends(trends.trends ?? [])
+        // @ts-ignore
         setCarrierPerf(car.performance ?? [])
         setPracticePerf(perf.data ?? null)
+        if (failed.length > 0) {
+          setError('Some legacy analytics sections are unavailable; insurance metrics below are still shown.')
+        }
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -474,9 +603,9 @@ export default function Analytics() {
   const hrsSaved    = hrsFromCalls(callsPlaced)
   const roi         = collectionRate
     ? `${(((collectionRate.totalCollected - 500) / 500) * 100).toFixed(0)}%`
-    : '—'
+    : 'N/A'
 
-  const lineData = paymentTrends.map((t: any) => ({
+  const lineData = paymentTrends.map((t) => ({
     label: new Date(t.week).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }),
     value: t.totalAmount ?? 0,
   }))
@@ -486,11 +615,21 @@ export default function Analytics() {
       <div className="page-enter p-6 space-y-6 max-w-[1400px]">
 
         {/* Page header */}
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Analytics</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Insurance claims recovery, time saved, and collection performance
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Analytics</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Insurance claims recovery, time saved, and collection performance
+            </p>
+          </div>
+          {practiceId && (
+            <a
+              href={resolveApiUrl(`/api/analytics/practice-performance/export?practiceId=${encodeURIComponent(practiceId)}`)}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Export CSV
+            </a>
+          )}
         </div>
 
         {practicePerf && (
@@ -538,7 +677,7 @@ export default function Analytics() {
         {/* ── Patient AR analytics ──────────────────────────────────────── */}
         <div>
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Patient AR — Collection Performance
+            Patient AR, Collection Performance
           </h2>
         </div>
 
@@ -588,9 +727,9 @@ export default function Analytics() {
 
           {funnel.length > 0 && (
             <Card>
-              <CardHeader title="Collection Funnel" subtitle="Balances by stage — where drop-offs occur" />
+              <CardHeader title="Collection Funnel" subtitle="Balances by stage, where drop-offs occur" />
               <BarChart
-                data={funnel.map((s: any) => ({
+                data={funnel.map((s) => ({
                   label: s.stage.replace(/_/g, ' ').slice(0, 8),
                   value: s.count,
                   color: s.dropOff > 0 ? '#f59e0b' : '#0F6E56',
@@ -654,7 +793,7 @@ export default function Analytics() {
             <Card>
               <CardHeader title="Top Priority Balances" subtitle="Ranked by age × amount" />
               <div className="space-y-2">
-                {priorityBal.slice(0, 8).map((b: any, i: number) => (
+                {priorityBal.slice(0, 8).map((b, i) => (
                   <div key={b.id} className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                     <span className={`text-xs font-bold w-6 text-center ${i < 3 ? 'text-red-500' : 'text-amber-500'}`}>
                       #{i + 1}
@@ -677,7 +816,7 @@ export default function Analytics() {
             <Card>
               <CardHeader title="Message Effectiveness" subtitle="Payment rates by message type" />
               <div className="space-y-3">
-                {msgEffect.map((m: any) => (
+                {msgEffect.map((m) => (
                   <div key={m.messageType} className="flex items-center gap-3">
                     <span className="text-xs font-medium text-gray-600 dark:text-gray-300 w-28 truncate">
                       {m.messageType}

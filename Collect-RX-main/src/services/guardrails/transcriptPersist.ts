@@ -1,5 +1,5 @@
-import { prisma } from '../../../server';
-import { VapiWebhookPayload } from '../../../vapi/client';
+import { prisma } from '../../lib/prisma';
+import { VapiWebhookPayload } from '../../vapi/client';
 import { TranscriptPersistResult } from './types';
 
 export async function persistTranscriptText(
@@ -8,7 +8,7 @@ export async function persistTranscriptText(
 ): Promise<TranscriptPersistResult> {
   try {
     const callAttempt = await prisma.callAttempt.findUnique({
-      where: { vapi_call_id: vapiCallId },
+      where: { vapiCallId },
       select: { id: true },
     });
 
@@ -25,7 +25,7 @@ export async function persistTranscriptText(
 
     await prisma.callAttempt.update({
       where: { id: callAttempt.id },
-      data: { transcript_text: transcriptText },
+      data: { transcriptText },
     });
 
     return {

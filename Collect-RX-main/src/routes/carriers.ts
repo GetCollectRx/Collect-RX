@@ -10,14 +10,16 @@ import { Router, Request, Response } from 'express';
 import { CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CARRIER_CONFIGS } from '../carriers/adapter';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { carrierUnblockBodySchema, formatZodError } from '../server/validation/zodSchemas.js';
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/carriers/health
@@ -99,9 +101,6 @@ router.get('/health', async (req: Request, res: Response) => {
       };
     }
 
-    let totalDurationSeconds = 0;
-    let callsWithDuration = 0;
-
     for (const a of attempts) {
       const cid = a.claim.carrierId;
       if (!stats[cid]) continue;
@@ -110,9 +109,6 @@ router.get('/health', async (req: Request, res: Response) => {
       if (a.outcome === 'RESOLVED') stats[cid].resolvedCalls++;
       if (a.carrierBlockDetected) stats[cid].blockDetections++;
       if (a.durationSeconds) {
-        totalDurationSeconds += a.durationSeconds;
-        callsWithDuration++;
-        // Update avg hold with actual data
         stats[cid].avgHoldMinutes = Math.round(
           (stats[cid].avgHoldMinutes + a.durationSeconds / 60) / 2,
         );
@@ -133,7 +129,7 @@ router.get('/health', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /carriers/health]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -154,15 +150,11 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: `Unknown carrier: ${carrierId}` });
     }
 
-    const { resumedBy, notes, practiceId: bodyPracticeId } = req.body as {
-      resumedBy?: string;
-      notes?: string;
-      practiceId?: string;
-    };
-
-    if (!resumedBy) {
-      return res.status(400).json({ success: false, error: 'resumedBy is required' });
+    const parsed = carrierUnblockBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: formatZodError(parsed.error) });
     }
+    const { resumedBy, notes, practiceId: bodyPracticeId } = parsed.data;
 
     const sessionPid = practiceIdFromSession(req);
     if (queryPracticeConflictsSession(req, bodyPracticeId)) {
@@ -212,7 +204,7 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[POST /carriers/:id/unblock]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

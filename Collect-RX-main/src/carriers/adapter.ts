@@ -33,6 +33,27 @@ export interface CarrierConfig {
   isClearinghouse: boolean;
   /** IVR navigation hints for IVR_Navigator agent */
   ivrHints: string[];
+  /**
+   * Maximum age (days) of a claim that can still be electronically submitted/corrected.
+   * Sun Life updated to 365 days (electronic) effective 2026.
+   */
+  maxRecoverableAgeDays?: number;
+  /**
+   * Display alias used by IVR_Navigator and Claims_Agent in voice interactions.
+   * When set, agents use this name instead of displayName (e.g. Beneva vs La Capitale).
+   */
+  ivrAlias?: string;
+  /**
+   * CDAnet Transaction 23 (PreDetermination EOB) support.
+   * When true, the system can request an instant electronic adjudication bypass
+   * via Tx23 rather than initiating a full IVR call for status.
+   */
+  supportsTransaction23?: boolean;
+  /**
+   * When true, the CallQueue must attempt a portal-based status check
+   * (e.g. providerConnect) before dispatching a Vapi voice call.
+   */
+  portalFirstDispatch?: boolean;
 }
 
 export interface DispatchGuard {
@@ -52,6 +73,8 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
     minWaitDays: 32,
     avgHoldMinutes: 18,
     isClearinghouse: false,
+    // Updated 2026: electronic claim age limit extended from 30 to 365 days (carrier ID 000016)
+    maxRecoverableAgeDays: 365,
     ivrHints: ['Press 2 for dental claims', 'Enter group number, then member ID'],
   },
   canada_life: {
@@ -61,6 +84,8 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
     minWaitDays: 32,
     avgHoldMinutes: 22,
     isClearinghouse: false,
+    // Portal-first: attempt providerConnect EOB/status lookup before Vapi dispatch (carrier ID 000011)
+    portalFirstDispatch: true,
     ivrHints: ['Press 3 for claim status', 'Enter plan number followed by pound'],
   },
   manulife: {
@@ -105,6 +130,78 @@ export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
 };
 
 // ---------------------------------------------------------------------------
+// TELUS TPA supplementary configs
+//
+// These are the underlying TPAs accessed via TELUS AdjudiCare (clearinghouse).
+// Carrier IDs match the numeric IDs used in CDAnet/ITRANS.
+// ---------------------------------------------------------------------------
+
+export interface TelusTpaConfig {
+  /** CDAnet carrier numeric ID */
+  carrierId: string;
+  /** Official current name */
+  displayName: string;
+  /**
+   * Display alias used by IVR_Navigator / Claims_Agent in voice interactions.
+   * Set when the carrier recently rebranded (e.g. La Capitale → Beneva).
+   */
+  ivrAlias?: string;
+  /**
+   * CDAnet Transaction 23 (PreDetermination EOB) support for instant
+   * electronic adjudication bypass — no IVR call needed.
+   */
+  supportsTransaction23?: boolean;
+}
+
+/**
+ * TPA-level overrides for carriers accessed through TELUS AdjudiCare.
+ * Keyed by CDAnet carrier numeric ID string.
+ */
+export const TELUS_TPA_CONFIGS: Record<string, TelusTpaConfig> = {
+  // Beneva (ID 600502) — rebranded from La Capitale in 2023.
+  // IVR_Navigator and Claims_Agent must use "Beneva" in all interactions.
+  '600502': {
+    carrierId: '600502',
+    displayName: 'Beneva',
+    ivrAlias: 'Beneva',   // Never say "La Capitale" — brand name is now Beneva
+  },
+
+  // Industrial Alliance (ID 000060) — supports Tx23 PreDetermination EOB.
+  // Use electronic adjudication bypass before falling back to IVR.
+  '000060': {
+    carrierId: '000060',
+    displayName: 'Industrial Alliance',
+    supportsTransaction23: true,
+  },
+
+  // Saskatchewan Blue Cross (ID 000096) — supports Tx23 PreDetermination EOB.
+  '000096': {
+    carrierId: '000096',
+    displayName: 'Saskatchewan Blue Cross',
+    supportsTransaction23: true,
+  },
+};
+
+/**
+ * Resolve the IVR display name for a TPA carrier.
+ * Returns the ivrAlias if set, otherwise displayName.
+ * Use this in all voice agent prompts — never hardcode carrier names.
+ */
+export function getTpaDisplayName(cdanetCarrierId: string): string {
+  const cfg = TELUS_TPA_CONFIGS[cdanetCarrierId];
+  if (!cfg) return cdanetCarrierId;
+  return cfg.ivrAlias ?? cfg.displayName;
+}
+
+/**
+ * Check whether a TPA supports Tx23 electronic adjudication bypass.
+ * When true, attempt Tx23 before queuing a Vapi voice call.
+ */
+export function tpaSupportsTransaction23(cdanetCarrierId: string): boolean {
+  return TELUS_TPA_CONFIGS[cdanetCarrierId]?.supportsTransaction23 === true;
+}
+
+// ---------------------------------------------------------------------------
 // CARRIER_BLOCK pre-dispatch check
 //
 // This is the highest-risk guard. Must be called before EVERY call dispatch.
@@ -143,18 +240,81 @@ export async function checkCarrierBlock(
 }
 
 /**
+ * Hard gate: practice must be authorized to call this carrier before dispatch.
+ *   - Voice agent enabled for the practice
+ *   - Carrier enabled in practice settings
+ *   - Billing Agent Authorization Letter (BAAL) on file
+ *   - Provider number configured for the carrier
+ */
+export async function checkCarrierAuthorizationGate(
+  prisma: PrismaClient,
+  practiceId: string,
+  carrierId: CarrierId,
+): Promise<DispatchGuard> {
+  const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+  const settings = await getPracticeSettings(prisma, practiceId);
+  const displayName = CARRIER_CONFIGS[carrierId]?.displayName ?? carrierId;
+
+  if (!settings.voiceAgentEnabled) {
+    return {
+      allowed: false,
+      reason:
+        'Voice agent is disabled for this practice. Enable it in Practice Settings before placing carrier calls.',
+    };
+  }
+
+  const carrierConfig = settings.carrierConfigs.find((c) => c.carrierId === carrierId);
+  if (!carrierConfig) {
+    return {
+      allowed: false,
+      reason: `${displayName} is not configured for this practice. Add carrier settings before calling.`,
+    };
+  }
+
+  if (!carrierConfig.enabled) {
+    return {
+      allowed: false,
+      reason: `${displayName} is disabled in Practice Settings. Enable the carrier before calling.`,
+    };
+  }
+
+  if (!carrierConfig.authorizationSubmitted) {
+    return {
+      allowed: false,
+      reason:
+        `Billing Agent Authorization Letter (BAAL) not on file for ${displayName}. ` +
+        'Submit authorization in Practice Settings before calling this carrier.',
+    };
+  }
+
+  const providerNumber = carrierConfig.providerNumber?.trim();
+  if (!providerNumber) {
+    return {
+      allowed: false,
+      reason:
+        `Provider number not configured for ${displayName}. ` +
+        'Add your carrier provider number in Practice Settings before calling.',
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Days outstanding (< 30 → reject, > 90 → escalate)
- *   4. TELUS-specific minimum days (when applicable)
- *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   4. Days outstanding (< 30 → reject, > 90 → escalate)
+ *   5. TELUS-specific minimum days (when applicable)
+ *   6. Max attempts (>= 3 → reject)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
   params: {
     practiceId: string;
+    claimId: string;
     carrierId: CarrierId;
     daysOutstanding: number;
     attemptsSoFar: number;
@@ -163,7 +323,7 @@ export async function validateDispatch(
     claimStatus: ClaimStatus;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -178,28 +338,39 @@ export async function validateDispatch(
     };
   }
 
-  // 3. Claims under 30 days old — do not queue
+  const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
+  const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
+  if (!recoveryGate.allowed) {
+    return recoveryGate;
+  }
+
+  const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
+  if (!authGate.allowed) {
+    return authGate;
+  }
+
+  // 4. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
     return { allowed: false, reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 4. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
+  // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
     return { allowed: false, reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
-  // 5. Claims over 90 days — escalate to human, skip AI
+  // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 6. Max 3 attempts
+  // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   const easternHour = getEasternHour(callTime);
   const dayOfWeek = getEasternDayOfWeek(callTime);
@@ -260,9 +431,13 @@ export function isWithinCallWindow(date = new Date()): boolean {
 
 export const carrierAdapter = {
   CARRIER_CONFIGS,
+  TELUS_TPA_CONFIGS,
   checkCarrierBlock,
+  checkCarrierAuthorizationGate,
   validateDispatch,
   getTelusTpa,
+  getTpaDisplayName,
+  tpaSupportsTransaction23,
   isWithinCallWindow,
 } as const;
 

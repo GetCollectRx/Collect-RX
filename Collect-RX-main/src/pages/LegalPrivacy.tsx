@@ -13,7 +13,7 @@ export default function LegalPrivacy() {
       </header>
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-4 text-sm leading-relaxed">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Privacy policy</h1>
-        <p className="text-gray-500 dark:text-gray-400">Last updated: April 25, 2026 (template — have counsel review before production)</p>
+        <p className="text-gray-500 dark:text-gray-400">Last updated: April 25, 2026 (template, have counsel review before production)</p>
         <p>
           This policy describes how CollectRx handles information in the product. Your practice is typically the
           “organization” using the service; patients should also receive notices from you as required by law.

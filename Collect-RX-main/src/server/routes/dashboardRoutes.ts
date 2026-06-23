@@ -1,16 +1,21 @@
 import { Router, type Request, type Response } from 'express';
 import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
+import { computeCarrierStats } from '../services/platformReports.js';
+import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
+import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { getPracticePmsContext } from '../pms/practicePmsContext.js';
+import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApi(router);
 
 const OPEN_STATUSES: ClaimStatus[] = [
   'PENDING',
@@ -45,16 +50,22 @@ router.get('/stats', async (req: Request, res: Response) => {
       _count: true,
     });
 
-    const lastImport = await prisma.pmsImportRun.findFirst({
-      where: { practiceId },
-      orderBy: { startedAt: 'desc' },
-      select: {
-        startedAt: true,
-        status: true,
-        pmsSource: true,
-        validationPassed: true,
-      },
-    });
+    const [lastImport, pms] = await Promise.all([
+      prisma.pmsImportRun.findFirst({
+        where: { practiceId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          startedAt: true,
+          status: true,
+          pmsSource: true,
+          validationPassed: true,
+          recordsImported: true,
+          recordsTotal: true,
+          recordsFailed: true,
+        },
+      }),
+      getPracticePmsContext(prisma, practiceId),
+    ]);
 
     const claims = await prisma.insuranceClaim.findMany({
       where: { practiceId, status: { in: OPEN_STATUSES } },
@@ -115,22 +126,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
 
-    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
-    const payments = await prisma.paymentEvent.findMany({
-      where: { balance: { practiceId }, paidAt: { gte: weekAgo } },
-      include: { balance: { include: { patient: true } } },
-      orderBy: { paidAt: 'desc' },
-      take: 12,
-    });
-
-    let revenueToday = 0;
+    const revenueToday = 0;
     let revenueThisWeek = 0;
-    const todayMs = startOfUtcDay.getTime();
-    for (const p of payments) {
-      const cents = p.amountCents / 100;
-      revenueThisWeek += cents;
-      if (p.paidAt.getTime() >= todayMs) revenueToday += cents;
-    }
 
     const callsPlacedToday = await prisma.callAttempt.count({
       where: {
@@ -148,19 +145,25 @@ router.get('/stats', async (req: Request, res: Response) => {
       name: CARRIER_CONFIGS[b.carrierId]?.displayName ?? b.carrierId,
     }));
 
-    const stripeAcct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
-    const patientPaymentsReady = Boolean(
-      stripeAcct?.chargesEnabled && process.env.STRIPE_SECRET_KEY?.trim(),
-    );
-
-    const recentPayments = payments.slice(0, 8).map((p) => ({
-      id: p.id,
-      amount: p.amountCents / 100,
-      paidAt: p.paidAt.toISOString(),
-      patientLabel: p.balance.patient?.displayName?.trim() || 'Patient',
-    }));
+    let decliningCarriers: { code: string; name: string; successRate: number }[] = [];
+    try {
+      const { stats } = await computeCarrierStats(prisma, practiceId, '30d');
+      decliningCarriers = stats
+        .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
+        .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
+    } catch (carrierStatsErr) {
+      console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
+    }
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
+
+    let recoveryMetrics = null;
+    try {
+      recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
+      revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
+    } catch (recoveryErr) {
+      console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
+    }
 
     return res.json({
       totalOpenAR: useUnifiedAr ? unifiedOpenAR : totalOpenAR,
@@ -170,22 +173,29 @@ router.get('/stats', async (req: Request, res: Response) => {
       openWorkItemCount: workAgg._count,
       insuranceOpenAR: totalOpenAR,
       unifiedAr: useUnifiedAr,
+      recoveryMetrics,
+      pms,
       lastPmsImport: lastImport
         ? {
             at: lastImport.startedAt.toISOString(),
             status: lastImport.status,
             source: lastImport.pmsSource,
+            sourceDisplayName: vendorDisplayName(
+              normalizePmsVendorId(lastImport.pmsSource) ?? 'other',
+            ),
             validationPassed: lastImport.validationPassed,
+            recordsImported: lastImport.recordsImported,
+            recordsTotal: lastImport.recordsTotal,
+            recordsFailed: lastImport.recordsFailed,
           }
         : null,
       claimsResolvedToday,
       revenueToday,
       revenueThisWeek,
       telephony: { callsPlacedToday, activeCalls: [] as unknown[] },
-      recentPayments,
       operationalAlerts: {
         blockedCarriers,
-        patientPaymentsReady,
+        decliningCarriers,
       },
     });
   } catch (err) {
@@ -196,7 +206,48 @@ router.get('/stats', async (req: Request, res: Response) => {
           'Database schema is missing CollectRx tables. On this machine run: npx prisma migrate deploy (from Collect-RX-main with DATABASE_URL set).',
       });
     }
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/ar-close', async (req: Request, res: Response) => {
+  try {
+    const q = typeof req.query.practiceId === 'string' ? req.query.practiceId.trim() : '';
+    if (queryPracticeConflictsSession(req, q || undefined)) {
+      return res.status(403).json({ error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const limit = Math.min(60, parseInt(String(req.query.limit ?? '30'), 10) || 30);
+    const runs = await prisma.arCloseRun.findMany({
+      where: { practiceId },
+      orderBy: { closeDate: 'desc' },
+      take: limit,
+    });
+    return res.json({
+      success: true,
+      data: runs.map((r) => ({
+        closeDate: r.closeDate.toISOString().slice(0, 10),
+        queueOpenTotal: Number(r.queueOpenTotal),
+        paymentsReceived: Number(r.paymentsReceived),
+        variancePct: r.variancePct,
+        validationPassed: r.validationPassed,
+      })),
+    });
+  } catch (err) {
+    console.error('[GET /dashboard/ar-close]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/ar-close/run', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { runDailyArCloseForPractice } = await import('../jobs/dailyArClose.js');
+    const result = await runDailyArCloseForPractice(prisma, practiceId);
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[POST /dashboard/ar-close/run]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 

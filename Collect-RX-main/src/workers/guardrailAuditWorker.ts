@@ -1,5 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { logger } from '../server/observability/logger';
+import { logLine } from '../server/observability/logger';
+import { applyCarrierBlock } from '../server/frontDesk/carrierBlockService';
 
 const SIDECAR_URL = process.env.SIDECAR_URL || 'http://localhost:8000';
 const SIDECAR_SHARED_SECRET = process.env.SIDECAR_SHARED_SECRET || 'dev-secret';
@@ -59,16 +61,18 @@ async function processOutboxRow(
   callAttemptId: string
 ): Promise<boolean> {
   try {
-    // Fetch the call attempt with all needed context
     const attempt = await prisma.callAttempt.findUnique({
       where: { id: callAttemptId },
       select: {
         id: true,
-        transcript_text: true,
-        carrier_block_detected: true,
+        vapiCallId: true,
+        transcriptText: true,
+        carrierBlockDetected: true,
         outcome: true,
         claim: {
           select: {
+            id: true,
+            practiceId: true,
             carrierId: true,
           },
         },
@@ -76,24 +80,24 @@ async function processOutboxRow(
     });
 
     if (!attempt) {
-      logger.warn(`[guardrail-worker] CallAttempt ${callAttemptId} not found`);
-      await prisma.guardrail_audit_outbox.update({
+      logLine('warn', `[guardrail-worker] CallAttempt ${callAttemptId} not found`);
+      await prisma.guardrailAuditOutbox.update({
         where: { id: outboxId },
         data: {
-          processed_at: new Date(),
-          last_error: 'CallAttempt not found',
+          processedAt: new Date(),
+          lastError: 'CallAttempt not found',
         },
       });
       return true; // Considered "processed" even though failed
     }
 
-    if (!attempt.transcript_text) {
-      logger.warn(`[guardrail-worker] No transcript text for ${callAttemptId}`);
-      await prisma.guardrail_audit_outbox.update({
+    if (!attempt.transcriptText) {
+      logLine('warn', `[guardrail-worker] No transcript text for ${callAttemptId}`);
+      await prisma.guardrailAuditOutbox.update({
         where: { id: outboxId },
         data: {
-          processed_at: new Date(),
-          last_error: 'No transcript text',
+          processedAt: new Date(),
+          lastError: 'No transcript text',
         },
       });
       return true;
@@ -102,100 +106,73 @@ async function processOutboxRow(
     // Call the sidecar
     const auditResult = await callSidecar({
       callAttemptId: attempt.id,
-      transcriptText: attempt.transcript_text,
+      transcriptText: attempt.transcriptText,
       carrierId: attempt.claim.carrierId,
       outcome: attempt.outcome || 'UNKNOWN',
       rulesVersion: '1.0.0',
     });
 
     // Write audit result to database
-    await prisma.guardrail_audit.create({
+    await prisma.guardrailAudit.create({
       data: {
-        call_attempt_id: attempt.id,
-        rules_version: auditResult.rules_version,
-        risk_score: auditResult.risk_score,
-        violations_json: auditResult.violations,
-        signals_json: auditResult.signals,
-        sidecar_latency_ms: auditResult.sidecar_latency_ms,
+        callAttemptId: attempt.id,
+        rulesVersion: auditResult.rules_version,
+        riskScore: auditResult.risk_score,
+        violationsJson: auditResult.violations as unknown as Prisma.InputJsonValue,
+        signalsJson: auditResult.signals as unknown as Prisma.InputJsonValue,
+        sidecarLatencyMs: auditResult.sidecar_latency_ms,
       },
     });
 
     // If sidecar detected a carrier block that regex missed, fire CarrierBlockEvent
-    if (auditResult.signals.carrier_block && !attempt.carrier_block_detected) {
-      logger.info(
+    if (auditResult.signals.carrier_block && !attempt.carrierBlockDetected) {
+      logLine(
+        'info',
         `[guardrail-worker] Retroactive carrier block detected for call ${callAttemptId}`
       );
 
-      const claimData = await prisma.insuranceClaim.findUnique({
-        where: { id: attempt.claim.id || '' },
-        select: { practiceId: true, id: true },
+      await applyCarrierBlock(prisma, {
+        practiceId: attempt.claim.practiceId,
+        carrierId: attempt.claim.carrierId,
+        vapiCallId: attempt.vapiCallId,
+        reason: `Detected by guardrails audit (post-call) for call ${callAttemptId}`,
+        hangVapi: false,
       });
-
-      if (claimData) {
-        await prisma.$transaction(async (tx) => {
-          // Write the event
-          await tx.carrier_block_event.create({
-            data: {
-              practice_id: claimData.practiceId,
-              carrier_id: attempt.claim.carrierId,
-              notes: `Detected by guardrails audit (post-call) for call ${callAttemptId}`,
-            },
-          });
-
-          // Suspend all pending calls for this practice+carrier
-          await tx.call_queue.updateMany({
-            where: {
-              status: 'PENDING',
-              claim: {
-                practiceId: claimData.practiceId,
-                carrierId: attempt.claim.carrierId,
-              },
-            },
-            data: { status: 'BLOCKED' },
-          });
-
-          // Block the triggering claim
-          await tx.insurance_claim.update({
-            where: { id: claimData.id },
-            data: { status: 'BLOCKED' },
-          });
-        });
-      }
     }
 
     // Mark outbox row as processed
-    await prisma.guardrail_audit_outbox.update({
+    await prisma.guardrailAuditOutbox.update({
       where: { id: outboxId },
-      data: { processed_at: new Date() },
+      data: { processedAt: new Date() },
     });
 
     return true;
   } catch (err) {
-    logger.error(`[guardrail-worker] Error processing outbox row: ${err}`);
+    logLine('error', `[guardrail-worker] Error processing outbox row: ${err}`);
 
     // Increment attempts and record error
-    const attempts = await prisma.guardrail_audit_outbox.findUnique({
+    const row = await prisma.guardrailAuditOutbox.findUnique({
       where: { id: outboxId },
       select: { attempts: true },
     });
 
-    const nextAttempts = (attempts?.attempts || 0) + 1;
+    const nextAttempts = (row?.attempts || 0) + 1;
     const errorMsg = err instanceof Error ? err.message : String(err);
 
-    await prisma.guardrail_audit_outbox.update({
+    await prisma.guardrailAuditOutbox.update({
       where: { id: outboxId },
       data: {
         attempts: nextAttempts,
-        last_error: errorMsg,
+        lastError: errorMsg,
       },
     });
 
     // Give up after 3 attempts
     if (nextAttempts >= 3) {
-      logger.error(`[guardrail-worker] Max attempts reached for outbox ${outboxId}`);
-      await prisma.guardrail_audit_outbox.update({
+      logLine('error', `[guardrail-worker] Max attempts reached for outbox ${outboxId}`);
+      await prisma.guardrailAuditOutbox.update({
         where: { id: outboxId },
-        data: { processed_at: new Date() },
+        data: { processedAt: new Date() },
       });
       return true;
     }
@@ -205,41 +182,28 @@ async function processOutboxRow(
 }
 
 export async function drainGuardrailAuditOutbox(): Promise<void> {
-  logger.info('[guardrail-worker] Starting drain cycle...');
+  logLine('info', '[guardrail-worker] Starting drain cycle...');
 
   try {
     // Grab the next unprocessed row
-    const row = await prisma.guardrail_audit_outbox.findFirst({
-      where: { processed_at: null },
-      orderBy: { enqueued_at: 'asc' },
+    const row = await prisma.guardrailAuditOutbox.findFirst({
+      where: { processedAt: null },
+      orderBy: { enqueuedAt: 'asc' },
     });
 
     if (!row) {
-      logger.debug('[guardrail-worker] No pending audit jobs');
+      logLine('debug', '[guardrail-worker] No pending audit jobs');
       return;
     }
 
-    const success = await processOutboxRow(row.id, row.call_attempt_id);
+    const success = await processOutboxRow(row.id, row.callAttemptId);
 
     if (success) {
-      logger.info(`[guardrail-worker] Processed outbox row ${row.id}`);
+      logLine('info', `[guardrail-worker] Processed outbox row ${row.id}`);
     } else {
-      logger.warn(`[guardrail-worker] Failed to process, will retry: ${row.id}`);
+      logLine('warn', `[guardrail-worker] Failed to process, will retry: ${row.id}`);
     }
   } catch (err) {
-    logger.error(`[guardrail-worker] Drain error: ${err}`);
+    logLine('error', `[guardrail-worker] Drain error: ${err}`);
   }
-}
-
-export async function startGuardrailAuditWorker(): Promise<void> {
-  logger.info('[guardrail-worker] Starting guardrail audit worker');
-
-  // Drain once per minute
-  const interval = setInterval(drainGuardrailAuditOutbox, 60_000);
-
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    logger.info('[guardrail-worker] Shutting down');
-    clearInterval(interval);
-  });
 }

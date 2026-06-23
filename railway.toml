@@ -1,9 +1,9 @@
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-releaseCommand = "npx prisma migrate deploy --schema=prisma/schema.prisma"
+releaseCommand = "npx prisma migrate deploy"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"

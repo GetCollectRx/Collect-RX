@@ -8,9 +8,12 @@
     "Collect-RX-main"
   ],
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
+    "start": "npm run start -w dental-ar-system",
     "dev": "npm run dev:collectrx",
     "dev:collectrx": "npm run dev -w dental-ar-system",
+    "dev:backend": "npm run dev:backend -w dental-ar-system",
+    "dev:frontend": "npm run dev:frontend -w dental-ar-system",
+    "worker": "npm run worker -w dental-ar-system",
     "dev:electron": "npm run dev:electron -w dental-ar-system",
     "build:collectrx": "npm run build -w dental-ar-system",
     "test:collectrx": "npm run test -w dental-ar-system",
@@ -38,6 +41,7 @@
   "author": "CollectRx",
   "license": "ISC",
   "dependencies": {
+    "@clickhouse/client": "^1.4.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

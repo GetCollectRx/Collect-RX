@@ -2,31 +2,61 @@
 <html lang="en" class="">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function () {
+        if (location.hostname === 'collectrx.ca') {
+          location.replace('https://www.collectrx.ca' + location.pathname + location.search + location.hash);
+        }
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="crx-public-api-origin" content="" />
-    <title>CollectRx — Dental Insurance AR | Stop Leaving Money on the Table</title>
-    <meta name="description" content="AI-powered dental insurance accounts-receivable automation" />
+    <title>CollectRx: Dental Insurance AR | Stop Leaving Money on the Table</title>
+    <meta name="description" content="AI-powered dental insurance accounts-receivable automation for Canadian dental practices. CollectRx calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and TELUS AdjudiCare so your front desk doesn't have to." />
+    <link rel="canonical" href="https://www.collectrx.ca/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="google-site-verification" content="OW5yYlAIY4fg5kLVvOfizVFLTnX7qZqlvpKcYz1Uiu4" />
+    <meta name="theme-color" content="#0f9d58" />
+    <link rel="icon" type="image/svg+xml" href="/collectrx-icon.svg" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CollectRx" />
+    <meta property="og:url" content="https://www.collectrx.ca/" />
+    <meta property="og:title" content="CollectRx: Dental Insurance AR | Stop Leaving Money on the Table" />
+    <meta property="og:description" content="AI-powered dental insurance accounts-receivable automation for Canadian dental practices. CollectRx calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and TELUS AdjudiCare so your front desk doesn't have to." />
+    <meta property="og:image" content="https://www.collectrx.ca/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_CA" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CollectRx: Dental Insurance AR | Stop Leaving Money on the Table" />
+    <meta name="twitter:description" content="AI-powered dental insurance accounts-receivable automation for Canadian dental practices. CollectRx calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and TELUS AdjudiCare so your front desk doesn't have to." />
+    <meta name="twitter:image" content="https://www.collectrx.ca/og-image.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       // ── CollectRx Design System ──────────────────────────────────────────────
-      // Primary: #0F6E56  (PRD: "CollectRx Green — emerald")
-      // Source of truth: keep in sync with tailwind.config.ts (for npm builds)
+      // Primary: #0f9d58 — matches marketing site editorial green
+      // Source of truth: src/styles/brandTokens.css + tailwind.config.ts
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
             colors: {
               crx: {
-                50:  '#E8F5F0',
-                100: '#C5E8D9',
-                200: '#99D6BF',
-                300: '#66C3A3',
-                400: '#40B087',
-                500: '#0F6E56',   // PRIMARY
-                600: '#0B5B47',
+                50:  '#f0faf5',
+                100: '#d6f0e4',
+                200: '#a8dfc8',
+                300: '#6ec9a4',
+                400: '#2db872',
+                500: '#0f9d58',
+                600: '#0b5b47',
                 700: '#094938',
                 800: '#063629',
                 900: '#042419',
@@ -35,6 +65,8 @@
             },
             fontFamily: {
               sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              serif: ['Source Serif 4', 'Georgia', 'Times New Roman', 'serif'],
+              mono: ['DM Mono', 'ui-monospace', 'monospace'],
             },
             fontSize: {
               '2xs': ['0.625rem', { lineHeight: '0.875rem' }],

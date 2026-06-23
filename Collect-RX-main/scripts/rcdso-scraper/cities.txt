@@ -1,0 +1,51 @@
+# Ontario cities for RCDSO prospect scraping
+# Edit this list to focus on specific markets
+# Lines starting with # are ignored
+
+# Greater Toronto Area (highest density, highest priority)
+Toronto
+Mississauga
+Brampton
+Markham
+Vaughan
+Richmond Hill
+Oakville
+Burlington
+Pickering
+Ajax
+Whitby
+Newmarket
+Aurora
+Caledon
+Milton
+Halton Hills
+Georgina
+
+# Hamilton / Niagara
+Hamilton
+St. Catharines
+Niagara Falls
+
+# Waterloo Region
+Kitchener
+Waterloo
+Cambridge
+Guelph
+
+# Southwestern Ontario
+London
+Windsor
+Chatham
+
+# Central / Eastern Ontario
+Barrie
+Kingston
+Oshawa
+Clarington
+Belleville
+Peterborough
+
+# Northern Ontario (optional — lower density)
+Thunder Bay
+Sudbury
+Sault Ste. Marie

@@ -8,14 +8,15 @@
 import { Router, Request, Response } from 'express';
 import { CallOutcome, CarrierId } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../server/middleware/authenticate';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApi(router);
 
 // ---------------------------------------------------------------------------
 // GET /api/calls
@@ -92,7 +93,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /calls]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -127,7 +128,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     return res.json({ success: true, data: attempt });
   } catch (err) {
     console.error('[GET /calls/:id]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

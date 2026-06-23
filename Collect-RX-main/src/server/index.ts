@@ -7,25 +7,30 @@
 //   /api/insurance/*       insurance.ts  (claims, queue)
 //   /api/calls/*           calls.ts
 //   /api/carriers/*        carriers.ts
-//   /api/analytics/*       analytics.ts (insurance + patient AR KPIs)
-//   /api/balances*        balancesOutreachRoutes.ts (insurance Balance + outreach + POST /pay sim)
-//   /api/benefits/*       benefitsApi.ts (pre-treatment benefits + estimate)
-//   /api/patients/*        patientArApi.ts (patient balances, reminders, pay links)
+//   /api/analytics/*       analytics.ts (insurance KPIs)
+//   /api/telemetry/*       productTelemetry.ts (ClickHouse usage SDK — optional)
+//   /api/benefits/*        benefitsApi.ts (pre-treatment benefits + estimate)
 //   /api/dashboard/*       dashboardRoutes.ts (ops stats)
-//   /api/admin/*           adminRoutes.ts (settings, integrations, audit, CSV)
+//   /api/admin/*           adminRoutes.ts (settings, integrations, audit)
 //   /api/eligibility/*     eligibility.ts
 //   /api/cdcp/*            cdcp.ts (Phase 5: CDCP reconsideration, evidence gap, fee ceiling)
-//   /api/queue/*          queue.ts (priority scores + carrier-order persistence)
-//   /api/public/*        publicPatientPayRoutes.ts (public pay token, email unsubscribe — no auth)
+//   /api/queue/*           queue.ts (priority scores + carrier-order persistence)
+//   /api/billing/*         billingRoutes.ts (practice subscription billing)
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
-//   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (raw JSON body)
-//   /api/twilio/sms        twilio/inboundSms.ts (urlencoded — after body parsers)
+//   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (prospect engagement only)
+//
+// Removed (Practice→Insurance product — no patient-facing layer):
+//   /api/patients/*        patientArApi.ts
+//   /api/balances/*        balancesOutreachRoutes.ts
+//   /api/public/*          publicPatientPayRoutes.ts
+//   /api/twilio/sms        twilio/inboundSms.ts
+//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding)
 //
 // Safety:
 //   - Webhook route uses raw body parser (HMAC validation requires raw bytes)
 //   - All other routes use express.json()
 //   - Prisma client is singleton from lib/prisma.ts
-//   - piiVault.purgeExpired() runs on boot and hourly
+//   - claimsPiiVault.gc() runs on boot and hourly (main AES-256-GCM vault)
 //   - Rate limiting: standardLimiter on all /api/*, webhookLimiter on webhooks,
 //     healthLimiter on /health + /api/health/*, authLimiter (5/15min) on POST /api/auth/login
 //     (when REDIS_URL is set, limiters use Redis so counts are shared across API replicas)
@@ -34,27 +39,63 @@
 //   - VAPI_WEBHOOK_SECRET required in production — server refuses to start without it
 //   - SendGrid: SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY required in production (401 otherwise)
 //   - Stripe Connect onboard refresh/complete: ?v= HMAC (or same-practice JWT); see STRIPE_ONBOARD_RETURN_SECRET
+//   - PostgreSQL: in production DATABASE_URL must require TLS (sslmode=require or stricter); see databaseTls.ts
+//   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
+//   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
+//   - GET /api/health/metrics: deployment fingerprint redacted in production unless HEALTH_METRICS_TOKEN + Bearer header
+//   - EMR_SYNC_WEBHOOK_URL validated at boot (prod) and each outbox batch — https + non-internal host in production
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
+import { applyPostgresTlsToProcessEnv } from './databaseTls.js';
+
+// Before Prisma reads DATABASE_URL (Railway URLs often omit ?sslmode=require).
+applyPostgresTlsToProcessEnv();
+
 import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import https from 'node:https';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { prisma } from '../lib/prisma';
-import { piiVault } from '../services/pii-vault';
+// Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
+// H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
+// no longer imported here. The legacy tokenize/detokenize functions are orphaned
+// since prismaClaimImporter.ts was migrated to the main vault. handlePostCallAudioDeletion
+// and LLM_RESIDENCY_HEADERS from that file remain in use via their own direct imports
+// in vapiWebhook.ts and agentRunner.ts — those are unaffected.
+import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
+import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertPhiEncryptionAtRestConfigured } from './crypto/phiEncryptionKey.js';
+import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
+import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
+import { startOpsMonitor } from './observability/opsMonitor.js';
+import { runStartupScanOnBoot } from './observability/runStartupScan.js';
+import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
-  standardLimiter,
+  assertResourcePagesBuilt,
+  createResourceStaticMiddleware,
+} from './resourceStatic.js';
+import {
+  sessionStandardLimiter,
+  anonStandardLimiter,
   webhookLimiter,
   healthLimiter,
+  telemetryEventsLimiter,
 } from './middleware/rateLimiter';
+import productTelemetryRouter from './routes/productTelemetry.js';
+import { runTelemetryMigrations } from './productAnalytics/schema.js';
+import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickhouse.js';
 
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
+import { createGroupAdminRouter } from './routes/groupAdminRoutes';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
@@ -62,26 +103,59 @@ import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
-import { createPatientArApiRouter } from './routes/patientArApi';
-import { createBalancesOutreachRouter } from './routes/balancesOutreachRoutes';
-import { createPublicPatientPayRouter } from './routes/publicPatientPayRoutes';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
+import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
-import { stripeWebhookHandler, createStripeConnectRouter } from './routes/stripeApiRoutes';
+import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
+import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
+import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
 import { drainGuardrailAuditOutbox } from '../workers/guardrailAuditWorker.js';
-import { getMetrics } from './observability/metrics.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
-import { handleTwilioInboundSms } from './twilio/inboundSms.js';
+
+import { createFrontDeskRouter } from './routes/frontDeskApi.js';
+import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
+import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
+import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
+import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
+import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
+import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
+import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
+import { attachDeskWebSocket } from './frontDesk/deskWs.js';
+import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
+import { complianceRouter } from './routes/complianceRoutes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
+
+// Without these, an uncaught error anywhere (e.g. a background async path) kills the
+// process silently — Railway then just sees the healthcheck fail with no indication why.
+// Per Node's own guidance, the process is in an unknown state after either event, so we
+// log full detail for visibility in Railway logs and then exit so the platform restarts
+// the container cleanly, instead of leaving a half-broken process running.
+process.on('uncaughtException', (err) => {
+  console.error('[server] FATAL: uncaughtException —', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] FATAL: unhandledRejection —', reason);
+  process.exit(1);
+});
+
+// Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.hostname === 'collectrx.ca') {
+    return res.redirect(301, `https://www.collectrx.ca${req.url}`);
+  }
+  next();
+});
 
 // Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
 if (
@@ -89,8 +163,18 @@ if (
   process.env.TRUST_PROXY === 'true' ||
   process.env.NODE_ENV === 'production'
 ) {
-  app.set('trust proxy', 1);
+  app.set('trust proxy', true);
 }
+
+app.use(
+  helmet({
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 31536000, includeSubDomains: true, preload: false }
+        : false,
+    contentSecurityPolicy: false,
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VAPI_WEBHOOK_SECRET guard
@@ -117,6 +201,10 @@ try {
   console.error('[server] FATAL:', (e as Error).message);
   process.exit(1);
 }
+
+assertPostgresTlsInProduction();
+assertPhiEncryptionAtRestConfigured();
+assertEmrSyncWebhookUrlConfiguredAtBoot();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CORS — see corsAllowedOrigins.ts (collectrx.ca apex ↔ www mirrored when one is set)
@@ -155,16 +243,24 @@ app.post(
   makeSendgridEventWebhookHandler(prisma),
 );
 
+app.use(
+  '/api/webhooks/sendgrid-inbound',
+  webhookLimiter,
+  createSendgridInboundRouter(prisma),
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.post('/api/twilio/sms', webhookLimiter, (req, res, next) => {
-  handleTwilioInboundSms(req, res, prisma).catch(next);
-});
+app.use(
+  '/api/webhooks/demo-booking',
+  webhookLimiter,
+  createDemoBookingWebhookRouter(prisma),
+);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — excluded from /api rate limiting (tests + probes)
@@ -173,8 +269,14 @@ app.get('/health', healthLimiter, (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
 
-app.get('/api/health', healthLimiter, (_req: Request, res: Response) => {
-  res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
+app.get('/api/health', healthLimiter, async (_req: Request, res: Response) => {
+  const chOk = await pingClickHouse();
+  res.json({
+    status: 'ok',
+    ts: new Date().toISOString(),
+    service: 'collectrx-api',
+    clickhouse: chOk ? 'connected' : isClickHouseMockMode() ? 'mock' : 'unavailable',
+  });
 });
 
 app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response) => {
@@ -186,38 +288,55 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
 });
 
-app.get('/api/health/metrics', healthLimiter, (_req: Request, res: Response) => {
-  res.json({ success: true, metrics: getMetrics() });
+app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
+  res.json(buildPublicHealthMetricsBody(req));
 });
+
+// Product telemetry ingestion — higher limit than standard /api (SDK batches every 5 s).
+app.use('/api/telemetry/events', telemetryEventsLimiter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiting — baseline for all /api/* routes.
 // authLimiter (stricter) is applied inside authRoutes.ts on POST /login.
 // ─────────────────────────────────────────────────────────────────────────────
-app.use('/api', standardLimiter);
+app.use('/api', sessionStandardLimiter);
+app.use('/api', anonStandardLimiter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
-app.use('/api/stripe',     createStripeConnectRouter(prisma));
 app.use('/api/insurance',  insuranceRouter);
+app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
+app.use('/api/desk',       createFrontDeskRouter());
+app.use('/api/practices',  createPracticeReportsRouter());
+app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
+app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
-app.use('/api',            createPublicPatientPayRouter(prisma));
-app.use('/api',            createBalancesOutreachRouter(prisma));
+app.use('/api',            createEarlyAccessRouter(prisma));
 app.use('/api',            createBenefitsApiRouter(prisma));
-app.use('/api',            createPatientArApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
+app.use('/api/admin',      createPlatformPersonaAdminRouter());
+app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
+app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
+app.use('/api',            createCanadianExpansionRouter(prisma));
+// Compliance audit — platform_admin / auditor only
+app.use('/api/compliance', complianceRouter);
+
+// Autonomous agent runtime — structured outputs + escalation
+import agentRunsRouter from './routes/agentRunsRouter.js';
+app.use('/api/agent-runs', agentRunsRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve React frontend (SPA catch-all)
@@ -226,6 +345,10 @@ app.use('/api/cdcp',       createCdcpRouter(prisma));
 // ─────────────────────────────────────────────────────────────────────────────
 const distPath = new URL('../../dist', import.meta.url).pathname;
 const indexHtmlPath = new URL('../../dist/index.html', import.meta.url).pathname;
+
+if (process.env.NODE_ENV === 'production') {
+  assertResourcePagesBuilt(distPath);
+}
 
 let cachedSpaIndexHtml: string | null = null;
 
@@ -249,6 +372,7 @@ function getSpaIndexHtml(): string {
   return cachedSpaIndexHtml;
 }
 
+app.use(createResourceStaticMiddleware(distPath));
 app.use(express.static(distPath));
 app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {
@@ -268,7 +392,6 @@ app.use((_req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Global error handler
 // ─────────────────────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[server] Unhandled error:', err);
   res.status(500).json({
@@ -280,17 +403,20 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot (only when this file is the process entry — not when imported by tests)
 // ─────────────────────────────────────────────────────────────────────────────
+/** True when started via `tsx src/server/index.ts` / `npm run start` (argv may be relative). */
 function isMainModule(): boolean {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return import.meta.url === pathToFileURL(entry).href;
-  } catch {
-    return false;
-  }
+  const self = fileURLToPath(import.meta.url);
+  return process.argv.slice(1).some((arg) => {
+    if (!arg || arg.startsWith('-')) return false;
+    try {
+      return path.resolve(arg) === self;
+    } catch {
+      return false;
+    }
+  });
 }
 
-async function boot() {
+async function connectDatabaseOrExit(): Promise<void> {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log('[server] Database connected');
@@ -298,19 +424,98 @@ async function boot() {
     console.error('[server] Database connection failed:', err);
     process.exit(1);
   }
+}
 
-  piiVault.purgeExpired();
+async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
+  await connectDatabaseOrExit();
+
+  try {
+    const closed = await prisma.workItem.updateMany({
+      where: { status: 'open', itemType: { not: 'insurance' } },
+      data: { status: 'closed' },
+    });
+    if (closed.count > 0) {
+      console.log(`[server] closed ${closed.count} legacy non-insurance work queue item(s)`);
+    }
+  } catch (err) {
+    console.warn('[server] legacy work queue cleanup failed:', (err as Error).message);
+  }
+
+  void runTelemetryMigrations().catch((err) => {
+    console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
+  });
+
+  // Periodic GC on main vault (AES-256-GCM, 4h TTL — holds full PatientPHI for call dispatch).
+  // H-6: legacy vault (services/pii-vault.ts, 24h TTL, simple string tokens) GC removed —
+  // the legacy tokenize/detokenize functions are no longer called and the legacy vault
+  // accumulates no new entries, so purging it is a no-op and creates misleading log output.
+  claimsPiiVault.gc();
   setInterval(() => {
-    const purged = piiVault.purgeExpired();
-    if (purged > 0) console.log(`[piiVault] Purged ${purged} expired tokens`);
+    const purgedMain = claimsPiiVault.gc();
+    if (purgedMain > 0) console.log(`[piiVault] GC: purged ${purgedMain} PHI token(s)`);
   }, 60 * 60 * 1000);
 
   if (process.env.REDIS_URL) {
     registerArJobSchedulers().catch((err) => {
       console.error('[server] registerArJobSchedulers failed:', (err as Error).message);
     });
-  } else if (isLearningLoopEnabled()) {
-    startLearningLoopInProcess(prisma);
+  } else {
+    startRulesEngine(prisma);
+    if (isLearningLoopEnabled()) {
+      startLearningLoopInProcess(prisma);
+    }
+    startMarketingLoopInProcess(prisma);
+    startMarketingLearningInProcess(prisma);
+  }
+
+  attachDeskWebSocket(server);
+
+  // ── PHI Vault: attach persistent store + rehydrate before queue engine ─────
+  // On server restart, all in-memory PHI tokens are lost. claimsPiiVault.rehydrate()
+  // decrypts all non-expired PhiVaultEntry rows back into memory so the queue
+  // engine can dispatch existing claims without requiring a re-import.
+  // PHI_ENCRYPTION_KEY must be set (asserted above by assertPhiEncryptionAtRestConfigured).
+  claimsPiiVault.useStore(prisma);
+  try {
+    const rehydrated = await claimsPiiVault.rehydrate();
+    console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
+  } catch (err) {
+    // Non-fatal — calls will fail detokenize checks until re-import, but server still runs
+    console.error('[piiVault] Rehydration failed:', err);
+  }
+
+  startDeskQueueEngine(prisma);
+  startOpsMonitor(prisma);
+  void runStartupScanOnBoot(prisma, PORT);
+
+  // ── Autonomous agent system ──────────────────────────────────────────────────
+  // 23 cron-based agents + 6 event-triggered agents.
+  // Activate by setting AGENTS_ENABLED=true in Railway env vars.
+  // Also requires GEMINI_API_KEY (already used by learning + marketing modules)
+  // and AGENTS_DIR pointing to the agents/ folder (defaults to ../../agents).
+  startScheduledAgents(prisma);
+}
+
+async function boot() {
+  const tlsKey = process.env.TLS_KEY_PATH?.trim();
+  const tlsCert = process.env.TLS_CERT_PATH?.trim();
+  const onListen = () => {
+    const mode = tlsKey && tlsCert ? 'https' : 'http';
+    console.log(`[server] CollectRx API listening on port ${PORT} (${mode})`);
+    console.log('[server] Liveness: GET /api/health — readiness: GET /api/health/ready');
+  };
+
+  let server: ReturnType<typeof app.listen> | https.Server;
+  try {
+    if (tlsKey && tlsCert) {
+      const opts = loadTlsCredentialsForNodeServer(tlsKey, tlsCert);
+      server = https.createServer(opts, app).listen(PORT, onListen);
+    } else {
+      server = app.listen(PORT, onListen);
+    }
+  } catch (err) {
+    console.error('[server] Failed to bind listen socket:', err);
+    process.exit(1);
   }
 
   // Start guardrail audit worker (non-blocking, runs every 60s)
@@ -321,9 +526,6 @@ async function boot() {
     console.warn('[server] SIDECAR_URL not set — guardrail audits disabled');
   }
 
-  const server = app.listen(PORT, () => {
-    console.log(`[server] CollectRx API listening on port ${PORT}`);
-  });
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(
@@ -334,6 +536,11 @@ async function boot() {
       process.exit(1);
     }
     throw err;
+  });
+
+  void afterListen(server).catch((err) => {
+    console.error('[server] Post-listen startup failed:', err);
+    process.exit(1);
   });
 }
 

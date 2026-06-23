@@ -1,15 +1,16 @@
-import { prisma } from '../../../server';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import { GuardrailAuditEvent } from './types';
 
 export async function writeAuditLog(event: GuardrailAuditEvent): Promise<void> {
   try {
-    await prisma.audit_log.create({
+    await prisma.auditLog.create({
       data: {
+        practiceId: event.practiceId,
         action: event.action,
-        subject_type: event.subjectType,
-        subject_id: event.subjectId,
-        details: event.details as Record<string, unknown>,
-        // request_ip and user_agent can be added if context available
+        subjectType: event.subjectType,
+        subjectId: event.subjectId,
+        details: event.details as Prisma.InputJsonValue,
       },
     });
   } catch (err) {

@@ -1,5 +1,10 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const workspaceDir = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(workspaceDir, '..')
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -14,6 +19,13 @@ export default defineConfig(({ mode }) => {
   const vitePort = /^\d{1,5}$/.test(String(rawVite)) ? Number(rawVite) : 5173
 
   return {
+    resolve: {
+      dedupe: ['react', 'react-dom'],
+      alias: {
+        react: path.join(repoRoot, 'node_modules/react'),
+        'react-dom': path.join(repoRoot, 'node_modules/react-dom'),
+      },
+    },
     plugins: [
       react(),
       {
@@ -45,6 +57,12 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: apiProxyTarget,
+          changeOrigin: true,
+          secure: apiProxyTarget.startsWith('https'),
+        },
+        '/ws': {
+          target: apiProxyTarget,
+          ws: true,
           changeOrigin: true,
           secure: apiProxyTarget.startsWith('https'),
         },

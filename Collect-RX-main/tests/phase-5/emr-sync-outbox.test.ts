@@ -32,29 +32,35 @@ describe('processEmrSyncOutboxBatch', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns zeros when nothing pending', async () => {
-    const prisma = {
+  function makePrisma(opts: { locked: Array<{ id: string }>; rows: typeof row[]; update: ReturnType<typeof vi.fn> }) {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue(opts.locked),
       emrSyncOutbox: {
-        findMany: vi.fn().mockResolvedValue([]),
-        update: vi.fn(),
+        findMany: vi.fn().mockResolvedValue(opts.rows),
+      },
+    };
+    return {
+      $transaction: vi.fn((cb: (tx: typeof tx) => unknown) => cb(tx)),
+      emrSyncOutbox: {
+        update: opts.update,
       },
     } as unknown as PrismaClient;
+  }
+
+  it('returns zeros when nothing pending', async () => {
+    const prisma = makePrisma({ locked: [], rows: [], update: vi.fn() });
     const r = await processEmrSyncOutboxBatch(prisma);
     expect(r).toEqual({ pulled: 0, markedProcessed: 0, deliveryFailed: 0 });
   });
 
   it('does not mark rows when no webhook and no dev ack', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const prisma = {
-      emrSyncOutbox: {
-        findMany: vi.fn().mockResolvedValue([row]),
-        update: vi.fn(),
-      },
-    } as unknown as PrismaClient;
+    const update = vi.fn();
+    const prisma = makePrisma({ locked: [{ id: row.id }], rows: [row], update });
     const r = await processEmrSyncOutboxBatch(prisma);
     expect(r.markedProcessed).toBe(0);
     expect(r.pulled).toBe(1);
-    expect(prisma.emrSyncOutbox.update).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -62,12 +68,7 @@ describe('processEmrSyncOutboxBatch', () => {
   it('marks rows with dev ack when webhook URL unset', async () => {
     process.env.EMR_OUTBOX_DEV_ACK = '1';
     const update = vi.fn().mockResolvedValue({});
-    const prisma = {
-      emrSyncOutbox: {
-        findMany: vi.fn().mockResolvedValue([row]),
-        update,
-      },
-    } as unknown as PrismaClient;
+    const prisma = makePrisma({ locked: [{ id: row.id }], rows: [row], update });
     const r = await processEmrSyncOutboxBatch(prisma);
     expect(r.markedProcessed).toBe(1);
     expect(update).toHaveBeenCalledWith({
@@ -81,12 +82,7 @@ describe('processEmrSyncOutboxBatch', () => {
     process.env.EMR_SYNC_WEBHOOK_URL = 'https://bridge.example/emr';
     process.env.EMR_SYNC_WEBHOOK_SECRET = 'secret';
     const update = vi.fn().mockResolvedValue({});
-    const prisma = {
-      emrSyncOutbox: {
-        findMany: vi.fn().mockResolvedValue([row]),
-        update,
-      },
-    } as unknown as PrismaClient;
+    const prisma = makePrisma({ locked: [{ id: row.id }], rows: [row], update });
     const r = await processEmrSyncOutboxBatch(prisma);
     expect(r.markedProcessed).toBe(1);
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
@@ -110,16 +106,14 @@ describe('processEmrSyncOutboxBatch', () => {
     } as Response);
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const update = vi.fn().mockResolvedValue({});
-    const prisma = {
-      emrSyncOutbox: {
-        findMany: vi.fn().mockResolvedValue([row]),
-        update,
-      },
-    } as unknown as PrismaClient;
+    const prisma = makePrisma({ locked: [{ id: row.id }], rows: [row], update });
     const r = await processEmrSyncOutboxBatch(prisma);
     expect(r.markedProcessed).toBe(0);
     expect(r.deliveryFailed).toBe(1);
-    expect(update).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'out-1' },
+      data: { processedAt: null },
+    });
     expect(err).toHaveBeenCalled();
     err.mockRestore();
   });

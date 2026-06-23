@@ -1,23 +1,30 @@
 /**
- * P8-02 — BullMQ worker: run rules + patient reminders out of the HTTP process.
+ * P8-02 — BullMQ worker: insurance ops tick out of the HTTP process.
  * Start: `npm run worker` (same env as API: DATABASE_URL, REDIS_URL, STRIPE_*, etc.)
  */
 import 'dotenv/config';
+import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+
+applyPostgresTlsToProcessEnv();
+
 import { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
 import express from 'express';
 import IORedis from 'ioredis';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
-import { runReminderCycle } from './patients/reminderEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
+import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
+import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
+
+assertPostgresTlsInProduction();
 
 if (!process.env.REDIS_URL) {
   console.error(
     'worker: REDIS_URL is required.\n' +
       '  Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env:\n' +
       '    REDIS_URL=redis://127.0.0.1:6379\n' +
-      '  Without Redis: background jobs run in the API process when you `npm run dev` or `npm run start`.\n' +
+      '  Without Redis: rules + reminders run in-process inside `npm run dev` (no worker process).\n' +
       '  One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
   );
   process.exit(1);
@@ -34,9 +41,13 @@ const worker = new Worker(
       // Insurance call_queue priority sync runs inside runRulesEngineTick (same path as in-process setInterval).
       await runRulesEngineTick(prisma);
     } else if (job.name === 'REMINDER_CYCLE') {
-      await runReminderCycle();
+      console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
     } else if (job.name === 'LEARNING_CYCLE') {
       await runLearningCycle(prisma);
+    } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
+      await runMarketingSequenceTick(prisma);
+    } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
+      await runMarketingLearningCycle(prisma);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);
     }

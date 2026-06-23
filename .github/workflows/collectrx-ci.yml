@@ -4,9 +4,9 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +22,20 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -39,10 +53,37 @@ jobs:
         working-directory: Collect-RX-main
         run: npm run db:generate
 
+      - name: Prisma migrate deploy
+        working-directory: Collect-RX-main
+        run: npm run db:migrate
+
       - name: Typecheck
         working-directory: Collect-RX-main
         run: npm run typecheck
 
       - name: Unit & integration tests
         working-directory: Collect-RX-main
+        env:
+          CI: "true"
         run: npm test
+
+      - name: Upload test report (JUnit)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-junit
+          path: Collect-RX-main/test-results/junit.xml
+          if-no-files-found: ignore
+
+      - name: Notify ops (CI failure)
+        if: failure() && env.OPS_ALERT_WEBHOOK_URL != ''
+        working-directory: Collect-RX-main
+        env:
+          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: node scripts/ci-notify-failure.mjs

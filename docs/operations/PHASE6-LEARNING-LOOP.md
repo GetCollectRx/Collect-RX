@@ -40,6 +40,18 @@ Expected properties (names are flexible; case-insensitive fallback):
 
 Pull filter: statuses in `LEARNING_NOTION_STATUS_RESEARCH` (default: `Backlog`, `Ready for research`, `Not Started`).
 
+## Research providers (Google Workspace friendly)
+
+The loop **always** scans the local repo for anchor files, then adds **external** research when configured:
+
+1. **NotebookLM** (default when `LEARNING_RESEARCH_PROVIDER=notebooklm`) — uses the community [`notebooklm-sdk`](https://www.npmjs.com/package/notebooklm-sdk) with a Google session (cookies or `npx notebooklm-sdk login`). Runs **NotebookLM “Research”** against a notebook you designate. **Not an official Google API** — treat as best-effort; pair with Gemini for production.
+2. **Gemini + Google Search grounding** — set `GEMINI_API_KEY` (Google AI Studio or Cloud). Used automatically as **fallback** after NotebookLM, or as **primary** when `LEARNING_RESEARCH_PROVIDER=gemini`.
+3. **Local only** — `LEARNING_RESEARCH_PROVIDER=local` skips external calls (offline / strict environments).
+
+Railway: prefer **Gemini API key** (no cookie refresh). For NotebookLM on a server you must supply durable session material via `NOTEBOOKLM_COOKIES*` or a mounted `session.json` — interactive login is dev-only.
+
+See `.env.example` (Phase 6 block) for all variables.
+
 ## What “implement” does
 
 Safe, bounded actions only:

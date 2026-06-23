@@ -26,4 +26,13 @@ export const config = {
   allowedOrigins: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : ['http://localhost:3000', 'http://localhost:3001'],
+  clickhouse: {
+    url:      process.env.CLICKHOUSE_URL      ?? 'http://localhost:8123',
+    user:     process.env.CLICKHOUSE_USER     ?? 'collectrx',
+    password: process.env.CLICKHOUSE_PASSWORD ?? 'collectrx_ch_dev_only',
+    database: process.env.CLICKHOUSE_DB       ?? 'collectrx_analytics',
+    // In mock mode the analytics route still works but inserts are no-ops.
+    // Automatically enabled when CLICKHOUSE_URL is not set.
+    mockMode: !process.env.CLICKHOUSE_URL && process.env.NODE_ENV !== 'production',
+  },
 };

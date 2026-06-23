@@ -10,6 +10,9 @@ import { practicesRouter } from './routes/practices';
 import { patientsRouter } from './routes/patients';
 import { webhooksRouter } from './routes/webhooks';
 import { scheduler } from './routes/patients';
+import analyticsRouter from './routes/analytics';
+import { runMigrations } from './analytics/schema';
+import { pingClickHouse } from './analytics/clickhouse';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -44,7 +47,20 @@ app.use(cors({ origin: config.allowedOrigins, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '10kb' }));
 
-// Global rate limit
+// Analytics event ingestion gets a much higher limit — the SDK sends batches
+// every 5 s per open tab; the default 100 req/min would throttle active users.
+app.use(
+  '/api/analytics/events',
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Analytics rate limit exceeded.' },
+  })
+);
+
+// Global rate limit (all other /api/* routes)
 app.use(
   '/api/',
   rateLimit({
@@ -67,20 +83,29 @@ app.use('/api/auth', authRouter);
 app.use('/api/practices', practicesRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/webhooks', webhooksRouter);
+app.use('/api/analytics', analyticsRouter);
 
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
   const { db } = require('./db');
+  const chOk = await pingClickHouse();
   res.json({
     status: 'healthy',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     patients: db.patients.size,
     practices: db.practices.size,
+    clickhouse: chOk ? 'connected' : 'unavailable',
   });
 });
 
-// Initialize data and start
+// Initialize data and analytics schema
 seedDatabase();
+
+// Run ClickHouse migrations non-blocking — analytics schema failure must
+// never prevent the main API from starting.
+runMigrations().catch((err) =>
+  console.error('[Analytics] Migration failed (non-fatal):', err)
+);
 
 const schedulerInterval = setInterval(async () => {
   try {
@@ -92,9 +117,10 @@ const schedulerInterval = setInterval(async () => {
 
 const server = app.listen(config.port, () => {
   console.log(`\n🚀 CollectRx API running on port ${config.port}`);
-  console.log(`   Environment: ${config.nodeEnv}`);
-  console.log(`   SendGrid: ${config.sendgrid.mockMode ? 'mock' : 'live'}`);
-  console.log(`   Stripe: ${config.stripe.mockMode ? 'mock' : 'live'}\n`);
+  console.log(`   Environment:  ${config.nodeEnv}`);
+  console.log(`   SendGrid:     ${config.sendgrid.mockMode ? 'mock' : 'live'}`);
+  console.log(`   Stripe:       ${config.stripe.mockMode ? 'mock' : 'live'}`);
+  console.log(`   ClickHouse:   ${config.clickhouse.mockMode ? 'mock (set CLICKHOUSE_URL to enable)' : config.clickhouse.url}\n`);
 });
 
 function shutdown(signal: string) {

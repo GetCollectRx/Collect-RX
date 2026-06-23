@@ -15,18 +15,28 @@ import { CarrierId, ClaimStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
-import { enqueueEmrClaimEvent } from '../server/emrSyncOutbox.js';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
-import { authenticate } from '../server/middleware/authenticate';
 import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
   practiceIdFromSession,
   queryPracticeConflictsSession,
 } from '../server/middleware/requirePracticeSession';
+import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { requireClaimScope } from '../server/middleware/requireClaimScope.js';
+import {
+  redactInsuranceClaim,
+  redactInsuranceClaimsList,
+} from '../server/accessControl/redaction.js';
+import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
+import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
+import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { piiVault } from '../pii-vault.js';
+import logger from '../logger.cjs';
 
 const router = Router();
-router.use(authenticate);
+useOwnerPracticeApi(router);
+router.use(requireClaimScope('list_claims'));
 
 // ---------------------------------------------------------------------------
 // GET /api/insurance/claims
@@ -46,7 +56,7 @@ router.get('/claims', async (req: Request, res: Response) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 25));
     const skip  = (page - 1) * limit;
 
-    const { carrier, status, aging, practiceId: qPractice } = req.query as Record<string, string>;
+    const { carrier, status, aging, practiceId: qPractice, recoveryRoute } = req.query as Record<string, string>;
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ success: false, error: 'practiceId does not match session' });
     }
@@ -58,6 +68,9 @@ router.get('/claims', async (req: Request, res: Response) => {
     }
     if (status && Object.values(ClaimStatus).includes(status as ClaimStatus)) {
       where.status = status as ClaimStatus;
+    }
+    if (recoveryRoute) {
+      where.recoveryRoute = recoveryRoute;
     }
     if (aging) {
       if (aging === '30-60') {
@@ -83,14 +96,33 @@ router.get('/claims', async (req: Request, res: Response) => {
       prisma.insuranceClaim.count({ where }),
     ]);
 
+    const { enrichClaimsWithRecoveryFields } = await import('../server/recovery/claimRecoveryList.js');
+    const recoveryByClaim = await enrichClaimsWithRecoveryFields(prisma, claims);
+
+    const data = redactInsuranceClaimsList(claims as Record<string, unknown>[], req.auth).map(
+      (row) => {
+        const rec = recoveryByClaim.get(String(row.id));
+        return rec
+          ? {
+              ...row,
+              recoveryRoute: rec.recoveryRoute,
+              blockingGateTitle: rec.blockingGateTitle,
+              scheduledRecallAt: rec.scheduledRecallAt,
+              canCallCarrier: rec.canCallCarrier,
+              dispatchBlockReason: rec.dispatchBlockReason,
+            }
+          : row;
+      },
+    );
+
     return res.json({
       success: true,
-      data: claims,
+      data,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
     console.error('[GET /insurance/claims]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -121,10 +153,13 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'No supported fields to update (send servicedAt)' });
     }
     const updated = await prisma.insuranceClaim.update({ where: { id }, data });
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
     console.error('[PATCH /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -145,44 +180,63 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
       return res.status(403).json({ success: false, error: 'practiceId mismatch' });
     }
 
-    let remaining = Number(claim.outstandingAmount);
-    if (typeof body.paymentAmountCents === 'number' && body.paymentAmountCents > 0) {
-      remaining = Math.max(0, Math.round((remaining - body.paymentAmountCents / 100) * 100) / 100);
-    } else {
-      remaining = 0;
-    }
-
-    const newStatus: ClaimStatus = remaining <= 0.009 ? 'RESOLVED' : claim.status;
-
-    const updated = await prisma.insuranceClaim.update({
-      where: { id },
-      data: {
-        outstandingAmount: remaining,
-        status: newStatus,
-      },
+    const { transitionClaimRecovery } = await import('../server/recovery/transitionClaimRecovery.js');
+    const result = await transitionClaimRecovery(prisma, {
+      practiceId: claim.practiceId,
+      claimId: id,
+      kind: 'MANUAL_PAYMENT_CONFIRMED',
+      paymentAmountCents: body.paymentAmountCents,
+      notes: body.notes,
     });
 
-    if (newStatus === 'RESOLVED') {
-      try {
-        await enqueueEmrClaimEvent(prisma, {
-          practiceId: claim.practiceId,
-          claimId: id,
-          eventType: 'PAYMENT_CONFIRMED',
-          payload: {
-            notes: body.notes ?? null,
-            at: new Date().toISOString(),
-            outstandingAfter: remaining,
-          },
-        });
-      } catch (emrErr) {
-        console.error('[confirm-payment] EMR outbox:', emrErr);
-      }
-    }
+    const updated = await prisma.insuranceClaim.findUnique({ where: { id } });
 
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+      recovery: result,
+    });
   } catch (err) {
     console.error('[POST /insurance/claims/:id/confirm-payment]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/insurance/claims/:id/resolve-escalation
+// Body: { resolvedBy?: string, notes?: string }
+// Called when staff personally called the carrier and resolved an escalated claim.
+// Does NOT require a payment amount — this is human-resolution of an AI-escalated case.
+// ---------------------------------------------------------------------------
+router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { resolvedBy?: string; notes?: string };
+    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
+    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+
+    const { transitionClaimRecovery } = await import('../server/recovery/transitionClaimRecovery.js');
+    const result = await transitionClaimRecovery(prisma, {
+      practiceId: claim.practiceId,
+      claimId: id,
+      kind: 'MANUAL_ESCALATION_RESOLVED',
+      resolvedBy: body.resolvedBy,
+      notes: body.notes,
+    });
+
+    const updated = await prisma.insuranceClaim.findUnique({ where: { id } });
+
+    // M-4: apply redaction consistent with all other claim-returning endpoints.
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
+      recovery: result,
+    });
+  } catch (err) {
+    console.error('[POST /insurance/claims/:id/resolve-escalation]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -200,10 +254,31 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
-    return res.json({ success: true, data: claim });
+    return res.json({
+      success: true,
+      data: redactInsuranceClaim(claim as Record<string, unknown>, req.auth),
+    });
   } catch (err) {
     console.error('[GET /insurance/claims/:id]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/claims/:id/recovery — route, gates, sync-verified recovery
+// ---------------------------------------------------------------------------
+router.get('/claims/:id/recovery', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { getClaimRecoverySummary } = await import('../server/recovery/claimRecoverySummary.js');
+    const summary = await getClaimRecoverySummary(prisma, practiceId, req.params.id);
+    if (!summary) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+    return res.json({ success: true, data: summary });
+  } catch (err) {
+    console.error('[GET /insurance/claims/:id/recovery]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -214,7 +289,7 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/claims/import', strictLimiter, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { records?: unknown[]; pmsSource?: string } | unknown[];
+    const body = req.body as { records?: unknown[]; pmsSource?: string; pmsVendor?: string } | unknown[];
     const rows = Array.isArray(body) ? body : body?.records;
     if (!Array.isArray(rows)) {
       return res.status(400).json({
@@ -223,27 +298,29 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
       });
     }
     const practiceId = practiceIdFromSession(req);
-    const pmsSource = (
-      !Array.isArray(body) && body?.pmsSource === 'dentrix' ? 'dentrix' : 'abeldent'
-    ) as 'dentrix' | 'abeldent';
+    const explicitPms =
+      !Array.isArray(body) ? body?.pmsVendor ?? body?.pmsSource : undefined;
     const { runPmsImportPipeline } = await import('../server/pms/pmsImportPipeline.js');
     const result = await runPmsImportPipeline(prisma, {
       practiceId,
-      pmsSource,
+      pmsSource: explicitPms ?? null,
       rows: rows as Record<string, unknown>[],
       sourceRecordCount: rows.length,
     });
     return res.json({
       success: true,
+      pmsVendor: result.pmsVendor,
       imported: result.imported,
       skipped: result.skipped,
       failed: result.failed,
       errors: result.errors,
       runId: result.runId,
+      paymentsVerified: result.paymentsVerified,
+      dollarsRecoveredSyncVerified: result.dollarsRecoveredSyncVerified,
     });
   } catch (err) {
     console.error('[POST /insurance/claims/import]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -257,7 +334,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /insurance/analytics/denials]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -267,6 +344,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
 //
 // Respects all safety rules:
 //   - CARRIER_BLOCK check
+//   - BAAL + provider number + voice agent enabled (via validateDispatch)
 //   - Days outstanding rules (< 30 reject, > 90 escalate)
 //   - Max 3 attempts
 //   - Business hours (Mon–Fri 08:00–17:00 Eastern)
@@ -293,6 +371,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // Validate all dispatch rules
     const guard = await validateDispatch(prisma, {
       practiceId,
+      claimId,
       carrierId: claim.carrierId,
       daysOutstanding: claim.daysOutstanding,
       attemptsSoFar,
@@ -302,7 +381,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     // Write guardrails audit log (non-blocking)
     try {
-      await writeDispatchAudit(claim.id, claim.patientToken, guard);
+      await writeDispatchAudit(claim.id, claim.patientToken, guard, claim.practiceId);
     } catch (err) {
       console.error('[guardrails] Failed to write dispatch audit:', err);
     }
@@ -324,21 +403,106 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       return res.status(422).json({ success: false, error: guard.reason });
     }
 
+    const planGate = await canMakeCall(practiceId);
+    if (!planGate.allowed) {
+      return res.status(402).json({
+        success: false,
+        error: gateBlockMessage(planGate.reason, planGate.overageRatePerMinute),
+        reason: planGate.reason,
+      });
+    }
+
     const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
 
-    // Initiate Vapi call
+    const [practice, practiceSettings] = await Promise.all([
+      prisma.practice.findUnique({
+        where: { id: practiceId },
+        select: { name: true, billingPhone: true, npi: true, taxId: true },
+      }),
+      getPracticeSettings(prisma, practiceId),
+    ]);
+    const carrierSettings = practiceSettings.carrierConfigs.find(
+      (c) => c.carrierId === claim.carrierId,
+    );
+
+    // ── PHI RESOLUTION ────────────────────────────────────────────────────────
+    // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
+    // only — never stored in DB, never in logs. Token must still be live in
+    // piiVault (4-hour TTL from import time).
+    const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger');
+    if (!phiResult.success || !phiResult.phi) {
+      logger.warn?.('[insurance trigger] PHI token expired or missing', {
+        claimId,
+        patientToken: claim.patientToken,
+        error: phiResult.error,
+      });
+      return res.status(422).json({
+        success: false,
+        error: 'PHI token has expired — re-import the claim to refresh it',
+      });
+    }
+    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+      claimId,
+      patientToken: claim.patientToken,
+      callerContext: 'insurance-trigger',
+      phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+
+    // billingPhone is the CRTC disclosure / carrier callback number.
+    // escalationPhoneNumber is for staff takeover — do not conflate.
+    const practicePhone =
+      practice?.billingPhone?.trim() ||
+      practiceSettings.billingPhone?.trim() ||
+      practiceSettings.escalationPhoneNumber;
+
+    // Build IVR instructions from carrier adapter knowledge base
+    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+
+    // Initiate Vapi call — PHI injected as ephemeral call variables
     const vapiResult = await vapiClient.initiateCall({
       claimId: claim.id,
       carrierId: claim.carrierId,
-      patientToken: claim.patientToken,  // UUID from PIIVault — no real PHI
-      carrierPhone: carrierConfig.phone,
-      claimNumber: claim.claimNumber,
-      billedAmount: Number(claim.billedAmount),
-      outstandingAmount: Number(claim.outstandingAmount),
+      practiceId,
+      patientToken: claim.patientToken,
+      // ── PHI — from piiVault.detokenize() above; ephemeral, never stored ──────
+      patientName:        phiResult.phi.patientName,
+      patientDob:         phiResult.phi.dateOfBirth,
+      policyNumber:       phiResult.phi.subscriberId,
+      groupNumber:        phiResult.phi.groupPolicyNumber,
+      subscriberName:     phiResult.phi.subscriberName,
+      subscriberDob:      phiResult.phi.subscriberDateOfBirth,
+      // ── Claim fields ──────────────────────────────────────────────────────────
+      carrierPhone:       carrierConfig.phone,
+      claimNumber:        claim.claimNumber,
+      billedAmount:       Number(claim.billedAmount),
+      outstandingAmount:  Number(claim.outstandingAmount),
+      amountExpected:     claim.expectedAmount ? Number(claim.expectedAmount) : undefined,
+      daysOutstanding:    claim.daysOutstanding,
+      treatmentDate:      claim.servicedAt?.toISOString().split('T')[0],
+      claimSubmittedDate: claim.submittedAt?.toISOString().split('T')[0],
+      treatmentCodes:     claim.treatmentCodes ?? undefined,
+      // ── Practice identity ─────────────────────────────────────────────────────
+      practiceName:           practice?.name ?? '',
+      practiceNpi:            practice?.npi ?? undefined,
+      practiceTaxId:          practice?.taxId ?? undefined,
+      providerNumber:         carrierSettings?.providerNumber ?? '',
+      practicePhone,
+      languagePreference:     carrierSettings?.languagePreference ?? 'en',
+      carrierIvrInstructions,
     });
 
-    // Update claim status and queue
+    // Update claim status, create CallAttempt row, and update queue atomically.
+    // NOTE: Only ONE callAttempt.create per dispatch — vapiCallId has @unique constraint.
     await prisma.$transaction([
+      prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+          liveState: 'dialing',
+          activeAgent: 'IVR_Navigator',
+        },
+      }),
       prisma.insuranceClaim.update({
         where: { id: claimId },
         data: { status: 'CALLING' },
@@ -369,7 +533,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     });
   } catch (err) {
     console.error('[POST /insurance/queue/trigger/:claimId]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
@@ -422,7 +586,120 @@ router.get('/queue', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /insurance/queue]', err);
-    return res.status(500).json({ success: false, error: (err as Error).message });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/recovery/gates — practice-wide blocking gate inbox
+// ---------------------------------------------------------------------------
+router.get('/recovery/gates', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { listPracticeRecoveryGates } = await import('../server/recovery/claimRecoveryList.js');
+    const gates = await listPracticeRecoveryGates(prisma, practiceId);
+    return res.json({ success: true, data: gates });
+  } catch (err) {
+    console.error('[GET /insurance/recovery/gates]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/recovery/metrics — sync-verified $ recovered (not call status alone)
+// ---------------------------------------------------------------------------
+router.get('/recovery/metrics', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { computeRecoveryMetrics } = await import('../server/recovery/recoveryMetrics.js');
+    const metrics = await computeRecoveryMetrics(prisma, practiceId);
+    return res.json({ success: true, data: metrics });
+  } catch (err) {
+    console.error('[GET /insurance/recovery/metrics]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/recovery/router — published decision table
+// ---------------------------------------------------------------------------
+router.get('/recovery/router', async (_req: Request, res: Response) => {
+  const { CLAIM_ROUTER_DECISION_TABLE } = await import('../server/recovery/claimRouter.js');
+  return res.json({ success: true, decisionTable: CLAIM_ROUTER_DECISION_TABLE });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/recovery/actions — open recovery gates for a claim
+// ---------------------------------------------------------------------------
+router.get('/recovery/actions', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claimId = String(req.query.claimId ?? '').trim();
+    if (!claimId) {
+      return res.status(400).json({ success: false, error: 'claimId required' });
+    }
+    const actions = await prisma.claimRecoveryAction.findMany({
+      where: { practiceId, claimId, clearedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return res.json({ success: true, data: actions });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/recovery/notifications — gates + trace deadlines
+// ---------------------------------------------------------------------------
+router.get('/recovery/notifications', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { listRecoveryNotifications } = await import('../server/recovery/recoveryNotifications.js');
+    const items = await listRecoveryNotifications(prisma, practiceId);
+    return res.json({ success: true, data: items });
+  } catch (err) {
+    console.error('[GET /insurance/recovery/notifications]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/claims/:id/route-explanation — staff "why this route?"
+// ---------------------------------------------------------------------------
+router.get('/claims/:id/route-explanation', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { getClaimRouteExplanation } = await import('../server/recovery/routeExplainer.js');
+    const explanation = await getClaimRouteExplanation(prisma, practiceId, req.params.id);
+    if (!explanation) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+    return res.json({ success: true, data: explanation });
+  } catch (err) {
+    console.error('[GET /insurance/claims/:id/route-explanation]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/insurance/recovery/actions/:id/clear — practice completed gate (resubmit/docs)
+// ---------------------------------------------------------------------------
+router.post('/recovery/actions/:id/clear', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claimId = String((req.body as { claimId?: string }).claimId ?? '').trim();
+    if (!claimId) {
+      return res.status(400).json({ success: false, error: 'claimId required in body' });
+    }
+    const { clearRecoveryGate } = await import('../server/recovery/recoveryLoopService.js');
+    const result = await clearRecoveryGate(prisma, {
+      practiceId,
+      claimId,
+      actionId: req.params.id,
+    });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

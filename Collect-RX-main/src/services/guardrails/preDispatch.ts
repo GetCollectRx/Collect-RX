@@ -1,5 +1,5 @@
 import { piiVault } from '../pii-vault';
-import { GuardrailDecision, Violation } from './types';
+import { Violation } from './types';
 import rulesJson from './rules.json';
 import { writeAuditLog } from './audit';
 
@@ -41,7 +41,8 @@ export async function checkPhiToken(patientToken: string | null): Promise<Violat
 export async function writeDispatchAudit(
   claimId: string,
   patientToken: string | null,
-  decision: { allowed: boolean; reason?: string }
+  decision: { allowed: boolean; reason?: string },
+  practiceId: string,
 ): Promise<void> {
   const tokenViolation = await checkPhiToken(patientToken);
 
@@ -68,5 +69,6 @@ export async function writeDispatchAudit(
       rulesVersion: RULES.version,
     },
     rulesVersion: RULES.version,
+    practiceId,
   });
 }

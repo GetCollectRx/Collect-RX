@@ -58,6 +58,16 @@ export async function syncWorkItemsForPractice(
   const weights = await getQueueWeights(prisma, practiceId);
   let upserted = 0;
 
+  // Retire legacy patient/outreach queue rows — insurance claims only.
+  await prisma.workItem.updateMany({
+    where: {
+      practiceId,
+      status: 'open',
+      itemType: { not: 'insurance' },
+    },
+    data: { status: 'closed' },
+  });
+
   const openClaimStatuses = ['PENDING', 'IN_QUEUE', 'CALLING', 'DENIED', 'ESCALATED', 'ON_HOLD', 'APPROVED_PENDING_PAYMENT'] as const;
 
   const claims = await prisma.insuranceClaim.findMany({
@@ -98,100 +108,7 @@ export async function syncWorkItemsForPractice(
     upserted += 1;
   }
 
-  const patientRows = await prisma.patientBalance.findMany({
-    where: { practiceId, paymentStatus: { in: ['outstanding', 'partial'] }, patientOwes: { gt: 0 } },
-  });
-
-  for (const p of patientRows) {
-    const dollars = Number(p.patientOwes);
-    const days = p.daysSinceAdjudication;
-    const carrierId = p.carrierCode ? mapCarrierCodeString(p.carrierCode) : null;
-    const rankScore = computeRankScore(dollars, days, carrierId, weights);
-    const name = `${p.patientFirstName} ${p.patientLastName}`.trim();
-    await prisma.workItem.upsert({
-      where: {
-        practiceId_sourceType_sourceId: {
-          practiceId,
-          sourceType: 'patient_balance',
-          sourceId: p.id,
-        },
-      },
-      create: {
-        practiceId,
-        sourceType: 'patient_balance',
-        sourceId: p.id,
-        itemType: 'patient_ar',
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        carrierId,
-        title: name || 'Patient balance',
-        rankScore,
-        status: 'open',
-      },
-      update: {
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        carrierId,
-        title: name || 'Patient balance',
-        rankScore,
-      },
-    });
-    upserted += 1;
-  }
-
-  const outreachBalances = await prisma.balance.findMany({
-    where: { practiceId, status: 'OPEN' },
-    include: { patient: true },
-  });
-
-  for (const b of outreachBalances) {
-    const dollars = b.amountCents / 100;
-    const days = Math.floor((Date.now() - b.createdAt.getTime()) / 86400000);
-    const rankScore = computeRankScore(dollars, days, null, weights);
-    await prisma.workItem.upsert({
-      where: {
-        practiceId_sourceType_sourceId: {
-          practiceId,
-          sourceType: 'outreach_balance',
-          sourceId: b.id,
-        },
-      },
-      create: {
-        practiceId,
-        sourceType: 'outreach_balance',
-        sourceId: b.id,
-        itemType: 'outreach',
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        title: b.patient.displayName,
-        rankScore,
-        status: 'open',
-      },
-      update: {
-        dollarsAtRisk: dollars,
-        daysOutstanding: days,
-        title: b.patient.displayName,
-        rankScore,
-      },
-    });
-    upserted += 1;
-  }
-
   return { upserted };
-}
-
-function mapCarrierCodeString(code: string): CarrierId | null {
-  const normalized = code.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  const map: Record<string, CarrierId> = {
-    sun_life: 'sun_life',
-    canada_life: 'canada_life',
-    manulife: 'manulife',
-    green_shield: 'green_shield',
-    rbc: 'rbc',
-    rbc_insurance: 'rbc',
-    telus_adjudicare: 'telus_adjudicare',
-  };
-  return map[normalized] ?? null;
 }
 
 export interface WorkQueueFilters {
@@ -200,6 +117,74 @@ export interface WorkQueueFilters {
   aging?: '30' | '60' | '90' | '120+';
   assignedRep?: string;
   status?: string;
+  gatesDueToday?: boolean;
+}
+
+export interface WorkItemRecoveryFields {
+  recoveryRoute: string | null;
+  blockingGateTitle: string | null;
+  gateDueToday: boolean;
+}
+
+async function enrichWorkItemsWithRecovery(
+  prisma: PrismaClient,
+  items: Awaited<ReturnType<typeof prisma.workItem.findMany>>,
+): Promise<Array<(typeof items)[number] & WorkItemRecoveryFields>> {
+  const claimIds = items
+    .filter((i) => i.sourceType === 'insurance_claim')
+    .map((i) => i.sourceId);
+  if (claimIds.length === 0) {
+    return items.map((i) => ({
+      ...i,
+      recoveryRoute: null,
+      blockingGateTitle: null,
+      gateDueToday: false,
+    }));
+  }
+
+  const startOfUtcDay = new Date();
+  startOfUtcDay.setUTCHours(0, 0, 0, 0);
+  const endOfUtcDay = new Date(startOfUtcDay);
+  endOfUtcDay.setUTCDate(endOfUtcDay.getUTCDate() + 1);
+
+  const [claims, gates, traces] = await Promise.all([
+    prisma.insuranceClaim.findMany({
+      where: { id: { in: claimIds } },
+      select: { id: true, recoveryRoute: true },
+    }),
+    prisma.claimRecoveryAction.findMany({
+      where: { claimId: { in: claimIds }, status: 'BLOCKING', clearedAt: null },
+      select: { claimId: true, title: true, createdAt: true },
+    }),
+    prisma.claimRecoveryAction.findMany({
+      where: {
+        claimId: { in: claimIds },
+        actionType: 'PAYMENT_VERIFY_SYNC',
+        status: 'OPEN',
+        clearedAt: null,
+        scheduledRecallAt: { lte: endOfUtcDay },
+      },
+      select: { claimId: true, scheduledRecallAt: true },
+    }),
+  ]);
+
+  const routeByClaim = new Map(claims.map((c) => [c.id, c.recoveryRoute]));
+  const gateByClaim = new Map(gates.map((g) => [g.claimId, g]));
+  const traceDueClaimIds = new Set(traces.map((t) => t.claimId));
+
+  return items.map((item) => {
+    if (item.sourceType !== 'insurance_claim') {
+      return { ...item, recoveryRoute: null, blockingGateTitle: null, gateDueToday: false };
+    }
+    const gate = gateByClaim.get(item.sourceId);
+    const gateDueToday = Boolean(gate) || traceDueClaimIds.has(item.sourceId);
+    return {
+      ...item,
+      recoveryRoute: routeByClaim.get(item.sourceId) ?? null,
+      blockingGateTitle: gate?.title ?? null,
+      gateDueToday,
+    };
+  });
 }
 
 export async function listWorkItems(
@@ -209,11 +194,12 @@ export async function listWorkItems(
   page = 1,
   limit = 50,
 ) {
-  const where: Prisma.WorkItemWhereInput = { practiceId, status: filters.status ?? 'open' };
+  const where: Prisma.WorkItemWhereInput = {
+    practiceId,
+    status: filters.status ?? 'open',
+    itemType: filters.itemType ? (filters.itemType as Prisma.EnumWorkItemTypeFilter['equals']) : 'insurance',
+  };
 
-  if (filters.itemType) {
-    where.itemType = filters.itemType as Prisma.EnumWorkItemTypeFilter['equals'];
-  }
   if (filters.carrierId) where.carrierId = filters.carrierId;
   if (filters.assignedRep) where.assignedRep = filters.assignedRep;
 
@@ -228,15 +214,25 @@ export async function listWorkItems(
   }
 
   const skip = (page - 1) * limit;
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     prisma.workItem.findMany({
       where,
       orderBy: [{ rankScore: 'desc' }, { dollarsAtRisk: 'desc' }],
-      skip,
-      take: limit,
+      skip: 0,
+      take: Math.min(500, skip + limit + 50),
     }),
     prisma.workItem.count({ where }),
   ]);
 
-  return { items, total, page, limit, pages: Math.ceil(total / limit) };
+  let enriched = await enrichWorkItemsWithRecovery(prisma, rawItems);
+  if (filters.gatesDueToday) {
+    enriched = enriched.filter((i) => i.gateDueToday);
+  }
+  enriched.sort((a, b) => {
+    if (a.gateDueToday !== b.gateDueToday) return a.gateDueToday ? -1 : 1;
+    return b.rankScore - a.rankScore;
+  });
+  const items = enriched.slice(skip, skip + limit);
+
+  return { items, total: filters.gatesDueToday ? enriched.length : total, page, limit, pages: Math.ceil((filters.gatesDueToday ? enriched.length : total) / limit) };
 }

@@ -1,16 +1,34 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CollectRx — Vapi Client
 //
-// Thin wrapper around the Vapi REST API. All patient identifiers passed to
-// Vapi MUST be UUID tokens from PIIVault — never real names or DOBs.
+// Thin wrapper around the Vapi REST API.
+//
+// PHI ARCHITECTURE — read this before touching initiateCall():
+//
+//   PHI is sent to Vapi as EPHEMERAL CALL VARIABLES ONLY.
+//   It is never stored in: DB tables, system prompt config, logs, metadata,
+//   or any persistent store. The flow is:
+//
+//     1. CSV import → piiVault.tokenize(PatientPHI) → UUID token stored in DB
+//     2. Queue dispatch → piiVault.detokenize(token) → real PHI in memory only
+//     3. initiateCall() → PHI injected as Vapi call `variables` (ephemeral)
+//     4. Vapi agent uses PHI to identify claim to carrier rep during the call
+//     5. Call ends → recording deleted (handlePostCallAudioDeletion)
+//     6. Transcript PHI-scrubbed before persisting to DB
+//
+//   patientToken UUID remains in Vapi `metadata` as the primary key linking
+//   the Vapi call back to the CollectRx DB — it is never real PHI.
+//
+//   Khalid (the operator) never sees PHI. The voice agent does, only during
+//   the live call. Nothing is stored. This is the PHIPA/PIPEDA boundary.
 //
 // The squad model:
 //   IVR_Navigator → Claims_Agent → Escalation_Closer / Resolution_Closer
 //
 // Required env vars:
-//   VAPI_API_KEY        — Vapi private API key
-//   VAPI_SQUAD_ID       — pre-configured squad ID in Vapi dashboard
-//   VAPI_PHONE_NUMBER   — Twilio number registered in Vapi
+//   VAPI_API_KEY          — Vapi private API key
+//   VAPI_SQUAD_ID         — pre-configured squad ID in Vapi dashboard
+//   VAPI_PHONE_NUMBER_ID  — Twilio number registered in Vapi
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CarrierId } from '@prisma/client';
@@ -22,14 +40,49 @@ import { CarrierId } from '@prisma/client';
 export interface VapiCallParams {
   claimId: string;
   carrierId: CarrierId;
-  /** UUID from PIIVault — the only patient identifier sent to Vapi */
+  practiceId: string;
+  /**
+   * UUID from PIIVault — primary key linking this Vapi call to CollectRx DB.
+   * Passed in Vapi metadata only. Never used as a PHI carrier.
+   */
   patientToken: string;
+  // ─── PHI fields — sourced exclusively from piiVault.detokenize() ───────────
+  // These are injected as ephemeral Vapi call variables (not stored anywhere).
+  // Caller (queueEngine, insurance.ts) MUST detokenize before calling here.
+  patientName: string;
+  patientDob: string;           // ISO date YYYY-MM-DD
+  policyNumber: string;
+  subscriberName?: string;
+  /** ISO date YYYY-MM-DD — required when relationship !== 'self' for some carriers. */
+  subscriberDob?: string;
+  relationship?: string;        // e.g. "self", "spouse", "dependent"
+  // ─── Claim fields ────────────────────────────────────────────────────────────
   carrierPhone: string;
-  /** Claim number for IVR navigation — not PHI */
   claimNumber: string;
-  /** Billed amount for context — not PHI */
+  groupNumber?: string;
+  /** ISO date string — maps to InsuranceClaim.servicedAt */
+  treatmentDate?: string;
+  /** ISO date string — maps to InsuranceClaim.submittedAt */
+  claimSubmittedDate?: string;
+  daysOutstanding: number;
   billedAmount: number;
+  /** What the practice expected the carrier to pay — maps to InsuranceClaim.expectedAmount */
+  amountExpected?: number;
   outstandingAmount: number;
+  /** CDT codes string — maps to InsuranceClaim.treatmentCodes */
+  treatmentCodes?: string;
+  // ─── Practice identity ───────────────────────────────────────────────────────
+  practiceName: string;
+  /** Provincial college registration / billing number (Canadian NPI equivalent). */
+  practiceNpi?: string;
+  /** HST/GST business registration number. */
+  practiceTaxId?: string;
+  providerNumber: string;
+  /** Billing/claims phone line read in CRTC disclosure and given as carrier callback. */
+  practicePhone: string;
+  /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
+  languagePreference?: 'en' | 'fr';
+  carrierIvrInstructions?: string;
 }
 
 export interface VapiCallResult {
@@ -159,26 +212,66 @@ async function vapiRequest<T>(
 /**
  * Initiate a Vapi squad call to a carrier's claims line.
  *
- * Only UUID tokens are passed as patient identifiers — never real PHI.
+ * PHI CONTRACT: Caller must have already called piiVault.detokenize() and
+ * must pass the resolved PatientPHI fields (patientName, patientDob,
+ * policyNumber, subscriberName) here. These are injected as ephemeral
+ * Vapi call variables — they are never stored, never logged, and deleted
+ * from Vapi after the call via handlePostCallAudioDeletion().
+ *
+ * patientToken UUID goes in Vapi `metadata` only — it is the primary key
+ * linking this Vapi call back to the CollectRx DB.
  */
 export async function initiateCall(params: VapiCallParams): Promise<VapiCallResult> {
   const {
     claimId,
     carrierId,
+    practiceId,
     patientToken,
+    // PHI — resolved from piiVault.detokenize() by caller
+    patientName,
+    patientDob,
+    policyNumber,
+    subscriberName,
+    subscriberDob,
+    relationship,
+    // Claim fields
     carrierPhone,
     claimNumber,
+    groupNumber,
+    treatmentDate,
+    claimSubmittedDate,
+    daysOutstanding,
     billedAmount,
+    amountExpected,
     outstandingAmount,
+    treatmentCodes,
+    // Practice identity
+    practiceName,
+    practiceNpi,
+    practiceTaxId,
+    providerNumber,
+    practicePhone,
+    languagePreference,
+    carrierIvrInstructions,
   } = params;
 
-  // Build the metadata forwarded to the Vapi squad for IVR navigation.
-  // patientToken is a UUID — it identifies the patient to the backend only.
+  // Guard: only dial known carrier claims lines
+  const allowedNumbers = new Set(
+    Object.values(CARRIER_PHONE_MAP).map((n) => n.replace(/\D/g, '')),
+  );
+  const normalized = carrierPhone.replace(/\D/g, '');
+  if (!allowedNumbers.has(normalized)) {
+    throw new Error(
+      `[VapiClient] Refusing outbound call — destination is not a known carrier claims line: ${carrierPhone}`,
+    );
+  }
+
+  // metadata: UUID primary key only — no PHI ever in metadata
   const metadata: VapiCallMetadata = {
     claimId,
     carrierId,
-    patientToken,   // UUID only — no real PHI
-    practiceId: process.env.PRACTICE_ID ?? 'unknown',
+    patientToken,   // UUID — links call to DB; never the real patient name/DOB
+    practiceId,
   };
 
   const payload = {
@@ -187,16 +280,47 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     customer: {
       number: carrierPhone,
     },
+    // Zero-retention: tell Vapi not to store the recording.
+    // Belt-and-suspenders — handlePostCallAudioDeletion() also deletes it.
+    recordingEnabled: false,
     metadata,
-    // Context variables injected into the IVR Navigator's system prompt.
-    // These are claim-level details only — no patient PHI.
+    // ── EPHEMERAL CALL VARIABLES ────────────────────────────────────────────
+    // These are injected into the squad system prompt at call time only.
+    // They are never written to any DB table, never written to logs
+    // (logger.js PHI_FIELD_NAMES scrubs them), and are not stored in the
+    // system prompt config. When the call ends they cease to exist.
+    // PHI boundary: PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY.
     variables: {
+      // ── Patient identifiers — ephemeral, from piiVault.detokenize() ──────────
+      patient_name:             patientName,
+      patient_dob:              patientDob,
+      policy_number:            policyNumber,
+      subscriber_name:          subscriberName ?? '',
+      subscriber_dob:           subscriberDob ?? '',
+      relationship:             relationship ?? 'self',
+      // ── Claim reference ───────────────────────────────────────────────────────
+      claim_number:             claimNumber,
+      group_number:             groupNumber ?? '',
+      treatment_date:           treatmentDate ?? '',
+      claim_submitted_date:     claimSubmittedDate ?? '',
+      days_outstanding:         String(daysOutstanding),
+      amount_billed:            billedAmount.toFixed(2),
+      amount_expected:          (amountExpected ?? outstandingAmount).toFixed(2),
+      outstanding_amount:       outstandingAmount.toFixed(2),
+      treatment_codes:          treatmentCodes ?? '',
+      // ── Practice identity — not PHI ───────────────────────────────────────────
+      practice_name:            practiceName,
+      practice_npi:             practiceNpi ?? '',
+      practice_tax_id:          practiceTaxId ?? '',
+      provider_number:          providerNumber,
+      // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds.
+      // practice_phone is the billing/claims line, NOT the staff escalation line.
+      practice_phone:           practicePhone,
+      language_preference:      languagePreference ?? 'en',
+      disclosure_message:       `Hello, this is an automated calling system contacting you on behalf of ${practiceName}, a dental practice. You can reach us at ${practicePhone}. We are calling regarding an outstanding insurance claim. If you are a representative at the claims department, please stay on the line.`,
+      // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
-      claimNumber,
-      billedAmount: billedAmount.toFixed(2),
-      outstandingAmount: outstandingAmount.toFixed(2),
-      // patientToken passed separately so agents can reference it without PHI
-      patientToken,
+      carrier_ivr_instructions: carrierIvrInstructions ?? '',
     },
   };
 
@@ -218,10 +342,24 @@ export async function listCalls(limit = 20): Promise<VapiCallStatus[]> {
   return vapiRequest<VapiCallStatus[]>('GET', `/call?limit=${limit}`);
 }
 
+/** End an in-progress Vapi call (CARRIER_BLOCK / staff end). */
+export async function endVapiCall(vapiCallId: string): Promise<void> {
+  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/end`);
+}
+
+/** Warm transfer to front desk phone (human takeover). */
+export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string): Promise<void> {
+  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/transfer`, {
+    destination: { type: 'number', number: toPhoneNumber },
+  });
+}
+
 export const vapiClient = {
   initiateCall,
   getCallStatus,
   listCalls,
+  endVapiCall,
+  transferVapiCall,
   CARRIER_PHONE_MAP,
 } as const;
 

@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
+import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 
 export function LoginPage() {
-  const { login } = usePractice()
-  const [practiceId, setPracticeId] = useState(
-    () => (typeof localStorage !== 'undefined' && localStorage.getItem('crx_last_practice_id')) || ''
-  )
+  const { login, loginPlatformUser, loginPlatformDev } = usePractice()
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [devPassword, setDevPassword] = useState('')
+  const [platformEmail, setPlatformEmail] = useState('')
+  const [platformPassword, setPlatformPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sessionInfo, setSessionInfo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [platformBusy, setPlatformBusy] = useState(false)
+  const [devBusy, setDevBusy] = useState(false)
 
   useEffect(() => {
     try {
@@ -28,80 +32,171 @@ export function LoginPage() {
     setError(null)
     setBusy(true)
     try {
-      await login(practiceId.trim(), password)
-    } catch {
-      setError('Invalid practice ID or password')
+      await login(email.trim().toLowerCase(), password)
+    } catch (err) {
+      setError((err as Error).message || 'Invalid email or password')
     } finally {
       setBusy(false)
     }
   }
 
+  async function onPlatformUserSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setPlatformBusy(true)
+    try {
+      await loginPlatformUser(platformEmail.trim().toLowerCase(), platformPassword)
+    } catch (err) {
+      setError((err as Error).message || 'Invalid email or password')
+    } finally {
+      setPlatformBusy(false)
+    }
+  }
+
+  async function onDevSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setDevBusy(true)
+    try {
+      await loginPlatformDev(devPassword)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDevBusy(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-crx-50/50 dark:from-gray-950 dark:via-gray-950 dark:to-crx-950/20 px-4">
-      <main
-        id="crx-login"
-        className="w-full max-w-sm space-y-6 p-8 rounded-2xl border border-gray-200/90 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-card"
-        aria-label="Sign in"
-      >
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Sign in to CollectRx</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Use the practice ID from <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">db seed</code> output
-            and your practice password.
-          </p>
-          {sessionInfo && (
-            <p className="text-sm text-amber-700 dark:text-amber-400 mt-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 border border-amber-200 dark:border-amber-800">
-              {sessionInfo}
-            </p>
-          )}
-        </div>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="crx-pid" className="block text-2xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Practice ID
-            </label>
+    <div className="crx-portal">
+      <main className="crx-portal-card" aria-label="Sign in">
+        <CollectRxLogoPortal size={48} />
+        <h1 className="crx-portal-brand">
+          Collect<span>Rx</span>
+        </h1>
+        <p className="crx-portal-tagline">Practice portal</p>
+
+        {sessionInfo && (
+          <div className="crx-portal-alert info" role="status">{sessionInfo}</div>
+        )}
+
+        <form onSubmit={onSubmit}>
+          <div className="crx-portal-field">
+            <label htmlFor="crx-email" className="crx-portal-label">Email</label>
             <input
-              id="crx-pid"
-              className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800"
-              value={practiceId}
-              onChange={e => setPracticeId(e.target.value)}
-              autoComplete="username"
+              id="crx-email"
+              type="email"
+              className="crx-portal-input"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoComplete="email"
               required
             />
           </div>
-          <div>
-            <label htmlFor="crx-pw" className="block text-2xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Password
-            </label>
+          <div className="crx-portal-field">
+            <label htmlFor="crx-pw" className="crx-portal-label">Password</label>
             <input
               id="crx-pw"
               type="password"
-              className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800"
+              className="crx-portal-input"
+              placeholder="••••••••"
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoComplete="current-password"
               required
             />
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full py-2.5 text-sm font-medium rounded-lg bg-crx-500 hover:bg-crx-600 text-white disabled:opacity-50"
-          >
+
+          {error && (
+            <div className="crx-portal-alert error" role="alert">{error}</div>
+          )}
+
+          <button type="submit" disabled={busy} className="crx-portal-btn">
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <p className="text-2xs text-gray-500 dark:text-gray-400 text-center leading-relaxed">
-          <Link to="/legal/terms" className="underline hover:text-gray-700 dark:hover:text-gray-200">Terms</Link>
-          {' · '}
-          <Link to="/legal/privacy" className="underline hover:text-gray-700 dark:hover:text-gray-200">Privacy</Link>
-          {' · '}
-          <Link to="/product" className="underline hover:text-gray-700 dark:hover:text-gray-200">Product</Link>
-          {' · '}
-          <Link to="/changelog" className="underline hover:text-gray-700 dark:hover:text-gray-200">Changelog</Link>
+
+        <p className="crx-portal-note" style={{ marginTop: '16px' }}>
+          New practice?{' '}
+          <Link to="/signup" className="crx-portal-link">Create an account</Link>
         </p>
-        <p className="text-2xs text-center text-gray-400 dark:text-gray-500">We use cookies for session and preferences; see Privacy.</p>
+
+        <details className="crx-portal-divider crx-portal-details">
+          <summary>Auditor / billing ops / platform admin</summary>
+          <p className="crx-portal-note">
+            Cross-practice roles provisioned in Admin → Users. Practice staff use the form above.
+          </p>
+          <form onSubmit={onPlatformUserSubmit}>
+            <div className="crx-portal-field">
+              <input
+                type="email"
+                className="crx-portal-input"
+                placeholder="ops@collectrx.ca"
+                value={platformEmail}
+                onChange={(e) => setPlatformEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+            <div className="crx-portal-field">
+              <input
+                type="password"
+                className="crx-portal-input"
+                placeholder="Password"
+                value={platformPassword}
+                onChange={(e) => setPlatformPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <button type="submit" disabled={platformBusy} className="crx-portal-btn-secondary">
+              {platformBusy ? 'Signing in…' : 'Sign in (platform role)'}
+            </button>
+          </form>
+        </details>
+
+        <div className="crx-portal-divider">
+          <p className="crx-portal-label" style={{ fontSize: '0.6875rem', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--brand-graphite)' }}>
+            Platform developer
+          </p>
+          <p className="crx-portal-note">
+            Full ops and config access without patient-identifiable data. Set{' '}
+            <code>PLATFORM_DEV_PASSWORD</code> in the API environment.
+          </p>
+          <form onSubmit={onDevSubmit}>
+            <div className="crx-portal-field">
+              <label htmlFor="crx-dev-pw" className="crx-portal-label">Developer password</label>
+              <input
+                id="crx-dev-pw"
+                type="password"
+                className="crx-portal-input"
+                placeholder="••••••••"
+                value={devPassword}
+                onChange={(e) => setDevPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <button type="submit" disabled={devBusy} className="crx-portal-btn-secondary">
+              {devBusy ? 'Signing in…' : 'Sign in as developer'}
+            </button>
+          </form>
+        </div>
+
+        <div className="crx-portal-foot">
+          <p>
+            <Link to="/legal/terms">Terms</Link>
+            {' · '}
+            <Link to="/legal/privacy">Privacy</Link>
+            {' · '}
+            <Link to="/product">Product</Link>
+            {' · '}
+            <Link to="/changelog">Changelog</Link>
+          </p>
+          <p style={{ marginTop: '0.5rem' }}>
+            <Link to="/">← Back to site</Link>
+          </p>
+        </div>
       </main>
     </div>
   )

@@ -1,14 +1,14 @@
-import { prisma } from '../../../server';
+import { prisma } from '../../lib/prisma';
 import { AuditEnqueueResult } from './types';
 
 export async function enqueueForAudit(callAttemptId: string): Promise<AuditEnqueueResult> {
   try {
     // Upsert: if row already exists, no-op via unique constraint
-    const result = await prisma.guardrail_audit_outbox.upsert({
-      where: { call_attempt_id: callAttemptId },
+    const result = await prisma.guardrailAuditOutbox.upsert({
+      where: { callAttemptId },
       update: {}, // no-op on conflict
       create: {
-        call_attempt_id: callAttemptId,
+        callAttemptId,
       },
     });
 
