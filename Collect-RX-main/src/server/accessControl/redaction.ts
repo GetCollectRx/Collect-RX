@@ -1,5 +1,4 @@
-import type { AuthJwtPayload } from './types.js';
-import { isPlatformDev } from './types.js';
+import { isPlatformDev, type AuthJwtPayload } from './types.js'
 
 /** Mask claim numbers for platform dev (keep last segment for support correlation). */
 export function maskClaimNumber(claimNumber: string): string {

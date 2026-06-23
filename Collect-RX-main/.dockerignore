@@ -3,6 +3,9 @@ dist
 .git
 .gitignore
 *.md
+# Agent prompt files must be included — they are loaded at runtime by agentRunner.ts
+!agents/*.md
+!agents/**/*.md
 .env*
 .DS_Store
 electron

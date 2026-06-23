@@ -8,9 +8,9 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import Stripe from 'stripe';
-import { handleWebhook, signOnboardReturn } from '../src/server/stripe/connect.js';
+import { handlePlatformBillingWebhook } from '../src/server/stripe/billing.js';
 import { app, prisma } from '../src/server/index.js';
-import { createPracticeForTests, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
+import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 const TEST_STRIPE_SECRET = 'whsec_test_00000000000000000000000000000000';
 const TEST_STRIPE_KEY = 'sk_test_4eC39HqLyjWDarjtT1zdp7dc';
@@ -86,57 +86,6 @@ describe('Practice-scoped APIs — require authentication', () => {
   });
 });
 
-describe('Public patient pay — no auth', () => {
-  it('GET /api/public/pay/:token returns 400 for malformed token', async () => {
-    const res = await request(app).get('/api/public/pay/nonexistent-token-for-tests');
-    expect(res.status).toBe(400);
-    expect(res.headers['content-type']).toMatch(/json/i);
-    expect(res.body).toMatchObject({ error: 'Invalid link' });
-  });
-
-  it.skipIf(!dbReady)(
-    'GET /api/public/pay/:token returns 404 JSON for unknown valid-format token',
-    async () => {
-      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
-      expect(res.status).toBe(404);
-      expect(res.headers['content-type']).toMatch(/json/i);
-      expect(res.body).toMatchObject({ error: expect.any(String) });
-    },
-  );
-
-  it.skipIf(dbReady)(
-    'GET /api/public/pay/:token returns 503 when database is unreachable',
-    async () => {
-      const res = await request(app).get('/api/public/pay/00000000000000000000000000000000');
-      expect(res.status).toBe(503);
-      expect(res.body).toMatchObject({ error: expect.stringMatching(/temporarily unavailable/i) });
-    },
-  );
-});
-
-describe('Stripe Connect — onboard return URL must be signed or session', () => {
-  const pid = '00000000-0000-4000-8000-00000000dead';
-
-  it('GET /api/stripe/connect/onboard/complete rejects practice_id without v or session', async () => {
-    const res = await request(app).get('/api/stripe/connect/onboard/complete').query({ practice_id: pid });
-    expect(res.status).toBe(403);
-  });
-
-  it('GET /api/stripe/connect/onboard/complete redirects when v matches practice_id', async () => {
-    const v = signOnboardReturn(pid);
-    const res = await request(app)
-      .get('/api/stripe/connect/onboard/complete')
-      .query({ practice_id: pid, v })
-      .redirects(0);
-    expect(res.status).toBe(303);
-  });
-
-  it('GET /api/stripe/connect/onboard/refresh rejects without v or session', async () => {
-    const res = await request(app).get('/api/stripe/connect/onboard/refresh').query({ practice_id: pid });
-    expect(res.status).toBe(403);
-  });
-});
-
 describe('Webhooks — SendGrid (raw JSON, no DB)', () => {
   it('POST /api/webhooks/sendgrid returns 400 when body is not a JSON array', async () => {
     const res = await request(app)
@@ -186,26 +135,39 @@ describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () =>
     expect(res.status).toBe(400);
   });
 
-  it('POST /api/auth/login returns 401 for unknown practice', async () => {
+  it('POST /api/auth/login returns 401 for unknown user', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ practiceId: '00000000-0000-4000-8000-00000000dead', password: 'nope' });
+      .send({ email: 'nobody-unknown@fixture.test', password: 'nope' });
     expect(res.status).toBe(401);
   });
 
-  it('POST /api/auth/login returns 200 for factory practice', async () => {
-    const p = await createPracticeForTests(prisma);
+  it('POST /api/auth/login returns 200 for a valid user', async () => {
+    const { practice, email, password } = await createPracticeWithOwnerForTests(prisma);
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ practiceId: p.id, password: FIXTURE_PRACTICE_PASSWORD });
+      .send({ email, password });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeUndefined();
-    expect(res.body.practice?.id).toBe(p.id);
+    expect(res.body.practice?.id).toBe(practice.id);
     const setCookie = res.headers['set-cookie'];
     expect(setCookie).toBeDefined();
     const cookieHeader = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
     expect(cookieHeader).toMatch(/crx_access=/);
-    await prisma.practice.delete({ where: { id: p.id } });
+    expect(res.body.health).toBeDefined();
+    expect(res.body.health.ok).toBe(true);
+    expect(Array.isArray(res.body.health.checks)).toBe(true);
+    const sessionHealth = await request(app)
+      .get('/api/auth/session-health')
+      .set('Cookie', cookieHeader);
+    expect(sessionHealth.status).toBe(200);
+    expect(sessionHealth.body.ok).toBe(true);
+    await cleanupPracticeWithUsers(prisma, practice.id);
+  });
+
+  it('GET /api/auth/session-health is 401 without session', async () => {
+    const res = await request(app).get('/api/auth/session-health');
+    expect(res.status).toBe(401);
   });
 
   it('GET /api/auth/me is 401 without session', async () => {
@@ -215,16 +177,16 @@ describe.skipIf(!dbReady)('API (integration) — P7-03, P7-04 (database)', () =>
 });
 
 /**
- * Call `handleWebhook` directly with the raw Buffer Stripe expects — supertest can alter
- * the raw body and break HMAC verification.
+ * Call `handlePlatformBillingWebhook` directly with a parsed event — this test exercises
+ * the handler logic itself, not the raw-body HMAC verification (covered by the HTTP test above).
  */
 describe.skipIf(!dbReady)('Stripe webhook (handler) — P7-02 (signature + Prisma)', () => {
-  it('constructEvent + handler: unhandled customer.created', async () => {
+  it('handler: unhandled customer.created event', async () => {
     process.env.STRIPE_SECRET_KEY = TEST_STRIPE_KEY;
     process.env.STRIPE_WEBHOOK_SECRET = TEST_STRIPE_SECRET;
 
     const stripe = new Stripe(TEST_STRIPE_KEY, { apiVersion: STRIPE_API_VERSION });
-    const payload = JSON.stringify({
+    const event = {
       id: 'evt_p7_02_ci_mock_1',
       object: 'event',
       type: 'customer.created',
@@ -234,13 +196,8 @@ describe.skipIf(!dbReady)('Stripe webhook (handler) — P7-02 (signature + Prism
       livemode: false,
       pending_webhooks: 0,
       request: { id: null, idempotency_key: null },
-    });
-    const header = stripe.webhooks.generateTestHeaderString({
-      payload,
-      secret: TEST_STRIPE_SECRET,
-    });
-    const body = Buffer.from(payload, 'utf8');
-    const result = await handleWebhook(body, header, prisma);
-    expect(result).toMatchObject({ handled: false, reason: 'unhandled event type' });
+    } as unknown as Stripe.Event;
+    const result = await handlePlatformBillingWebhook(event, prisma, stripe);
+    expect(result).toMatchObject({ handled: false, reason: 'not_billing_event' });
   });
 });

@@ -1,5 +1,4 @@
-import type { LearningResearchProviderName } from '../config.js';
-import { learningResearchProvider } from '../config.js';
+import { learningResearchProvider, type LearningResearchProviderName } from '../config.js'
 import { createGeminiGroundingResearchProvider } from './geminiGrounding.js';
 import { createNotebooklmResearchProvider } from './notebooklmResearch.js';
 import type { ResearchProvider } from './types.js';

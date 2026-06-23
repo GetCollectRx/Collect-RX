@@ -4,9 +4,9 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
@@ -69,6 +69,7 @@ jobs:
 
       - name: Upload test report (JUnit)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: vitest-junit
@@ -76,7 +77,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Notify ops (CI failure)
-        if: failure() && secrets.OPS_ALERT_WEBHOOK_URL != ''
+        if: failure() && env.OPS_ALERT_WEBHOOK_URL != ''
         working-directory: Collect-RX-main
         env:
           OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}

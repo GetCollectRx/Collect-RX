@@ -36,7 +36,7 @@ export function ChangePasswordModal({ onClose }: Props) {
       if (!res.ok) { setError(body.error ?? 'Failed to change password'); return }
       setDone(true)
     } catch {
-      setError('Network error — please try again')
+      setError('Network error, please try again')
     } finally {
       setBusy(false)
     }

@@ -7,6 +7,7 @@ import { requirePlatformAdmin } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import { computeQueueStats } from '../services/platformReports.js';
+import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
 import { authPracticeId, authUserId, getUserRole } from '../accessControl/types.js';
 
@@ -97,13 +98,31 @@ export function createPlatformPersonaAdminRouter(): Router {
 
   router.get('/queue/stats', async (_req, res) => {
     const practices = await prisma.practice.findMany({ select: { id: true, name: true } });
+    const platformRecovery = await computePlatformRecoveryMetrics(prisma);
     const stats = await Promise.all(
-      practices.map(async (p) => ({
-        practice: p,
-        ...(await computeQueueStats(prisma, p.id)),
-      })),
+      practices.map(async (p) => {
+        const [queue, blockingGatesOpen, awaitingSyncVerification] = await Promise.all([
+          computeQueueStats(prisma, p.id),
+          prisma.claimRecoveryAction.count({
+            where: { practiceId: p.id, status: 'BLOCKING', clearedAt: null },
+          }),
+          prisma.insuranceClaim.count({
+            where: {
+              practiceId: p.id,
+              recoveryRoute: 'WAIT_SYNC',
+              outstandingAmount: { gt: 0 },
+            },
+          }),
+        ]);
+        return {
+          practice: p,
+          ...queue,
+          blockingGatesOpen,
+          awaitingSyncVerification,
+        };
+      }),
     );
-    return res.json({ success: true, data: stats });
+    return res.json({ success: true, data: stats, platformRecovery });
   });
 
   router.post('/queue/build', async (req, res) => {

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
 import {
-  Card, CardHeader, DataState, Button, Input,
+  Card, CardHeader, DataState, Button, Input, Select,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
 import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
+import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
 
 type SettingsResponse = {
@@ -14,6 +15,7 @@ type SettingsResponse = {
   data: {
     practice: { id: string; name: string; timezone: string } | null
     settings: PracticeSettings
+    pms?: PracticePmsInfo
   }
 }
 
@@ -28,6 +30,8 @@ export default function PracticeSettings() {
   const [userRole, setUserRole] = useState<UserRole | null>(() => resolveUserRole(ctx))
   const [telusKey, setTelusKey] = useState('')
   const [telusValue, setTelusValue] = useState('')
+  const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
+  const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
 
   const isReadOnly = resolveIsReadOnly(ctx, userRole)
 
@@ -46,6 +50,7 @@ export default function PracticeSettings() {
     try {
       const res = await apiFetchJson<SettingsResponse>(`/api/practices/${practiceId}/settings`)
       setSettings(res.data.settings)
+      setPmsInfo(res.data.pms ?? null)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -56,6 +61,12 @@ export default function PracticeSettings() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void apiFetchJson<{ vendors: PmsVendorCatalogEntry[] }>('/api/pms/catalog')
+      .then((d) => setPmsCatalog(d.vendors ?? []))
+      .catch(() => setPmsCatalog([]))
+  }, [])
 
   async function save(partial: Partial<PracticeSettings>) {
     if (!practiceId || isReadOnly) return
@@ -124,11 +135,49 @@ export default function PracticeSettings() {
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
           {isReadOnly && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view — changes are disabled.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
           )}
 
           <Card>
-            <CardHeader title="Voice agent" subtitle="Automation toggles" />
+            <CardHeader
+              title="Practice management system"
+              subtitle="Controls how we read claim exports. Carrier call rules are the same for every PMS."
+            />
+            <div className="space-y-3 max-w-md">
+              <Select
+                label="PMS vendor"
+                value={settings.pmsVendor ?? pmsInfo?.vendorId ?? 'abeldent'}
+                disabled={isReadOnly}
+                onChange={(e) =>
+                  setSettings({ ...settings, pmsVendor: e.target.value as PmsVendorId })
+                }
+              >
+                {(pmsCatalog.length > 0
+                  ? pmsCatalog
+                  : [{ id: 'abeldent' as PmsVendorId, displayName: 'AbelDent' }]
+                ).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.displayName}
+                  </option>
+                ))}
+              </Select>
+              {pmsInfo?.inferredFromLastImport && !settings.pmsVendor && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Inferred from your latest import ({pmsInfo.displayName}). Save to lock this in.
+                </p>
+              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Phone decisions use profile <code className="text-2xs">{pmsInfo?.phoneDecisionProfile ?? 'carrier_recovery_v1'}</code>
+                {' '}(not PMS-specific logic).
+              </p>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Voice agent"
+              subtitle="Carrier claim calls require Voice agent enabled, BAAL on file, and provider number per carrier"
+            />
             <div className="space-y-3">
               {(
                 [
@@ -190,6 +239,8 @@ export default function PracticeSettings() {
                     <Th align="right">Max attempts</Th>
                     <Th>Window</Th>
                     <Th>Notes</Th>
+                    <Th>Provider number</Th>
+                    <Th>Auth submitted</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -235,6 +286,59 @@ export default function PracticeSettings() {
                           disabled={isReadOnly}
                           onChange={(e) => updateCarrier(idx, { notes: e.target.value })}
                         />
+                      </Td>
+                      <Td>
+                        <input
+                          type="text"
+                          className="w-full text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+                          value={c.providerNumber}
+                          disabled={isReadOnly}
+                          maxLength={50}
+                          placeholder="e.g. ON-123456"
+                          onChange={(e) => updateCarrier(idx, { providerNumber: e.target.value })}
+                        />
+                      </Td>
+                      <Td>
+                        {c.authorizationSubmitted ? (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-green-700 dark:text-green-400">
+                              Submitted{c.authorizationSubmittedAt
+                                ? ` ${new Date(c.authorizationSubmittedAt).toLocaleDateString()}`
+                                : ''}
+                            </span>
+                            {!isReadOnly && (
+                              <button
+                                type="button"
+                                className="text-gray-500 underline hover:text-gray-700 dark:hover:text-gray-300"
+                                onClick={() =>
+                                  updateCarrier(idx, {
+                                    authorizationSubmitted: false,
+                                    authorizationSubmittedAt: null,
+                                  })
+                                }
+                              >
+                                Reset
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <input
+                              type="checkbox"
+                              checked={c.authorizationSubmitted}
+                              disabled={isReadOnly}
+                              onChange={(e) =>
+                                updateCarrier(idx, {
+                                  authorizationSubmitted: e.target.checked,
+                                  authorizationSubmittedAt: e.target.checked ? new Date().toISOString() : null,
+                                })
+                              }
+                            />
+                            <p className="text-[10px] leading-tight text-amber-700 dark:text-amber-400 max-w-[140px]">
+                              Carrier calls blocked until signed BAAL is on file. See legal review prompt in docs.
+                            </p>
+                          </div>
+                        )}
                       </Td>
                     </Tr>
                   ))}

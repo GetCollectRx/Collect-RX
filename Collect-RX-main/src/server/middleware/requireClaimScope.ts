@@ -7,8 +7,8 @@ import { practiceIdFromSession } from './requirePracticeSession.js';
 import {
   actionRequiresPracticeGrant,
   canPerformAction,
+  type Action,
 } from '../accessControl/permissions.js';
-import type { Action } from '../accessControl/permissions.js';
 import { getUserRole, isAuditor } from '../accessControl/types.js';
 
 /**

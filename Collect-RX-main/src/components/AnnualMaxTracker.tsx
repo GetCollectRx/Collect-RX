@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 /**
- * AnnualMaxTracker — Visual display of annual maximum usage
+ * AnnualMaxTracker, Visual display of annual maximum usage
  */
 
 interface AnnualMaxTrackerProps {

@@ -1,15 +1,12 @@
 import jwt from 'jsonwebtoken';
 import type { CookieOptions, Response } from 'express';
-import type {
-  AuthJwtPayload,
-  PracticeRole,
-  UserAuthPayload,
-  BriefAuthFields,
-} from './accessControl/types.js';
-import { practiceRoleToBrief } from './accessControl/types.js';
+import { practiceRoleToBrief, type AuthJwtPayload, type PracticeRole, type UserAuthPayload, type BriefAuthFields } from './accessControl/types.js';
 import type { UserRole } from '../types/userRole.js';
 
 export const COOKIE_NAME = 'crx_access';
+
+/** Pinned signing/verification algorithm — prevents alg-confusion and `alg:none` attacks. */
+const JWT_ALGORITHM = 'HS256' as const;
 
 /** @deprecated Use `UserAuthPayload` — kept for importers that referenced the old name. */
 export type PracticeJwtPayload = UserAuthPayload;
@@ -90,7 +87,7 @@ export function signUserToken({ userId, practiceId, role, providerId }: SignUser
     userRole: practiceRoleToBrief(role),
     ...(providerId ? { providerId } : {}),
   };
-  return jwt.sign(payload, signingSecret(), { expiresIn: tokenTtlForRole(role) as unknown as number });
+  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: tokenTtlForRole(role) as unknown as number });
 }
 
 export function signPlatformDevToken(): string {
@@ -101,7 +98,7 @@ export function signPlatformDevToken(): string {
     userId: 'platform-dev',
     practiceId: null,
   };
-  return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
+  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '8h' });
 }
 
 /** @deprecated Use signUserToken — kept for any callers that referenced the old practice token. */
@@ -117,7 +114,9 @@ export function signPracticeToken(practiceId: string): string {
 // ─── Verify ──────────────────────────────────────────────────────────────────
 
 export function verifyAuthToken(token: string): AuthJwtPayload {
-  const payload = jwt.verify(token, signingSecret()) as AuthJwtPayload;
+  // Pin algorithms explicitly: never let a caller-supplied `alg` header (e.g. `none`
+  // or an asymmetric algorithm) decide how the token is verified.
+  const payload = jwt.verify(token, signingSecret(), { algorithms: [JWT_ALGORITHM] }) as AuthJwtPayload;
 
   if (payload.role === 'platform_dev') {
     return {
@@ -197,7 +196,7 @@ export function signBriefSessionToken(input: {
     userRole: input.userRole,
     platformUserSession: true as const,
   };
-  return jwt.sign(payload, signingSecret(), { expiresIn: '8h' });
+  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '8h' });
 }
 
 export function setPlatformDevAuthCookie(res: Response): void {

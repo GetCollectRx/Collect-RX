@@ -7,19 +7,14 @@ name: CollectRx Electron installers
 on:
   workflow_dispatch:
   push:
-    branches: [main]
     tags:
       - 'v*'
     paths:
       - 'Collect-RX-main/**'
       - 'package-lock.json'
       - '.github/workflows/collectrx-electron-installers.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'Collect-RX-main/**'
-      - 'package-lock.json'
-      - '.github/workflows/collectrx-electron-installers.yml'
+  # Electron builds (~15 min, macOS+Windows) run on release tags and manual dispatch only.
+  # Every push to main is validated by CollectRx CI (typecheck + tests, ~2 min).
 
 concurrency:
   group: collectrx-electron-${{ github.workflow }}-${{ github.ref }}
@@ -84,7 +79,7 @@ jobs:
           name: CollectRx-mac-zip
           path: _artifacts_mac/*.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Attach to release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -144,7 +139,7 @@ jobs:
           name: CollectRx-windows-installer
           path: _artifacts_win/*.exe
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Attach to release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')

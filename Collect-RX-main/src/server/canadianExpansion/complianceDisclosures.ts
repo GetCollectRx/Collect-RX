@@ -1,5 +1,7 @@
 /**
  * MOD-02 — Law 25 / PIPEDA-aligned copy blocks & voluntary AI transparency (AIDA voluntary regime).
+ * Also covers CRTC Automated Dialing-Announcing Device (ADAD) obligations under the
+ * Telecommunications Act — required identification within 10 seconds of call answer.
  * Not legal advice — product disclosures for carriers and Quebec scaling readiness.
  */
 
@@ -12,6 +14,19 @@ export type ComplianceBundle = {
   aiTransparency: {
     carrierDisclosureScript: string;
     voluntaryCodePillars: string[];
+  };
+  crtcTelecommunications: {
+    adad: {
+      summary: string;
+      requiredElements: string[];
+      enforcementNote: string;
+    };
+    dnclExemption: {
+      applies: boolean;
+      rationale: string;
+      reference: string;
+    };
+    recordingDisclosure: string;
   };
   collectrxAssurances: string[];
 };
@@ -40,6 +55,28 @@ export function getComplianceDisclosures(): ComplianceBundle {
         'Human oversight — escalation paths for denials and patient disputes.',
         'Validity — provenance for carrier configs and estimate rules (JSON/versioned data).',
       ],
+    },
+    crtcTelecommunications: {
+      adad: {
+        summary:
+          'Under the CRTC Unsolicited Telecommunications Rules (Telecommunications Act), automated calling systems must identify themselves as automated within the first 10 seconds of a call. The identification must include: (1) that the call is automated, (2) the name of the organization on whose behalf the call is made, and (3) a contact number where the organization can be reached.',
+        requiredElements: [
+          'Automated nature of the call — stated in the opening utterance.',
+          'Organization name — the dental practice name on whose behalf the call is made.',
+          'Contact number — the practice phone number, spoken in the opening disclosure.',
+          'Recording notice — disclosure that the call may be recorded for quality purposes.',
+        ],
+        enforcementNote:
+          'CollectRx satisfies the 10-second rule by configuring the Vapi IVR_Navigator firstMessage and Claims_Agent firstMessage as the mandatory ADAD disclosure. The disclosure_message variable is populated server-side in initiateCall() before any audio plays. ADAD delivery is verified post-call via transcript analysis and logged to the audit trail (action: ADAD_DISCLOSURE_VERIFIED / ADAD_DISCLOSURE_UNVERIFIED).',
+      },
+      dnclExemption: {
+        applies: true,
+        rationale:
+          'CollectRx calls are placed by dental practices (businesses) to insurance carrier claims departments (businesses). These are B2B calls and fall under the CRTC National Do Not Call List exemption for calls made to businesses under Telecom Decision 2007-48, section 9(b). No DNCL check is required for insurance carrier claims lines.',
+        reference: 'CRTC Telecom Decision 2007-48 §9(b) — Business-to-business exemption.',
+      },
+      recordingDisclosure:
+        'All outbound calls include a recording notice in the mandatory opening disclosure: "This call may be recorded for quality purposes." This satisfies CRTC requirements for recording notification.',
     },
     collectrxAssurances: [
       'Architecture targets PHIPA / PIPEDA-aligned handling for Canadian dental workflows.',

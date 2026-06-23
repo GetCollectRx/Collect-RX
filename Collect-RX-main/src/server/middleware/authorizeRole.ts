@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { hasMinRole, isUserSession } from '../accessControl/types.js';
-import type { PracticeRole, UserAuthPayload } from '../accessControl/types.js';
+import { hasMinRole, isUserSession, type PracticeRole, type UserAuthPayload } from '../accessControl/types.js'
 
 /**
  * Requires the session to meet or exceed `minRole` in the authority hierarchy.

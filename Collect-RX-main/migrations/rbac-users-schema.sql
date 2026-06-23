@@ -1,6 +1,11 @@
 -- migrations/rbac-users-schema.sql
 -- RBAC Phase: User accounts, roles, and AuditLog.userId
--- Run against Railway Postgres: psql $DATABASE_URL -f migrations/rbac-users-schema.sql
+--
+-- SUPERSEDED (2026-06-12): this was run manually against Railway via psql and
+-- never captured as a Prisma migration, so fresh databases (CI) never got the
+-- User table / PracticeRole enum. Now captured as
+-- prisma/migrations/20260523000000_rbac_users_schema/migration.sql (idempotent).
+-- Do not run this file again — kept for history only.
 
 -- ─── PracticeRole enum ───────────────────────────────────────────────────────
 CREATE TYPE "PracticeRole" AS ENUM (

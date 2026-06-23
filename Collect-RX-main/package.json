@@ -28,6 +28,7 @@
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
+    "eval:conversation-robustness": "tsx scripts/run-conversation-robustness-eval.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop ecosystem.config.cjs && pm2 delete ecosystem.config.cjs",
     "pm2:status": "pm2 status",
@@ -53,6 +54,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx src/server/seed.ts",
+    "demo:seed": "tsx scripts/seed-demo.ts",
     "personas:reset-passwords": "node scripts/set-persona-test-passwords.mjs",
     "db:reset": "prisma migrate reset",
     "check:env": "node scripts/check-deploy-env.mjs",
@@ -60,7 +62,8 @@
     "build-storybook": "storybook build",
     "abeldent:discover": "node scripts/discover-schema.cjs",
     "abeldent:validate-queries": "node scripts/sync-query-builder.cjs --discovery schema-discovery.json --map schema-map.json --validate",
-    "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json"
+    "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json",
+    "ivr-research:call": "node scripts/ivr-research/research-call.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.1035.0",

@@ -269,7 +269,7 @@ export default function LiveConsole() {
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-base flex-shrink-0">⛔</div>
             <div>
               <p className="font-semibold text-sm">
-                {CARRIER_LABELS[blockAlert.carrierId] ?? blockAlert.carrierId} — Automation Detection Alert
+                {CARRIER_LABELS[blockAlert.carrierId] ?? blockAlert.carrierId}, Automation Detection Alert
               </p>
               <p className="text-xs text-red-100">
                 All calls to this carrier suspended · {blockAlert.heldQueueCount} claim{blockAlert.heldQueueCount !== 1 ? 's' : ''} on hold
@@ -340,7 +340,7 @@ export default function LiveConsole() {
                       c.status === 'on_call' ? 'text-emerald-600 dark:text-emerald-500' :
                       'text-gray-400 dark:text-gray-600'
                     }`}>
-                      {c.status === 'blocked' ? 'Blocked — tap to review' :
+                      {c.status === 'blocked' ? 'Blocked, tap to review' :
                        c.status === 'on_call' ? 'On call now' : 'Open'}
                     </p>
                   </button>
@@ -624,7 +624,7 @@ export default function LiveConsole() {
               </p>
               <p className="text-sm text-gray-400 dark:text-gray-600 max-w-xs">
                 {queue.length > 0
-                  ? `${queue.length} claim${queue.length !== 1 ? 's' : ''} queued — AI will dial when the next window opens`
+                  ? `${queue.length} claim${queue.length !== 1 ? 's' : ''} queued, AI will dial when the next window opens`
                   : 'Add claims to the queue to begin automated collection calls.'}
               </p>
 

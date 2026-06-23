@@ -21,7 +21,7 @@
   scrollbar-color: #1f2937 transparent;
 }
 .crx-app {
-  scrollbar-color: #c5d4cb transparent;
+  scrollbar-color: #cacac8 transparent;
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -30,7 +30,7 @@
 
 /* ── Focus ring ─────────────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid #0F6E56;
+  outline: 2px solid #0f9d58;
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -57,8 +57,8 @@
   color: #374151;
 }
 .nav-item.active {
-  background-color: #f0fdf7;
-  color: #0F6E56;
+  background-color: rgba(15, 157, 88, 0.08);
+  color: #0f9d58;
   font-weight: 600;
 }
 .nav-item.active::before {
@@ -70,7 +70,7 @@
   width: 2.5px;
   height: 14px;
   border-radius: 0 2px 2px 0;
-  background-color: #0F6E56;
+  background-color: #0f9d58;
 }
 
 /* Dark mode nav */
@@ -186,7 +186,7 @@
 }
 .crx-wave-bar {
   width: 3px;
-  background: linear-gradient(to top, #0F6E56, #12C96D);
+  background: linear-gradient(to top, #0f9d58, #12c96d);
   border-radius: 2px;
   transform-origin: bottom center;
   animation: crx-wave 0.85s ease-in-out infinite;

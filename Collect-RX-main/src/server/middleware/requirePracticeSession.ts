@@ -4,8 +4,7 @@ import {
   practiceIdFromRequestHints,
   PRACTICE_CONTEXT_ERROR,
 } from '../accessControl/practiceContext.js';
-import { isPlatformDev, isUserSession } from '../accessControl/types.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
+import { isPlatformDev, isUserSession, type UserAuthPayload } from '../accessControl/types.js'
 
 /** Practice ID from JWT (user session) or `?practiceId=` / body / X-Practice-Id (platform_dev). */
 export function practiceIdFromSession(req: Request): string {

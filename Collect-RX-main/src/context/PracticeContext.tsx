@@ -1,12 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
-import type { AuthRole, PracticeRole } from '../lib/authTypes'
-import { isPracticeRole } from '../lib/authTypes'
+import { isPracticeRole, type AuthRole, type PracticeRole } from '../lib/authTypes'
 import { authRoleToBriefPersona } from '../lib/personaRole'
-import type { UserRole } from '../types/userRole'
-import { isReadOnlyRole } from '../types/userRole'
+import { isReadOnlyRole, type UserRole } from '../types/userRole'
 import { configureApiSession } from '../lib/practiceScopedApi'
+import type { SessionHealthPayload } from '../types/sessionHealth'
 
 interface Practice {
   id: string
@@ -74,6 +73,7 @@ interface PracticeContextValue {
   isPracticeOwner: boolean
   subscription: SubscriptionGate
   sessionUser: SessionUser | null
+  sessionHealth: SessionHealthPayload | null
   login: (email: string, password: string) => Promise<void>
   loginPlatformUser: (email: string, password: string) => Promise<void>
   loginPlatformDev: (password: string) => Promise<void>
@@ -92,6 +92,7 @@ type MeResponse = {
   practices?: Practice[]
   subscription?: SubscriptionGate
   user?: SessionUser
+  health?: SessionHealthPayload
 }
 
 function applySessionConfig(role: AuthRole | null, practiceId: string) {
@@ -107,6 +108,7 @@ function clearState(
     setSessionUser: (v: SessionUser | null) => void
     setSubscription: (v: SubscriptionGate) => void
     setAuthState: (v: AuthState) => void
+    setSessionHealth: (v: SessionHealthPayload | null) => void
   },
   authState: AuthState = 'anon',
 ) {
@@ -117,6 +119,7 @@ function clearState(
   setters.setSessionUser(null)
   applySessionConfig(null, '')
   setters.setSubscription(defaultSubscription)
+  setters.setSessionHealth(null)
   setters.setAuthState(authState)
 }
 
@@ -128,6 +131,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const [phiAccess, setPhiAccess] = useState(false)
   const [subscription, setSubscription] = useState<SubscriptionGate>(defaultSubscription)
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null)
+  const [sessionHealth, setSessionHealth] = useState<SessionHealthPayload | null>(null)
 
   const loading = authState === 'loading'
   const userRole = authRoleToBriefPersona(role)
@@ -137,7 +141,18 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const isReadOnly = userRole ? isReadOnlyRole(userRole) || role === 'practice_owner' || role === 'associate_dentist' || role === 'accountant' : false
   const deskRole: 'owner' | 'front_desk' | null = userRole === 'front_desk' ? 'front_desk' : userRole === 'practice_owner' ? 'owner' : null
 
-  const stateSetters = { setPractices, setPracticeId, setRole, setPhiAccess, setSessionUser, setSubscription, setAuthState }
+  const stateSetters = { setPractices, setPracticeId, setRole, setPhiAccess, setSessionUser, setSubscription, setAuthState, setSessionHealth }
+
+  const fetchSessionHealth = useCallback(async () => {
+    try {
+      const r = await fetch(resolveApiUrl('/api/auth/session-health'), { credentials: 'include' })
+      if (!r.ok) return
+      const health = await parseApiJson<SessionHealthPayload>(r)
+      setSessionHealth(health)
+    } catch {
+      /* non-blocking */
+    }
+  }, [])
 
   const logout = useCallback(async () => {
     await fetch(resolveApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' })
@@ -149,6 +164,14 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     window.addEventListener('crx:session-expired', onExpired)
     return () => window.removeEventListener('crx:session-expired', onExpired)
   }, [logout])
+
+  const applySessionHealth = useCallback((health?: SessionHealthPayload | null) => {
+    if (health) {
+      setSessionHealth(health)
+      return
+    }
+    void fetchSessionHealth()
+  }, [fetchSessionHealth])
 
   const refreshSession = useCallback(async () => {
     const r = await fetch(resolveApiUrl('/api/auth/me'), { credentials: 'include' })
@@ -177,6 +200,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       applySessionConfig('platform_dev', pid)
       setSessionUser(null)
       setAuthState('ready')
+      applySessionHealth(data.health)
       return
     }
 
@@ -194,7 +218,8 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     applySessionConfig(sessionRole, pid)
     setSessionUser(data.user ?? null)
     setAuthState('ready')
-  }, [])
+    applySessionHealth(data.health)
+  }, [applySessionHealth, fetchSessionHealth])
 
   useEffect(() => {
     void refreshSession().catch(() => { setAuthState('anon') })
@@ -244,6 +269,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     setSessionUser(data.user ?? null)
     applySessionConfig(sessionRole, data.practice.id)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
+    setSessionHealth(data.health ?? null)
     setAuthState('ready')
   }
 
@@ -280,6 +306,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     setSessionUser(null)
     applySessionConfig(sessionRole, pid)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
+    setSessionHealth(data.health ?? null)
     setAuthState('ready')
   }
 
@@ -319,6 +346,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem('crx_dev_practice_id', pid) } catch { /* ignore */ }
     applySessionConfig('platform_dev', pid)
     setSubscription({ ...defaultSubscription, ...(data.subscription ?? {}) })
+    setSessionHealth(data.health ?? null)
     setAuthState('ready')
   }
 
@@ -342,6 +370,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       isPracticeOwner,
       subscription,
       sessionUser,
+      sessionHealth,
       login,
       loginPlatformUser,
       loginPlatformDev,
@@ -351,7 +380,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     [
       practices, practiceId, practice, loading, authState, role, userRole, deskRole,
       isReadOnly, phiAccess, isPlatformDevFlag, isFrontDesk, isPracticeOwner,
-      subscription, sessionUser, logout, refreshSession,
+      subscription, sessionUser, sessionHealth, logout, refreshSession,
     ],
   )
 

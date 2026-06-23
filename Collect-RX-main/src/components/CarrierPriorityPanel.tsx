@@ -2,7 +2,7 @@
  * CarrierPriorityPanel
  *
  * Displays all 6 carriers as a draggable list.
- * Drag rows to reorder — the order is posted to
+ * Drag rows to reorder, the order is posted to
  * POST /api/queue/carrier-order and persists across Electron restarts.
  *
  * The queue engine picks up this order when scheduling the next call run,
@@ -82,8 +82,8 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
       }
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2500)
-    } catch (err: any) {
-      setErrorMsg(err.message)
+    } catch (err: unknown) {
+      setErrorMsg((err as Error).message)
       setSaveState('error')
     }
   }
@@ -143,7 +143,7 @@ export default function CarrierPriorityPanel({ practiceId }: Props) {
               Carrier Call Priority
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#7f8c8d' }}>
-              Drag to reorder — queue calls carriers top-to-bottom
+              Drag to reorder, queue calls carriers top-to-bottom
             </p>
           </div>
         </div>

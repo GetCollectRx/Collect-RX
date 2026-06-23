@@ -34,8 +34,6 @@ const AUTH_ROUTE_FILES = [
   'server/routes/dashboardRoutes.ts',
   'server/routes/adminRoutes.ts',
   'server/routes/pmsSyncRoutes.ts',
-  'server/routes/patientArApi.ts',
-  'server/routes/balancesOutreachRoutes.ts',
   'server/routes/benefitsApi.ts',
   'server/routes/billingRoutes.ts',
   'server/routes/cdcp.ts',
@@ -69,7 +67,7 @@ describe('IDOR practice scope audit', () => {
 
   it('public and webhook entrypoints are not in the authenticated-only list', () => {
     const publicPaths = [
-      'server/routes/publicPatientPayRoutes.ts',
+      'server/routes/sendgridInboundRouter.ts',
       'webhooks/vapi.ts',
     ];
     for (const rel of publicPaths) {

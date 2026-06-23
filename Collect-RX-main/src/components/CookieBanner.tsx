@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 const CONSENT_KEY = 'crx_cookie_consent_v1'
 
 /**
- * P9-02 — essential-cookie notice; “accept” records consent for in-app use of localStorage/session.
+ * P9-02, essential-cookie notice; “accept” records consent for in-app use of localStorage/session.
  */
 export function CookieBanner() {
   const [visible, setVisible] = useState(false)

@@ -4,16 +4,48 @@
 
 import { afterEach, describe, it, expect } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { isWithinCallWindow, CARRIER_CONFIGS, validateDispatch } from '../../src/carriers/adapter';
+import {
+  isWithinCallWindow,
+  CARRIER_CONFIGS,
+  validateDispatch,
+  checkCarrierAuthorizationGate,
+} from '../../src/carriers/adapter';
+import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
 
-const prismaNoBlock = {
-  carrierBlockEvent: { findFirst: async () => null },
-  practice: { findUnique: async () => null },
-  callAttempt: {
-    findMany: async () => [],
-    findFirst: async () => null,
-  },
-} as unknown as PrismaClient;
+function authorizedSettings() {
+  return {
+    ...defaultPracticeSettings(),
+    voiceAgentEnabled: true,
+    carrierConfigs: defaultPracticeSettings().carrierConfigs.map((c) =>
+      c.carrierId === 'sun_life'
+        ? {
+            ...c,
+            enabled: true,
+            authorizationSubmitted: true,
+            authorizationSubmittedAt: '2026-06-01T00:00:00.000Z',
+            providerNumber: 'ON-123456',
+          }
+        : c,
+    ),
+  };
+}
+
+function makePrisma(settings = authorizedSettings()) {
+  return {
+    carrierBlockEvent: { findFirst: async () => null },
+    insuranceClaim: {
+      findUnique: async () => ({
+        recoveryRoute: 'CALL_CARRIER',
+        status: 'IN_QUEUE',
+        queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
+      }),
+    },
+    claimRecoveryAction: { findFirst: async () => null },
+    practice: {
+      findUnique: async () => ({ settings }),
+    },
+  } as unknown as PrismaClient;
+}
 
 const originalPlanEnv = {
   STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID: process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
@@ -100,10 +132,46 @@ describe('CarrierAdapter', () => {
     });
   });
 
+  describe('checkCarrierAuthorizationGate', () => {
+    it('rejects when BAAL not on file', async () => {
+      const settings = authorizedSettings();
+      settings.carrierConfigs = settings.carrierConfigs.map((c) =>
+        c.carrierId === 'sun_life' ? { ...c, authorizationSubmitted: false } : c,
+      );
+      const r = await checkCarrierAuthorizationGate(makePrisma(settings), 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/BAAL/i);
+    });
+
+    it('rejects when provider number is missing', async () => {
+      const settings = authorizedSettings();
+      settings.carrierConfigs = settings.carrierConfigs.map((c) =>
+        c.carrierId === 'sun_life' ? { ...c, providerNumber: '' } : c,
+      );
+      const r = await checkCarrierAuthorizationGate(makePrisma(settings), 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/provider number/i);
+    });
+
+    it('rejects when voice agent is disabled', async () => {
+      const settings = authorizedSettings();
+      settings.voiceAgentEnabled = false;
+      const r = await checkCarrierAuthorizationGate(makePrisma(settings), 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/voice agent/i);
+    });
+
+    it('allows when BAAL, provider number, and voice agent are configured', async () => {
+      const r = await checkCarrierAuthorizationGate(makePrisma(), 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   describe('validateDispatch', () => {
     it('rejects carrier dispatch when claim is APPROVED_PENDING_PAYMENT', async () => {
-      const r = await validateDispatch(prismaNoBlock, {
+      const r = await validateDispatch(makePrisma(), {
         practiceId: 'practice-1',
+        claimId: 'claim-test-1',
         carrierId: 'sun_life',
         daysOutstanding: 45,
         attemptsSoFar: 0,
@@ -115,8 +183,9 @@ describe('CarrierAdapter', () => {
     });
 
     it('allows PENDING claims during the carrier call window', async () => {
-      const r = await validateDispatch(prismaNoBlock, {
+      const r = await validateDispatch(makePrisma(), {
         practiceId: 'practice-1',
+        claimId: 'claim-test-1',
         carrierId: 'sun_life',
         daysOutstanding: 45,
         attemptsSoFar: 0,
@@ -126,13 +195,38 @@ describe('CarrierAdapter', () => {
       expect(r.allowed).toBe(true);
     });
 
-    it('rejects a new claim when the monthly subscription claim limit is reached', async () => {
-      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
-      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
-      const prismaAtLimit = {
+    it('rejects when BAAL not on file', async () => {
+      const settings = authorizedSettings();
+      settings.carrierConfigs = settings.carrierConfigs.map((c) =>
+        c.carrierId === 'sun_life' ? { ...c, authorizationSubmitted: false } : c,
+      );
+      const r = await validateDispatch(makePrisma(settings), {
+        practiceId: 'practice-1',
+        claimId: 'claim-test-1',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/BAAL/i);
+    });
+
+    function makePrismaAtSubscriptionLimit(callAttemptFindFirst: () => Promise<{ id: string } | null>) {
+      return {
         carrierBlockEvent: { findFirst: async () => null },
+        insuranceClaim: {
+          findUnique: async () => ({
+            recoveryRoute: 'CALL_CARRIER',
+            status: 'IN_QUEUE',
+            queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
+          }),
+        },
+        claimRecoveryAction: { findFirst: async () => null },
         practice: {
           findUnique: async () => ({
+            settings: authorizedSettings(),
             subscriptionStatus: 'active',
             subscriptionPriceId: 'price_standard',
             subscriptionPlanId: 'standard',
@@ -142,9 +236,15 @@ describe('CarrierAdapter', () => {
         },
         callAttempt: {
           findMany: async () => [{ claimId: 'claim-already-addressed' }],
-          findFirst: async () => null,
+          findFirst: callAttemptFindFirst,
         },
       } as unknown as PrismaClient;
+    }
+
+    it('rejects a new claim when the monthly subscription claim limit is reached', async () => {
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
+      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
+      const prismaAtLimit = makePrismaAtSubscriptionLimit(async () => null);
 
       const r = await validateDispatch(prismaAtLimit, {
         practiceId: 'practice-1',
@@ -164,22 +264,7 @@ describe('CarrierAdapter', () => {
     it('allows a retry for a claim already counted in the current claim period', async () => {
       process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
       process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
-      const prismaAtLimit = {
-        carrierBlockEvent: { findFirst: async () => null },
-        practice: {
-          findUnique: async () => ({
-            subscriptionStatus: 'active',
-            subscriptionPriceId: 'price_standard',
-            subscriptionPlanId: 'standard',
-            subscriptionCurrentPeriodStart: new Date('2026-05-01T00:00:00Z'),
-            subscriptionCurrentPeriodEnd: new Date('2026-06-01T00:00:00Z'),
-          }),
-        },
-        callAttempt: {
-          findMany: async () => [{ claimId: 'claim-already-addressed' }],
-          findFirst: async () => ({ id: 'attempt-1' }),
-        },
-      } as unknown as PrismaClient;
+      const prismaAtLimit = makePrismaAtSubscriptionLimit(async () => ({ id: 'attempt-1' }));
 
       const r = await validateDispatch(prismaAtLimit, {
         practiceId: 'practice-1',

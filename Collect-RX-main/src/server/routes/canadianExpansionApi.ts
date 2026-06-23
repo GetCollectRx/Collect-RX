@@ -82,13 +82,6 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     try {
       const pid = practiceId(req);
       const input = validateReconsiderationCreate(req.body);
-      const belongs = await prisma.patientBalance.findFirst({
-        where: { practiceId: pid, patientToken: input.patientToken },
-        select: { id: true },
-      });
-      if (!belongs) {
-        return res.status(404).json({ error: 'Patient not found for this practice' });
-      }
       const init = deriveInitialStatus(input.procedureCode || '');
       const row = await prisma.cdcpReconsiderationCase.create({
         data: {

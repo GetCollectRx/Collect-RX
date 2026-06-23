@@ -1,13 +1,19 @@
 import type { PrismaClient } from '@prisma/client';
+import type { PmsVendorId } from '../../types/pms.js';
 import { importPmsClaimsToPrisma } from './prismaClaimImporter.js';
 import { validateImportTotals } from './importValidation.js';
 import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
+import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
+import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
 
-export type PmsSource = 'dentrix' | 'abeldent';
+/** @deprecated Use PmsVendorId — kept for callers passing legacy slugs. */
+export type PmsSource = PmsVendorId;
 
 export interface RunPmsImportOptions {
   practiceId: string;
-  pmsSource: PmsSource;
+  /** Canonical vendor id or legacy slug; resolved via practicePmsContext when omitted. */
+  pmsSource?: string | null;
   rows: Record<string, unknown>[];
   /** Expected totals from export file header/summary (optional). */
   sourceRecordCount?: number;
@@ -16,6 +22,7 @@ export interface RunPmsImportOptions {
 
 export interface RunPmsImportResult {
   runId: string;
+  pmsVendor: PmsVendorId;
   status: string;
   validationPassed: boolean;
   imported: number;
@@ -23,16 +30,39 @@ export interface RunPmsImportResult {
   failed: number;
   driftPct: number | null;
   errors: { claimNumber?: string; error: string }[];
+  paymentsVerified: number;
+  dollarsRecoveredSyncVerified: number;
+  /** Set when Abeldent EDI version check detects legacy CDAnet v2 or ITRANS 1.x */
+  ediMigrationRequired?: boolean;
+  ediVersionStatus?: string;
+  ediVersionMessage?: string;
 }
 
 export async function runPmsImportPipeline(
   prisma: PrismaClient,
   options: RunPmsImportOptions,
 ): Promise<RunPmsImportResult> {
+  const resolved = await resolvePmsImport(prisma, options.practiceId, options.pmsSource);
+  const { vendorId, importFamily } = resolved;
+  const profile = PMS_VENDOR_PROFILES[vendorId];
+
+  // ── AbelDent EDI version guard (import-only; does not affect phone routing) ─
+  let ediGuardResult: ReturnType<typeof checkAbeldentEdiVersion> | null = null;
+  if (profile.supportsEdiVersionGuard) {
+    ediGuardResult = checkAbeldentEdiVersion(options.rows);
+    if (ediGuardResult.migrationRequired) {
+      console.warn(
+        '[PmsImportPipeline] AbelDent EDI migration required for practice',
+        options.practiceId,
+        ediGuardResult.message,
+      );
+    }
+  }
+
   const run = await prisma.pmsImportRun.create({
     data: {
       practiceId: options.practiceId,
-      pmsSource: options.pmsSource,
+      pmsSource: vendorId,
       status: 'running',
       recordsTotal: options.rows.length,
       sourceRecordCount: options.sourceRecordCount ?? options.rows.length,
@@ -45,7 +75,7 @@ export async function runPmsImportPipeline(
       prisma,
       options.rows,
       options.practiceId,
-      options.pmsSource,
+      importFamily,
     );
 
     const validation = validateImportTotals({
@@ -80,9 +110,13 @@ export async function runPmsImportPipeline(
     });
 
     await syncWorkItemsForPractice(prisma, options.practiceId);
+    if (importResult.imported > 0 || importResult.skipped > 0) {
+      await ensurePracticePmsVendor(prisma, options.practiceId, vendorId);
+    }
 
     return {
       runId: run.id,
+      pmsVendor: vendorId,
       status,
       validationPassed: validation.passed,
       imported: importResult.imported,
@@ -90,6 +124,18 @@ export async function runPmsImportPipeline(
       failed: importResult.failed,
       driftPct: validation.driftPct,
       errors: importResult.errors,
+      paymentsVerified: importResult.paymentsVerified,
+      dollarsRecoveredSyncVerified: importResult.dollarsRecoveredSyncVerified,
+      // EDI version guard results (Abeldent only)
+      ...(ediGuardResult
+        ? {
+            ediMigrationRequired: ediGuardResult.migrationRequired,
+            ediVersionStatus: ediGuardResult.status,
+            ediVersionMessage: ediGuardResult.migrationRequired
+              ? ediGuardResult.message
+              : undefined,
+          }
+        : {}),
     };
   } catch (err) {
     await prisma.pmsImportRun.update({

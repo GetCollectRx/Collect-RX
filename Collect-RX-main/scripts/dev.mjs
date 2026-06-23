@@ -117,6 +117,7 @@ if (mode === 'remote') {
   console.log(`[dev] App (open in browser):  http://localhost:${vitePort}/`);
   console.log(`[dev] API (Express):          http://127.0.0.1:${apiPort}`);
   console.log(`[dev] Vite /api proxy →       http://127.0.0.1:${apiPort}`);
+  console.log('[dev] Background jobs: in-process in API (no Redis/worker needed)');
   console.log('[dev] ─────────────────────────────────────────');
   console.log('');
 

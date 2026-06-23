@@ -10,9 +10,9 @@ import {
   practiceRoleToBrief,
   ROLE_LEVEL,
   authPracticeId,
+  type UserAuthPayload,
 } from '../accessControl/types.js';
 import type { UserRole } from '../../types/userRole.js';
-import type { UserAuthPayload } from '../accessControl/types.js';
 import {
   setUserAuthCookie,
   setPlatformDevAuthCookie,
@@ -30,11 +30,24 @@ import {
   createUserBodySchema,
   updateUserBodySchema,
   changePasswordBodySchema,
+  registerBodySchema,
+  inviteBodySchema,
+  acceptInviteBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
+import { sendInviteEmail } from '../email/inviteEmail.js';
+import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 
 const BCRYPT_ROUNDS = 12;
+
+async function buildSessionHealth(prisma: PrismaClient) {
+  const health = await runSessionHealthCheck(prisma);
+  if (!health.ok) {
+    console.warn('[sessionHealth] Login health check failed:', health.checks.filter((c) => !c.ok && !c.skipped));
+  }
+  return health;
+}
 
 // ─── Platform dev password ────────────────────────────────────────────────────
 
@@ -120,6 +133,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         select: { id: true, name: true, timezone: true },
       });
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+      const health = await buildSessionHealth(prisma);
 
       return res.json({
         role: user.role,
@@ -129,6 +143,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         practice,
         subscription,
         user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
+        health,
       });
     } catch (e) {
       console.error('Login error:', e);
@@ -157,6 +172,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         select: { id: true, name: true, timezone: true },
         orderBy: { name: 'asc' },
       });
+      const health = await buildSessionHealth(prisma);
       return res.json({
         role: 'platform_dev' as const,
         userRole: 'platform_admin' as const,
@@ -172,6 +188,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           priceConfigured: false,
           skipped: true,
         },
+        health,
       });
     } catch (e) {
       console.error('Platform dev login error:', e);
@@ -235,6 +252,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         subscription: {
           enforce: false, active: true, status: null, plan: null, usage: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
         },
+        health: await buildSessionHealth(prisma),
       });
     } catch (e) {
       console.error('Platform user login error:', e);
@@ -246,6 +264,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   r.post('/logout', (_req, res) => {
     clearAuthCookie(res);
     res.json({ ok: true });
+  });
+
+  /** GET /api/auth/session-health — runtime health check for restored sessions */
+  r.get('/session-health', authenticate, async (_req, res) => {
+    try {
+      const health = await buildSessionHealth(prisma);
+      return res.json(health);
+    } catch (e) {
+      console.error('session-health error:', e);
+      return res.status(500).json({ error: 'Health check failed' });
+    }
   });
 
   /** GET /api/auth/me */
@@ -686,6 +715,161 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('reset-password confirm error:', e);
       return res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
+
+  // ── Self-service registration ─────────────────────────────────────────────
+
+  /** POST /api/auth/register — create a new practice + owner account (public) */
+  r.post('/register', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const parsed = registerBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+      const { practiceName, displayName, email, password } = parsed.data;
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+      const { practice, user } = await prisma.$transaction(async (tx) => {
+        const practice = await tx.practice.create({
+          data: {
+            name: practiceName,
+            passwordHash,
+            timezone: 'America/Toronto',
+          },
+        });
+        const user = await tx.user.create({
+          data: {
+            practiceId: practice.id,
+            email,
+            passwordHash,
+            displayName,
+            role: 'practice_owner',
+          },
+          select: { id: true, email: true, displayName: true, role: true },
+        });
+        return { practice, user };
+      });
+
+      const sessionAuth = {
+        userId: user.id,
+        practiceId: practice.id,
+        role: 'practice_owner' as const,
+        email: user.email,
+        displayName: user.displayName,
+      };
+      setUserAuthCookie(res, sessionAuth);
+      return res.status(201).json({
+        user,
+        practiceId: practice.id,
+        role: 'practice_owner',
+        userRole: 'owner',
+      });
+    } catch (e) {
+      console.error('register error:', e);
+      return res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  // ── Staff invites ─────────────────────────────────────────────────────────
+
+  /** POST /api/auth/invite — send an invite email to a staff member (practice_owner/office_manager) */
+  r.post('/invite', authenticate, authorizeRole('office_manager'), async (req: Request, res: Response) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      const practiceId = actorAuth?.practiceId ?? practiceIdFromRequestHints(req) ?? '';
+
+      const parsed = inviteBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+      const { email, role } = parsed.data;
+
+      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, role)) {
+        return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return res.status(409).json({ error: 'A user with this email already exists' });
+
+      const practice = await prisma.practice.findUnique({ where: { id: practiceId }, select: { name: true } });
+      if (!practice) return res.status(404).json({ error: 'Practice not found' });
+
+      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      const invite = await prisma.inviteToken.create({
+        data: { practiceId, email, role: role as import('@prisma/client').PracticeRole, expiresAt },
+        select: { token: true },
+      });
+
+      await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
+      return res.json({ invited: true });
+    } catch (e) {
+      console.error('invite error:', e);
+      return res.status(500).json({ error: 'Failed to send invite' });
+    }
+  });
+
+  /** GET /api/auth/invite/:token — validate token and return role info (public) */
+  r.get('/invite/:token', async (req: Request, res: Response) => {
+    try {
+      const invite = await prisma.inviteToken.findUnique({
+        where: { token: req.params.token },
+        include: { practice: { select: { name: true } } },
+      });
+      if (!invite) return res.status(404).json({ error: 'Invite not found or already used' });
+      if (invite.usedAt) return res.status(410).json({ error: 'This invite has already been used' });
+      if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'This invite has expired' });
+      return res.json({ email: invite.email, role: invite.role, practiceName: invite.practice.name });
+    } catch (e) {
+      console.error('invite lookup error:', e);
+      return res.status(500).json({ error: 'Failed to look up invite' });
+    }
+  });
+
+  /** POST /api/auth/accept-invite — create staff account from invite token (public) */
+  r.post('/accept-invite', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const parsed = acceptInviteBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+      const { token, displayName, password } = parsed.data;
+
+      const invite = await prisma.inviteToken.findUnique({ where: { token } });
+      if (!invite) return res.status(404).json({ error: 'Invite not found' });
+      if (invite.usedAt) return res.status(410).json({ error: 'This invite has already been used' });
+      if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'This invite has expired' });
+
+      const existing = await prisma.user.findUnique({ where: { email: invite.email } });
+      if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+      const [user] = await prisma.$transaction([
+        prisma.user.create({
+          data: {
+            practiceId: invite.practiceId,
+            email: invite.email,
+            passwordHash,
+            displayName,
+            role: invite.role,
+          },
+          select: { id: true, email: true, displayName: true, role: true },
+        }),
+        prisma.inviteToken.update({ where: { token }, data: { usedAt: new Date() } }),
+      ]);
+
+      const sessionAuth = {
+        userId: user.id,
+        practiceId: invite.practiceId,
+        role: user.role as 'practice_owner',
+        email: user.email,
+        displayName: user.displayName,
+      };
+      setUserAuthCookie(res, sessionAuth);
+      return res.status(201).json({ user, role: user.role });
+    } catch (e) {
+      console.error('accept-invite error:', e);
+      return res.status(500).json({ error: 'Failed to create account' });
     }
   });
 

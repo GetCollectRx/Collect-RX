@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 
 /**
- * P9-01 — small in-app “What is this?” control (toggle for mobile; avoid hover-only).
+ * P9-01, small in-app “What is this?” control (toggle for mobile; avoid hover-only).
  */
 export function HelpTip({ children, label = 'What is this?' }: { children: React.ReactNode; label?: string }) {
   const [open, setOpen] = useState(false);

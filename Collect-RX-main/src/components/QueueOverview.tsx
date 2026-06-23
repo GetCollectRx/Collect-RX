@@ -69,7 +69,7 @@ export function QueueOverview() {
             />
             <StatTile
               label="Active call"
-              value={stats.activeCall ? stats.activeCall.claimRef : '—'}
+              value={stats.activeCall ? stats.activeCall.claimRef : 'N/A'}
               sub={
                 stats.activeCall
                   ? `${stats.activeCall.carrierId.replace(/_/g, ' ')} · ${fmtDuration(stats.activeCall.startedAt)}`

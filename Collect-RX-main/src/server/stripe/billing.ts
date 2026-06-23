@@ -16,6 +16,7 @@ import {
   type SubscriptionPlanSnapshot,
   type SubscriptionUsageState,
 } from './subscriptionPlans.js';
+import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
 
 export function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -293,6 +294,22 @@ export async function handlePlatformBillingWebhook(
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
+      await syncPlanStatusFromSubscription(practiceId, sub.status);
+      return { handled: true };
+    }
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object as Stripe.Invoice & { subscription?: string | Stripe.Subscription | null };
+      const subRef = invoice.subscription;
+      if (!subRef) return { handled: false, reason: 'invoice_without_subscription' };
+      const subId = typeof subRef === 'string' ? subRef : subRef.id;
+      const p = await db.practice.findFirst({
+        where: { stripeSubscriptionId: subId },
+        select: { id: true },
+      });
+      if (!p) return { handled: false, reason: 'practice_not_found_for_invoice' };
+      await startNewBillingCycle(p.id);
+      await db.processedStripeEvent.create({ data: { id: event.id } });
       return { handled: true };
     }
 
@@ -329,6 +346,7 @@ export async function handlePlatformBillingWebhook(
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
+      await syncPlanStatusFromSubscription(practiceId, sub.status);
       return { handled: true };
     }
 
@@ -355,6 +373,7 @@ export async function handlePlatformBillingWebhook(
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
+      await syncPlanStatusFromSubscription(p.id, 'canceled');
       return { handled: true };
     }
   } catch (e: unknown) {

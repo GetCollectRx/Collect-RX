@@ -53,26 +53,27 @@ describe('getTimeSaved', () => {
 // getDollarsRecovered
 // ---------------------------------------------------------------------------
 describe('getDollarsRecovered', () => {
-  it('sums outstanding amounts correctly', async () => {
+  it('sums sync-verified recovery events in window', async () => {
     const mockPrisma = {
-      insuranceClaim: {
-        findMany: vi.fn().mockResolvedValue([
-          { outstandingAmount: 450.00 },
-          { outstandingAmount: 275.50 },
-          { outstandingAmount: 820.00 },
-        ]),
+      claimRecoveryEvent: {
+        aggregate: vi.fn().mockResolvedValue({
+          _sum: { amountRecoveredCents: 154_550 },
+          _count: 3,
+        }),
       },
     } as unknown as PrismaClient;
 
     const result = await getDollarsRecovered(mockPrisma, practiceId, dateRange);
     expect(result.resolvedClaimsCount).toBe(3);
-    expect(result.dollarsRecovered).toBeCloseTo(1545.50);
+    expect(result.dollarsRecovered).toBeCloseTo(1545.5);
     expect(result.currency).toBe('CAD');
   });
 
-  it('returns zero for no resolved claims', async () => {
+  it('returns zero for no sync-verified events', async () => {
     const mockPrisma = {
-      insuranceClaim: { findMany: vi.fn().mockResolvedValue([]) },
+      claimRecoveryEvent: {
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amountRecoveredCents: null }, _count: 0 }),
+      },
     } as unknown as PrismaClient;
 
     const result = await getDollarsRecovered(mockPrisma, practiceId, dateRange);

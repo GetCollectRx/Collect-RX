@@ -20,9 +20,6 @@ export interface DimensionMetric {
   detail: string;
 }
 
-const NITROUS_OXIDE_CODES = new Set(['D9230', 'D9240']);
-const COMPLETE_DENTURE_CODES = new Set(['D5110', 'D5120']);
-const LAB_FEE_PROC_PREFIX = /^D5|^D6|^D8/;
 
 function asPct(numerator: number, denominator: number): number | null {
   if (!denominator) return null;
@@ -34,7 +31,6 @@ export async function computeEightDimensions(
   practiceId: string
 ): Promise<DimensionMetric[]> {
   const now = new Date();
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 86_400_000);
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
   // 1. CDCP adjudication success rate — won vs (won + lost) in active reconsideration cases
@@ -68,38 +64,30 @@ export async function computeEightDimensions(
     detail: `${abEntries} AB fee guide rows imported`,
   };
 
-  // 3. Reconsideration recovery value — sum of patientOwes recovered through 'won' cases
-  // Approximation: outstanding balances on patients tied to won cases that are now paid.
+  // 3. Reconsideration recovery value — patient AR removed; use insurance claim resolution as proxy
   const wonCases = await prisma.cdcpReconsiderationCase.findMany({
     where: { practiceId, status: 'won' },
     select: { patientToken: true },
   });
   const wonTokens = [...new Set(wonCases.map((c) => c.patientToken))];
-  let recoveryCad = 0;
-  if (wonTokens.length > 0) {
-    const recoveredBalances = await prisma.patientBalance.findMany({
-      where: { patientToken: { in: wonTokens }, paymentStatus: 'paid' },
-      select: { amountPaid: true },
-    });
-    recoveryCad = recoveredBalances.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
-  }
+  // Patient balance model removed — report won case count only
   const reconsiderationRecovery: DimensionMetric = {
     id: 3,
     key: 'reconsideration_recovery',
     name: 'Reconsideration recovery value',
-    value: Math.round(recoveryCad * 100) / 100,
-    unit: 'cad',
-    status: recoveryCad > 0 ? 'ok' : 'watch',
-    detail: `${wonTokens.length} won case patients · CA$${recoveryCad.toFixed(0)} recovered`,
+    value: wonTokens.length,
+    unit: 'count',
+    status: wonTokens.length > 0 ? 'ok' : 'watch',
+    detail: `${wonTokens.length} won reconsideration case(s) YTD`,
   };
 
-  // 4. Claim age — count of balances older than 11 months (approaching 12-month resubmission limit)
+  // 4. Claim age — insurance claims approaching 12-month resubmission limit
   const elevenMonthsAgo = new Date(now.getTime() - 335 * 86_400_000);
-  const agedCount = await prisma.patientBalance.count({
+  const agedCount = await prisma.insuranceClaim.count({
     where: {
       practiceId,
-      paymentStatus: { not: 'paid' },
-      treatmentDate: { lt: elevenMonthsAgo, not: null },
+      status: { not: 'RESOLVED' },
+      createdAt: { lt: elevenMonthsAgo },
     },
   });
   const claimAge: DimensionMetric = {
@@ -109,86 +97,57 @@ export async function computeEightDimensions(
     value: agedCount,
     unit: 'count',
     status: agedCount === 0 ? 'ok' : agedCount < 5 ? 'watch' : 'risk',
-    detail: agedCount === 0 ? 'No aged claims' : `${agedCount} claim(s) ≥ 11 months old`,
+    detail: agedCount === 0 ? 'No aged claims' : `${agedCount} insurance claim(s) ≥ 11 months old`,
   };
 
-  // 5. 96-month denture frequency — count of complete-denture procedures in past 90 days for cdcp_sunlife
-  const recentDentures = await prisma.patientBalance.count({
-    where: {
-      practiceId,
-      carrierCode: 'cdcp_sunlife',
-      procedureCode: { in: [...COMPLETE_DENTURE_CODES] },
-      treatmentDate: { gte: ninetyDaysAgo },
-    },
-  });
+  // 5. Denture frequency — patient AR removed; not computable without PatientBalance
   const dentureFrequency: DimensionMetric = {
     id: 5,
     key: 'cdcp_denture_frequency',
     name: '96-month complete-denture frequency monitor',
-    value: recentDentures,
+    value: null,
     unit: 'count',
-    status: recentDentures === 0 ? 'ok' : 'watch',
-    detail: `${recentDentures} complete-denture claim(s) for CDCP patients in last 90 days`,
+    status: 'watch',
+    detail: 'Not available — requires procedure-level claim data',
   };
 
-  // 6. Lab fee margin — proxy: count of major prosthetic/lab-driven procedures in past 90 days
-  const labFeeRows = await prisma.patientBalance.findMany({
-    where: { practiceId, treatmentDate: { gte: ninetyDaysAgo } },
-    select: { procedureCode: true },
-  });
-  const labFeeProcs = labFeeRows.filter((r) =>
-    r.procedureCode ? LAB_FEE_PROC_PREFIX.test(r.procedureCode) : false
-  ).length;
+  // 6. Lab fee margin — patient AR removed; not computable without PatientBalance
   const labFee: DimensionMetric = {
     id: 6,
     key: 'lab_fee_margin',
     name: 'Lab fee margin (April 2026 schedule)',
-    value: labFeeProcs,
+    value: null,
     unit: 'count',
-    status: labFeeProcs === 0 ? 'ok' : 'watch',
-    detail: `${labFeeProcs} lab-driven procedure(s) tracked in last 90 days`,
+    status: 'watch',
+    detail: 'Not available — requires procedure-level claim data',
   };
 
-  // 7. Sedation utilization — count of nitrous-oxide procedures in past 90 days
-  const sedationCount = await prisma.patientBalance.count({
-    where: {
-      practiceId,
-      procedureCode: { in: [...NITROUS_OXIDE_CODES] },
-      treatmentDate: { gte: ninetyDaysAgo },
-    },
-  });
+  // 7. Sedation utilization — patient AR removed; not computable without PatientBalance
   const sedation: DimensionMetric = {
     id: 7,
     key: 'sedation_utilization',
     name: 'Sedation sessions vs CDCP preauth threshold',
-    value: sedationCount,
+    value: null,
     unit: 'count',
-    status: sedationCount < 4 ? 'ok' : sedationCount < 8 ? 'watch' : 'risk',
-    detail:
-      sedationCount < 4
-        ? 'Below 4-session preauth threshold'
-        : `${sedationCount} session(s) — preauth required for 5th+ on CDCP`,
+    status: 'watch',
+    detail: 'Not available — requires procedure-level claim data',
   };
 
-  // 8. COB / wraparound efficiency — ratio of paid to total balances older than 30 days
-  const balances = await prisma.patientBalance.findMany({
-    where: {
-      practiceId,
-      treatmentDate: { lt: new Date(now.getTime() - 30 * 86_400_000), not: null },
-    },
-    select: { paymentStatus: true },
-  });
-  const paid = balances.filter((b) => b.paymentStatus === 'paid').length;
-  const cobValue = asPct(paid, balances.length);
+  // 8. COB / wraparound efficiency — insurance claim resolution rate as proxy
+  const [totalClaims, resolvedClaims] = await Promise.all([
+    prisma.insuranceClaim.count({ where: { practiceId } }),
+    prisma.insuranceClaim.count({ where: { practiceId, status: 'RESOLVED' } }),
+  ]);
+  const cobValue = asPct(resolvedClaims, totalClaims);
   const cobEfficiency: DimensionMetric = {
     id: 8,
     key: 'cob_efficiency',
-    name: 'COB / wraparound efficiency',
+    name: 'Insurance claim resolution rate',
     value: cobValue,
     unit: 'pct',
     status:
       cobValue == null ? 'watch' : cobValue >= 70 ? 'ok' : cobValue >= 40 ? 'watch' : 'risk',
-    detail: `${paid}/${balances.length} balances paid past 30-day mark`,
+    detail: `${resolvedClaims}/${totalClaims} insurance claims resolved`,
   };
 
   return [

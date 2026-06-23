@@ -5,7 +5,7 @@ const STEPS = [
   {
     id: 'import',
     title: 'Import balances',
-    body: 'Upload a Dentrix or AbelDent export under Admin → Sync ops (or use the desktop AbelDent helper). Fix row errors until validation passes.',
+    body: 'Set your PMS under Practice Settings, then upload a claim export under Admin → Sync ops (or use the AbelDent desktop connector). Fix row errors until validation passes.',
   },
   {
     id: 'verify',
@@ -34,7 +34,7 @@ function storageKey(practiceId: string | null) {
 }
 
 /**
- * P9-03 — new practice checklist (import → verify → go live). Progress stored in localStorage per practice.
+ * P9-03, new practice checklist (import → verify → go live). Progress stored in localStorage per practice.
  */
 export function AdminOnboardingChecklist({ practiceId }: { practiceId: string | null }) {
   const [done, setDone] = useState<Record<string, boolean>>({})

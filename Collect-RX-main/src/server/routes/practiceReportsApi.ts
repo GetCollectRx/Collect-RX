@@ -13,6 +13,7 @@ import {
   computeQueueStats,
   computePortfolioSummary,
 } from '../services/platformReports.js';
+import { getDenialAnalytics } from '../../services/insurance-denial-analytics.js';
 import {
   getPracticeSettings,
   updatePracticeSettings,
@@ -22,16 +23,27 @@ import { withGrantChecks } from '../middleware/grantChecks.js';
 import { getUserRole, isPracticeOwner, isPlatformAdmin } from '../accessControl/types.js';
 import { buildSimpleReportPdf } from '../lib/simpleReportPdf.js';
 
+/** Escape untrusted text before interpolating into report HTML (prevents XSS via practice/patient names). */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function reportHtml(title: string, rows: string[][]): string {
-  const head = rows[0]?.map((h) => `<th>${h}</th>`).join('') ?? '';
+  const safeTitle = escapeHtml(title);
+  const head = rows[0]?.map((h) => `<th>${escapeHtml(h)}</th>`).join('') ?? '';
   const body = rows
     .slice(1)
-    .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+    .map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`)
     .join('');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
 <style>body{font-family:system-ui,sans-serif;padding:24px}table{border-collapse:collapse;width:100%}
 th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f4f4f4}</style></head>
-<body><h1>${title}</h1><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+<body><h1>${safeTitle}</h1><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
 }
 
 export function createPracticeReportsRouter(): Router {
@@ -69,8 +81,11 @@ export function createPracticeReportsRouter(): Router {
         }
         const practiceId = practiceIdFromSession(req);
         const timeframe = (req.query.timeframe as '30d' | '90d' | 'all') || '30d';
-        const data = await computeCarrierStats(prisma, practiceId, timeframe);
-        res.json({ success: true, data });
+        const [carrierStats, denialAnalytics] = await Promise.all([
+          computeCarrierStats(prisma, practiceId, timeframe),
+          getDenialAnalytics(prisma, practiceId),
+        ]);
+        res.json({ success: true, data: { ...carrierStats, denialAnalytics } });
       } catch (err) {
         res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
       }
@@ -221,11 +236,13 @@ export function createPracticeReportsRouter(): Router {
         return;
       }
       const settings = await getPracticeSettings(prisma, practiceId);
+      const { getPracticePmsContext } = await import('../pms/practicePmsContext.js');
+      const pms = await getPracticePmsContext(prisma, practiceId);
       const practice = await prisma.practice.findUnique({
         where: { id: practiceId },
         select: { id: true, name: true, timezone: true },
       });
-      res.json({ success: true, data: { practice, settings } });
+      res.json({ success: true, data: { practice, settings, pms } });
     } catch (err) {
       res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
     }

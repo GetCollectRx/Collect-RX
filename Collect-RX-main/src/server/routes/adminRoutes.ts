@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from 'express';
-import multer from 'multer';
 import { prisma } from '../../lib/prisma';
 import { authenticate } from '../middleware/authenticate';
 import {
@@ -7,19 +6,11 @@ import {
   queryPracticeConflictsSession,
   requirePracticeContext,
 } from '../middleware/requirePracticeSession';
-import { parseSimpleCsv } from '../csv/parseSimple';
-import { upsertBalances } from '../patients/balances';
 import { appendAuditLog } from '../audit/auditLog.js';
 import type { Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
-import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { isPlatformDev } from '../accessControl/types.js';
 import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
-});
 
 const router = Router();
 router.use(authenticate);
@@ -118,18 +109,10 @@ router.put('/settings', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/integrations', async (req: Request, res: Response) => {
+router.get('/integrations', async (_req: Request, res: Response) => {
   try {
-    const practiceId = practiceIdFromSession(req);
     const base = integrationPayload();
-    const acct = await prisma.stripeConnectAccount.findUnique({ where: { practiceId } });
-    if (acct) {
-      base.stripeConnect = {
-        account: true,
-        onboardingComplete: acct.onboardingComplete,
-        chargesEnabled: acct.chargesEnabled,
-      };
-    }
+    // Stripe Connect (patient payment collection) removed — stripeConnect defaults to disabled.
     return res.json(base);
   } catch (err) {
     console.error('[GET /admin/integrations]', err);
@@ -168,91 +151,6 @@ router.get('/audit-log', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /admin/audit-log]', err);
-    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
-  }
-});
-
-router.post('/generate-balances', async (req: Request, res: Response) => {
-  try {
-    if (isPlatformDev(req.auth)) {
-      return res.status(403).json({
-        error: 'Demo patient generation is not available for platform developer sessions',
-      });
-    }
-    const practiceId = practiceIdFromSession(req);
-    const rawCount = (req.body as { count?: number })?.count;
-    const parsed = typeof rawCount === 'number' ? rawCount : parseInt(String(rawCount ?? 10), 10);
-    const count = Math.min(200, Math.max(1, Number.isFinite(parsed) ? Math.floor(parsed) : 10));
-    let created = 0;
-    for (let i = 0; i < count; i++) {
-      await prisma.patientBalance.create({
-        data: {
-          patientFirstName: 'Demo',
-          patientLastName: `Patient ${i + 1}`,
-          patientOwes: 50 + (i % 5) * 25,
-          amountBilled: 200,
-          insurancePaid: 100,
-          daysSinceAdjudication: (i % 90) + 1,
-          practiceId,
-          paymentStatus: 'outstanding',
-          reminderStatus: 'none',
-        },
-      });
-      created++;
-    }
-    void appendAuditLog(prisma, {
-      practiceId,
-      action: 'admin.generate_balances',
-      subjectType: 'Practice',
-      subjectId: practiceId,
-      details: { count: created },
-      req,
-    });
-    return res.json({ message: `Created ${created} demo patient balance rows.` });
-  } catch (err) {
-    console.error('[POST /admin/generate-balances]', err);
-    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
-  }
-});
-
-router.post('/import-patient-csv', upload.single('file'), async (req: Request, res: Response) => {
-  try {
-    if (isPlatformDev(req.auth)) {
-      return res.status(403).json({
-        error: 'Patient CSV import is not available for platform developer sessions',
-      });
-    }
-    const practiceId = practiceIdFromSession(req);
-    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 8 * 1024 * 1024 });
-    if (!uploadCheck.ok) {
-      return res.status(uploadCheck.status).json({ error: uploadCheck.error });
-    }
-    const text = req.file!.buffer!.toString('utf8');
-    const rawRows = parseSimpleCsv(text);
-    const rows = rawRows.map((r) => {
-      const o: Record<string, string | number | undefined> = {};
-      for (const [k, v] of Object.entries(r)) {
-        const num = parseFloat(v);
-        if (['patient_owes', 'amount_billed', 'insurance_paid', 'days_since_adjudication'].includes(k)) {
-          o[k] = Number.isFinite(num) ? num : v;
-        } else {
-          o[k] = v;
-        }
-      }
-      return o;
-    });
-    const result = await upsertBalances(rows as never, practiceId);
-    void appendAuditLog(prisma, {
-      practiceId,
-      action: 'admin.csv.import',
-      subjectType: 'Practice',
-      subjectId: practiceId,
-      details: { imported: result.imported, updated: result.updated, skipped: result.skipped },
-      req,
-    });
-    return res.json(result);
-  } catch (err) {
-    console.error('[POST /admin/import-patient-csv]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });

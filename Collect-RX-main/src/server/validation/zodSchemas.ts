@@ -48,6 +48,24 @@ export const changePasswordBodySchema = z.object({
   newPassword: z.string().min(8, 'new password must be at least 8 characters').max(256),
 });
 
+export const registerBodySchema = z.object({
+  practiceName: z.string().trim().min(1).max(200),
+  displayName: z.string().trim().min(1).max(120),
+  email: z.string().email().toLowerCase(),
+  password: z.string().min(8, 'password must be at least 8 characters').max(256),
+});
+
+export const inviteBodySchema = z.object({
+  email: z.string().email().toLowerCase(),
+  role: z.enum(PRACTICE_ROLES),
+});
+
+export const acceptInviteBodySchema = z.object({
+  token: z.string().uuid(),
+  displayName: z.string().trim().min(1).max(120),
+  password: z.string().min(8, 'password must be at least 8 characters').max(256),
+});
+
 // ─── Existing schemas (unchanged) ─────────────────────────────────────────────
 
 export const carrierUnblockBodySchema = z.object({
@@ -60,6 +78,9 @@ export const pmsImportBodySchema = z
   .object({
     records: z.array(z.record(z.string(), z.unknown())).optional(),
     sourceBalanceTotal: z.coerce.number().finite().optional(),
+    pmsVendor: z.string().trim().optional(),
+    /** @deprecated Use pmsVendor */
+    pmsSource: z.string().trim().optional(),
   })
   .passthrough();
 

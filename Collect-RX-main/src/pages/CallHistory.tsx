@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { usePractice } from '../context/PracticeContext'
+import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
@@ -58,7 +58,7 @@ function outcomeLabel(outcome: string | null): string {
 }
 
 function formatDurationSec(sec: number | null): string {
-  if (sec == null) return '—'
+  if (sec == null) return 'N/A'
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return m > 0 ? `${m}m ${s}s` : `${s}s`
@@ -74,19 +74,20 @@ function formatDate(iso: string): string {
 }
 
 export default function CallHistory() {
-  const { practiceId, loading: practiceLoading } = usePractice()
+  const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
   const [rows, setRows] = useState<HistoryRow[]>([])
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [carrier, setCarrier] = useState('')
   const [outcome, setOutcome] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!practiceId) return
     setLoading(true)
+    setError(null)
     const q = new URLSearchParams({ page: String(page), limit: '25' })
     if (carrier) q.set('carrier', carrier)
     if (outcome) q.set('outcome', outcome)
@@ -108,10 +109,13 @@ export default function CallHistory() {
     }
   }, [practiceId, page, carrier, outcome])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!canFetch) return
+    void load()
+  }, [load, canFetch])
 
   return (
-    <DataState loading={practiceLoading} error={error}>
+    <DataState loading={pageBusy(loading)} error={pageError(error)}>
       <div className="page-enter">
 
         {/* ── Page header ── */}
@@ -205,7 +209,7 @@ export default function CallHistory() {
                           ) : r.outcome === 'NO_ANSWER' ? (
                             <span className="text-xs text-gray-400 dark:text-gray-600">Retry via queue</span>
                           ) : (
-                            <span className="text-gray-300 dark:text-gray-700">—</span>
+                            <span className="text-gray-300 dark:text-gray-700">N/A</span>
                           )}
                         </Td>
                         <Td>

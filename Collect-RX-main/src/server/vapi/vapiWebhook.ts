@@ -1,14 +1,8 @@
 /**
  * P4-05 — Vapi server URL webhook: shared secret (X-Vapi-Secret or Bearer) + idempotent body hash.
  *
- * CRITICAL: `call.ended` events drive the entire claims outcome loop. This handler:
- *   1. Classifies the call outcome (RESOLVED / ESCALATED / DENIED / BLOCK_DETECTED / etc.)
- *   2. Updates CallAttempt with outcome, duration, rep name, reference, transcript URL
- *   3. Updates InsuranceClaim.status based on outcome
- *   4. Updates CallQueue.status
- *   5. If BLOCK_DETECTED → fires CARRIER_BLOCK protocol (suspends ALL calls to that carrier)
- *
- * Without this handler processing outcomes, all claims stay `CALLING` indefinitely.
+ * CRITICAL: `call.ended` events drive the entire claims recovery loop via claim router +
+ * recovery actions, sync verification, and CDCP branching.
  */
 
 import { createHash } from 'crypto';
@@ -16,10 +10,67 @@ import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
-import { enqueueEmrClaimEvent } from '../emrSyncOutbox.js';
+import {
+  applyRecoveryAfterCall,
+  emitRecoveryTerminalEmrEvent,
+  resolveGatedClaimStatus,
+} from '../recovery/recoveryLoopService.js';
+import {
+  linkRecoveryActionToCdcpCase,
+  tryCdcpFromVapiPayload,
+} from '../recovery/cdcpRecoveryBridge.js';
+import { piiVault } from '../../pii-vault.js';
+import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
+import {
+  triggerPostCallDebrief,
+  triggerHallucinationDetector,
+  triggerEscalationTriage,
+} from '../agents/eventAgents.js';
+import { appendAuditLog } from '../audit/auditLog.js';
+
+// ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
+// Scrub PHI patterns from transcript text before storing in DB.
+// Mirrors the field-level scrubbing in logger.js PHI_FIELD_NAMES/PHI_PATTERNS.
+// This is defence-in-depth: even if PHI slips through, it is masked on persist.
+const PHI_TRANSCRIPT_PATTERNS: Array<[RegExp, string]> = [
+  // ISO dates — DOBs, treatment dates (collateral damage acceptable; dates are restorable from claim)
+  [/\b\d{4}-\d{2}-\d{2}\b/g, '[DATE-REDACTED]'],
+  // Spoken dates: "January 15, 1985" / "Jan 15 1985"
+  [/\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/gi, '[DATE-REDACTED]'],
+  // Policy/group/member numbers: 6–15 digit strings (common in dental insurance)
+  [/\b\d{6,15}\b/g, '[ID-REDACTED]'],
+  // Labeled PHI fields if they somehow appear
+  [/(?:policy[_ -]?number|policy[_ -]?no)[:\s]+[\w-]+/gi, 'policy_number: [REDACTED-PHI]'],
+  [/(?:date[_ -]?of[_ -]?birth|dob)[:\s]+[\w/-]+/gi, 'date_of_birth: [REDACTED-PHI]'],
+  [/(?:patient[_ -]?name|member[_ -]?name)[:\s]+[A-Za-z ,.-]+/gi, 'patient_name: [REDACTED-PHI]'],
+];
+
+export function scrubTranscriptPhi(transcript: string): string {
+  let scrubbed = transcript;
+  for (const [pattern, replacement] of PHI_TRANSCRIPT_PATTERNS) {
+    scrubbed = scrubbed.replace(pattern, replacement);
+  }
+  return scrubbed;
+}
 
 function hashBody(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
+}
+
+export function hashWebhookBody(buf: Buffer): string {
+  return hashBody(buf);
+}
+
+export async function isWebhookDuplicate(
+  prisma: PrismaClient,
+  bodyHash: string,
+): Promise<boolean> {
+  const existing = await prisma.processedVapiWebhook.findUnique({ where: { bodyHash } });
+  return Boolean(existing);
+}
+
+export async function markWebhookProcessed(prisma: PrismaClient, bodyHash: string): Promise<void> {
+  await prisma.processedVapiWebhook.create({ data: { bodyHash } });
 }
 
 function verifyVapiAuth(req: Request): boolean {
@@ -53,14 +104,6 @@ function responseForVapiMessage(body: unknown): Record<string, unknown> {
   return {};
 }
 
-/**
- * Fire the CARRIER_BLOCK protocol:
- *  1. Create a CarrierBlockEvent record
- *  2. Mark all PENDING/IN_PROGRESS queue entries for that carrier as BLOCKED
- *  3. Mark all CALLING claims for that carrier as BLOCKED
- *
- * This is intentionally aggressive — it is safer to over-block than to keep calling.
- */
 async function fireCarrierBlockProtocol(
   prisma: PrismaClient,
   practiceId: string,
@@ -75,7 +118,6 @@ async function fireCarrierBlockProtocol(
     data: { practiceId, carrierId: carrierId as import('@prisma/client').CarrierId },
   });
 
-  // Block all pending/in-progress queue entries for this carrier's claims
   const affectedClaims = await prisma.insuranceClaim.findMany({
     where: { practiceId, carrierId: carrierId as import('@prisma/client').CarrierId, status: { in: ['CALLING', 'IN_QUEUE', 'PENDING'] } },
     select: { id: true },
@@ -86,7 +128,7 @@ async function fireCarrierBlockProtocol(
     await prisma.$transaction([
       prisma.insuranceClaim.updateMany({
         where: { id: { in: claimIds } },
-        data: { status: 'BLOCKED' },
+        data: { status: 'BLOCKED', recoveryRoute: 'STOP' },
       }),
       prisma.callQueue.updateMany({
         where: { claimId: { in: claimIds } },
@@ -97,44 +139,10 @@ async function fireCarrierBlockProtocol(
   }
 }
 
-/**
- * Map call outcome to the appropriate InsuranceClaim status.
- */
-function outcomeToClaimStatus(outcome: string): import('@prisma/client').ClaimStatus {
-  switch (outcome) {
-    case 'RESOLVED':                return 'RESOLVED';
-    case 'APPROVED_PENDING_PAYMENT': return 'APPROVED_PENDING_PAYMENT';
-    case 'DENIED':                  return 'DENIED';
-    case 'ESCALATED':               return 'ESCALATED';
-    case 'BLOCK_DETECTED':          return 'BLOCKED';
-    case 'FAILED':
-    case 'NO_ANSWER':
-    case 'HUNG_UP':
-    case 'PENDING':
-    default:
-      return 'IN_QUEUE'; // Back to queue for retry
-  }
-}
-
-/**
- * Map call outcome to the appropriate CallQueue status.
- */
-function outcomeToQueueStatus(outcome: string): import('@prisma/client').QueueStatus {
-  switch (outcome) {
-    case 'RESOLVED':
-    case 'APPROVED_PENDING_PAYMENT':
-    case 'DENIED':
-      return 'COMPLETED';
-    case 'ESCALATED':               return 'ESCALATED';
-    case 'BLOCK_DETECTED':          return 'BLOCKED';
-    default:
-      return 'PENDING'; // Retry
-  }
-}
-
 async function processCallEnded(
   payload: VapiWebhookPayload,
   prisma: PrismaClient,
+  rawBody?: unknown,
 ): Promise<void> {
   const vapiCallId = payload.call.id;
   if (!vapiCallId) {
@@ -142,10 +150,23 @@ async function processCallEnded(
     return;
   }
 
-  // Find the CallAttempt by vapiCallId
   const attempt = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    include: { claim: { select: { id: true, practiceId: true, carrierId: true } } },
+    include: {
+      claim: {
+        select: {
+          id: true,
+          practiceId: true,
+          carrierId: true,
+          claimNumber: true,
+          outstandingAmount: true,
+          billedAmount: true,
+          daysOutstanding: true,
+          status: true,
+          patientToken: true,
+        },
+      },
+    },
   });
 
   if (!attempt) {
@@ -153,77 +174,216 @@ async function processCallEnded(
     return;
   }
 
-  const { claim } = attempt;
-  const processed = resolveOutcomeFromWebhookPayload(payload);
-  const structuredStatus = extractStructuredClaimStatus(payload);
-
-  const newClaimStatus = structuredStatus ?? outcomeToClaimStatus(processed.outcome);
-  const newQueueStatus = outcomeToQueueStatus(processed.outcome);
-
-  // CARRIER_BLOCK — fire protocol FIRST before any other DB writes
-  if (processed.carrierBlockDetected) {
-    await fireCarrierBlockProtocol(prisma, claim.practiceId, claim.carrierId);
-    // CallAttempt and claim updates still proceed below (already blocked above)
-  }
-
-  // Update the CallAttempt with full outcome data
-  await prisma.callAttempt.update({
-    where: { id: attempt.id },
-    data: {
-      completedAt:     payload.call.endedAt ? new Date(payload.call.endedAt) : new Date(),
-      durationSeconds: processed.durationSeconds,
-      outcome:         processed.outcome,
-      outcomeDetail:   processed.outcomeDetail,
-      repName:         processed.repName,
-      referenceNumber: processed.referenceNumber,
-      transcriptUrl:   processed.transcriptUrl,
-      carrierBlockDetected: processed.carrierBlockDetected,
+  const recoveryApplied = await prisma.claimRecoveryEvent.findFirst({
+    where: {
+      claimId: attempt.claim.id,
+      eventType: 'ROUTE_ASSIGNED',
+      metadata: { path: ['callAttemptId'], equals: attempt.id },
     },
+    select: { id: true },
   });
 
-  // Update InsuranceClaim + CallQueue atomically
-  await prisma.$transaction([
-    prisma.insuranceClaim.update({
-      where: { id: claim.id },
-      data: { status: newClaimStatus },
-    }),
-    prisma.callQueue.updateMany({
-      where: { claimId: claim.id },
-      data: {
-        status: newQueueStatus,
-        lastAttemptAt: new Date(),
-      },
-    }),
-  ]);
+  if (attempt.completedAt && attempt.outcome && recoveryApplied) {
+    console.log(
+      `[vapi-webhook] call already processed: vapiCallId=${vapiCallId} outcome=${attempt.outcome}`,
+    );
+    return;
+  }
 
-  // Emit EMR outbox event for terminal outcomes
-  if (['RESOLVED', 'DENIED', 'ESCALATED'].includes(processed.outcome)) {
+  if (attempt.completedAt && attempt.outcome && !recoveryApplied) {
+    console.warn(
+      `[vapi-webhook] Re-running recovery for vapiCallId=${vapiCallId} — call marked complete but ROUTE_ASSIGNED missing`,
+    );
+  }
+
+  const { claim } = attempt;
+
+  // ── TRANSCRIPT PHI SCRUB ─────────────────────────────────────────────────
+  // Scrub PHI patterns from the transcript before it is used for outcome
+  // classification, logging, or storage. The voice agent may have spoken
+  // patient name, DOB, or policy number aloud — we must not persist those.
+  // See logger.js PHI_FIELD_NAMES for field-level scrubbing on the log layer.
+  if (payload.transcript) {
+    payload.transcript = scrubTranscriptPhi(payload.transcript);
+  }
+
+  const processed = resolveOutcomeFromWebhookPayload(payload);
+  const structuredStatus = extractStructuredClaimStatus(payload);
+  const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
+  const { proposedClaimStatus, gatedClaimStatus, paymentCorroborated } = resolveGatedClaimStatus(
+    processed,
+    structuredStatus,
+    outstandingCents,
+  );
+
+  if (
+    gatedClaimStatus === 'ESCALATED' &&
+    proposedClaimStatus !== 'ESCALATED' &&
+    ['RESOLVED', 'DENIED', 'APPROVED_PENDING_PAYMENT'].includes(proposedClaimStatus)
+  ) {
+    console.warn(
+      `[vapi-webhook] Held unconfirmed financial outcome: claimId=${claim.id} ` +
+      `proposed=${proposedClaimStatus} → ESCALATED`,
+    );
     try {
-      await enqueueEmrClaimEvent(prisma, {
+      const { createEscalation } = await import('../services/escalationService.js');
+      await createEscalation(prisma, {
         practiceId: claim.practiceId,
         claimId: claim.id,
-        eventType: processed.outcome === 'RESOLVED'
-          ? 'PAYMENT_CONFIRMED'
-          : 'CLAIM_STATUS_UPDATED',
-        payload: {
-          outcome: processed.outcome,
-          outcomeDetail: processed.outcomeDetail,
-          repName: processed.repName,
-          referenceNumber: processed.referenceNumber,
-          resolvedAt: new Date().toISOString(),
-        },
+        claimRef: claim.claimNumber,
+        carrierId: claim.carrierId,
+        amountClaimedCents: outstandingCents,
+        reason:
+          `Outcome "${proposedClaimStatus}" inferred without structured carrier confirmation and no reference number.`,
+        callAttemptId: attempt.id,
       });
-    } catch (e) {
-      console.error('[vapi-webhook] EMR outbox enqueue failed (non-fatal):', e);
+    } catch (escErr) {
+      console.error('[vapi-webhook] escalation create failed (non-fatal):', escErr);
+    }
+  }
+
+  if (processed.carrierBlockDetected) {
+    await fireCarrierBlockProtocol(prisma, claim.practiceId, claim.carrierId);
+  }
+
+  const completedAt = payload.call.endedAt ? new Date(payload.call.endedAt) : new Date();
+
+  if (!attempt.completedAt || !attempt.outcome) {
+    await prisma.callAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        completedAt,
+        durationSeconds: processed.durationSeconds,
+        outcome: processed.outcome,
+        outcomeDetail: processed.outcomeDetail,
+        repName: processed.repName,
+        referenceNumber: processed.referenceNumber,
+        transcriptUrl: processed.transcriptUrl,
+        carrierBlockDetected: processed.carrierBlockDetected,
+      },
+    });
+  }
+
+  const decision = await applyRecoveryAfterCall(prisma, {
+    claim,
+    attemptId: attempt.id,
+    processed,
+    structuredClaimStatus: structuredStatus,
+    gatedClaimStatus,
+    proposedClaimStatus,
+    paymentCorroborated,
+    completedAt,
+  });
+
+  try {
+    const cdcpHit = await tryCdcpFromVapiPayload(prisma, rawBody ?? payload);
+    if (cdcpHit) {
+      await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpHit.caseId);
+    }
+  } catch (cdcpErr) {
+    console.error('[vapi-webhook] CDCP structured signal (non-fatal):', cdcpErr);
+  }
+
+  await emitRecoveryTerminalEmrEvent(prisma, claim, decision.claimStatus, processed);
+
+  // ── PHI TOKEN REVOCATION ────────────────────────────────────────────────
+  // The call is complete. Revoke the PHI token from piiVault immediately so
+  // the PHI is no longer accessible in memory. The patientToken UUID remains
+  // in the DB for record-keeping — but the PHI it pointed to is gone.
+  if (claim.patientToken) {
+    piiVault.expireToken(claim.patientToken, 'post-call-revocation');
+  }
+
+  // ── ZERO-RETENTION: AUDIO + RECORDING DELETION ──────────────────────────
+  // Delete recording from Vapi (and Twilio if applicable).
+  // belt-and-suspenders: recordingEnabled:false was set at call initiation,
+  // but we also explicitly delete in case Vapi stored anything.
+  //
+  // M-3: handlePostCallAudioDeletion never throws — it catches all errors and
+  // returns them in result.errors. Awaiting and checking the result ensures
+  // failed deletions are tracked in the audit log for compliance review.
+  const recordingUrl = payload.recordingUrl ?? null;
+  try {
+    const deletionResult = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
+    if (deletionResult.errors.length > 0) {
+      console.error(
+        '[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio:',
+        { vapiCallId, errors: deletionResult.errors },
+      );
+      // Write to audit log so the compliance team can investigate and retry.
+      await appendAuditLog(prisma, {
+        practiceId: claim.practiceId,
+        action: 'AUDIO_DELETION_FAILED',
+        subjectType: 'CallAttempt',
+        subjectId: attempt.id,
+        details: { vapiCallId, errors: deletionResult.errors, recordingUrl },
+      }).catch((auditErr: unknown) => {
+        console.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log:', auditErr);
+      });
+    }
+  } catch (deletionErr: unknown) {
+    console.error('[vapi-webhook] post-call audio deletion threw unexpectedly:', deletionErr);
+  }
+
+  // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────
+  // Fire-and-forget — never block the webhook response.
+  // Activated only when AGENTS_ENABLED=true + GEMINI_API_KEY is set.
+  if (process.env.AGENTS_ENABLED === 'true' || process.env.AGENTS_ENABLED === '1') {
+    const callSummary = {
+      vapiCallId,
+      claimId: claim.id,
+      carrierId: claim.carrierId ?? 'unknown',
+      outcome: processed.outcome,
+      durationSeconds: payload.call?.endedAt && payload.call?.startedAt
+        ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+        : undefined,
+      // Transcript already scrubbed by scrubTranscriptPhi() above
+      transcript: payload.transcript ? payload.transcript.slice(0, 2000) : undefined,
+    };
+
+    triggerPostCallDebrief(prisma, callSummary);
+    triggerHallucinationDetector(prisma, {
+      ...callSummary,
+      referenceNumber: processed.referenceNumber ?? undefined,
+    });
+
+    if (processed.outcome === 'ESCALATED') {
+      triggerEscalationTriage(prisma, {
+        claimId: claim.id,
+        carrierId: claim.carrierId ?? 'unknown',
+        reason: 'outcome: ESCALATION_REQUIRED',
+        practiceId: claim.practiceId ?? 'unknown',
+        billedAmount: claim.billedAmount != null ? Number(claim.billedAmount) : undefined,
+      });
     }
   }
 
   console.log(
     `[vapi-webhook] call.ended processed: vapiCallId=${vapiCallId} ` +
-    `claimId=${claim.id} outcome=${processed.outcome} claimStatus=${newClaimStatus}`,
+    `claimId=${claim.id} outcome=${processed.outcome} route=${decision.route} ` +
+    `claimStatus=${decision.claimStatus} recall=${decision.scheduledRecallAt?.toISOString() ?? 'none'}`,
   );
 }
 
+/** Recovery-aware call.ended handler — used by production webhook and tests. */
+export async function processRecoveryCallEnded(
+  payload: VapiWebhookPayload,
+  prisma: PrismaClient,
+  rawBody?: unknown,
+): Promise<void> {
+  return processCallEnded(payload, prisma, rawBody);
+}
+
+/**
+ * @deprecated L-1: SUPERSEDED — never mounted, never called.
+ *
+ * The active webhook handler is `src/webhooks/vapi.ts` (HMAC-SHA256 auth,
+ * atomic idempotency via markWebhookProcessed, processVapiDeskWebhook).
+ * This function uses a different auth mechanism (shared-secret header check)
+ * and routes directly to processCallEnded, bypassing the desk event pipeline.
+ * Do NOT add new call sites. Remove this function when the codebase has
+ * confirmed zero test references.
+ */
 export async function handleVapiWebhook(
   req: Request & { vapiRawBody?: Buffer },
   res: Response,
@@ -240,25 +400,26 @@ export async function handleVapiWebhook(
     return;
   }
 
-  // Idempotency — reject duplicate webhooks
   const bodyHash = hashBody(buf);
-  try {
-    await prisma.processedVapiWebhook.create({ data: { bodyHash } });
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code === 'P2002') {
-      res.status(200).json({ ok: true, duplicate: true });
-      return;
-    }
-    throw e;
-  }
-
   const payload = req.body as VapiWebhookPayload;
 
-  // Process call outcomes asynchronously — respond immediately so Vapi doesn't timeout
+  const existing = await prisma.processedVapiWebhook.findUnique({ where: { bodyHash } });
+  if (existing) {
+    res.status(200).json({ ok: true, duplicate: true });
+    return;
+  }
+
   if (payload.type === 'call.ended' || payload.type === 'call.failed') {
-    processCallEnded(payload, prisma).catch((err) => {
+    try {
+      await processCallEnded(payload, prisma, req.body);
+      await prisma.processedVapiWebhook.create({ data: { bodyHash } });
+    } catch (err) {
       console.error('[vapi-webhook] processCallEnded failed:', err);
-    });
+      res.status(500).json({ error: 'Call processing failed' });
+      return;
+    }
+  } else {
+    await prisma.processedVapiWebhook.create({ data: { bodyHash } });
   }
 
   const out = responseForVapiMessage(payload);

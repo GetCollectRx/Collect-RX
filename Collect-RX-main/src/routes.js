@@ -26,6 +26,8 @@ const {
 const { createPractice, getPractice, listPractices, updatePractice, deactivatePractice, getPracticeConfig, getPracticeStats } = require("./practices/manager");
 const { importClaims, parseCSV } = require("./claims/importer");
 const piiVault = require("./pii-vault");
+const planService = require("./services/plans/planService.cjs");
+const usageService = require("./services/plans/usageService.cjs");
 const logger  = require("./logger");
 
 // Security middleware — rate limiters, validators, webhook verifier
@@ -79,7 +81,26 @@ router.post("/queue/run", strictLimiter, async (req, res) => {
     }
 
     const results = [];
+    let gateBlock = null; // Set when planService halts the run mid-loop
     for (const claim of queue) {
+      // ── Plan/subscription gate (collectrx-tiering-strategy.md §7 P0) ──
+      // Consult planService BEFORE every dispatch. The claim row carries
+      // practice_id; the per-run practiceId param is a fallback for the
+      // legacy single-tenant path.
+      const claimPracticeId = claim.practice_id || practiceId;
+      const gate = claimPracticeId ? await planService.canMakeCall(claimPracticeId) : { allowed: true };
+      if (!gate.allowed) {
+        logger.warn("Queue run halted by plan gate", {
+          practiceId: claimPracticeId,
+          reason: gate.reason,
+        });
+        results.push({ claimId: claim.id, success: false, blocked: true, reason: gate.reason });
+        gateBlock = { practiceId: claimPracticeId, reason: gate.reason };
+        // Stop the whole run as soon as any practice is gated — surfaces
+        // exactly one upgrade prompt rather than rate-limited noise.
+        break;
+      }
+
       const result = await dispatchCall(claim, practiceConfig);
       results.push({ claimId: claim.id, ...result });
       // Small delay between dispatches to avoid Vapi burst limits
@@ -92,6 +113,7 @@ router.post("/queue/run", strictLimiter, async (req, res) => {
       practice_id: practiceId,
       dispatched: succeeded,
       failed: results.length - succeeded,
+      gate_block: gateBlock,
       results,
     });
   } catch (err) {
@@ -133,6 +155,32 @@ router.post("/webhooks/vapi", webhookLimiter, verifyVapiWebhook, async (req, res
 
     const outcome = await processOutcome(parsed);
     logger.info("Webhook processed", { claimId: parsed.claimId, outcome: outcome.outcomeCode });
+
+    // ── Usage metering (collectrx-tiering-strategy.md §7 P0) ─────────────
+    // Record value-bearing terminal outcomes against the practice's Plan.
+    // Idempotent on vapi_call_id — webhook redeliveries are no-ops.
+    try {
+      const claimRow = await query(
+        `SELECT practice_id FROM claims WHERE id = $1`,
+        [parsed.claimId]
+      );
+      const practiceIdForUsage = claimRow.rows[0]?.practice_id;
+      if (practiceIdForUsage) {
+        const amountCents = outcome.outcomeCode === "paid"
+          ? await usageService.recoveredCentsForClaim(parsed.claimId)
+          : 0;
+        await usageService.recordOutcome({
+          practiceId: practiceIdForUsage,
+          claimId: parsed.claimId,
+          vapiCallId: parsed.vapiCallId,
+          outcomeCode: outcome.outcomeCode,
+          amountCents,
+        });
+      }
+    } catch (usageErr) {
+      // Usage metering must never break the webhook ack — log and move on.
+      logger.error("Usage recording failed (non-fatal)", { error: usageErr.message });
+    }
 
     res.json({ success: true, outcome });
   } catch (err) {
@@ -548,5 +596,44 @@ router.post(
     }
   }
 );
+
+// ─── Plan / monetization (collectrx-tiering-strategy.md §7 P0) ────────────────
+
+// GET /api/plan?practice_id=...
+// Returns the practice's current plan summary: tier, trial state, included-
+// pool usage, features. The frontend uses this to render the in-console
+// upgrade prompt and to gate UI surfaces (white-label toggle, REST keys, …).
+router.get("/plan", standardLimiter, async (req, res) => {
+  try {
+    const practiceId = String(req.query.practice_id || "").trim();
+    if (!practiceId) {
+      return res.status(400).json({ success: false, error: "practice_id is required" });
+    }
+    const summary = await planService.getPlanSummary(practiceId);
+    res.json({ success: true, plan: summary });
+  } catch (err) {
+    logger.error("Plan read error", { error: err.message });
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// POST /api/plan/tier  { practice_id, tier, status? }
+// Used by Stripe webhook on subscription activation and by platform_admin for
+// backfills. NOT user-facing — should be gated by admin auth in prod (the
+// existing strictLimiter is the floor; tighter checks happen at the auth
+// middleware layer once it's added to the legacy router).
+router.post("/plan/tier", strictLimiter, async (req, res) => {
+  try {
+    const { practice_id, tier, status } = req.body || {};
+    if (!practice_id || !tier) {
+      return res.status(400).json({ success: false, error: "practice_id and tier required" });
+    }
+    const plan = await planService.setTier(String(practice_id), String(tier), status || "active");
+    res.json({ success: true, plan });
+  } catch (err) {
+    logger.error("Plan tier update error", { error: err.message });
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;

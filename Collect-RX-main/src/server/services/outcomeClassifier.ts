@@ -37,7 +37,14 @@ export function classifyOutcome(
   if (/pre-authorization|missing documentation|additional info/.test(blob)) {
     return { outcome: 'DENIED', notes: 'Missing documentation or pre-auth required' };
   }
-  if (/error|incorrect|resubmit|invalid/.test(blob)) {
+  // M-1: 'resubmit' is a recoverable signal — the practice must correct and
+  // resubmit. Terminal DENIED would close the claim permanently. Route to
+  // ESCALATED with outcomeDetail 'resubmit_required' so claimRouter assigns
+  // a PRACTICE_GATE action and the practice can action it.
+  if (/resubmit/.test(blob)) {
+    return { outcome: 'ESCALATED', notes: 'Carrier requested resubmission — routing to practice gate' };
+  }
+  if (/error|incorrect|invalid/.test(blob)) {
     return { outcome: 'DENIED', notes: 'Carrier reported submission error' };
   }
   const duration = call.durationSeconds ?? 0;
@@ -68,7 +75,13 @@ export function shouldAutoEscalate(
   if (outcome === 'DENIED') {
     return true;
   }
-  if (attemptNumber >= 3 && outcome !== 'RESOLVED') {
+  // M-5: NO_ANSWER and PENDING are handled by the retry/recall loop in claimRouter.
+  // Auto-escalating them after 3 attempts fills the escalation inbox with cases
+  // a human cannot resolve faster than an AI retry (carrier phone was busy or
+  // claim is still in adjudication). Only escalate outcomes where human action
+  // is actually needed: FAILED, BLOCK_DETECTED, ESCALATED.
+  const retriableOutcomes: CallOutcome[] = ['NO_ANSWER', 'PENDING', 'RESOLVED'];
+  if (attemptNumber >= 3 && !retriableOutcomes.includes(outcome)) {
     return true;
   }
   return false;

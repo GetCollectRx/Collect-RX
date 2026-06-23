@@ -22,16 +22,16 @@ const config: Config = {
   theme: {
     extend: {
       // ── Brand palette ──────────────────────────────────────────────────────
-      // Primary: #0F6E56 (PRD: "CollectRx Green — emerald")
+      // Primary: #0f9d58 — matches marketing site (brandTokens.css)
       colors: {
         crx: {
-          50:  '#E8F5F0',
-          100: '#C5E8D9',
-          200: '#99D6BF',
-          300: '#66C3A3',
-          400: '#40B087',
-          500: '#0F6E56',   // PRIMARY
-          600: '#0B5B47',
+          50:  '#f0faf5',
+          100: '#d6f0e4',
+          200: '#a8dfc8',
+          300: '#6ec9a4',
+          400: '#2db872',
+          500: '#0f9d58',
+          600: '#0b5b47',
           700: '#094938',
           800: '#063629',
           900: '#042419',
@@ -42,6 +42,8 @@ const config: Config = {
       // ── Typography ─────────────────────────────────────────────────────────
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['Source Serif 4', 'Georgia', 'Times New Roman', 'serif'],
+        mono: ['DM Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
         '2xs': ['0.625rem', { lineHeight: '0.875rem' }],

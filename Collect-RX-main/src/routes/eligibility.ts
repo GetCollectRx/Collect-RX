@@ -16,6 +16,7 @@ import {
   EligibilityEstimate,
   EligibilitySnapshot,
   EligibilityStatus,
+  Patient,
   ReconcileRequest,
   ReconcileResponse,
   StatusResponse,
@@ -110,7 +111,7 @@ router.post('/estimate', async (req: Request, res: Response) => {
       secondaryEligibilitySnapshot: body.secondaryEligibilitySnapshot,
     };
 
-    const estimate = generateEstimate(estimateRequest, body.patient as ReturnType<typeof generateEstimate> extends ReturnType<typeof generateEstimate> ? any : any);
+    const estimate = generateEstimate(estimateRequest, body.patient as Patient);
 
     const response: EstimateResponse = { success: true, estimate };
     return res.status(200).json(response);

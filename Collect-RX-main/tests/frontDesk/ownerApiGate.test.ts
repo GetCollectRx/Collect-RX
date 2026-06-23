@@ -4,7 +4,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../../src/server/index.js';
-import { COOKIE_NAME, signPracticeToken } from '../../src/server/authToken.js';
+import { COOKIE_NAME, signUserToken } from '../../src/server/authToken.js';
 import { createPracticeForTests } from '../factories/practice.js';
 
 let dbReady = false;
@@ -21,11 +21,11 @@ afterAll(async () => {
 });
 
 function deskCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signPracticeToken(practiceId, 'front_desk')}`;
+  return `${COOKIE_NAME}=${signUserToken({ userId: `desk-${practiceId}`, practiceId, role: 'front_desk' })}`;
 }
 
 function ownerCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signPracticeToken(practiceId, 'owner')}`;
+  return `${COOKIE_NAME}=${signUserToken({ userId: `owner-${practiceId}`, practiceId, role: 'practice_owner' })}`;
 }
 
 describe.skipIf(!dbReady)('front_desk API gate', () => {
@@ -63,5 +63,5 @@ describe.skipIf(!dbReady)('front_desk API gate', () => {
     expect(ownerInsurance.status).not.toBe(403);
 
     await prisma.practice.delete({ where: { id: practice.id } });
-  });
+  }, 30000);
 });

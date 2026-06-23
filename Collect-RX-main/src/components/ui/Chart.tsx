@@ -1,6 +1,6 @@
 /**
- * CollectRx — Native SVG chart components
- * No external dependency — pure React + SVG.
+ * CollectRx, Native SVG chart components
+ * No external dependency, pure React + SVG.
  * Install recharts (npm install recharts) and swap these out when ready.
  */
 
