@@ -11,6 +11,7 @@ import { QueueOverview } from '../components/QueueOverview'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
 import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import { PlanUsageBanner } from '../components/PlanUsageBanner'
 import { PmsSyncBanner, type DashboardLastPmsImport } from '../components/dashboard/PmsSyncBanner'
 import type { PracticePmsInfo } from '../types/pms'
@@ -246,6 +247,8 @@ function DashboardBody({
           {arCloseMsg}
         </p>
       )}
+
+      <SubscriptionUsageCard compact className="relative z-10" />
 
       <div className="relative z-10 space-y-3">
         <PlanUsageBanner />

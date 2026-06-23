@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import { useRoleAccess } from '../lib/useRoleAccess'
 import {
   mapTriggerCallError,
@@ -130,6 +131,7 @@ export default function InsuranceClaims() {
         </div>
 
         <div className="p-6 space-y-5 max-w-6xl">
+          <SubscriptionUsageCard compact />
           {callError && (
             <p className="text-sm text-red-600 dark:text-red-400" role="alert">{callError}</p>
           )}

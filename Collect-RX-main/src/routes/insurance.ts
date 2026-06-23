@@ -425,7 +425,8 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
           });
         }
       }
-      return res.status(422).json({ success: false, error: guard.reason });
+      const statusCode = guard.code === 'SUBSCRIPTION_CLAIM_LIMIT_REACHED' ? 402 : 422;
+      return res.status(statusCode).json({ success: false, error: guard.reason, code: guard.code });
     }
 
     const planGate = await canMakeCall(practiceId);
