@@ -265,17 +265,9 @@ export async function extractBlockPhraseSignals(
       take: 500,
     });
 
-    // Get all recent calls for denominator
-    const allCalls = await prisma.callAttempt.findMany({
-      where: { completedAt: { gte: since } },
-      select: { vapiCallId: true, carrierBlockDetected: true },
-      take: 5000,
-    });
-
     if (blockedCalls.length === 0) return [];
 
     const blockedCallIds = new Set(blockedCalls.map((c) => c.vapiCallId));
-    const allCallIds = new Set(allCalls.map((c) => c.vapiCallId));
 
     // Get transcript lines from blocked calls (carrier-rep lines only)
     const transcriptLines = await prisma.callTranscriptLine.findMany({
@@ -344,17 +336,23 @@ export async function analyzeReconciliationVariance(
   const since = new Date(Date.now() - windowDays * 86_400_000);
 
   try {
-    // ReconciliationLog stores carrier, tier, estimated vs actual
+    // ReconciliationLog has no carrierId/tier of its own — both are derived
+    // from the InsuranceClaim it reconciles (joined manually below since the
+    // schema declares no relation between the two models).
+    const claims = await prisma.insuranceClaim.findMany({
+      where: { practiceId },
+      select: { id: true, carrierId: true, treatmentCodes: true },
+    });
+    if (claims.length === 0) return [];
+    const claimById = new Map(claims.map((c) => [c.id, c]));
+
     const logs = await prisma.reconciliationLog.findMany({
       where: {
-        practiceId,
+        claimId: { in: claims.map((c) => c.id) },
         createdAt: { gte: since },
       },
       select: {
-        carrierId: true,
-        tier: true,
-        estimatedPatientPortion: true,
-        actualPatientPortion: true,
+        claimId: true,
         variance: true,
         requiresHumanReview: true,
       },
@@ -363,10 +361,13 @@ export async function analyzeReconciliationVariance(
 
     if (logs.length === 0) return [];
 
-    // Group by carrier + tier
+    // Group by carrier + CDT tier (the claim's treatment codes — there is no
+    // separate tier dimension in the schema).
     const groups = new Map<string, typeof logs>();
     for (const log of logs) {
-      const key = `${log.carrierId}:${log.tier}`;
+      const claim = claimById.get(log.claimId);
+      if (!claim) continue;
+      const key = `${claim.carrierId}:${claim.treatmentCodes ?? 'UNKNOWN'}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(log);
     }

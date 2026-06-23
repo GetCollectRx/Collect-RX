@@ -13,7 +13,6 @@ const CARRIER_BLOCK_PHRASES_BASELINE = [
 
 // Runtime-merged phrase list (baseline + self-tuner learned phrases)
 let _activeBlockPhrases: readonly string[] = CARRIER_BLOCK_PHRASES_BASELINE;
-let _learnedLoaded = false;
 
 /**
  * Load learned block phrases from the self-tuner overlay and merge with baseline.
@@ -22,7 +21,6 @@ let _learnedLoaded = false;
 export function loadLearnedBlockPhrasesIntoRuntime(learnedPhrases: string[]): void {
   const merged = Array.from(new Set([...CARRIER_BLOCK_PHRASES_BASELINE, ...learnedPhrases]));
   _activeBlockPhrases = merged;
-  _learnedLoaded = true;
   if (learnedPhrases.length > 0) {
     console.log(`[carrierBlockPhrases] Loaded ${learnedPhrases.length} learned phrase(s) from self-tuner`);
   }
@@ -41,7 +39,6 @@ export function getActiveBlockPhrases(): readonly string[] {
  */
 export function resetToBaseline(): void {
   _activeBlockPhrases = CARRIER_BLOCK_PHRASES_BASELINE;
-  _learnedLoaded = false;
 }
 
 export function transcriptSignalsCarrierBlock(text: string): boolean {

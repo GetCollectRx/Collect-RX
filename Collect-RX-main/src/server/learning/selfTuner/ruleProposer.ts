@@ -224,7 +224,6 @@ export function proposeCarrierWaitDayAdjustments(
     if (!signal.medianFirstResolutionHours) continue;
 
     const configuredDays = CONFIGURED_WAIT_DAYS[signal.carrierId] ?? 32;
-    const configuredHours = configuredDays * 24;
     const observedDays = signal.medianFirstResolutionHours / 24;
     const observedRoundedDays = Math.ceil(observedDays);
 
