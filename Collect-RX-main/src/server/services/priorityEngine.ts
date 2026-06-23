@@ -10,7 +10,7 @@
 
 import type { CarrierId, ClaimPriority, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
-import { piiVault } from '../../services/pii-vault';
+import { piiVault } from '../../pii-vault';
 
 /** Months from service date to carrier submission / appeal deadline (product rules). */
 export const CARRIER_APPEAL_WINDOW_MONTHS: Record<CarrierId, number> = {
@@ -228,12 +228,11 @@ export function scoreClaim(input: PriorityScoreInput): ScoredParts {
 }
 
 function displayPatientName(patientToken: string): string {
-  try {
-    const patientId = piiVault.detokenize(patientToken);
-    return patientId;
-  } catch {
+  const r = piiVault.detokenize(patientToken, 'priority-queue');
+  if (!r.success || !r.phi?.patientName?.trim()) {
     return `Patient ${patientToken.slice(0, 8)}…`;
   }
+  return r.phi.patientName.trim();
 }
 
 /**
