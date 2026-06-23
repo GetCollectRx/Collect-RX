@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma';
 import { vapiClient } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
+import { writeDispatchAudit } from '../services/guardrails/index.js';
 import { strictLimiter } from '../server/middleware/rateLimiter';
 import {
   practiceIdFromSession,
@@ -377,6 +378,13 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       claimStatus: claim.status,
       scheduledFor: new Date(),
     });
+
+    // Write guardrails audit log (non-blocking)
+    try {
+      await writeDispatchAudit(claim.id, claim.patientToken, guard, claim.practiceId);
+    } catch (err) {
+      console.error('[guardrails] Failed to write dispatch audit:', err);
+    }
 
     if (!guard.allowed) {
       // If > 90 days → auto-escalate

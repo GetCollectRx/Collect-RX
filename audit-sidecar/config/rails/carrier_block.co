@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Carrier Block Detection Flow
+# Detects when a carrier has identified the call as automated/bot activity
+# ─────────────────────────────────────────────────────────────────────────────
+
+define user expresses block signal
+  "this looks like an automated call"
+  "we cannot speak with bots"
+  "you'll need a human to call back"
+  "this number is flagged in our system"
+  "robocall, hanging up now"
+  "automated calling is not permitted"
+  "we do not process automated calls"
+  "bot activity detected"
+  "this number has been blocked"
+
+define bot detect block
+  "carrier_block_detected"
+
+define flow carrier_block_detection
+  user expresses block signal
+  bot detect block

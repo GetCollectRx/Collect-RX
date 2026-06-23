@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Off-Script / Hallucination Detection Flow
+# Detects when the agent drifts off-topic or makes unsupported claims
+# ─────────────────────────────────────────────────────────────────────────────
+
+define user expresses off topic intent
+  "medical advice"
+  "billing dispute"
+  "patient financial hardship"
+  "appeal the claim"
+  "dispute this coverage"
+  "complaint about your service"
+
+define bot detect off script
+  "off_script_detected"
+
+define flow off_script_detection
+  user expresses off topic intent
+  bot detect off script
+
+# Hallucination sub-flow: agent invents facts not in context
+define bot hallucinated facts
+  "hallucination_detected"
+
+define flow hallucination_detection
+  bot hallucinated facts
