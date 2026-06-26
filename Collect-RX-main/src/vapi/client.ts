@@ -137,10 +137,13 @@ export interface CollectrxWebhookStructured {
 }
 
 export interface VapiCallMetadata {
-  claimId: string;
+  claimId?: string;
   carrierId: string;
   patientToken: string;
   practiceId: string;
+  appointmentVerificationId?: string;
+  preVisitType?: 'eligibility' | 'cdcp_predet';
+  cdcpContext?: boolean;
   collectrx?: CollectrxWebhookStructured;
 }
 
@@ -157,6 +160,9 @@ export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
   rbc:               '+18003613311',
   telus_adjudicare:  '+18772893343',
 };
+
+/** CDCP Contact Centre — separate from Sun Life group benefits line. */
+export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
 
 // ---------------------------------------------------------------------------
 // Vapi HTTP client
@@ -324,8 +330,98 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     },
   };
 
-  const result = await vapiRequest<VapiCallResult>('POST', '/call', payload);
-  return result;
+  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+  return {
+    ...result,
+    vapiCallId: result.vapiCallId ?? result.id ?? '',
+  };
+}
+
+export interface VapiPreVisitCallParams {
+  practiceId: string;
+  patientToken: string;
+  carrierId: CarrierId;
+  appointmentVerificationId: string;
+  preVisitType: 'eligibility' | 'cdcp_predet';
+  cdcpContext?: boolean;
+  patientName: string;
+  patientDob: string;
+  policyNumber: string;
+  subscriberName?: string;
+  subscriberDob?: string;
+  procedureCodes: string[];
+  appointmentAt: string;
+  practiceName: string;
+  providerNumber: string;
+  practicePhone: string;
+  languagePreference?: 'en' | 'fr';
+  carrierIvrInstructions?: string;
+}
+
+/**
+ * Pre-appointment verification call — no claim context required.
+ * CDCP predetermination checks dial the CDCP Contact Centre (1-888-888-8110).
+ */
+export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Promise<VapiCallResult> {
+  const carrierPhone = params.cdcpContext
+    ? CDCP_CONTACT_CENTRE_PHONE
+    : CARRIER_PHONE_MAP[params.carrierId];
+
+  const allowedNumbers = new Set(
+    [...Object.values(CARRIER_PHONE_MAP), CDCP_CONTACT_CENTRE_PHONE].map((n) => n.replace(/\D/g, '')),
+  );
+  const normalized = carrierPhone.replace(/\D/g, '');
+  if (!allowedNumbers.has(normalized)) {
+    throw new Error(`[VapiClient] Refusing pre-visit call — unknown destination: ${carrierPhone}`);
+  }
+
+  const metadata: VapiCallMetadata = {
+    carrierId: params.carrierId,
+    patientToken: params.patientToken,
+    practiceId: params.practiceId,
+    appointmentVerificationId: params.appointmentVerificationId,
+    preVisitType: params.preVisitType,
+    cdcpContext: params.cdcpContext === true,
+  };
+
+  const purpose =
+    params.cdcpContext
+      ? 'a CDCP predetermination status inquiry before a scheduled appointment'
+      : 'an eligibility and coverage verification before a scheduled appointment';
+
+  const payload = {
+    squadId: getSquadId(),
+    phoneNumberId: getPhoneNumberId(),
+    customer: { number: carrierPhone },
+    recordingEnabled: false,
+    metadata,
+    variables: {
+      patient_name: params.patientName,
+      patient_dob: params.patientDob,
+      policy_number: params.policyNumber,
+      subscriber_name: params.subscriberName ?? '',
+      subscriber_dob: params.subscriberDob ?? '',
+      procedure_codes: params.procedureCodes.join(', '),
+      appointment_at: params.appointmentAt,
+      practice_name: params.practiceName,
+      provider_number: params.providerNumber,
+      practice_phone: params.practicePhone,
+      language_preference: params.languagePreference ?? 'en',
+      carrier_id: params.carrierId,
+      cdcp_context: params.cdcpContext ? 'true' : 'false',
+      carrier_ivr_instructions: params.carrierIvrInstructions ?? '',
+      disclosure_message:
+        `Hello, this is an automated calling system contacting you on behalf of ${params.practiceName}, a dental practice. ` +
+        `You can reach us at ${params.practicePhone}. We are calling regarding ${purpose}. ` +
+        `If you are a representative at the provider line, please stay on the line.`,
+    },
+  };
+
+  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+  return {
+    ...result,
+    vapiCallId: result.vapiCallId ?? result.id ?? '',
+  };
 }
 
 /**
@@ -356,11 +452,13 @@ export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string
 
 export const vapiClient = {
   initiateCall,
+  initiatePreVisitCall,
   getCallStatus,
   listCalls,
   endVapiCall,
   transferVapiCall,
   CARRIER_PHONE_MAP,
+  CDCP_CONTACT_CENTRE_PHONE,
 } as const;
 
 export default vapiClient;

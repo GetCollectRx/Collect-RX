@@ -27,6 +27,7 @@ import {
   triggerEscalationTriage,
 } from '../agents/eventAgents.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -147,6 +148,11 @@ async function processCallEnded(
   const vapiCallId = payload.call.id;
   if (!vapiCallId) {
     console.error('[vapi-webhook] call.ended missing call.id — cannot process outcome');
+    return;
+  }
+
+  if (payload.metadata?.appointmentVerificationId) {
+    await processPreVisitCallEnded(payload, prisma);
     return;
   }
 

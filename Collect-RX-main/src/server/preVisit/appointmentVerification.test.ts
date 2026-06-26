@@ -11,6 +11,15 @@ vi.mock('./preVisitJobs.js', () => ({
   enqueuePreVisitJob: vi.fn().mockResolvedValue('job-123'),
 }));
 
+vi.mock('../emrSyncOutbox.js', () => ({
+  enqueueEmrPreVisitEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('./electronicPreVisit.js', () => ({
+  tryCanadaLifePortalPreVisit: vi.fn().mockResolvedValue({ resolved: false }),
+  tryTelusTx23PreVisit: vi.fn().mockResolvedValue({ resolved: false }),
+}));
+
 import { verifyBeforeAppointment } from './appointmentVerification.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -60,6 +69,13 @@ function makePrisma(opts: {
         updates.push({ status: data.status, reason: data.reason ?? null });
         return { id: 'av-1', ...data };
       }),
+      findUnique: vi.fn(async () => ({
+        id: 'av-1',
+        practiceId: 'prac-1',
+        patientToken: 'tok-1',
+        procedureCodes: ['D6010'],
+        appointmentAt: new Date(),
+      })),
     },
     eligibilitySnapshot: {
       findFirst: opts.eligibilityThrows

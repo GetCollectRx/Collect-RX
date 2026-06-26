@@ -15,6 +15,7 @@ import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
 import Phase5Dashboard       from './pages/Phase5Dashboard'
+import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import RecoveryGatesInbox    from './pages/RecoveryGatesInbox'
@@ -126,6 +127,7 @@ const OWNER_NAV: NavItem[] = [
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+  { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
   { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
 ]
@@ -151,6 +153,7 @@ const OFFICE_MANAGER_NAV: NavItem[] = [
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
+  { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
 ]
 
@@ -214,6 +217,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/estimate', exact: false, label: 'Estimate', icon: 'estimate' },
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
       { to: '/cdcp', exact: false, label: 'CDCP', icon: 'cdcp' },
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
     ],
   },
   {
@@ -398,6 +402,7 @@ function AppShell() {
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
         </PlatformDevRouteGuard>

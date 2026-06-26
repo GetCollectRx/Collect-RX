@@ -1,6 +1,5 @@
 /**
  * P8-02 — BullMQ worker: insurance ops tick out of the HTTP process.
- * Start: `npm run worker` (same env as API: DATABASE_URL, REDIS_URL, STRIPE_*, etc.)
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
@@ -17,6 +16,8 @@ import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
 import type { PreVisitJobPayload } from './preVisit/preVisitJobs.js';
+import { dispatchPreVisitCall } from './preVisit/preVisitDispatch.js';
+import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
 
 assertPostgresTlsInProduction();
 
@@ -35,41 +36,28 @@ const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: nu
 const prisma = new PrismaClient();
 const healthPort = parseInt(process.env.PORT ?? '3000', 10);
 
-// Stub handlers — actual VAPI dispatch is a follow-on task. These exist now so the
-// PRE_VISIT_ELIGIBILITY write path (previously missing entirely) is wired end-to-end.
 async function handlePreVisitEligibility(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
-  console.log('[worker] PRE_VISIT_ELIGIBILITY', { practiceId: payload.practiceId, carrierId: payload.carrierId });
-  // KNOWN GAP: EligibilitySnapshot.patientId is a PMS record id with no bridge to
-  // patientToken (see src/server/preVisit/appointmentVerification.ts). Using the
-  // token as a stand-in until that bridge exists. planYearStart is a placeholder
-  // pending the real VAPI eligibility outcome.
-  await prisma.eligibilitySnapshot.create({
-    data: {
-      practiceId: payload.practiceId,
-      patientId: payload.patientToken,
-      carrier: payload.carrierId,
-      status: 'unknown',
-      verifiedAt: new Date(),
-      planYearStart: new Date(new Date().getUTCFullYear(), 0, 1),
-    },
-  });
+  const result = await dispatchPreVisitCall(prisma, 'PRE_VISIT_ELIGIBILITY', payload);
+  if ('skipped' in result) {
+    console.log('[worker] PRE_VISIT_ELIGIBILITY skipped:', result.reason);
+  } else {
+    console.log('[worker] PRE_VISIT_ELIGIBILITY dispatched:', result.vapiCallId);
+  }
 }
 
-async function handlePreVisitCdcpPredet(payload: PreVisitJobPayload): Promise<void> {
-  // cdcpContext routes the downstream VAPI agent to the CDCP IVR line
-  // (1-888-888-8110) instead of the standard Sun Life group benefits line.
-  console.log('[worker] PRE_VISIT_CDCP_PREDET', {
-    practiceId: payload.practiceId,
-    carrierId: payload.carrierId,
-    cdcpContext: payload.cdcpContext === true,
-  });
+async function handlePreVisitCdcpPredet(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await dispatchPreVisitCall(prisma, 'PRE_VISIT_CDCP_PREDET', payload);
+  if ('skipped' in result) {
+    console.log('[worker] PRE_VISIT_CDCP_PREDET skipped:', result.reason);
+  } else {
+    console.log('[worker] PRE_VISIT_CDCP_PREDET dispatched:', result.vapiCallId);
+  }
 }
 
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
     if (job.name === 'RULES_TICK') {
-      // Insurance call_queue priority sync runs inside runRulesEngineTick (same path as in-process setInterval).
       await runRulesEngineTick(prisma);
     } else if (job.name === 'REMINDER_CYCLE') {
       console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
@@ -82,7 +70,10 @@ const worker = new Worker(
     } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
       await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
     } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
-      await handlePreVisitCdcpPredet(job.data as PreVisitJobPayload);
+      await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
+    } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
+      const n = await sweepUpcomingAppointments(prisma);
+      if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);
     }
@@ -96,8 +87,6 @@ worker.on('failed', (job, err) => {
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
 
-// Railway services commonly enforce the same healthcheck path as the web service.
-// The worker is not public-facing, but this tiny endpoint lets Railway confirm it is alive.
 const healthApp = express();
 healthApp.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });

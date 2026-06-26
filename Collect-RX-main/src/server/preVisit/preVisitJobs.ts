@@ -7,8 +7,12 @@ import { getArQueue } from '../jobs/arQueue.js';
 
 export const PRE_VISIT_ELIGIBILITY = 'PRE_VISIT_ELIGIBILITY' as const;
 export const PRE_VISIT_CDCP_PREDET = 'PRE_VISIT_CDCP_PREDET' as const;
+export const APPOINTMENT_VERIFICATION_SWEEP = 'APPOINTMENT_VERIFICATION_SWEEP' as const;
 
-export type PreVisitJobType = typeof PRE_VISIT_ELIGIBILITY | typeof PRE_VISIT_CDCP_PREDET;
+export type PreVisitJobType =
+  | typeof PRE_VISIT_ELIGIBILITY
+  | typeof PRE_VISIT_CDCP_PREDET
+  | typeof APPOINTMENT_VERIFICATION_SWEEP;
 
 export interface PreVisitJobPayload {
   practiceId: string;

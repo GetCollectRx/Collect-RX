@@ -14,6 +14,15 @@ import { normalizeCdtCode, reconsiderationExclusionReason } from '../canadianExp
 import { enrichCase } from '../canadianExpansion/reconsideration.js';
 import { isCdcpCarrier, requiresCdcpPredetermination } from './procedureRules.js';
 import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisitJobs.js';
+import {
+  validatePredetSubmission,
+  type PredetArtifact,
+} from './predetSubmissionRules.js';
+import {
+  tryCanadaLifePortalPreVisit,
+  tryTelusTx23PreVisit,
+} from './electronicPreVisit.js';
+import { enqueueEmrPreVisitEvent } from '../emrSyncOutbox.js';
 
 export interface PreVisitParams {
   practiceId: string;
@@ -22,6 +31,8 @@ export interface PreVisitParams {
   carrierId: CarrierId;
   procedureCodes: string[];
   appointmentAt: Date;
+  artifactAttestations?: Partial<Record<PredetArtifact, boolean>>;
+  scheduledAppointmentId?: string;
 }
 
 export interface VerificationResult {
@@ -33,6 +44,9 @@ export interface VerificationResult {
   enqueuedJobId?: string;
   portalCheckRequired?: boolean;
   tx23CheckRequired?: boolean;
+  portalResolved?: boolean;
+  tx23Resolved?: boolean;
+  missingArtifacts?: string[];
 }
 
 const SNAPSHOT_STALE_AFTER_DAYS = 30;
@@ -69,10 +83,16 @@ export async function verifyBeforeAppointment(
   prisma: PrismaClient,
   params: PreVisitParams,
 ): Promise<VerificationResult> {
-  const { practiceId, patientToken, carrierId, procedureCodes, appointmentAt } = params;
+  const {
+    practiceId,
+    patientToken,
+    carrierId,
+    procedureCodes,
+    appointmentAt,
+    artifactAttestations,
+    scheduledAppointmentId,
+  } = params;
 
-  // Create the row up front so its id is available as the FK in any job
-  // payload enqueued below; finalize() updates it with the computed result.
   const row = await prisma.appointmentVerification.create({
     data: {
       practiceId,
@@ -81,19 +101,19 @@ export async function verifyBeforeAppointment(
       procedureCodes,
       appointmentAt,
       status: 'GREEN',
+      missingArtifacts: [],
+      scheduledAppointmentId: scheduledAppointmentId ?? null,
     },
   });
 
   try {
     const result: VerificationResult = { status: 'GREEN' };
 
-    // 1a. CARRIER_BLOCK — highest priority, must be checked before any dispatch.
     const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
     if (!blockGuard.allowed) {
       return finalize(prisma, row.id, { status: 'RED', reason: 'carrier_blocked' });
     }
 
-    // 1b. Practice authorization gate (voice agent enabled, BAAL on file, provider number set).
     const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
     if (!authGate.allowed) {
       return finalize(prisma, row.id, {
@@ -102,41 +122,84 @@ export async function verifyBeforeAppointment(
       });
     }
 
-    // 1c. Canada Life is portal-first — flag for the caller, do not execute the portal check here.
+    const submission = validatePredetSubmission({
+      carrierId,
+      procedureCodes,
+      artifactAttestations,
+    });
+    if (!submission.passed) {
+      result.status = 'YELLOW';
+      result.reason = `missing_documentation: ${submission.missingArtifacts.join(',')}`;
+      result.missingArtifacts = submission.missingArtifacts;
+      await prisma.appointmentVerification.update({
+        where: { id: row.id },
+        data: { missingArtifacts: submission.missingArtifacts },
+      });
+    }
+
     if (carrierId === 'canada_life') {
+      const portal = await tryCanadaLifePortalPreVisit(prisma, {
+        practiceId,
+        patientToken,
+        carrierId,
+        procedureCodes,
+        appointmentVerificationId: row.id,
+      });
+      if (portal.resolved) {
+        result.portalResolved = true;
+        result.status = 'GREEN';
+        result.reason = 'portal_resolved';
+        await prisma.appointmentVerification.update({
+          where: { id: row.id },
+          data: { portalResolved: true },
+        });
+        return finalize(prisma, row.id, result);
+      }
       result.portalCheckRequired = true;
     }
 
-    // TELUS Transaction 23 is also flagged for the caller (TPA identification happens upstream).
     if (carrierId === 'telus_adjudicare') {
+      const tx23 = await tryTelusTx23PreVisit(prisma, {
+        practiceId,
+        patientToken,
+        carrierId,
+        procedureCodes,
+        appointmentVerificationId: row.id,
+      });
+      if (tx23.resolved) {
+        result.tx23Resolved = true;
+        result.status = 'GREEN';
+        result.reason = 'tx23_resolved';
+        await prisma.appointmentVerification.update({
+          where: { id: row.id },
+          data: { tx23Resolved: true },
+        });
+        return finalize(prisma, row.id, result);
+      }
       result.tx23CheckRequired = true;
     }
 
-    // Business-hours check is evaluated up front (not blocking) so any jobs enqueued
-    // below can be delayed to the next call window in the same pass.
     const withinWindow = isWithinCallWindow(appointmentAt);
     const delayMs = withinWindow ? undefined : delayUntilNextCallWindow(appointmentAt);
 
-    // 2. Eligibility snapshot staleness.
-    //
-    // KNOWN GAP: EligibilitySnapshot.patientId is an arbitrary PMS record id from the
-    // Phase 3 eligibility layer — it is NOT the patientToken (PIIVault UUID). There is
-    // no bridge between the two identifier spaces. We query by practiceId + carrier
-    // only and take the most recent row as a proxy, which means this can pick up a
-    // different patient's snapshot. Acceptable as a staleness signal only; do not use
-    // this for patient-specific eligibility data until the identifiers are bridged.
     const snapshot = await prisma.eligibilitySnapshot.findFirst({
-      where: { practiceId, carrier: carrierId },
+      where: {
+        practiceId,
+        carrier: carrierId,
+        OR: [{ patientToken }, { patientId: patientToken }],
+      },
       orderBy: { verifiedAt: 'desc' },
     });
 
     if (!snapshot) {
       result.eligibilitySnapshotAge = null;
-      result.enqueuedJobId = await enqueuePreVisitJob(
-        'PRE_VISIT_ELIGIBILITY',
-        buildPayload(params, row.id),
-        delayMs,
-      );
+      if (result.status !== 'YELLOW' || !result.reason?.startsWith('missing_documentation')) {
+        result.enqueuedJobId = await enqueuePreVisitJob(
+          'PRE_VISIT_ELIGIBILITY',
+          buildPayload(params, row.id),
+          delayMs,
+        );
+      }
     } else {
       const ageDays = Math.floor((Date.now() - snapshot.verifiedAt.getTime()) / MS_PER_DAY);
       result.eligibilitySnapshotAge = ageDays;
@@ -149,7 +212,6 @@ export async function verifyBeforeAppointment(
       }
     }
 
-    // 3. CDCP predetermination — only relevant for the CDCP carrier (Sun Life).
     const qualifyingCodes = procedureCodes.filter(requiresCdcpPredetermination);
     if (isCdcpCarrier(carrierId) && qualifyingCodes.length > 0) {
       const nonExcludedCodes = qualifyingCodes.filter((code) => !reconsiderationExclusionReason(code));
@@ -183,7 +245,7 @@ export async function verifyBeforeAppointment(
             result.cdcpDeadlineDaysRemaining = enriched.daysRemaining;
             result.cdcpWindowExpired = false;
           }
-        } else {
+        } else if (submission.passed) {
           result.enqueuedJobId = await enqueuePreVisitJob(
             'PRE_VISIT_CDCP_PREDET',
             buildPayload(params, row.id, true),
@@ -193,8 +255,6 @@ export async function verifyBeforeAppointment(
       }
     }
 
-    // 4. Business hours — non-blocking; only set as the reason if nothing more
-    // specific (e.g. CDCP deadline) already flagged this as YELLOW.
     if (!withinWindow && result.status === 'GREEN') {
       result.status = 'YELLOW';
       result.reason = 'outside_call_window';
@@ -205,7 +265,7 @@ export async function verifyBeforeAppointment(
     try {
       await finalize(prisma, row.id, { status: 'RED', reason: 'verification_error' });
     } catch {
-      // Prefer surfacing the original verification failure.
+      /* prefer original error */
     }
     throw err;
   }
@@ -239,7 +299,29 @@ async function finalize(
       reason: result.reason ?? null,
       cdcpDaysRemaining: result.cdcpDeadlineDaysRemaining ?? null,
       enqueuedJobId: result.enqueuedJobId ?? null,
+      missingArtifacts: result.missingArtifacts ?? [],
+      portalResolved: result.portalResolved ?? false,
+      tx23Resolved: result.tx23Resolved ?? false,
     },
   });
+
+  const row = await prisma.appointmentVerification.findUnique({
+    where: { id: appointmentVerificationId },
+  });
+  if (row) {
+    await enqueueEmrPreVisitEvent(prisma, {
+      practiceId: row.practiceId,
+      appointmentVerificationId,
+      eventType: 'PRE_VISIT_VERIFICATION_SIGNAL',
+      payload: {
+        status: result.status,
+        reason: result.reason ?? null,
+        procedureCodes: row.procedureCodes,
+        appointmentAt: row.appointmentAt.toISOString(),
+        patientToken: row.patientToken,
+      },
+    });
+  }
+
   return result;
 }

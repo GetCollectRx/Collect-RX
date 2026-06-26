@@ -640,6 +640,8 @@ model EligibilitySnapshot {
   snapshotId                String            @id @default(uuid()) @map("snapshot_id")
   practiceId                String            @map("practice_id")
   patientId                 String            @map("patient_id")
+  /// PIIVault UUID when written by pre-visit pipeline; bridges to patientToken.
+  patientToken              String?           @map("patient_token")
   carrier                   CarrierId
   planId                    String?           @map("plan_id")
   status                    EligibilityStatus @default(unknown)
@@ -655,6 +657,7 @@ model EligibilitySnapshot {
   practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
   @@index([practiceId, patientId, carrier, verifiedAt(sort: Desc)])
+  @@index([practiceId, patientToken, carrier, verifiedAt(sort: Desc)])
   @@map("eligibility_snapshots")
 }
 
@@ -669,11 +672,64 @@ model AppointmentVerification {
   reason            String?
   cdcpDaysRemaining Int?      @map("cdcp_days_remaining")
   enqueuedJobId     String?   @map("enqueued_job_id")
+  vapiCallId        String?   @map("vapi_call_id")
+  attemptCount      Int       @default(0) @map("attempt_count")
+  missingArtifacts  String[]  @default([]) @map("missing_artifacts")
+  portalResolved    Boolean   @default(false) @map("portal_resolved")
+  tx23Resolved      Boolean   @default(false) @map("tx23_resolved")
+  scheduledAppointmentId String? @map("scheduled_appointment_id")
   createdAt         DateTime  @default(now()) @map("created_at")
 
   @@index([practiceId, patientToken])
   @@index([practiceId, appointmentAt])
+  @@index([vapiCallId])
   @@map("appointment_verifications")
+}
+
+model ScheduledAppointment {
+  id                   String    @id @default(uuid())
+  practiceId           String    @map("practice_id")
+  patientToken         String    @map("patient_token")
+  carrierId            CarrierId @map("carrier_id")
+  procedureCodes       String[]  @map("procedure_codes")
+  appointmentAt        DateTime  @map("appointment_at")
+  pmsSource            String?   @map("pms_source")
+  pmsAppointmentId     String?   @map("pms_appointment_id")
+  verificationId       String?   @map("verification_id")
+  artifactAttestations Json?     @map("artifact_attestations")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([practiceId, pmsSource, pmsAppointmentId])
+  @@index([practiceId, appointmentAt])
+  @@map("scheduled_appointments")
+}
+
+model AdjudicationEvent {
+  id                        String    @id @default(uuid())
+  practiceId                String    @map("practice_id")
+  patientToken              String    @map("patient_token")
+  carrierId                 CarrierId @map("carrier_id")
+  procedureCodes            String[]  @map("procedure_codes")
+  callType                  String    @map("call_type")
+  eligibilityStatus         String?   @map("eligibility_status")
+  predeterminationStatus    String?   @map("predetermination_status")
+  denialReasonCode          String?   @map("denial_reason_code")
+  denialReasonText          String?   @map("denial_reason_text")
+  reconsiderationDeadline   DateTime? @map("reconsideration_deadline")
+  supportingDocsPresent     Boolean?  @map("supporting_docs_present")
+  callDurationMs            Int?      @map("call_duration_ms")
+  vapiCallId                String?   @map("vapi_call_id")
+  outcome                   String
+  appointmentVerificationId String?   @map("appointment_verification_id")
+  claimId                   String?   @map("claim_id")
+  cdcpCaseId                String?   @map("cdcp_case_id")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, carrierId])
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([carrierId, denialReasonCode])
+  @@map("adjudication_events")
 }
 
 model ReconciliationLog {
