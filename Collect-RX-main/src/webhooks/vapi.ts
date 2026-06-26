@@ -21,6 +21,7 @@ import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import {
@@ -118,6 +119,41 @@ router.post('/', async (req: Request, res: Response) => {
     }
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);
+  }
+
+  // ── Guardrails: scan metadata/payload for PHI, persist transcript, enqueue audit ──
+  const vapiCallId = payload.call?.id;
+  if (vapiCallId) {
+    try {
+      const callAttempt = await prisma.callAttempt.findUnique({
+        where: { vapiCallId },
+        select: { id: true },
+      });
+      if (callAttempt) {
+        const metadataResult = await webhookGuardScanMetadata(payload);
+        if (metadataResult.hasPhi) {
+          console.warn('[guardrails] Metadata contains PHI patterns:', metadataResult.findings);
+        }
+
+        const payloadResult = await webhookGuardScanPayload(payload);
+        if (payloadResult.hasPhi) {
+          console.warn('[guardrails] Payload contains PHI-like patterns:', payloadResult.findings);
+        }
+
+        const transcriptResult = await persistFromVapiPayload(payload);
+        if (!transcriptResult.persisted) {
+          console.warn('[guardrails] Failed to persist transcript:', transcriptResult.error);
+        }
+
+        const auditResult = await enqueueForAudit(callAttempt.id);
+        if (!auditResult.enqueued) {
+          console.warn('[guardrails] Failed to enqueue audit job:', auditResult.error);
+        }
+      }
+    } catch (guardrailsErr) {
+      console.error('[vapi-webhook] Guardrails error (non-fatal):', guardrailsErr);
+      // Continue processing — guardrails failures should not block the webhook
+    }
   }
 });
 

@@ -24,6 +24,20 @@ export type SubscriptionGate = {
   enforce: boolean
   active: boolean
   status: string | null
+  plan: {
+    id: string
+    displayName: string
+    priceId: string | null
+    monthlyClaimLimit: number | null
+  } | null
+  usage: {
+    periodStart: string
+    periodEnd: string
+    usedClaims: number
+    monthlyClaimLimit: number | null
+    remainingClaims: number | null
+    limitReached: boolean
+  } | null
   currentPeriodEnd: string | null
   priceConfigured: boolean
   skipped: boolean
@@ -33,6 +47,8 @@ const defaultSubscription: SubscriptionGate = {
   enforce: false,
   active: true,
   status: null,
+  plan: null,
+  usage: null,
   currentPeriodEnd: null,
   priceConfigured: false,
   skipped: false,

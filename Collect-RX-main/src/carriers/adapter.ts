@@ -15,6 +15,7 @@
 import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
+import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +59,7 @@ export interface CarrierConfig {
 
 export interface DispatchGuard {
   allowed: boolean;
+  code?: string;
   reason?: string;
 }
 
@@ -308,7 +310,8 @@ export async function checkCarrierAuthorizationGate(
  *   4. Days outstanding (< 30 → reject, > 90 → escalate)
  *   5. TELUS-specific minimum days (when applicable)
  *   6. Max attempts (>= 3 → reject)
- *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   7. Subscription monthly claim limit
+ *   8. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -368,6 +371,20 @@ export async function validateDispatch(
   // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
+  }
+
+  // 7. Subscription monthly claim limit
+  const subscriptionGuard = await validateSubscriptionClaimCapacity(prisma, {
+    practiceId,
+    claimId,
+    now: scheduledFor ?? new Date(),
+  });
+  if (!subscriptionGuard.allowed) {
+    return {
+      allowed: false,
+      code: subscriptionGuard.code,
+      reason: subscriptionGuard.reason,
+    };
   }
 
   // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)

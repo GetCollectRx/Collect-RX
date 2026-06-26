@@ -44,6 +44,10 @@ model Practice {
   stripeSubscriptionId         String?   @unique
   /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
   subscriptionStatus           String?
+  /// Stripe Price and CollectRx plan snapshot used for usage limits.
+  subscriptionPriceId          String?
+  subscriptionPlanId           String?
+  subscriptionCurrentPeriodStart DateTime?
   subscriptionCurrentPeriodEnd DateTime?
   /// Minutes-based billing (src/billing/tiers.ts) — trial/core/growth/scale.
   billingTier           BillingTier @default(trial)
@@ -404,6 +408,7 @@ model InsuranceClaim {
   @@index([practiceId, carrierId])
   @@index([practiceId, status])
   @@index([carrierId, daysOutstanding])
+  @@index([practiceId, status, updatedAt])
   @@map("insurance_claims")
 }
 
@@ -469,6 +474,8 @@ model CallAttempt {
   repName              String?     @map("rep_name")
   referenceNumber      String?     @map("reference_number")
   transcriptUrl        String?     @map("transcript_url")
+  /// Full transcript text from Vapi (persisted by guardrails layer)
+  transcriptText       String?     @map("transcript_text")
   /// ISO timestamp set once the 8-dimension automated evaluation has been written.
   /// Null means the call has not yet been evaluated. Used by the zero-retention
   /// audio deletion gate (pii-vault.ts) and the eval-scores analytics endpoint.
@@ -488,6 +495,8 @@ model CallAttempt {
   createdAt            DateTime    @default(now()) @map("created_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
+  guardrailAudits      GuardrailAudit[]
+  guardrailOutbox      GuardrailAuditOutbox?
 
   @@index([claimId])
   @@index([vapiCallId])
@@ -556,6 +565,7 @@ model CallQueue {
   @@index([practiceId, status])
   @@index([scheduledFor])
   @@index([practiceId, priority, scheduledFor])
+  @@index([practiceId, status, updatedAt])
   @@map("call_queue")
 }
 
@@ -841,6 +851,42 @@ model LearningCandidate {
   @@unique([cycleRunId, notionPageId])
   @@index([cycleRunId, rankScore(sort: Desc)])
   @@map("learning_candidates")
+}
+
+/// Outbox for async guardrail audit jobs (same pattern as EmrSyncOutbox)
+model GuardrailAuditOutbox {
+  id            String    @id @default(uuid())
+  callAttemptId String    @unique @map("call_attempt_id")
+  enqueuedAt    DateTime  @default(now()) @map("enqueued_at")
+  processedAt   DateTime? @map("processed_at")
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@index([enqueuedAt])
+  @@index([processedAt])
+  @@map("guardrail_audit_outbox")
+}
+
+/// Immutable audit results from NeMo Guardrails sidecar
+model GuardrailAudit {
+  id              String   @id @default(uuid())
+  callAttemptId   String   @map("call_attempt_id")
+  rulesVersion    String   @map("rules_version")
+  ranAt           DateTime @default(now()) @map("ran_at")
+  riskScore       Decimal  @map("risk_score") // 0.000..1.000
+  violationsJson  Json     @map("violations_json")
+  signalsJson     Json     @map("signals_json")
+  sidecarLatencyMs Int?    @map("sidecar_latency_ms")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@unique([callAttemptId, rulesVersion])
+  @@index([callAttemptId])
+  @@index([riskScore(sort: Desc)])
+  @@index([ranAt(sort: Desc)])
+  @@map("guardrail_audits")
 }
 
 /// One-time token for password reset. Expires after 1 hour.

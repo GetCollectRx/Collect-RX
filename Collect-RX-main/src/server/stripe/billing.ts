@@ -6,6 +6,16 @@
 import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import { readPublicAppUrl } from '../envRailway.js';
+import {
+  billingSkipPracticeIds,
+  defaultSubscriptionPlan,
+  getSubscriptionUsageState,
+  resolvePracticeSubscriptionPlan,
+  subscriptionPlanById,
+  subscriptionPlanByPriceId,
+  type SubscriptionPlanSnapshot,
+  type SubscriptionUsageState,
+} from './subscriptionPlans.js';
 import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
 
 export function getStripe(): Stripe {
@@ -29,17 +39,7 @@ export function subscriptionEnforceEnabled(): boolean {
 }
 
 function subscriptionPriceId(): string | undefined {
-  return process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID?.trim() || undefined;
-}
-
-function billingSkipPracticeIds(): Set<string> {
-  const raw = process.env.BILLING_SKIP_PRACTICE_IDS || '';
-  return new Set(
-    raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
+  return defaultSubscriptionPlan()?.priceId ?? (process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID?.trim() || undefined);
 }
 
 export function isSubscriptionStatusActive(status: string | null | undefined): boolean {
@@ -55,10 +55,33 @@ function subscriptionPeriodEndDate(sub: Stripe.Subscription): Date | null {
   return null;
 }
 
+function subscriptionPeriodStartDate(sub: Stripe.Subscription): Date | null {
+  const start = sub.items?.data?.[0]?.current_period_start;
+  if (typeof start === 'number' && Number.isFinite(start)) {
+    return new Date(start * 1000);
+  }
+  return null;
+}
+
+function subscriptionPrimaryPriceId(sub: Stripe.Subscription): string | null {
+  const price = sub.items?.data?.[0]?.price;
+  return typeof price?.id === 'string' && price.id.length > 0 ? price.id : null;
+}
+
+function subscriptionPlanSnapshot(sub: Stripe.Subscription): SubscriptionPlanSnapshot | null {
+  const priceId = subscriptionPrimaryPriceId(sub);
+  const fromPrice = subscriptionPlanByPriceId(priceId);
+  if (fromPrice) return fromPrice;
+  const metaPlanId = sub.metadata?.collectrx_plan_id || sub.metadata?.plan_id;
+  return subscriptionPlanById(metaPlanId) ?? null;
+}
+
 export type SubscriptionGateState = {
   enforce: boolean;
   active: boolean;
   status: string | null;
+  plan: SubscriptionPlanSnapshot | null;
+  usage: SubscriptionUsageState | null;
   currentPeriodEnd: string | null;
   priceConfigured: boolean;
   skipped: boolean;
@@ -73,11 +96,28 @@ export async function getSubscriptionGateState(
   const skipped = billingSkipPracticeIds().has(practiceId);
 
   if (!enforce) {
+    const p = priceConfigured
+      ? await db.practice.findUnique({
+          where: { id: practiceId },
+          select: {
+            subscriptionStatus: true,
+            subscriptionPriceId: true,
+            subscriptionPlanId: true,
+            subscriptionCurrentPeriodStart: true,
+            subscriptionCurrentPeriodEnd: true,
+          },
+        })
+      : null;
+    const { plan, usage } = priceConfigured
+      ? await getSubscriptionUsageState(db, practiceId, p)
+      : { plan: defaultSubscriptionPlan(), usage: null };
     return {
       enforce: false,
       active: true,
-      status: null,
-      currentPeriodEnd: null,
+      status: p?.subscriptionStatus ?? null,
+      plan,
+      usage,
+      currentPeriodEnd: p?.subscriptionCurrentPeriodEnd?.toISOString() ?? null,
       priceConfigured,
       skipped: false,
     };
@@ -85,15 +125,26 @@ export async function getSubscriptionGateState(
 
   const p = await db.practice.findUnique({
     where: { id: practiceId },
-    select: { subscriptionStatus: true, subscriptionCurrentPeriodEnd: true },
+    select: {
+      subscriptionStatus: true,
+      subscriptionPriceId: true,
+      subscriptionPlanId: true,
+      subscriptionCurrentPeriodStart: true,
+      subscriptionCurrentPeriodEnd: true,
+    },
   });
 
   const active = skipped || isSubscriptionStatusActive(p?.subscriptionStatus);
+  const { plan, usage } = await getSubscriptionUsageState(db, practiceId, p);
 
   return {
     enforce: true,
     active,
     status: p?.subscriptionStatus ?? null,
+    plan: skipped
+      ? { id: 'billing-skip', displayName: 'Pilot / billing skip', priceId: null, monthlyClaimLimit: null }
+      : (plan ?? resolvePracticeSubscriptionPlan(p)),
+    usage: skipped ? null : usage,
     currentPeriodEnd: p?.subscriptionCurrentPeriodEnd?.toISOString() ?? null,
     priceConfigured,
     skipped,
@@ -106,12 +157,17 @@ export async function syncPracticeFromStripeSubscription(
   sub: Stripe.Subscription
 ): Promise<void> {
   const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
+  const priceId = subscriptionPrimaryPriceId(sub);
+  const plan = subscriptionPlanSnapshot(sub);
   await db.practice.update({
     where: { id: practiceId },
     data: {
       stripeSubscriptionId: sub.id,
       stripeCustomerId: customerId,
       subscriptionStatus: sub.status,
+      subscriptionPriceId: priceId,
+      subscriptionPlanId: plan?.id ?? null,
+      subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
       subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
     },
   });
@@ -123,15 +179,23 @@ export async function markPracticeSubscriptionCanceled(db: PrismaClient, practic
     data: {
       subscriptionStatus: 'canceled',
       stripeSubscriptionId: null,
+      subscriptionPriceId: null,
+      subscriptionPlanId: null,
+      subscriptionCurrentPeriodStart: null,
       subscriptionCurrentPeriodEnd: null,
     },
   });
 }
 
-export async function createBillingCheckoutSession(practiceId: string, db: PrismaClient): Promise<{ url: string }> {
-  const price = subscriptionPriceId();
+export async function createBillingCheckoutSession(
+  practiceId: string,
+  db: PrismaClient,
+  requestedPlanId?: string
+): Promise<{ url: string }> {
+  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
+  const price = plan?.priceId ?? subscriptionPriceId();
   if (!price) {
-    throw new Error('STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID is not configured');
+    throw new Error('Stripe subscription price is not configured');
   }
   const stripe = getStripe();
   const practice = await db.practice.findUnique({ where: { id: practiceId } });
@@ -159,9 +223,9 @@ export async function createBillingCheckoutSession(practiceId: string, db: Prism
     line_items: [{ price, quantity: 1 }],
     success_url: `${base}/billing?subscribed=1`,
     cancel_url: `${base}/billing?canceled=1`,
-    metadata: { practice_id: practiceId },
+    metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'standard' },
     subscription_data: {
-      metadata: { practice_id: practiceId },
+      metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'standard' },
     },
     allow_promotion_codes: true,
   });
@@ -212,6 +276,8 @@ export async function handlePlatformBillingWebhook(
       }
       const subId = typeof subRef === 'string' ? subRef : subRef.id;
       const sub = await stripe.subscriptions.retrieve(subId, { expand: ['items.data'] });
+      const priceId = subscriptionPrimaryPriceId(sub);
+      const plan = subscriptionPlanSnapshot(sub);
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -220,6 +286,9 @@ export async function handlePlatformBillingWebhook(
             stripeCustomerId:
               typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
             subscriptionStatus: sub.status,
+            subscriptionPriceId: priceId,
+            subscriptionPlanId: plan?.id ?? null,
+            subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
           },
         }),
@@ -259,6 +328,8 @@ export async function handlePlatformBillingWebhook(
       if (!practiceId) {
         return { handled: false, reason: 'practice_not_found_for_subscription' };
       }
+      const priceId = subscriptionPrimaryPriceId(sub);
+      const plan = subscriptionPlanSnapshot(sub);
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -267,6 +338,9 @@ export async function handlePlatformBillingWebhook(
             stripeCustomerId:
               typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
             subscriptionStatus: sub.status,
+            subscriptionPriceId: priceId,
+            subscriptionPlanId: plan?.id ?? null,
+            subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
           },
         }),
@@ -291,6 +365,9 @@ export async function handlePlatformBillingWebhook(
           data: {
             subscriptionStatus: 'canceled',
             stripeSubscriptionId: null,
+            subscriptionPriceId: null,
+            subscriptionPlanId: null,
+            subscriptionCurrentPeriodStart: null,
             subscriptionCurrentPeriodEnd: null,
           },
         }),
