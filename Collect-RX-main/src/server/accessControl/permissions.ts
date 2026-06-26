@@ -20,6 +20,7 @@ export type Action =
   | 'get_claim'
   | 'pause_claim'
   | 'unpause_claim'
+  | 'manage_claims'
   | 'build_queue'
   | 'run_queue'
   | 'get_queue_stats'
@@ -86,6 +87,15 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
     auditor: 'none',
   },
   unpause_claim: {
+    front_desk: 'own',
+    practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
+    billing_ops_manager: 'write_all',
+    platform_admin: 'grant',
+    auditor: 'none',
+  },
+  manage_claims: {
     front_desk: 'own',
     practice_owner: 'own',
     office_manager: 'own',

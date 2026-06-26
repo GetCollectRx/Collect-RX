@@ -648,6 +648,24 @@ model EligibilitySnapshot {
   @@map("eligibility_snapshots")
 }
 
+model AppointmentVerification {
+  id                String    @id @default(uuid())
+  practiceId        String    @map("practice_id")
+  patientToken      String    @map("patient_token")
+  carrierId         CarrierId @map("carrier_id")
+  procedureCodes    String[]  @map("procedure_codes")
+  appointmentAt     DateTime  @map("appointment_at")
+  status            String    // GREEN | YELLOW | RED
+  reason            String?
+  cdcpDaysRemaining Int?      @map("cdcp_days_remaining")
+  enqueuedJobId     String?   @map("enqueued_job_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, patientToken])
+  @@index([practiceId, appointmentAt])
+  @@map("appointment_verifications")
+}
+
 model ReconciliationLog {
   reconciliationId        String             @id @default(uuid()) @map("reconciliation_id")
   claimId                 String             @map("claim_id")

@@ -16,6 +16,7 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
+import type { PreVisitJobPayload } from './preVisit/preVisitJobs.js';
 
 assertPostgresTlsInProduction();
 
@@ -34,6 +35,36 @@ const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: nu
 const prisma = new PrismaClient();
 const healthPort = parseInt(process.env.PORT ?? '3000', 10);
 
+// Stub handlers — actual VAPI dispatch is a follow-on task. These exist now so the
+// PRE_VISIT_ELIGIBILITY write path (previously missing entirely) is wired end-to-end.
+async function handlePreVisitEligibility(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  console.log('[worker] PRE_VISIT_ELIGIBILITY', { practiceId: payload.practiceId, carrierId: payload.carrierId });
+  // KNOWN GAP: EligibilitySnapshot.patientId is a PMS record id with no bridge to
+  // patientToken (see src/server/preVisit/appointmentVerification.ts). Using the
+  // token as a stand-in until that bridge exists. planYearStart is a placeholder
+  // pending the real VAPI eligibility outcome.
+  await prisma.eligibilitySnapshot.create({
+    data: {
+      practiceId: payload.practiceId,
+      patientId: payload.patientToken,
+      carrier: payload.carrierId,
+      status: 'unknown',
+      verifiedAt: new Date(),
+      planYearStart: new Date(new Date().getUTCFullYear(), 0, 1),
+    },
+  });
+}
+
+async function handlePreVisitCdcpPredet(payload: PreVisitJobPayload): Promise<void> {
+  // cdcpContext routes the downstream VAPI agent to the CDCP IVR line
+  // (1-888-888-8110) instead of the standard Sun Life group benefits line.
+  console.log('[worker] PRE_VISIT_CDCP_PREDET', {
+    practiceId: payload.practiceId,
+    carrierId: payload.carrierId,
+    cdcpContext: payload.cdcpContext === true,
+  });
+}
+
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
@@ -48,6 +79,10 @@ const worker = new Worker(
       await runMarketingSequenceTick(prisma);
     } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
       await runMarketingLearningCycle(prisma);
+    } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
+      await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
+    } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
+      await handlePreVisitCdcpPredet(job.data as PreVisitJobPayload);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);
     }

@@ -110,6 +110,7 @@ import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
+import preVisitRouter from './routes/preVisitRoutes.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
 import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
@@ -329,6 +330,7 @@ app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
+app.use('/api/pre-visit',  preVisitRouter);
 app.use('/api',            createCanadianExpansionRouter(prisma));
 // Compliance audit — platform_admin / auditor only
 app.use('/api/compliance', complianceRouter);
