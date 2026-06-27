@@ -7,6 +7,8 @@ import {
   type HealthActionItem,
   type HealthBriefMetrics,
 } from '../components/dashboard/PracticeHealthBrief'
+import { LiveActivityStrip } from '../components/dashboard/LiveActivityStrip'
+import { TopMoneyAtRisk } from '../components/dashboard/TopMoneyAtRisk'
 import { QueueOverview } from '../components/QueueOverview'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
@@ -141,23 +143,23 @@ function buildActions(
     href: n.href,
   }))
 
-  if (metrics.blockingGatesOpen > 0 && !items.some((i) => i.href.includes('/gates'))) {
+  if (metrics.blockingGatesOpen > 0 && !items.some((i) => i.href.includes('tab=blocked'))) {
     items.unshift({
       id: 'gates-summary',
       severity: 'urgent',
       title: `${metrics.blockingGatesOpen} practice gate${metrics.blockingGatesOpen === 1 ? '' : 's'} open`,
       detail: 'Resubmit, missing docs, or human verify, clear these to keep agents moving.',
-      href: '/insurance/gates',
+      href: '/insurance?tab=blocked',
     })
   }
 
-  if (metrics.openEscalations > 0 && !items.some((i) => i.href.includes('/escalations'))) {
+  if (metrics.openEscalations > 0 && !items.some((i) => i.href.includes('tab=human'))) {
     items.unshift({
       id: 'escalations-summary',
       severity: 'urgent',
-      title: `${metrics.openEscalations} open escalation${metrics.openEscalations === 1 ? '' : 's'}`,
-      detail: 'Claims that need an owner decision before the next call batch.',
-      href: '/escalations',
+      title: `${metrics.openEscalations} claim${metrics.openEscalations === 1 ? '' : 's'} need human review`,
+      detail: 'Review on Claims before the next carrier call batch.',
+      href: '/insurance?tab=human',
     })
   }
 
@@ -219,8 +221,8 @@ function DashboardBody({
           <Link to="/reports/carriers" className="crx-btn-ghost">
             Carriers
           </Link>
-          <Link to="/escalations" className="crx-btn-ghost">
-            Escalations
+          <Link to="/insurance?tab=human" className="crx-btn-ghost">
+            Needs human
           </Link>
           <button
             type="button"
@@ -247,6 +249,10 @@ function DashboardBody({
           {arCloseMsg}
         </p>
       )}
+
+      <LiveActivityStrip />
+
+      <TopMoneyAtRisk />
 
       <SubscriptionUsageCard compact className="relative z-10" />
 
@@ -320,32 +326,33 @@ function DashboardBody({
               </p>
             </div>
             <Link to="/insurance" className="crx-btn-ghost shrink-0">
-              Insurance AR →
+              Open Claims →
             </Link>
             {(rm.blockingGatesOpen ?? 0) > 0 && (
-              <Link to="/insurance/gates" className="crx-btn-primary shrink-0">
-                Gate inbox ({rm.blockingGatesOpen})
+              <Link to="/insurance?tab=blocked" className="crx-btn-primary shrink-0">
+                Blocked gates ({rm.blockingGatesOpen})
               </Link>
             )}
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <LivingStatCard
+              label="$ at risk over 60 days"
+              displayValue={fmtCurrency(s.aging['>60'])}
+              countUp={Math.round(s.aging['>60'])}
+              formatCount={fmtCurrency}
+              sub={`${fmtCurrency(s.totalOpenAR)} total open insurance A/R`}
+              badge={s.aging['>60'] > 0 ? 'Focus here' : 'Healthy'}
+              tone={s.aging['>60'] > s.totalOpenAR * 0.25 ? 'amber' : 'green'}
+              delayMs={0}
+            />
+            <LivingStatCard
               label="Sync-verified recovery (30d)"
               displayValue={fmtCurrency(rm.dollarsRecoveredSyncVerifiedLast30Days)}
               countUp={Math.round(rm.dollarsRecoveredSyncVerifiedLast30Days)}
               formatCount={fmtCurrency}
-              sub={`${fmtCurrency(rm.dollarsRecoveredSyncVerified)} all-time`}
-              badge="PMS confirmed"
+              sub={`${fmtCurrency(rm.dollarsRecoveredSyncVerified)} all-time · PMS confirmed`}
+              badge="North star"
               tone="green"
-              delayMs={0}
-            />
-            <LivingStatCard
-              label="Verified today"
-              countUp={rm.syncVerifiedToday}
-              displayValue="0"
-              sub={`${rm.paymentsVerifiedBySync} total sync closures`}
-              badge="Today"
-              tone={rm.syncVerifiedToday > 0 ? 'green' : 'blue'}
               delayMs={40}
             />
             <LivingStatCard
@@ -368,7 +375,7 @@ function DashboardBody({
                     ? `Median ${rm.medianTimeToSyncVerifyHours}h to sync verify`
                     : 'Carrier approved, balance pending'
               }
-              badge="WAIT_SYNC"
+              badge="Checking PMS"
               tone="blue"
               delayMs={120}
             />
@@ -378,14 +385,14 @@ function DashboardBody({
 
       {isPracticeOwner && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 relative z-10">
-          <div className="lg:col-span-2 living-chart-panel p-4">
+          <div className="lg:col-span-2">
             <QueueOverview />
           </div>
           <LivingStatCard
-            label="Open escalations"
+            label="Needs human review"
             countUp={platform?.openEscalations ?? 0}
             displayValue="0"
-            sub="Needs owner decision"
+            sub="Escalated claims on Claims tab"
             badge="Action queue"
             tone="amber"
             delayMs={80}

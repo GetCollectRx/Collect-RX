@@ -103,7 +103,7 @@ export default function RecoveryGatesInbox() {
           </div>
           <div className="flex gap-2">
             <Link to="/insurance">
-              <Button variant="ghost" size="sm">← Insurance AR</Button>
+              <Button variant="ghost" size="sm">← Claims</Button>
             </Link>
             <Button variant="secondary" size="sm" onClick={() => load()}>
               Refresh

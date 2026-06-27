@@ -27,7 +27,8 @@
 //
 // Required env vars:
 //   VAPI_API_KEY          — Vapi private API key
-//   VAPI_SQUAD_ID         — pre-configured squad ID in Vapi dashboard
+//   VAPI_SQUAD_ID         — pre-configured squad ID in Vapi dashboard (post-visit recovery)
+//   VAPI_PREVISIT_SQUAD_ID — optional separate squad for pre-visit calls (falls back to VAPI_SQUAD_ID)
 //   VAPI_PHONE_NUMBER_ID  — Twilio number registered in Vapi
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,10 @@ function getSquadId(): string {
   const id = process.env.VAPI_SQUAD_ID;
   if (!id) throw new Error('[VapiClient] VAPI_SQUAD_ID environment variable is not set');
   return id;
+}
+
+function getPreVisitSquadId(): string {
+  return process.env.VAPI_PREVISIT_SQUAD_ID?.trim() || getSquadId();
 }
 
 function getPhoneNumberId(): string {
@@ -390,7 +395,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
       : 'an eligibility and coverage verification before a scheduled appointment';
 
   const payload = {
-    squadId: getSquadId(),
+    squadId: getPreVisitSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: { number: carrierPhone },
     recordingEnabled: false,

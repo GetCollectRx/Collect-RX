@@ -2,10 +2,23 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { Card, CardHeader, Button, Badge, DataState, Select, Input } from '../components/ui'
+import { ClaimNextActionCard, ClaimTimeline } from '../components/claims/ClaimTimeline'
+import {
+  OUTCOME_LABELS,
+  mapTriggerCallError,
+  outcomeColor,
+  fmtCallDuration,
+  recallDueLabelDetailed,
+  recoveryRouteBadgeColor,
+  claimStatusLabel,
+  isDemoVapiCall,
+} from '../lib/recoveryDisplay'
+import { SimulatedCallBadge } from '../components/claims/SimulatedCallBadge'
 import { useRoleAccess } from '../lib/useRoleAccess'
 
 interface CallAttempt {
   id: string
+  vapiCallId?: string | null
   initiatedAt: string
   completedAt: string | null
   durationSeconds: number | null
@@ -79,64 +92,6 @@ interface WorkItemLite {
 }
 
 const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
-
-const OUTCOME_LABELS: Record<string, string> = {
-  RESOLVED:                'Resolved',
-  DENIED:                  'Denied',
-  ESCALATED:               'Escalated, needs your call',
-  PENDING:                 'Pending',
-  BLOCK_DETECTED:          'Carrier block detected',
-  FAILED:                  'Call failed',
-  NO_ANSWER:               'No answer',
-  HUNG_UP:                 'Call ended unexpectedly',
-  APPROVED_PENDING_PAYMENT: 'Approved, awaiting payment',
-}
-
-function outcomeColor(outcome: string | null) {
-  if (!outcome) return 'text-gray-500'
-  if (outcome === 'RESOLVED' || outcome === 'APPROVED_PENDING_PAYMENT') return 'text-green-700 dark:text-green-400'
-  if (outcome === 'ESCALATED') return 'text-amber-700 dark:text-amber-400'
-  if (outcome === 'DENIED' || outcome === 'BLOCK_DETECTED') return 'text-red-700 dark:text-red-400'
-  return 'text-gray-600 dark:text-gray-400'
-}
-
-function fmtDuration(seconds: number | null) {
-  if (!seconds) return null
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}m ${s}s`
-}
-
-function routeBadgeColor(route: string | null | undefined): 'green' | 'amber' | 'blue' | 'gray' | undefined {
-  switch (route) {
-    case 'CALL_CARRIER': return 'blue'
-    case 'WAIT_SYNC': return 'amber'
-    case 'OPEN_CDCP': return undefined
-    case 'PRACTICE_GATE': return 'amber'
-    case 'STOP': return 'green'
-    default: return 'gray'
-  }
-}
-
-function fmtEventType(type: string): string {
-  switch (type) {
-    case 'PAYMENT_VERIFIED_SYNC': return 'Payment verified (PMS sync)'
-    case 'PARTIAL_PAYMENT_SYNC': return 'Partial payment (PMS sync)'
-    case 'ROUTE_ASSIGNED': return 'Recovery route assigned'
-    default: return type.replace(/_/g, ' ').toLowerCase()
-  }
-}
-
-function recallDueLabel(iso: string | null): string {
-  if (!iso) return 'Not scheduled'
-  const t = new Date(iso).getTime()
-  const diff = t - Date.now()
-  if (diff <= 0) return `Due now (${new Date(iso).toLocaleString()})`
-  const hours = Math.round(diff / 3_600_000)
-  if (hours < 48) return `In ~${hours}h (${new Date(iso).toLocaleString()})`
-  const days = Math.round(hours / 24)
-  return `In ~${days}d (${new Date(iso).toLocaleString()})`
-}
 
 export default function InsuranceClaimDetail() {
   const { id } = useParams()
@@ -239,27 +194,7 @@ export default function InsuranceClaimDetail() {
       const r = await apiFetch(`/api/insurance/queue/trigger/${id}`, { method: 'POST' })
       const j = await r.json().catch(() => ({})) as { error?: string; success?: boolean }
       if (!r.ok) {
-        // Map backend guard messages to staff-friendly explanations
-        const raw = j.error ?? ''
-        let msg = raw
-        if (raw.includes('30 days') || raw.includes('too recent')) {
-          msg = 'This claim is less than 30 days old, AI calls are not placed until day 31.'
-        } else if (raw.includes('90 days') || raw.includes('escalate')) {
-          msg = 'This claim is over 90 days old, it has been escalated for human follow-up.'
-        } else if (raw.includes('3 attempt') || raw.includes('max attempt')) {
-          msg = 'Maximum 3 call attempts reached, this claim must be resolved manually.'
-        } else if (raw.includes('business hours') || raw.includes('outside')) {
-          msg = 'Calls can only be placed Mon–Fri 8am–5pm Eastern time.'
-        } else if (raw.includes('CARRIER_BLOCK') || raw.includes('blocked')) {
-          msg = 'This carrier is currently blocked, automation was detected on a previous call. Unblock in Admin → Carriers.'
-        } else if (raw.includes('already') || raw.includes('CALLING')) {
-          msg = 'A call is already in progress for this claim.'
-        } else if (raw.includes('Recovery route') || raw.includes('recovery action') || raw.includes('Practice gate')) {
-          msg = raw
-        } else if (raw.includes('Re-call scheduled')) {
-          msg = raw
-        }
-        throw new Error(msg)
+        throw new Error(mapTriggerCallError(j.error ?? ''))
       }
       setActionMsg('Call queued')
       load()
@@ -335,12 +270,15 @@ export default function InsuranceClaimDetail() {
       {claim && (
         <div className="page-enter p-6 space-y-6 max-w-4xl">
           <div className="flex items-center gap-3">
-            <Link to="/insurance"><Button variant="ghost" size="sm">← Insurance AR</Button></Link>
+            <Link to="/insurance"><Button variant="ghost" size="sm">← Claims</Button></Link>
             <div className="flex-1">
               <h1 className="page-title">Claim {claim.claimNumber}</h1>
               <p className="page-subtitle">{claim.carrierId} · {claim.daysOutstanding} days outstanding</p>
             </div>
-            <Badge color={isEscalated ? 'amber' : undefined}>{claim.status}</Badge>
+            <Badge color={isEscalated ? 'amber' : undefined}>{claimStatusLabel(claim.status)}</Badge>
+            {claim.callAttempts.some((c) => !c.completedAt && isDemoVapiCall(c.vapiCallId)) && (
+              <SimulatedCallBadge />
+            )}
             {shouldPollRecovery && (
               <span className="text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 font-semibold">
                 Live · refreshes every 20s
@@ -386,18 +324,31 @@ export default function InsuranceClaimDetail() {
             </div>
           )}
 
-          {claim.queueEntry && !recovery && (
-            <p className="text-xs text-gray-500 -mt-4">
-              Voice queue: {claim.queueEntry.status} · {claim.queueEntry.attempts} attempt(s) · next{' '}
-              {new Date(claim.queueEntry.scheduledFor).toLocaleString()}
-            </p>
-          )}
-
           {actionMsg && (
             <p className="text-sm text-crx-600 dark:text-crx-400" role="status">{actionMsg}</p>
           )}
 
-          {/* ── Recovery loop ── */}
+          <ClaimNextActionCard
+            isEscalated={isEscalated}
+            recovery={recovery}
+            queueScheduledFor={claim.queueEntry?.scheduledFor ?? null}
+            isReadOnly={isReadOnly}
+            clearingGateId={clearingGateId}
+            onClearGate={(actionId) => void clearRecoveryGate(actionId)}
+          />
+
+          <Card padding="none">
+            <div className="p-5 pb-0">
+              <CardHeader
+                title="What happened"
+                subtitle="Calls, recovery updates, and practice gates in chronological order"
+              />
+            </div>
+            <div className="px-5 pb-5">
+              <ClaimTimeline callAttempts={claim.callAttempts} recovery={recovery} />
+            </div>
+          </Card>
+
           {recoveryLoadError && !recovery && (
             <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
               Recovery loop status could not be loaded ({recoveryLoadError}). Carrier dispatch rules may still apply server-side.
@@ -407,21 +358,16 @@ export default function InsuranceClaimDetail() {
           {recovery && (
             <Card>
               <CardHeader
-                title="Recovery loop"
-                subtitle="How CollectRx is working this balance: route, gates, and sync-verified payment"
+                title="Recovery details"
+                subtitle="Route logic, queue status, and non-blocking actions"
               />
               <div className="px-4 pb-4 space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge color={routeBadgeColor(recovery.recoveryRoute)}>
+                  <Badge color={recoveryRouteBadgeColor(recovery.recoveryRoute)}>
                     {recovery.routeLabel}
                   </Badge>
                   {recovery.recoveryRoute && (
                     <span className="text-xs font-mono text-gray-400">{recovery.recoveryRoute}</span>
-                  )}
-                  {recovery.dollarsRecoveredSyncVerified > 0 && (
-                    <Badge color="green">
-                      ${recovery.dollarsRecoveredSyncVerified.toFixed(2)} verified by sync
-                    </Badge>
                   )}
                 </div>
 
@@ -452,7 +398,7 @@ export default function InsuranceClaimDetail() {
                     <dd className="font-medium mt-0.5">
                       {recovery.stopCalling
                         ? 'No automated call scheduled'
-                        : recallDueLabel(recovery.scheduledRecallAt)}
+                        : recallDueLabelDetailed(recovery.scheduledRecallAt)}
                     </dd>
                   </div>
                   <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
@@ -481,82 +427,22 @@ export default function InsuranceClaimDetail() {
                   </p>
                 )}
 
-                {recovery.cdcpCaseId && (
-                  <p className="text-sm">
-                    <Link
-                      to={`/cdcp?case=${recovery.cdcpCaseId}`}
-                      className="text-crx-600 dark:text-crx-400 underline font-medium"
-                    >
-                      CDCP reconsideration case ({recovery.cdcpCaseStatus ?? 'open'}) →
-                    </Link>
-                  </p>
-                )}
-
-                {recovery.openActions.length > 0 && (
+                {recovery.openActions.filter((a) => !a.blocking).length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Open recovery actions
+                      Other open actions
                     </p>
-                    {recovery.openActions.map((a) => (
+                    {recovery.openActions.filter((a) => !a.blocking).map((a) => (
                       <div
                         key={a.id}
-                        className={`rounded-xl border p-3 space-y-2 ${
-                          a.blocking
-                            ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10'
-                            : 'border-gray-100 dark:border-gray-800'
-                        }`}
+                        className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 space-y-1"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{a.title}</p>
-                            {a.detail && (
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">{a.detail}</p>
-                            )}
-                          </div>
-                          <span className="text-[10px] uppercase tracking-wide text-gray-400 shrink-0">
-                            {a.actionType.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        {!isReadOnly && a.blocking && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={clearingGateId === a.id}
-                            onClick={() => void clearRecoveryGate(a.id)}
-                          >
-                            {clearingGateId === a.id ? 'Saving…' : 'Mark complete, ready to re-call'}
-                          </Button>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{a.title}</p>
+                        {a.detail && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{a.detail}</p>
                         )}
                       </div>
                     ))}
-                  </div>
-                )}
-
-                {recovery.recentEvents.length > 0 && (
-                  <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Recovery timeline
-                    </p>
-                    <ul className="space-y-2">
-                      {recovery.recentEvents.map((ev) => (
-                        <li key={ev.id} className="flex gap-3 text-xs">
-                          <span className="text-gray-400 shrink-0 w-36">
-                            {new Date(ev.createdAt).toLocaleString()}
-                          </span>
-                          <span className="text-gray-700 dark:text-gray-300">
-                            {fmtEventType(ev.eventType)}
-                            {ev.eventType === 'PAYMENT_VERIFIED_SYNC' && ev.amountRecoveredCents != null && (
-                              <span className="text-green-700 dark:text-green-400 font-medium">
-                                {' '}· ${(ev.amountRecoveredCents / 100).toFixed(2)}
-                              </span>
-                            )}
-                            {ev.eventType === 'ROUTE_ASSIGNED' && ev.metadata?.route != null && (
-                              <span className="text-gray-500"> → {String(ev.metadata.route)}</span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
                 )}
               </div>
@@ -608,7 +494,7 @@ export default function InsuranceClaimDetail() {
                         </div>
                         <span className="text-xs text-gray-400">
                           {new Date(a.initiatedAt).toLocaleString()}
-                          {a.durationSeconds ? ` · ${fmtDuration(a.durationSeconds)}` : ''}
+                          {a.durationSeconds ? ` · ${fmtCallDuration(a.durationSeconds)}` : ''}
                         </span>
                       </div>
 
@@ -658,7 +544,7 @@ export default function InsuranceClaimDetail() {
                 {!workItem ? (
                   <p className="text-sm text-gray-500">
                     No work queue row yet.{' '}
-                    <Link to="/work-queue" className="text-crx-600 underline">Refresh from sources</Link> on the work queue.
+                    <Link to="/insurance?tab=queue" className="text-crx-600 underline">Sync priority queue</Link> on Claims.
                   </p>
                 ) : (
                   <>

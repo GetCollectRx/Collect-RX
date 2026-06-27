@@ -170,6 +170,7 @@ async function processCallEnded(
           daysOutstanding: true,
           status: true,
           patientToken: true,
+          treatmentCodes: true,
         },
       },
     },

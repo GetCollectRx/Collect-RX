@@ -34,7 +34,6 @@ if (!process.env.REDIS_URL) {
 
 const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 const prisma = new PrismaClient();
-const healthPort = parseInt(process.env.PORT ?? '3000', 10);
 
 async function handlePreVisitEligibility(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
   const result = await dispatchPreVisitCall(prisma, 'PRE_VISIT_ELIGIBILITY', payload);
@@ -87,6 +86,20 @@ worker.on('failed', (job, err) => {
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
 
+/** API uses PORT (3000) in dev; worker health must not collide. Railway worker service uses PORT. */
+function resolveWorkerHealthPort(): number {
+  if (process.env.WORKER_HEALTH_PORT) {
+    return parseInt(process.env.WORKER_HEALTH_PORT, 10);
+  }
+  const apiPort = parseInt(process.env.PORT ?? '3000', 10);
+  if (process.env.NODE_ENV !== 'production') {
+    return apiPort + 1;
+  }
+  return apiPort;
+}
+
+const healthPort = resolveWorkerHealthPort();
+
 const healthApp = express();
 healthApp.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });
@@ -101,6 +114,16 @@ healthApp.get('/api/health/ready', async (_req, res) => {
 });
 const healthServer = healthApp.listen(healthPort, () => {
   console.log(`[worker] health endpoint listening on port ${healthPort}`);
+});
+healthServer.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `[worker] port ${healthPort} already in use (API may be on ${parseInt(process.env.PORT ?? '3000', 10)}). ` +
+        'Stop the other process or set WORKER_HEALTH_PORT.',
+    );
+    process.exit(1);
+  }
+  throw err;
 });
 
 async function shutdown() {

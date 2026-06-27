@@ -9,6 +9,7 @@ import { identifyTelusPlan } from '../../services/eligibility/engine.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
+import { submitTx23Inquiry } from './cdanetTx23Client.js';
 
 export interface ElectronicPreVisitResult {
   resolved: boolean;
@@ -105,22 +106,40 @@ export async function tryTelusTx23PreVisit(
     return { resolved: false, reason: 'tx23_not_supported' };
   }
 
-  const eligibilityStatus = 'eligible';
+  const settings = await getPracticeSettings(prisma, params.practiceId);
+  const carrierCfg = settings.carrierConfigs.find((c) => c.carrierId === 'telus_adjudicare');
+  const providerNumber = carrierCfg?.providerNumber?.trim();
+  if (!providerNumber) {
+    return { resolved: false, reason: 'no_provider_number' };
+  }
+
+  const tx23 = await submitTx23Inquiry({
+    providerNumber,
+    memberId,
+    groupNumber,
+    procedureCodes: params.procedureCodes,
+  });
+
   await writeAdjudicationEvent(prisma, {
     practiceId: params.practiceId,
     patientToken: params.patientToken,
     carrierId: params.carrierId,
     procedureCodes: params.procedureCodes,
     callType: 'tx23_check',
-    outcome: 'success',
-    eligibilityStatus,
+    outcome: tx23.resolved ? 'success' : 'failed',
+    eligibilityStatus: tx23.eligibilityStatus,
+    predeterminationStatus: tx23.predeterminationStatus,
     appointmentVerificationId: params.appointmentVerificationId,
   });
+
+  if (!tx23.resolved) {
+    return { resolved: false, reason: tx23.reason ?? 'tx23_unresolved' };
+  }
 
   return {
     resolved: true,
     method: 'tx23',
-    eligibilityStatus,
-    predeterminationStatus: 'unknown',
+    eligibilityStatus: tx23.eligibilityStatus ?? 'unknown',
+    predeterminationStatus: tx23.predeterminationStatus ?? 'unknown',
   };
 }

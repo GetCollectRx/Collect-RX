@@ -14,6 +14,7 @@ import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
 import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
 import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
+import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
@@ -185,6 +186,12 @@ async function processCallEndedDesk(
   }
 
   const metadata = payload.metadata;
+  if (metadata?.appointmentVerificationId) {
+    recordVapiWebhook('call_ended');
+    await processPreVisitCallEnded(payload, prisma);
+    return;
+  }
+
   if (!metadata?.claimId) {
     console.error(`[vapi-webhook] No claimId for call ${vapiCallId}`);
     return;

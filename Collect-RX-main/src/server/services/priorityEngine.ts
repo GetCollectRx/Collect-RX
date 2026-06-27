@@ -8,7 +8,7 @@
 // otherwise `referenceDate − daysOutstanding` is used (documented fallback).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { CarrierId, ClaimPriority, ClaimStatus, PrismaClient } from '@prisma/client';
+import type { CarrierId, ClaimPriority, ClaimStatus, Prisma, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { piiVault } from '../../pii-vault';
 
@@ -227,6 +227,98 @@ export function scoreClaim(input: PriorityScoreInput): ScoredParts {
   };
 }
 
+/**
+ * Practice-facing floor: large aging balances never display below High in the work queue.
+ * `minNormalizedScore` aligns with `workQueuePriority.ts` THRESHOLDS.high (0.6).
+ */
+export const PRACTICE_PRIORITY_FLOOR = {
+  minDollars: 2000,
+  minDays: 45,
+  minNormalizedScore: 0.6,
+} as const;
+
+export function applyPracticePriorityFloor(
+  normalizedScore: number,
+  dollarsOutstanding: number,
+  daysOutstanding: number,
+): number {
+  if (
+    dollarsOutstanding >= PRACTICE_PRIORITY_FLOOR.minDollars &&
+    daysOutstanding >= PRACTICE_PRIORITY_FLOOR.minDays
+  ) {
+    return Math.max(normalizedScore, PRACTICE_PRIORITY_FLOOR.minNormalizedScore);
+  }
+  return normalizedScore;
+}
+
+/**
+ * Normalize raw `scoreClaim().total` to 0–1 for work-queue display thresholds.
+ *
+ * Single source of truth for work-item `rankScore`: `scoreClaim` → ratio vs practice max
+ * → `applyPracticePriorityFloor`. Call-queue scheduling uses the same engine via
+ * `buildPriorityQueue` / `syncCallQueueSchedulingFromPriority` (raw totals + `scoreToClaimPriority`).
+ */
+export function normalizeClaimRankScore(
+  totalScore: number,
+  practiceMaxScore: number,
+  dollarsOutstanding: number,
+  daysOutstanding: number,
+): number {
+  const max = Math.max(practiceMaxScore, 1);
+  const ratio = Math.max(0, totalScore / max);
+  return Math.min(1, applyPracticePriorityFloor(ratio, dollarsOutstanding, daysOutstanding));
+}
+
+/** Score one claim for the work queue (0–1), consistent with `buildPriorityQueue`. */
+export function rankClaimForPractice(
+  input: PriorityScoreInput,
+  practiceMaxScore: number,
+): number {
+  const { total } = scoreClaim(input);
+  return normalizeClaimRankScore(
+    total,
+    practiceMaxScore,
+    input.amountCents / 100,
+    input.daysOutstanding,
+  );
+}
+
+/** Claim row shape shared by work-queue sync and priority queue builders. */
+export interface ClaimForPriorityScoring {
+  carrierId: CarrierId;
+  outstandingAmount: number | Prisma.Decimal;
+  daysOutstanding: number;
+  status: ClaimStatus;
+  servicedAt: Date | null;
+  queueEntry?: { attempts: number } | null;
+  callAttempts?: { outcomeDetail: string | null }[];
+}
+
+export function buildPriorityScoreInput(
+  claim: ClaimForPriorityScoring,
+  referenceDate: Date = new Date(),
+): PriorityScoreInput {
+  const amountCents = Math.round(Number(claim.outstandingAmount) * 100);
+  const attemptCount = claim.queueEntry?.attempts ?? claim.callAttempts?.length ?? 0;
+  const lastDetail = claim.callAttempts?.[0]?.outcomeDetail ?? null;
+  const approvedButUnpaid = inferApprovedButUnpaidLegacy(claim.status, amountCents, lastDetail);
+  const serviceDate =
+    claim.servicedAt != null
+      ? new Date(claim.servicedAt)
+      : estimateServiceDateFromOutstanding(referenceDate, claim.daysOutstanding);
+
+  return {
+    carrierId: claim.carrierId,
+    amountCents,
+    daysOutstanding: claim.daysOutstanding,
+    attemptCount,
+    referenceDate,
+    serviceDate,
+    claimStatus: claim.status,
+    approvedButUnpaid,
+  };
+}
+
 function displayPatientName(patientToken: string): string {
   const r = piiVault.detokenize(patientToken, 'priority-queue');
   if (!r.success || !r.phi?.patientName?.trim()) {
@@ -261,26 +353,8 @@ export async function buildPriorityQueue(
   const ranked: RankedClaim[] = [];
 
   for (const c of claims) {
+    const parts = scoreClaim(buildPriorityScoreInput(c, referenceDate));
     const amountCents = Math.round(Number(c.outstandingAmount) * 100);
-    const attemptCount = c.queueEntry?.attempts ?? c.callAttempts.length;
-    const lastDetail = c.callAttempts[0]?.outcomeDetail ?? null;
-    const approvedButUnpaidLegacy = inferApprovedButUnpaidLegacy(c.status, amountCents, lastDetail);
-
-    const serviceDate =
-      c.servicedAt != null
-        ? new Date(c.servicedAt)
-        : estimateServiceDateFromOutstanding(referenceDate, c.daysOutstanding);
-
-    const parts = scoreClaim({
-      carrierId: c.carrierId,
-      amountCents,
-      daysOutstanding: c.daysOutstanding,
-      attemptCount,
-      referenceDate,
-      serviceDate,
-      claimStatus: c.status,
-      approvedButUnpaid: approvedButUnpaidLegacy,
-    });
 
     const carrierName = CARRIER_CONFIGS[c.carrierId]?.displayName ?? c.carrierId;
 
@@ -426,6 +500,10 @@ export const PriorityEngine = {
   CARRIER_APPEAL_WINDOW_MONTHS,
   estimateServiceDateFromOutstanding,
   scoreClaim,
+  rankClaimForPractice,
+  normalizeClaimRankScore,
+  applyPracticePriorityFloor,
+  buildPriorityScoreInput,
   buildPriorityQueue,
   inferApprovedButUnpaid,
   inferApprovedButUnpaidLegacy,

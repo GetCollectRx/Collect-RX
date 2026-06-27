@@ -184,6 +184,9 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 - Claims under 30 days old: do not enter queue
 - Claims over 90 days old: skip AI, escalate to human immediately
 
+### CRTC Compliance — AI Disclosure
+CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure of automated nature, practice name, and callback number is mandatory within 10 seconds of a live representative answering. The compliance decision, canonical disclosure script, and list of invalid Validation Playbook language are recorded in `docs/compliance/crtc-disclosure-decision.md`. Any instruction to sound human or evade identification is invalid for Canadian operations.
+
 ---
 
 ## Database

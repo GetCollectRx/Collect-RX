@@ -8,6 +8,11 @@ import { upsertReconsiderationFromSignal, detectDenialFromEndOfCall } from '../c
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { enqueueEmrPreVisitEvent } from '../emrSyncOutbox.js';
 import { scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
+import { enqueuePreVisitJob } from './preVisitJobs.js';
+import { isCdcpCarrier, requiresCdcpPredetermination } from './procedureRules.js';
+import { parsePreVisitStructuredData } from './preVisitStructuredOutput.js';
+
+const PRE_VISIT_RECALL_DELAY_MS = 4 * 60 * 60 * 1000;
 
 function asString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -39,15 +44,15 @@ export async function processPreVisitCallEnded(
     ?.structuredData ?? {};
   const collectrx = payload.analysis?.collectrx ?? meta?.collectrx;
 
-  const eligibilityStatus =
-    asString(sd.eligibility_status) ?? asString(sd.eligibilityStatus) ?? null;
-  const predetStatus =
-    asString(sd.predetermination_status) ??
-    asString(sd.predet_status) ??
-    asString(sd.predeterminationStatus) ??
-    null;
-  const denialCode = asString(sd.reason_code) ?? asString(sd.denial_reason) ?? null;
-  const denialText = asString(sd.denial_reason_text) ?? asString(collectrx?.outcomeDetail) ?? null;
+  const parsed = parsePreVisitStructuredData(sd);
+  if (!parsed.valid && Object.keys(sd).length > 0) {
+    console.warn('[preVisitWebhook] structured output parse warnings:', parsed.parseWarnings);
+  }
+
+  const eligibilityStatus = parsed.eligibilityStatus;
+  const predetStatus = parsed.predetStatus;
+  const denialCode = parsed.denialCode;
+  const denialText = parsed.denialText ?? asString(collectrx?.outcomeDetail);
 
   const durationMs = payload.call.durationSeconds
     ? payload.call.durationSeconds * 1000
@@ -168,6 +173,32 @@ export async function processPreVisitCallEnded(
       patientToken: verification.patientToken,
     },
   });
+
+  if (callFailed && reason === 'call_failed_retry') {
+    const cdcpContext =
+      meta?.cdcpContext === true ||
+      meta?.preVisitType === 'cdcp_predet' ||
+      (isCdcpCarrier(verification.carrierId) &&
+        verification.procedureCodes.some(requiresCdcpPredetermination));
+    const jobType = cdcpContext ? 'PRE_VISIT_CDCP_PREDET' : 'PRE_VISIT_ELIGIBILITY';
+    try {
+      await enqueuePreVisitJob(
+        jobType,
+        {
+          practiceId: verification.practiceId,
+          patientToken: verification.patientToken,
+          carrierId: verification.carrierId,
+          procedureCodes: verification.procedureCodes,
+          appointmentAt: verification.appointmentAt.toISOString(),
+          appointmentVerificationId: verificationId,
+          ...(cdcpContext ? { cdcpContext: true } : {}),
+        },
+        PRE_VISIT_RECALL_DELAY_MS,
+      );
+    } catch (enqueueErr) {
+      console.error('[preVisitWebhook] failed to enqueue recall job:', enqueueErr);
+    }
+  }
 
   return true;
 }

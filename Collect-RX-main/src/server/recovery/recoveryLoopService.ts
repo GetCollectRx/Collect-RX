@@ -3,7 +3,9 @@ import type { ProcessedOutcome } from '../../outcome/processor.js';
 import { enqueueEmrClaimEvent } from '../emrSyncOutbox.js';
 import {
   ensureCdcpCaseForClaim,
+  hasOpenCdcpCaseForClaim,
   linkRecoveryActionToCdcpCase,
+  primaryProcedureFromTreatmentCodes,
 } from './cdcpRecoveryBridge.js';
 import { claimStatusFromCallOutcome } from '../claimStatusFromCallOutcome.js';
 import { hasFinancialCorroboration } from '../outcomeConfidence.js';
@@ -21,6 +23,7 @@ export interface ApplyRecoveryAfterCallParams {
     carrierId: string;
     claimNumber: string;
     patientToken: string;
+    treatmentCodes?: string | null;
     outstandingAmount: { toString(): string } | number;
     daysOutstanding: number;
     status: import('@prisma/client').ClaimStatus;
@@ -43,18 +46,6 @@ async function hasBlockingPracticeGate(prisma: PrismaClient, claimId: string): P
     },
   });
   return n > 0;
-}
-
-async function hasOpenCdcpCase(
-  prisma: PrismaClient,
-  practiceId: string,
-  claimRef: string,
-): Promise<boolean> {
-  const row = await prisma.cdcpReconsiderationCase.findFirst({
-    where: { practiceId, claimRef, status: { notIn: ['approved', 'denied_final', 'expired'] } },
-    select: { id: true },
-  });
-  return Boolean(row);
 }
 
 async function supersedeRecoveryActions(
@@ -169,9 +160,16 @@ export async function applyRecoveryAfterCall(
   const queueEntry = await prisma.callQueue.findUnique({ where: { claimId: claim.id } });
   const attemptCount = queueEntry?.attempts ?? 0;
 
+  const procedureCode = primaryProcedureFromTreatmentCodes(claim.treatmentCodes);
+
   const [blockingGate, cdcpOpen] = await Promise.all([
     hasBlockingPracticeGate(prisma, claim.id),
-    hasOpenCdcpCase(prisma, claim.practiceId, claim.claimNumber),
+    hasOpenCdcpCaseForClaim(prisma, {
+      practiceId: claim.practiceId,
+      patientToken: claim.patientToken,
+      claimRef: claim.claimNumber,
+      procedureCode,
+    }),
   ]);
 
   const decision = routeClaimRecovery({
@@ -194,6 +192,7 @@ export async function applyRecoveryAfterCall(
       practiceId: claim.practiceId,
       patientToken: claim.patientToken,
       claimRef: claim.claimNumber,
+      procedureCode,
       clinicalSummary: processed.outcomeDetail,
     });
     if (cdcp) cdcpCaseId = cdcp.caseId;

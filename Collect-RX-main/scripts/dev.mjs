@@ -12,6 +12,7 @@ import {
   readEnvFromDotenv,
   readPortFromEnvFile,
 } from './free-dev-ports.mjs';
+import { ensureLocalRedis } from './ensure-dev-services.mjs';
 
 const COLLECTRX_DEFAULT_REMOTE_API = 'https://www.collectrx.ca';
 
@@ -57,9 +58,11 @@ function devApiTarget() {
 }
 
 const preferredVite = readPortFromEnvFile('VITE_PORT', 5173);
-const mode = devApiTarget();
 
-if (mode === 'remote') {
+async function main() {
+  const mode = devApiTarget();
+
+  if (mode === 'remote') {
   freeCollectRxDevPorts({ apiPort: readPortFromEnvFile('PORT', 3000), vitePort: preferredVite });
   const vitePort = pickFreePort(preferredVite);
   const remoteApi = resolveRemoteApiOrigin();
@@ -95,12 +98,18 @@ if (mode === 'remote') {
   });
   process.on('SIGINT', () => child.kill('SIGINT'));
   process.on('SIGTERM', () => child.kill('SIGTERM'));
-} else {
+  } else {
   const preferredApi = readPortFromEnvFile('PORT', 3000);
   freeCollectRxDevPorts({ apiPort: preferredApi, vitePort: preferredVite });
 
+  const redis = await ensureLocalRedis();
+  const useWorker = redis.enabled;
+
   const apiPort = pickFreePort(preferredApi);
   const vitePort = pickFreePort(preferredVite);
+  const workerHealthPort = readEnvFromDotenv('WORKER_HEALTH_PORT')
+    ? readPortFromEnvFile('WORKER_HEALTH_PORT', apiPort + 1)
+    : apiPort + 1;
 
   if (apiPort !== preferredApi) {
     console.warn(
@@ -117,7 +126,12 @@ if (mode === 'remote') {
   console.log(`[dev] App (open in browser):  http://localhost:${vitePort}/`);
   console.log(`[dev] API (Express):          http://127.0.0.1:${apiPort}`);
   console.log(`[dev] Vite /api proxy →       http://127.0.0.1:${apiPort}`);
-  console.log('[dev] Background jobs: in-process in API (no Redis/worker needed)');
+  if (useWorker) {
+    console.log(`[dev] Worker (BullMQ):        health http://127.0.0.1:${workerHealthPort}/api/health`);
+    console.log('[dev] Redis:                  enabled (worker started with API + Vite)');
+  } else {
+    console.log('[dev] Background jobs:        in-process in API (set REDIS_URL for BullMQ worker)');
+  }
   console.log('[dev] ─────────────────────────────────────────');
   console.log('');
 
@@ -127,26 +141,42 @@ if (mode === 'remote') {
     API_PORT: String(apiPort),
     VITE_DEV_SERVER_PORT: String(vitePort),
     VITE_API_PROXY_TARGET: '',
+    WORKER_HEALTH_PORT: String(workerHealthPort),
   };
 
-  const child = spawn(
-    'npx',
-    [
-      'concurrently',
-      '-n',
-      'api,vite',
-      '-c',
-      'blue,green',
-      'npm run dev:backend',
-      'npm run dev:frontend',
-    ],
-    {
-      cwd: pkgRoot,
-      env,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    },
-  );
+  if (!readEnvFromDotenv('EMR_OUTBOX_DEV_ACK')) {
+    env.EMR_OUTBOX_DEV_ACK = '1';
+  }
+
+  const concurrentlyArgs = useWorker
+    ? [
+        'concurrently',
+        '-n',
+        'api,vite,worker',
+        '-c',
+        'blue,green,magenta',
+        '--kill-others-on-fail',
+        'npm run dev:backend',
+        'node scripts/wait-for-api.mjs && npm run dev:frontend',
+        'npm run worker',
+      ]
+    : [
+        'concurrently',
+        '-n',
+        'api,vite',
+        '-c',
+        'blue,green',
+        '--kill-others-on-fail',
+        'npm run dev:backend',
+        'node scripts/wait-for-api.mjs && npm run dev:frontend',
+      ];
+
+  const child = spawn('npx', concurrentlyArgs, {
+    cwd: pkgRoot,
+    env,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
 
   child.on('exit', (code, signal) => {
     if (signal) process.kill(process.pid, signal);
@@ -154,4 +184,10 @@ if (mode === 'remote') {
   });
   process.on('SIGINT', () => child.kill('SIGINT'));
   process.on('SIGTERM', () => child.kill('SIGTERM'));
+  }
 }
+
+main().catch((err) => {
+  console.error('[dev] failed to start:', err);
+  process.exit(1);
+});
