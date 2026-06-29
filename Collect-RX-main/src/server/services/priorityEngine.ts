@@ -355,6 +355,7 @@ export async function buildPriorityQueue(
   for (const c of claims) {
     const parts = scoreClaim(buildPriorityScoreInput(c, referenceDate));
     const amountCents = Math.round(Number(c.outstandingAmount) * 100);
+    const attemptCount = c.queueEntry?.attempts ?? c.callAttempts?.length ?? 0;
 
     const carrierName = CARRIER_CONFIGS[c.carrierId]?.displayName ?? c.carrierId;
 
