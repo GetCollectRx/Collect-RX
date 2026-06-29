@@ -123,12 +123,12 @@ describe('Agent 05-B — Claim age eligibility rules', () => {
   }
 
   function isClaimEligibleForQueue(claimDate: Date): boolean {
-    const daysOld = (Date.now() - claimDate.getTime()) / (1000 * 60 * 60 * 24);
+    const daysOld = Math.floor((Date.now() - claimDate.getTime()) / (1000 * 60 * 60 * 24));
     return daysOld >= 30;
   }
 
   function shouldEscalateToHuman(claimDate: Date): boolean {
-    const daysOld = (Date.now() - claimDate.getTime()) / (1000 * 60 * 60 * 24);
+    const daysOld = Math.floor((Date.now() - claimDate.getTime()) / (1000 * 60 * 60 * 24));
     return daysOld > 90;
   }
 

@@ -5,7 +5,7 @@ import {
   estimateServiceDateFromOutstanding,
   rankClaimForPractice,
   scoreClaim,
-} from '../server/services/priorityEngine.js'
+} from '../services/priorityScoring'
 import type { CarrierId, ClaimStatus } from '@prisma/client'
 
 export type WorkQueuePriorityLabel = 'Critical' | 'High' | 'Med' | 'Low'

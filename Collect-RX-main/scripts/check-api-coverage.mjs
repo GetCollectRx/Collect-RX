@@ -35,6 +35,7 @@ const SERVER_PREFIXES = [
   '/api/insurance/',
   '/api/calls/',
   '/api/desk/',
+  '/api/pre-visit/',
   '/api/practices/',
   '/api/reports/',
   '/api/canadian/',
