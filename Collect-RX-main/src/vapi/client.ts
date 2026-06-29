@@ -78,6 +78,8 @@ export interface VapiCallParams {
   practiceNpi?: string;
   /** HST/GST business registration number. */
   practiceTaxId?: string;
+  /** Practice mailing address — some carriers ask for this during identity verification. */
+  practiceAddress?: string;
   providerNumber: string;
   /** Billing/claims phone line read in CRTC disclosure and given as carrier callback. */
   practicePhone: string;
@@ -260,6 +262,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practiceName,
     practiceNpi,
     practiceTaxId,
+    practiceAddress,
     providerNumber,
     practicePhone,
     languagePreference,
@@ -323,6 +326,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       practice_name:            practiceName,
       practice_npi:             practiceNpi ?? '',
       practice_tax_id:          practiceTaxId ?? '',
+      practice_address:         practiceAddress ?? '',
       provider_number:          providerNumber,
       // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds.
       // practice_phone is the billing/claims line, NOT the staff escalation line.

@@ -120,6 +120,108 @@ router.get('/integrations', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Practice Identity ──────────────────────────────────────────────────────
+// Direct Practice-model fields (not the settings JSON blob).
+// These are read aloud by the voice agent and used for carrier identity checks.
+
+const ADDRESS_MAX = 200;
+const E164 = /^\+[1-9]\d{7,14}$/;
+
+router.get('/practice-identity', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const row = await prisma.practice.findUnique({
+      where: { id: practiceId },
+      select: {
+        name: true,
+        billingPhone: true,
+        faxNumber: true,
+        practiceAddress: true,
+        npi: true,
+        taxId: true,
+      },
+    });
+    if (!row) return res.status(404).json({ error: 'Practice not found' });
+    return res.json({
+      name: row.name,
+      billingPhone: row.billingPhone ?? '',
+      faxNumber: row.faxNumber ?? '',
+      practiceAddress: row.practiceAddress ?? '',
+      npi: row.npi ?? '',
+      taxId: row.taxId ?? '',
+    });
+  } catch (err) {
+    console.error('[GET /admin/practice-identity]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.put('/practice-identity', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const body = req.body as {
+      billingPhone?: string;
+      faxNumber?: string;
+      practiceAddress?: string;
+      npi?: string;
+      taxId?: string;
+    };
+
+    const patch: Prisma.PracticeUpdateInput = {};
+
+    if (body.billingPhone !== undefined) {
+      const v = body.billingPhone.trim();
+      if (v && !E164.test(v)) {
+        return res.status(400).json({ error: 'billingPhone must be a valid E.164 number (+1...)' });
+      }
+      patch.billingPhone = v || null;
+    }
+
+    if (body.faxNumber !== undefined) {
+      const v = body.faxNumber.trim();
+      if (v && !E164.test(v)) {
+        return res.status(400).json({ error: 'faxNumber must be a valid E.164 number (+1...)' });
+      }
+      patch.faxNumber = v || null;
+    }
+
+    if (body.practiceAddress !== undefined) {
+      const v = body.practiceAddress.trim();
+      if (v.length > ADDRESS_MAX) {
+        return res.status(400).json({ error: `practiceAddress must be ${ADDRESS_MAX} characters or fewer` });
+      }
+      patch.practiceAddress = v || null;
+    }
+
+    if (body.npi !== undefined) {
+      patch.npi = body.npi.trim() || null;
+    }
+
+    if (body.taxId !== undefined) {
+      patch.taxId = body.taxId.trim() || null;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    await prisma.practice.update({ where: { id: practiceId }, data: patch });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'admin.practice_identity.update',
+      subjectType: 'Practice',
+      subjectId: practiceId,
+      details: { keys: Object.keys(patch) },
+      req,
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[PUT /admin/practice-identity]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.get('/audit-log', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);

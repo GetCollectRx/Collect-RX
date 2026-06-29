@@ -7,6 +7,7 @@ import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
+import { checkPatientDataCompleteness } from './patientDataCompleteness.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -139,7 +140,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const practice = await prisma.practice.findUnique({
       where: { id: practiceId },
-      select: { name: true, billingPhone: true, npi: true, taxId: true },
+      select: { name: true, billingPhone: true, npi: true, taxId: true, practiceAddress: true },
     });
     const practiceSettings = await getPracticeSettings(prisma, practiceId);
     const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
@@ -169,6 +170,27 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       callerContext: 'queue-engine',
       phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
     });
+
+    // ── PHI COMPLETENESS GUARD ─────────────────────────────────────────────────
+    // Carriers require patientName, dateOfBirth, and subscriberId at minimum.
+    // Missing any of these causes the agent to fail authentication immediately.
+    // Skip the claim now; staff can correct the data and the next tick will retry.
+    const completeness = checkPatientDataCompleteness(phiResult.phi);
+    if (!completeness.ok) {
+      logger.warn('[deskQueueEngine] patient PHI incomplete — skipping dispatch', {
+        claimId: next.claimId,
+        patientToken: next.claim.patientToken,
+        missing: completeness.missing,
+      });
+      continue;
+    }
+    if (completeness.warnings.length > 0) {
+      logger.warn('[deskQueueEngine] patient PHI has optional fields absent — proceeding with caution', {
+        claimId: next.claimId,
+        patientToken: next.claim.patientToken,
+        warnings: completeness.warnings,
+      });
+    }
 
     // billingPhone is the CRTC disclosure / carrier callback number.
     // escalationPhoneNumber is for staff takeover — do not use for disclosure.
@@ -205,6 +227,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceName:           practice?.name ?? '',
       practiceNpi:            practice?.npi ?? undefined,
       practiceTaxId:          practice?.taxId ?? undefined,
+      practiceAddress:        practice?.practiceAddress ?? undefined,
       providerNumber:         practiceCarrierConfig?.providerNumber ?? '',
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',

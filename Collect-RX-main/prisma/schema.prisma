@@ -33,7 +33,7 @@ model Practice {
   /// Fax number — required by some carriers for documentation / appeal submissions.
   faxNumber     String?   @map("fax_number")
   /// Practice mailing address — some carriers ask for this during identity verification.
-  address       String?
+  practiceAddress  String?   @map("address")
   /// Provincial college registration / billing number (Canadian NPI equivalent).
   npi           String?
   /// HST/GST business registration number — some carriers require for payment processing.
