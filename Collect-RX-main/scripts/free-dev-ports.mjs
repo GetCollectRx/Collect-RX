@@ -50,6 +50,7 @@ export function isCollectRxDev(cmd) {
   if (!inRepo) return false;
   return (
     cmd.includes('src/server/index.ts') ||
+    cmd.includes('src/server/workerEntry.ts') ||
     cmd.includes('tsx watch') ||
     cmd.includes('/vite') ||
     cmd.includes('node_modules/.bin/vite') ||
@@ -57,10 +58,17 @@ export function isCollectRxDev(cmd) {
   );
 }
 
+function workerHealthPort(apiPort) {
+  const explicit = readEnvFromDotenv('WORKER_HEALTH_PORT');
+  if (explicit && /^\d{1,5}$/.test(explicit)) return Number(explicit);
+  return apiPort + 1;
+}
+
 /** @returns {number} processes stopped */
 export function freeCollectRxDevPorts({ apiPort, vitePort }) {
   let stopped = 0;
-  for (const port of [apiPort, vitePort]) {
+  const workerPort = workerHealthPort(apiPort);
+  for (const port of [apiPort, vitePort, workerPort]) {
     for (const pid of pidsOnPort(port)) {
       const cmd = cmdForPid(pid);
       if (!isCollectRxDev(cmd)) continue;

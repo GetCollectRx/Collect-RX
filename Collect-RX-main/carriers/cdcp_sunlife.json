@@ -4,17 +4,15 @@
   "carrier_type": "CDCP",
   "active": true,
   "market_share": 100,
-  
   "contact_info": {
-    "provider_phone": "1-866-509-1444",
-    "provider_phone_alternate": null,
+    "provider_phone": "1-888-888-8110",
+    "provider_phone_alternate": "1-866-509-1444",
     "fax": "1-866-608-6682",
     "email": "provider.cdcp@sunlife.com",
     "portal_url": "https://dental.provider.sunlife.ca",
     "hours_of_operation": "Mon-Fri 8:00am-8:00pm ET",
     "timezone": "ET"
   },
-  
   "authentication": {
     "required_fields": [
       "cdcp_provider_number",
@@ -35,13 +33,12 @@
     ],
     "notes": "CDCP provider number is 6 digits. Different from regular Sun Life provider ID."
   },
-  
   "ivr_navigation": {
     "ivr_type": "hybrid",
     "steps": [
       {
         "step_number": 1,
-        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le français, faites le 2.",
+        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le fran\u00e7ais, faites le 2.",
         "action": "Press 1",
         "wait_time": 2
       },
@@ -63,7 +60,9 @@
         "step_number": 4,
         "expected_prompt": "For claim status inquiries, press 1. For eligibility verification, press 2. For predetermination status, press 3. To speak with a representative, press 0.",
         "action": "Press 1",
-        "alternative_actions": ["Press 0 to reach rep directly"],
+        "alternative_actions": [
+          "Press 0 to reach rep directly"
+        ],
         "wait_time": 1
       },
       {
@@ -94,15 +93,22 @@
     ],
     "last_verified": "2025-02-15"
   },
-  
   "call_metrics": {
     "average_hold_time_minutes": 42,
-    "peak_hours": ["9am-11am ET", "1pm-3pm ET"],
-    "best_times_to_call": ["8am-9am ET", "4pm-7pm ET"],
+    "peak_hours": [
+      "9am-11am ET",
+      "1pm-3pm ET"
+    ],
+    "best_times_to_call": [
+      "8am-9am ET",
+      "4pm-7pm ET"
+    ],
     "success_rate": 75,
-    "average_call_duration_minutes": 55
+    "average_call_duration_minutes": 55,
+    "max_hold_minutes": 45,
+    "cost_per_minute_usd": 0.1315,
+    "max_cost_per_claim_usd": 17.76
   },
-  
   "claim_processing": {
     "typical_processing_time_days": 30,
     "follow_up_threshold_days": 45,
@@ -159,10 +165,13 @@
     "accepts_electronic_claims": true,
     "clearinghouse": "CDAnet (Payer ID: CDCP01)"
   },
-  
   "cdcp_specific": {
     "administering_carrier": "Sun Life Financial",
-    "copay_tiers": ["0%", "40%", "60%"],
+    "copay_tiers": [
+      "0%",
+      "40%",
+      "60%"
+    ],
     "predetermination_threshold": 300,
     "is_payer_of_last_resort": true,
     "enrollment_verification_required": true,
@@ -174,15 +183,16 @@
       "Patient moved provinces - health card number changed"
     ]
   },
-  
   "special_requirements": {
     "requires_cob_verification": true,
     "accepts_ai_callers": "unknown",
     "has_antibot_detection": false,
     "requires_human_voice_verification": false,
-    "language_options": ["English", "French"]
+    "language_options": [
+      "English",
+      "French"
+    ]
   },
-  
   "ai_agent_guidance": {
     "tone": "professional",
     "key_phrases": [
@@ -207,10 +217,9 @@
     ],
     "representative_script_hints": "Reps will often put you on hold to check CRA (Canada Revenue Agency) income verification system. This can add 5-10 minutes to call. Be patient."
   },
-  
   "metadata": {
     "created_date": "2025-02-15T10:00:00Z",
-    "last_updated": "2025-02-15T10:00:00Z",
+    "last_updated": "2026-06-23",
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 70,
@@ -220,7 +229,13 @@
         "date": "2025-02-15",
         "change": "Initial configuration created",
         "reason": "CDCP market research"
+      },
+      {
+        "date": "2026-06-23",
+        "change": "Added schema_version, cost fields (max_hold_minutes, cost_per_minute_usd, max_cost_per_claim_usd). Every future change to ivr_navigation, authentication, or ai_agent_guidance must increment schema_version and add a changelog entry.",
+        "reason": "P1-2 carrier KB versioning + P2-5 call duration cost controls"
       }
-    ]
+    ],
+    "schema_version": "1.0.0"
   }
 }

@@ -114,7 +114,7 @@ export default function SyncOpsDashboard() {
         {lastResult && (
           <p className="text-sm text-crx-600 dark:text-crx-400" role="status">
             {lastResult}.{' '}
-            <Link to="/work-queue" className="underline">Open work queue</Link>
+            <Link to="/insurance?tab=queue" className="underline">Open priority queue</Link>
           </p>
         )}
 

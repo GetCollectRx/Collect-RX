@@ -91,6 +91,11 @@ router.get('/claims', async (req: Request, res: Response) => {
         include: {
           _count: { select: { callAttempts: true } },
           queueEntry: { select: { status: true, attempts: true, scheduledFor: true } },
+          callAttempts: {
+            orderBy: { initiatedAt: 'desc' },
+            take: 1,
+            select: { outcome: true, outcomeDetail: true },
+          },
         },
       }),
       prisma.insuranceClaim.count({ where }),
@@ -101,17 +106,26 @@ router.get('/claims', async (req: Request, res: Response) => {
 
     const data = redactInsuranceClaimsList(claims as Record<string, unknown>[], req.auth).map(
       (row) => {
+        const attempts = row.callAttempts as
+          | { outcome: string | null; outcomeDetail: string | null }[]
+          | undefined;
+        const latest = attempts?.[0];
+        const { callAttempts: _omit, ...base } = row;
         const rec = recoveryByClaim.get(String(row.id));
-        return rec
-          ? {
-              ...row,
-              recoveryRoute: rec.recoveryRoute,
-              blockingGateTitle: rec.blockingGateTitle,
-              scheduledRecallAt: rec.scheduledRecallAt,
-              canCallCarrier: rec.canCallCarrier,
-              dispatchBlockReason: rec.dispatchBlockReason,
-            }
-          : row;
+        return {
+          ...base,
+          lastOutcome: latest?.outcome ?? null,
+          lastOutcomeDetail: latest?.outcomeDetail ?? null,
+          ...(rec
+            ? {
+                recoveryRoute: rec.recoveryRoute,
+                blockingGateTitle: rec.blockingGateTitle,
+                scheduledRecallAt: rec.scheduledRecallAt,
+                canCallCarrier: rec.canCallCarrier,
+                dispatchBlockReason: rec.dispatchBlockReason,
+              }
+            : {}),
+        };
       },
     );
 

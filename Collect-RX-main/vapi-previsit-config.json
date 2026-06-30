@@ -1,0 +1,109 @@
+{
+  "squad": {
+    "name": "CollectRx Pre-Visit Verification Squad",
+    "description": "Dedicated squad for pre-appointment eligibility and CDCP predetermination status checks. Deploy to VAPI dashboard and set VAPI_PREVISIT_SQUAD_ID.",
+    "members": [
+      {
+        "assistant": {
+          "name": "PreVisit_IVR_Navigator",
+          "firstMessage": "{{disclosure_message}}",
+          "firstMessageMode": "assistant-speaks-first",
+          "model": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "temperature": 0.1,
+            "messages": [
+              {
+                "role": "system",
+                "content": "You navigate carrier IVR menus for PRE-VISIT verification only.\n\nCONTEXT:\n- cdcp_context: {{cdcp_context}} — when true, dial CDCP Contact Centre for predetermination status\n- procedure_codes: {{procedure_codes}}\n- appointment_at: {{appointment_at}}\n\nRULES:\n- Respond only with DTMF digits or short keywords during IVR\n- Hand off to PreVisit_Agent when a human answers\n- End call on voicemail\n\nCARRIER IVR:\n{{carrier_ivr_instructions}}"
+              }
+            ]
+          },
+          "voice": { "provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM" },
+          "maxDurationSeconds": 600
+        },
+        "assistantDestinations": [
+          {
+            "type": "assistant",
+            "assistantName": "PreVisit_Agent",
+            "description": "Transfer when a human representative answers."
+          }
+        ]
+      },
+      {
+        "assistant": {
+          "name": "PreVisit_Agent",
+          "firstMessage": "{{disclosure_message}}",
+          "model": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "temperature": 0.2,
+            "messages": [
+              {
+                "role": "system",
+                "content": "You verify eligibility or CDCP predetermination status BEFORE a scheduled appointment.\n\nIf cdcp_context is true: ask for predetermination status for procedure codes {{procedure_codes}}.\nIf cdcp_context is false: ask for eligibility and active coverage.\n\nHand off to PreVisit_Closer once status is obtained."
+              }
+            ]
+          },
+          "voice": { "provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM" },
+          "maxDurationSeconds": 480
+        },
+        "assistantDestinations": [
+          {
+            "type": "assistant",
+            "assistantName": "PreVisit_Closer",
+            "description": "Transfer after status collected for structured output."
+          }
+        ]
+      },
+      {
+        "assistant": {
+          "name": "PreVisit_Closer",
+          "firstMessage": "Let me confirm what we learned before we close.",
+          "model": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "temperature": 0.0,
+            "messages": [
+              {
+                "role": "system",
+                "content": "Confirm predetermination/eligibility details and output structured JSON matching the pre-visit schema.\n\nREQUIRED JSON (analysis.structuredData):\n{\n  \"outcome\": \"APPROVED | DENIED | PENDING | NO_ANSWER | FAILED\",\n  \"predetermination_status\": \"approved | denied | pending | unknown\",\n  \"eligibility_status\": \"eligible | ineligible | unknown\",\n  \"reason_code\": \"<denial code or null>\",\n  \"denial_reason_text\": \"<text or null>\",\n  \"claim_ref\": \"<predet or claim ref>\",\n  \"predetermination_ref\": \"<predet ref>\",\n  \"procedure_code\": \"<CDT code>\",\n  \"is_appealable\": \"true | false\",\n  \"practice_id\": \"{{practice_id}}\",\n  \"patient_token\": \"{{patient_token}}\",\n  \"carrier_code\": \"{{carrier_id}}\"\n}"
+              }
+            ]
+          },
+          "analysisPlan": {
+            "structuredDataSchema": {
+              "type": "object",
+              "required": ["outcome"],
+              "properties": {
+                "outcome": { "type": "string" },
+                "predetermination_status": { "type": "string" },
+                "eligibility_status": { "type": "string" },
+                "reason_code": { "type": "string" },
+                "denial_reason_text": { "type": "string" },
+                "claim_ref": { "type": "string" },
+                "predetermination_ref": { "type": "string" },
+                "procedure_code": { "type": "string" },
+                "is_appealable": { "type": "string" },
+                "practice_id": { "type": "string" },
+                "patient_token": { "type": "string" },
+                "carrier_code": { "type": "string" }
+              }
+            }
+          },
+          "voice": { "provider": "11labs", "voiceId": "21m00Tcm4TlvDq8ikWAM" },
+          "maxDurationSeconds": 120
+        },
+        "assistantDestinations": []
+      }
+    ]
+  },
+  "metadata": {
+    "appointmentVerificationId": "{{appointment_verification_id}}",
+    "preVisitType": "{{pre_visit_type}}",
+    "cdcpContext": "{{cdcp_context}}",
+    "patientToken": "{{patient_token}}",
+    "practiceId": "{{practice_id}}",
+    "carrierId": "{{carrier_id}}"
+  }
+}

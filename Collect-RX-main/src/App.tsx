@@ -14,10 +14,9 @@ import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
-import Phase5Dashboard       from './pages/Phase5Dashboard'
+import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
-import RecoveryGatesInbox    from './pages/RecoveryGatesInbox'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
 import LiveConsole           from './pages/LiveConsole'
@@ -103,7 +102,6 @@ const PLATFORM_DEV_NAV_PATHS = new Set([
   '/',
   '/dashboard',
   '/guide',
-  '/work-queue',
   '/insurance',
   '/analytics',
   '/usage-insights',
@@ -118,16 +116,32 @@ const FRONT_DESK_NAV: NavItem[] = [
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
-const OWNER_NAV: NavItem[] = [
-  { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
-  { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
-  { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
-  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
-  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-  { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+const PRACTICE_OWNER_SECTIONS: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
+      { to: '/guide', exact: true, label: 'How it works', icon: 'guide' },
+    ],
+  },
+  {
+    label: 'After visit',
+    items: [
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+  },
+  {
+    label: 'Account',
+    items: [
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+    ],
+  },
 ]
 
 const AUDITOR_NAV: NavItem[] = [
@@ -143,21 +157,34 @@ const BILLING_OPS_NAV: NavItem[] = [
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
-const OFFICE_MANAGER_NAV: NavItem[] = [
-  { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
-  { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
-  { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
-  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
-  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+const OFFICE_MANAGER_SECTIONS: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
+      { to: '/guide', exact: true, label: 'How it works', icon: 'guide' },
+    ],
+  },
+  {
+    label: 'After visit',
+    items: [
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+  },
+  {
+    label: 'Account',
+    items: [{ to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' }],
+  },
 ]
 
 const BILLING_COORDINATOR_NAV: NavItem[] = [
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+  { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
@@ -201,11 +228,15 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: 'Claims',
+    label: 'After visit',
     items: [
-      { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-      { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-      { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
     ],
   },
   {
@@ -213,7 +244,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/estimate', exact: false, label: 'Estimate', icon: 'estimate' },
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
-      { to: '/cdcp', exact: false, label: 'CDCP', icon: 'cdcp' },
+      { to: '/cdcp', exact: false, label: 'CDCP (legacy)', icon: 'cdcp' },
     ],
   },
   {
@@ -252,11 +283,11 @@ function sidebarNavSections(
         : userRole === 'platform_admin' || isPlatformDev
           ? [{ label: 'Platform', items: PLATFORM_ADMIN_NAV }]
           : userRole === 'office_manager'
-            ? [{ label: '', items: OFFICE_MANAGER_NAV }]
+            ? OFFICE_MANAGER_SECTIONS
             : userRole === 'billing_coordinator'
               ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
               : isPracticeOwner
-                ? [{ label: '', items: OWNER_NAV }]
+                ? PRACTICE_OWNER_SECTIONS
                 : NAV_SECTIONS
 
   if (isPlatformDev && userRole !== 'platform_admin') {
@@ -384,7 +415,7 @@ function AppShell() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
           <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
-          <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
+          <Route path="/insurance/gates" element={<Navigate to="/insurance?tab=blocked" replace />} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/balances" element={<Navigate to="/insurance" replace />} />
@@ -397,7 +428,8 @@ function AppShell() {
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
-          <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
+          <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
         </PlatformDevRouteGuard>

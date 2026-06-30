@@ -198,7 +198,7 @@ export async function computeQueueStats(
     isPracticeQueuePaused(prisma, practiceId),
     prisma.callAttempt.findFirst({
       where: { completedAt: null, claim: { practiceId } },
-      include: { claim: { select: { claimNumber: true, carrierId: true } } },
+      include: { claim: { select: { id: true, claimNumber: true, carrierId: true } } },
     }),
     prisma.callAttempt.count({
       where: {
@@ -217,10 +217,12 @@ export async function computeQueueStats(
     activeCall: active
       ? {
           id: active.id,
+          claimId: active.claim.id,
           claimRef: active.claim.claimNumber,
           carrierId: active.claim.carrierId,
           activeAgent: active.activeAgent,
           startedAt: active.initiatedAt.toISOString(),
+          vapiCallId: active.vapiCallId,
         }
       : null,
     resolvedToday,

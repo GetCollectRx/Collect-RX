@@ -246,7 +246,11 @@ export default function Phase5Dashboard() {
     }>('/api/cdcp/queue')
       .then((res) => {
         const items = res.queue ?? [];
-        if (items.length === 0) return;
+        if (items.length === 0) {
+          setQueue([]);
+          setQueueSource('live');
+          return;
+        }
         const now = Date.now();
         setQueue(
           items.map((t) => {

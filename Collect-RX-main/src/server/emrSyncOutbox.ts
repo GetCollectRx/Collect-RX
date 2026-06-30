@@ -21,6 +21,29 @@ export async function enqueueEmrClaimEvent(
   });
 }
 
+/** Shadow-ledger sync for pre-visit verification outcomes (no claim row required). */
+export async function enqueueEmrPreVisitEvent(
+  prisma: PrismaClient,
+  params: {
+    practiceId: string;
+    appointmentVerificationId: string;
+    eventType: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<void> {
+  await prisma.emrSyncOutbox.create({
+    data: {
+      practiceId: params.practiceId,
+      claimId: `pre-visit:${params.appointmentVerificationId}`,
+      eventType: params.eventType,
+      payloadJson: {
+        ...params.payload,
+        appointmentVerificationId: params.appointmentVerificationId,
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export interface EmrOutboxBatchResult {
   pulled: number;
   markedProcessed: number;

@@ -22,6 +22,21 @@ export interface Phase5KpiSnapshot {
   source: 'live' | 'insufficient_data';
 }
 
+function emptySnapshot(disclosureComplianceRate = 0): Phase5KpiSnapshot {
+  return {
+    reconsiderationSuccessRate: 0,
+    ivrNavigationSuccessRate: 0,
+    authenticationSuccessRate: 0,
+    statusRetrievalAccuracy: 0,
+    denialTaxonomyMappingAccuracy: 0,
+    zeroHallucinationRate: 100,
+    disclosureComplianceRate,
+    medianCallDurationMinutes: 0,
+    totalCalls: 0,
+    source: 'insufficient_data',
+  };
+}
+
 export async function getPhase5CallKpis(
   prisma: PrismaClient,
   practiceId: string,
@@ -29,7 +44,7 @@ export async function getPhase5CallKpis(
 ): Promise<Phase5KpiSnapshot> {
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
-  const [attempts, denials, discVerified, discUnverified] = await Promise.all([
+  const [attempts, adjudicationEvents, denials, discVerified, discUnverified] = await Promise.all([
     prisma.callAttempt.findMany({
       where: { initiatedAt: { gte: since }, claim: { practiceId } },
       select: {
@@ -39,6 +54,17 @@ export async function getPhase5CallKpis(
         referenceNumber: true,
         initiatedAt: true,
         completedAt: true,
+      },
+    }),
+    prisma.adjudicationEvent.findMany({
+      where: { practiceId, createdAt: { gte: since } },
+      select: {
+        outcome: true,
+        callType: true,
+        eligibilityStatus: true,
+        predeterminationStatus: true,
+        denialReasonCode: true,
+        callDurationMs: true,
       },
     }),
     getDenialAnalytics(prisma, practiceId),
@@ -53,55 +79,71 @@ export async function getPhase5CallKpis(
   const discMeasured = discVerified + discUnverified;
   const disclosureComplianceRate = pct(discVerified, discMeasured);
 
-  if (attempts.length === 0) {
+  const voiceAdjudication = adjudicationEvents.filter((e) =>
+    ['pre_visit_eligibility', 'pre_visit_cdcp'].includes(e.callType),
+  );
+
+  const totalInteractions = attempts.length + voiceAdjudication.length;
+  if (totalInteractions === 0) {
     return {
+      ...emptySnapshot(disclosureComplianceRate),
       reconsiderationSuccessRate: denials.appealWinRate || 0,
-      ivrNavigationSuccessRate: 0,
-      authenticationSuccessRate: 0,
-      statusRetrievalAccuracy: 0,
-      denialTaxonomyMappingAccuracy: 0,
-      zeroHallucinationRate: 100,
-      disclosureComplianceRate,
-      medianCallDurationMinutes: 0,
-      totalCalls: 0,
-      source: 'insufficient_data',
     };
   }
 
-  const total = attempts.length;
   const connected = attempts.filter(
     (a) => a.outcome && CONNECTED_OUTCOMES.includes(a.outcome),
   );
+  const adjudicationConnected = voiceAdjudication.filter((e) => e.outcome === 'success');
   const authenticated = attempts.filter((a) => a.repName?.trim() || a.referenceNumber?.trim());
   const statusRetrieved = attempts.filter(
     (a) => a.outcome && a.outcomeDetail && a.outcomeDetail.trim().length > 3,
   );
+  const adjudicationStatusRetrieved = voiceAdjudication.filter(
+    (e) => e.eligibilityStatus || e.predeterminationStatus,
+  );
   const deniedWithDetail = attempts.filter(
     (a) => a.outcome === 'DENIED' && a.outcomeDetail && a.outcomeDetail.trim().length > 3,
   );
-  const deniedTotal = attempts.filter((a) => a.outcome === 'DENIED').length;
+  const adjudicationDeniedWithCode = voiceAdjudication.filter(
+    (e) =>
+      e.predeterminationStatus === 'denied' &&
+      e.denialReasonCode &&
+      e.denialReasonCode.trim().length > 0,
+  );
+  const deniedTotal =
+    attempts.filter((a) => a.outcome === 'DENIED').length +
+    voiceAdjudication.filter((e) => e.predeterminationStatus === 'denied').length;
 
-  const durationsMin = attempts
-    .filter((a) => a.completedAt)
-    .map((a) => (a.completedAt!.getTime() - a.initiatedAt.getTime()) / 60_000)
-    .filter((m) => m > 0 && m < 180);
+  const durationsMin = [
+    ...attempts
+      .filter((a) => a.completedAt)
+      .map((a) => (a.completedAt!.getTime() - a.initiatedAt.getTime()) / 60_000),
+    ...voiceAdjudication
+      .filter((e) => e.callDurationMs && e.callDurationMs > 0)
+      .map((e) => e.callDurationMs! / 60_000),
+  ].filter((m) => m > 0 && m < 180);
   durationsMin.sort((a, b) => a - b);
   const medianCallDurationMinutes =
     durationsMin.length > 0
       ? Math.round(durationsMin[Math.floor(durationsMin.length / 2)] * 10) / 10
       : 0;
 
+  const connectedTotal = connected.length + adjudicationConnected.length;
+  const statusTotal = statusRetrieved.length + adjudicationStatusRetrieved.length;
+  const deniedDetailTotal = deniedWithDetail.length + adjudicationDeniedWithCode.length;
+
   return {
     reconsiderationSuccessRate: denials.appealWinRate,
-    ivrNavigationSuccessRate: pct(connected.length, total),
-    authenticationSuccessRate: pct(authenticated.length, total),
-    statusRetrievalAccuracy: pct(statusRetrieved.length, total),
+    ivrNavigationSuccessRate: pct(connectedTotal, totalInteractions),
+    authenticationSuccessRate: pct(authenticated.length, attempts.length || totalInteractions),
+    statusRetrievalAccuracy: pct(statusTotal, totalInteractions),
     denialTaxonomyMappingAccuracy:
-      deniedTotal > 0 ? pct(deniedWithDetail.length, deniedTotal) : pct(statusRetrieved.length, total),
+      deniedTotal > 0 ? pct(deniedDetailTotal, deniedTotal) : pct(statusTotal, totalInteractions),
     zeroHallucinationRate: 100,
     disclosureComplianceRate,
     medianCallDurationMinutes,
-    totalCalls: total,
+    totalCalls: totalInteractions,
     source: 'live',
   };
 }

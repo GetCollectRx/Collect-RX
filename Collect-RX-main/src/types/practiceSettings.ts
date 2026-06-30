@@ -71,10 +71,12 @@ export interface QueueStats {
   isWithinCallWindow: boolean;
   activeCall: {
     id: string;
+    claimId: string;
     claimRef: string;
     carrierId: CarrierId;
     activeAgent: string | null;
     startedAt: string;
+    vapiCallId?: string | null;
   } | null;
   resolvedToday: number;
 }

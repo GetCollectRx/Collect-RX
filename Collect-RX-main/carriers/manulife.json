@@ -4,7 +4,6 @@
   "carrier_type": "PRIVATE",
   "active": true,
   "market_share": 18,
-  
   "contact_info": {
     "provider_phone": "1-888-626-8543",
     "provider_phone_alternate": "1-519-747-7000",
@@ -14,7 +13,6 @@
     "hours_of_operation": "Mon-Fri 8:00am-6:00pm ET",
     "timezone": "ET"
   },
-  
   "authentication": {
     "required_fields": [
       "provider_id",
@@ -33,7 +31,6 @@
     ],
     "notes": "Manulife often requires group number upfront. Make sure to have it ready."
   },
-  
   "ivr_navigation": {
     "ivr_type": "touchtone",
     "steps": [
@@ -83,15 +80,22 @@
     ],
     "last_verified": "2025-02-10"
   },
-  
   "call_metrics": {
     "average_hold_time_minutes": 20,
-    "peak_hours": ["11am-1pm ET", "3pm-5pm ET"],
-    "best_times_to_call": ["8am-10am ET", "After 5pm ET"],
+    "peak_hours": [
+      "11am-1pm ET",
+      "3pm-5pm ET"
+    ],
+    "best_times_to_call": [
+      "8am-10am ET",
+      "After 5pm ET"
+    ],
     "success_rate": 88,
-    "average_call_duration_minutes": 32
+    "average_call_duration_minutes": 32,
+    "max_hold_minutes": 30,
+    "cost_per_minute_usd": 0.1315,
+    "max_cost_per_claim_usd": 11.84
   },
-  
   "claim_processing": {
     "typical_processing_time_days": 10,
     "follow_up_threshold_days": 25,
@@ -141,17 +145,17 @@
     "accepts_electronic_claims": true,
     "clearinghouse": "CDAnet, ITRANS"
   },
-  
   "cdcp_specific": null,
-  
   "special_requirements": {
     "requires_cob_verification": true,
     "accepts_ai_callers": "unknown",
     "has_antibot_detection": false,
     "requires_human_voice_verification": false,
-    "language_options": ["English", "French"]
+    "language_options": [
+      "English",
+      "French"
+    ]
   },
-  
   "ai_agent_guidance": {
     "tone": "professional",
     "key_phrases": [
@@ -174,10 +178,9 @@
     ],
     "representative_script_hints": "Manulife reps are generally efficient and knowledgeable. They have good system access and can usually resolve issues on first call. If they can't find a claim, it likely wasn't received - prepare to resubmit."
   },
-  
   "metadata": {
     "created_date": "2025-02-15T11:00:00Z",
-    "last_updated": "2025-02-15T11:00:00Z",
+    "last_updated": "2026-06-23",
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 78,
@@ -187,7 +190,13 @@
         "date": "2025-02-15",
         "change": "Initial configuration created",
         "reason": "Top 3 Canadian carrier"
+      },
+      {
+        "date": "2026-06-23",
+        "change": "Added schema_version, cost fields (max_hold_minutes, cost_per_minute_usd, max_cost_per_claim_usd). Every future change to ivr_navigation, authentication, or ai_agent_guidance must increment schema_version and add a changelog entry.",
+        "reason": "P1-2 carrier KB versioning + P2-5 call duration cost controls"
       }
-    ]
+    ],
+    "schema_version": "1.0.0"
   }
 }

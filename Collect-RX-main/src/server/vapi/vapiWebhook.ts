@@ -27,6 +27,7 @@ import {
   triggerEscalationTriage,
 } from '../agents/eventAgents.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -150,6 +151,11 @@ async function processCallEnded(
     return;
   }
 
+  if (payload.metadata?.appointmentVerificationId) {
+    await processPreVisitCallEnded(payload, prisma);
+    return;
+  }
+
   const attempt = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
     include: {
@@ -164,6 +170,7 @@ async function processCallEnded(
           daysOutstanding: true,
           status: true,
           patientToken: true,
+          treatmentCodes: true,
         },
       },
     },

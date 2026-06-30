@@ -65,6 +65,50 @@ export default function Admin() {
   const [auditTick, setAuditTick] = useState(0)
   const { toast, showToast }            = useToast()
 
+  // ── Practice Identity (direct Practice model fields, not settings JSON) ──────
+  const [identity, setIdentity] = useState({
+    billingPhone: '',
+    faxNumber: '',
+    practiceAddress: '',
+    npi: '',
+    taxId: '',
+  })
+  const [identityLoading, setIdentityLoading] = useState(true)
+  const [identitySaving, setIdentitySaving] = useState(false)
+
+  useEffect(() => {
+    if (!practiceId) { setIdentityLoading(false); return }
+    setIdentityLoading(true)
+    apiFetch('/api/admin/practice-identity')
+      .then(async (r) =>
+        r.ok
+          ? parseApiJson<typeof identity>(r)
+          : { billingPhone: '', faxNumber: '', practiceAddress: '', npi: '', taxId: '' },
+      )
+      .then((d) => setIdentity(d))
+      .catch(() => {})
+      .finally(() => setIdentityLoading(false))
+  }, [practiceId])
+
+  const saveIdentity = async () => {
+    if (!practiceId) return
+    setIdentitySaving(true)
+    try {
+      const res = await apiFetch('/api/admin/practice-identity', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(identity),
+      })
+      const data = await parseApiJson<{ ok?: boolean; error?: string }>(res)
+      if (res.ok) showToast('ok', 'Practice identity saved.')
+      else showToast('err', data.error || 'Save failed')
+    } catch {
+      showToast('err', 'Save failed')
+    } finally {
+      setIdentitySaving(false)
+    }
+  }
+
   useEffect(() => {
     if (!practiceId) { setSettingsLoading(false); return }
     setSettingsLoading(true)
@@ -211,6 +255,70 @@ export default function Admin() {
       {toast && <InlineToast toast={toast} />}
 
       <AdminOnboardingChecklist practiceId={practiceId} />
+
+      {/* Practice Identity — fields read by the voice agent during carrier calls */}
+      <Card>
+        <CardHeader
+          title="Practice Identity"
+          subtitle="Used by the voice agent during carrier calls for identity verification. All fields are non-PHI."
+        />
+        {identityLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Billing phone (E.164)"
+                placeholder="+16135550100"
+                value={identity.billingPhone}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, billingPhone: e.target.value }))}
+                hint="CRTC disclosure number — read aloud at call start. Distinct from escalation line."
+              />
+              <Input
+                label="Fax number (E.164)"
+                placeholder="+16135550101"
+                value={identity.faxNumber}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, faxNumber: e.target.value }))}
+                hint="Required by some carriers for appeal / documentation submissions."
+              />
+            </div>
+            <Input
+              label="Practice address"
+              placeholder="123 Main St, Ottawa ON K1A 0A1"
+              value={identity.practiceAddress}
+              onChange={(e) => setIdentity((prev) => ({ ...prev, practiceAddress: e.target.value }))}
+              hint="Carriers may ask for this during identity verification. Max 200 characters."
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="NPI / billing number"
+                placeholder="123456789"
+                value={identity.npi}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, npi: e.target.value }))}
+                hint="Provincial college registration / billing number (Canadian NPI equivalent)."
+              />
+              <Input
+                label="Tax ID (HST/GST)"
+                placeholder="123456789RT0001"
+                value={identity.taxId}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, taxId: e.target.value }))}
+                hint="HST/GST business registration number — some carriers require for payment processing."
+              />
+            </div>
+            <div className="pt-1">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={saveIdentity}
+                disabled={!practiceId || identitySaving}
+                loading={identitySaving}
+              >
+                Save identity
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* P4, go-live integration health (no secrets shown) */}
       <Card>

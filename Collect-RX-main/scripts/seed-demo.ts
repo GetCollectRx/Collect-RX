@@ -13,6 +13,8 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { syncWorkItemsForPractice } from '../src/server/services/workQueueService.js';
+import { computeWorkQueueRankScore } from '../src/lib/workQueuePriority.js';
 
 const prisma = new PrismaClient();
 
@@ -28,6 +30,17 @@ function daysFromNow(n: number): Date {
 
 function hoursAgo(n: number): Date {
   return new Date(Date.now() - n * 60 * 60 * 1000);
+}
+
+function hoursFromNow(n: number): Date {
+  return new Date(Date.now() + n * 60 * 60 * 1000);
+}
+
+const CDCP_RECONSIDERATION_DAYS = 60;
+
+/** Denial date that yields `daysRemaining` on the 60-day CDCP reconsideration clock. */
+function denialDateForDaysRemaining(daysRemaining: number): Date {
+  return daysAgo(CDCP_RECONSIDERATION_DAYS - daysRemaining);
 }
 
 function claimNum(prefix: string, n: number): string {
@@ -267,57 +280,347 @@ async function main() {
 
     resolvedClaims.push(claim);
   }
-  const totalRecovered = resolvedAmounts.reduce((a, b) => a + b, 0);
-  console.log(`✅ Resolved claims: ${resolvedClaims.length}  ($${totalRecovered.toLocaleString()} recovered)`);
 
-  // ── 4. CALLING claims (4) — show system working right now ─────────────────
-  const callingData = [
-    { carrier: 'sun_life' as const,      amount: 2340, days: 47, claimSuffix: 'SL-2025-002341' },
-    { carrier: 'canada_life' as const,   amount: 1580, days: 53, claimSuffix: 'CL-2025-007712' },
-    { carrier: 'manulife' as const,      amount: 3180, days: 61, claimSuffix: 'MAN-2025-004401' },
-    { carrier: 'green_shield' as const,  amount: 890,  days: 38, claimSuffix: 'GS-2025-009984' },
+  // Appeal wins — prior DENIED attempt, later RESOLVED (drives reconsiderationSuccessRate KPI)
+  const appealWinStories = [
+    {
+      carrier: 'manulife' as const,
+      claimNumber: claimNum('APL', 100),
+      amount: 1420,
+      deniedDetail: DENIED_OUTCOMES[3].outcomeDetail,
+      resolved: RESOLVED_OUTCOMES[4],
+    },
+    {
+      carrier: 'sun_life' as const,
+      claimNumber: claimNum('APL', 101),
+      amount: 980,
+      deniedDetail: DENIED_OUTCOMES[0].outcomeDetail,
+      resolved: RESOLVED_OUTCOMES[0],
+    },
+    {
+      carrier: 'canada_life' as const,
+      claimNumber: claimNum('APL', 102),
+      amount: 1760,
+      deniedDetail: DENIED_OUTCOMES[1].outcomeDetail,
+      resolved: RESOLVED_OUTCOMES[2],
+    },
   ];
 
-  for (const d of callingData) {
+  for (const story of appealWinStories) {
+    const billedDaysAgo = 55;
     const claim = await prisma.insuranceClaim.create({
       data: {
         practiceId: practice.id,
-        carrierId: d.carrier,
-        claimNumber: d.claimSuffix,
+        carrierId: story.carrier,
+        claimNumber: story.claimNumber,
         patientToken: randomUUID(),
-        billedAmount: d.amount,
-        outstandingAmount: d.amount,
-        daysOutstanding: d.days,
-        status: 'CALLING',
-        priority: d.days > 55 ? 'HIGH' : 'NORMAL',
-        servicedAt: daysAgo(d.days + 7),
-        createdAt: daysAgo(d.days),
+        billedAmount: story.amount,
+        outstandingAmount: 0,
+        daysOutstanding: billedDaysAgo,
+        status: 'RESOLVED',
+        priority: 'HIGH',
+        servicedAt: daysAgo(billedDaysAgo + 7),
+        createdAt: daysAgo(billedDaysAgo),
+        updatedAt: daysAgo(5),
       },
     });
 
-    // Active call started a few minutes ago
+    const deniedAt = daysAgo(28);
     await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
-        vapiCallId: randomUUID(),
-        initiatedAt: hoursAgo(0.15 + Math.random() * 0.3),
-        activeAgent: 'IVR_Navigator',
-        liveState: JSON.stringify({ step: 'navigating_ivr', menuDepth: 2 }),
+        vapiCallId: `demo-denied-${story.claimNumber.toLowerCase()}`,
+        initiatedAt: deniedAt,
+        completedAt: new Date(deniedAt.getTime() + 8 * 60 * 1000),
+        durationSeconds: 480,
+        outcome: 'DENIED',
+        outcomeDetail: story.deniedDetail,
       },
     });
 
-    await prisma.callQueue.create({
+    const resolvedAt = daysAgo(12);
+    const resolvedAttempt = await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
-        practiceId: practice.id,
-        status: 'IN_PROGRESS',
-        attempts: 1,
-        scheduledFor: hoursAgo(1),
-        lastAttemptAt: hoursAgo(0.2),
+        vapiCallId: `demo-resolved-${story.claimNumber.toLowerCase()}`,
+        initiatedAt: resolvedAt,
+        completedAt: new Date(resolvedAt.getTime() + 9 * 60 * 1000),
+        durationSeconds: 540,
+        outcome: 'RESOLVED',
+        outcomeDetail: story.resolved.outcomeDetail,
+        repName: story.resolved.repName,
+        referenceNumber: story.resolved.referenceNumber,
       },
     });
+
+    await prisma.claimRecoveryEvent.create({
+      data: {
+        practiceId: practice.id,
+        claimId: claim.id,
+        eventType: 'PAYMENT_VERIFIED_SYNC',
+        amountRecoveredCents: story.amount * 100,
+        previousOutstanding: story.amount,
+        newOutstanding: 0,
+        createdAt: new Date(resolvedAttempt.completedAt!.getTime() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    resolvedClaims.push(claim);
   }
-  console.log(`✅ Calling claims: ${callingData.length}  (active right now)`);
+
+  const totalRecovered =
+    resolvedAmounts.reduce((a, b) => a + b, 0) +
+    appealWinStories.reduce((a, s) => a + s.amount, 0);
+  console.log(`✅ Resolved claims: ${resolvedClaims.length}  ($${totalRecovered.toLocaleString()} recovered, incl. 3 appeal wins)`);
+
+  // ── 4. Call-to-resolution story claims (4) — teach the recovery loop ───────
+  const storyClaims: Array<{
+    label: string;
+    workQueueHint: string;
+    claimNumber: string;
+    carrier: 'sun_life' | 'canada_life' | 'manulife' | 'green_shield';
+    amount: number;
+    days: number;
+    status: 'CALLING' | 'ON_HOLD' | 'IN_QUEUE';
+    priority: 'NORMAL' | 'HIGH';
+    recoveryRoute: 'CALL_CARRIER' | 'PRACTICE_GATE';
+  }> = [
+    {
+      label: 'Live call in progress',
+      workQueueHint: 'Live console — agent on carrier line',
+      claimNumber: 'SL-2025-002341',
+      carrier: 'sun_life',
+      amount: 2340,
+      days: 47,
+      status: 'CALLING',
+      priority: 'NORMAL',
+      recoveryRoute: 'CALL_CARRIER',
+    },
+    {
+      label: 'Practice gate — attach perio chart',
+      workQueueHint: 'Owner action required before re-call',
+      claimNumber: 'CL-2025-007712',
+      carrier: 'canada_life',
+      amount: 1580,
+      days: 53,
+      status: 'ON_HOLD',
+      priority: 'NORMAL',
+      recoveryRoute: 'PRACTICE_GATE',
+    },
+    {
+      label: 'Recall due now',
+      workQueueHint: '72h processing recall — ready to dial',
+      claimNumber: 'GS-2025-009984',
+      carrier: 'green_shield',
+      amount: 890,
+      days: 38,
+      status: 'IN_QUEUE',
+      priority: 'NORMAL',
+      recoveryRoute: 'CALL_CARRIER',
+    },
+    {
+      label: 'High-value aging ($3k+ / 60+d)',
+      workQueueHint: 'Top work-queue priority — Manulife crown',
+      claimNumber: 'MAN-2025-004401',
+      carrier: 'manulife',
+      amount: 3180,
+      days: 67,
+      status: 'IN_QUEUE',
+      priority: 'HIGH',
+      recoveryRoute: 'CALL_CARRIER',
+    },
+  ];
+
+  for (const s of storyClaims) {
+    const claim = await prisma.insuranceClaim.create({
+      data: {
+        practiceId: practice.id,
+        carrierId: s.carrier,
+        claimNumber: s.claimNumber,
+        patientToken: randomUUID(),
+        billedAmount: s.amount,
+        outstandingAmount: s.amount,
+        daysOutstanding: s.days,
+        status: s.status,
+        priority: s.priority,
+        recoveryRoute: s.recoveryRoute,
+        treatmentCodes: s.claimNumber.startsWith('CL-') ? 'D4341,D0274' : 'D2750',
+        servicedAt: daysAgo(s.days + 7),
+        createdAt: daysAgo(s.days),
+      },
+    });
+    
+
+    if (s.status === 'CALLING') {
+      await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: 'demo-in-progress-sl-002341',
+          initiatedAt: hoursAgo(0.12),
+          activeAgent: 'Claims_Agent',
+          repName: 'Marcus L.',
+          referenceNumber: 'SL-2025-002341',
+          liveState: JSON.stringify({
+            step: 'speaking_with_rep',
+            repQueue: 'claims_adjudication',
+            claimRef: s.claimNumber,
+            transcriptSnippet:
+              'Rep confirms claim received 47 days ago — checking adjudication status with dental benefits team.',
+          }),
+        },
+      });
+
+      await prisma.callQueue.create({
+        data: {
+          claimId: claim.id,
+          practiceId: practice.id,
+          status: 'IN_PROGRESS',
+          attempts: 1,
+          scheduledFor: hoursAgo(1),
+          lastAttemptAt: hoursAgo(0.12),
+        },
+      });
+    }
+
+    if (s.recoveryRoute === 'PRACTICE_GATE') {
+      const gateCallAt = daysAgo(4);
+      const gateAttempt = await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: 'demo-gate-cl-007712',
+          initiatedAt: gateCallAt,
+          completedAt: new Date(gateCallAt.getTime() + 9 * 60 * 1000),
+          durationSeconds: 540,
+          outcome: 'ESCALATED',
+          outcomeDetail:
+            'Rep requested periodontal charting before D4341 scaling can be adjudicated. Attach perio chart and resubmit.',
+        },
+      });
+
+      await prisma.claimRecoveryAction.create({
+        data: {
+          practiceId: practice.id,
+          claimId: claim.id,
+          actionType: 'PRACTICE_DOCS',
+          status: 'BLOCKING',
+          route: 'PRACTICE_GATE',
+          title: 'Attach perio chart',
+          detail:
+            'Canada Life rep flagged missing perio chart for D4341. Upload chart in PMS and mark gate cleared.',
+          callAttemptId: gateAttempt.id,
+        },
+      });
+
+      await prisma.callQueue.create({
+        data: {
+          claimId: claim.id,
+          practiceId: practice.id,
+          status: 'ESCALATED',
+          attempts: 1,
+          scheduledFor: daysFromNow(7),
+          lastAttemptAt: gateCallAt,
+        },
+      });
+    }
+
+    if (s.claimNumber === 'GS-2025-009984') {
+      const recallCallAt = daysAgo(3);
+      const recallAttempt = await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: 'demo-recall-gs-009984',
+          initiatedAt: recallCallAt,
+          completedAt: new Date(recallCallAt.getTime() + 7 * 60 * 1000),
+          durationSeconds: 420,
+          outcome: 'PENDING',
+          outcomeDetail:
+            'Claim still in processing. Rep quoted 72-hour turnaround. Recall scheduled.',
+          repName: 'Aaron B.',
+          referenceNumber: 'GS-2025-009984-PND',
+        },
+      });
+
+      await prisma.claimRecoveryAction.create({
+        data: {
+          practiceId: practice.id,
+          claimId: claim.id,
+          actionType: 'PROCESSING_RECALL',
+          status: 'OPEN',
+          route: 'CALL_CARRIER',
+          title: 'Processing recall — 72h',
+          detail: 'Carrier still adjudicating. Re-call if no payment by recall date.',
+          scheduledRecallAt: hoursAgo(2),
+          callAttemptId: recallAttempt.id,
+        },
+      });
+
+      await prisma.callQueue.create({
+        data: {
+          claimId: claim.id,
+          practiceId: practice.id,
+          status: 'PENDING',
+          attempts: 1,
+          scheduledFor: hoursAgo(2),
+          lastAttemptAt: recallCallAt,
+        },
+      });
+    }
+
+    if (s.claimNumber === 'MAN-2025-004401') {
+      const firstCallAt = daysAgo(14);
+      const firstAttempt = await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: 'demo-first-man-004401',
+          initiatedAt: firstCallAt,
+          completedAt: new Date(firstCallAt.getTime() + 11 * 60 * 1000),
+          durationSeconds: 660,
+          outcome: 'PENDING',
+          outcomeDetail:
+            'Crown D2750 still in adjudication. Rep quoted 10–14 business days. High-value claim flagged for priority follow-up.',
+          repName: 'Tanya K.',
+          referenceNumber: 'MAN-2025-004401-PND',
+        },
+      });
+
+      await prisma.claimRecoveryEvent.create({
+        data: {
+          practiceId: practice.id,
+          claimId: claim.id,
+          eventType: 'ROUTE_ASSIGNED',
+          metadata: { route: 'CALL_CARRIER' },
+          createdAt: firstCallAt,
+        },
+      });
+
+      await prisma.claimRecoveryAction.create({
+        data: {
+          practiceId: practice.id,
+          claimId: claim.id,
+          actionType: 'PROCESSING_RECALL',
+          status: 'OPEN',
+          route: 'CALL_CARRIER',
+          title: 'Priority recall — high value aging',
+          detail: 'Manulife crown $3,180 at 67 days. Second call queued after processing window.',
+          scheduledRecallAt: hoursAgo(0.5),
+          callAttemptId: firstAttempt.id,
+        },
+      });
+
+      await prisma.callQueue.create({
+        data: {
+          claimId: claim.id,
+          practiceId: practice.id,
+          status: 'PENDING',
+          attempts: 1,
+          scheduledFor: hoursAgo(0.5),
+          lastAttemptAt: firstCallAt,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Story claims: ${storyClaims.length}  (call-to-resolution loop)`);
 
   // ── 5. IN_QUEUE claims (12) — waiting to be called ─────────────────────────
   const queuedData = [
@@ -440,7 +743,7 @@ async function main() {
     await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
-        vapiCallId: randomUUID(),
+        vapiCallId: `demo-denied-den-${4000 + i}`,
         initiatedAt: callAt,
         completedAt: new Date(callAt.getTime() + 8 * 60 * 1000),
         durationSeconds: 480,
@@ -521,31 +824,200 @@ async function main() {
   }
   console.log(`✅ On-hold claims: ${holdData.length}  (awaiting documentation)`);
 
+  // ── 10. Pre-visit platform — CDCP deadlines + appointment verifications ─────
+  const cdcpPatientTokens = Array.from({ length: 8 }, () => randomUUID());
+
+  const cdcpPredetCases = [
+    {
+      claimRef: 'PD-DEMO-001',
+      patientToken: cdcpPatientTokens[0],
+      procedureCode: 'D2750',
+      daysRemaining: 3,
+      summary: 'Denied — missing periapical radiograph (F-010). Crown predet.',
+    },
+    {
+      claimRef: 'PD-DEMO-002',
+      patientToken: cdcpPatientTokens[1],
+      procedureCode: 'D2740',
+      daysRemaining: 7,
+      summary: 'Denied — insufficient clinical narrative for crown (F-010).',
+    },
+    {
+      claimRef: 'PD-DEMO-003',
+      patientToken: cdcpPatientTokens[2],
+      procedureCode: 'D5110',
+      daysRemaining: 14,
+      summary: 'Denied — complete denture predet; treatment plan not on file (F-010).',
+    },
+    {
+      claimRef: 'PD-DEMO-004',
+      patientToken: cdcpPatientTokens[3],
+      procedureCode: 'D4341',
+      daysRemaining: 45,
+      summary: 'Denied — periodontal charting required for scaling (F-010).',
+    },
+    {
+      claimRef: 'PD-DEMO-005',
+      patientToken: cdcpPatientTokens[4],
+      procedureCode: 'D6010',
+      daysRemaining: 2,
+      summary: 'Denied — implant surgical predet; reconsideration window critical.',
+    },
+  ] as const;
+
+  for (const c of cdcpPredetCases) {
+    await prisma.cdcpReconsiderationCase.create({
+      data: {
+        practiceId: practice.id,
+        patientToken: c.patientToken,
+        claimRef: c.claimRef,
+        carrierCode: 'cdcp_sunlife',
+        procedureCode: c.procedureCode,
+        denialDate: denialDateForDaysRemaining(c.daysRemaining),
+        status: 'open',
+        clinicalEvidenceSummary: c.summary,
+      },
+    });
+  }
+  console.log(`✅ CDCP predet cases: ${cdcpPredetCases.length}  (deadlines at 2–45 days)`);
+
+  const preVisitVerifications = [
+    {
+      patientToken: cdcpPatientTokens[5],
+      procedureCodes: ['D0120'],
+      appointmentAt: daysFromNow(2),
+      status: 'GREEN',
+      reason: 'cdcp_predet_approved',
+      cdcpDaysRemaining: null as number | null,
+      missingArtifacts: [] as string[],
+    },
+    {
+      patientToken: cdcpPatientTokens[0],
+      procedureCodes: ['D2750'],
+      appointmentAt: hoursFromNow(36),
+      status: 'YELLOW',
+      reason: 'cdcp_predet_pending',
+      cdcpDaysRemaining: 3,
+      missingArtifacts: ['periapical_xray'],
+    },
+    {
+      patientToken: cdcpPatientTokens[1],
+      procedureCodes: ['D2740'],
+      appointmentAt: hoursFromNow(20),
+      status: 'RED',
+      reason: 'cdcp_predet_denied',
+      cdcpDaysRemaining: 7,
+      missingArtifacts: ['clinical_narrative', 'periapical_xray'],
+    },
+    {
+      patientToken: cdcpPatientTokens[4],
+      procedureCodes: ['D6010'],
+      appointmentAt: daysFromNow(1),
+      status: 'RED',
+      reason: 'cdcp_reconsideration_expiring',
+      cdcpDaysRemaining: 2,
+      missingArtifacts: ['bitewing_xray'],
+    },
+  ] as const;
+
+  for (const v of preVisitVerifications) {
+    const verification = await prisma.appointmentVerification.create({
+      data: {
+        practiceId: practice.id,
+        patientToken: v.patientToken,
+        carrierId: 'sun_life',
+        procedureCodes: [...v.procedureCodes],
+        appointmentAt: v.appointmentAt,
+        status: v.status,
+        reason: v.reason,
+        cdcpDaysRemaining: v.cdcpDaysRemaining,
+        missingArtifacts: [...v.missingArtifacts],
+        attemptCount: v.status === 'GREEN' ? 1 : 2,
+        portalResolved: v.status === 'GREEN',
+      },
+    });
+
+    await prisma.scheduledAppointment.create({
+      data: {
+        practiceId: practice.id,
+        patientToken: v.patientToken,
+        carrierId: 'sun_life',
+        procedureCodes: [...v.procedureCodes],
+        appointmentAt: v.appointmentAt,
+        pmsSource: 'demo_seed',
+        pmsAppointmentId: `demo-${verification.id.slice(0, 8)}`,
+        verificationId: verification.id,
+      },
+    });
+
+    await prisma.adjudicationEvent.create({
+      data: {
+        practiceId: practice.id,
+        patientToken: v.patientToken,
+        carrierId: 'sun_life',
+        procedureCodes: [...v.procedureCodes],
+        callType: 'pre_visit_cdcp',
+        outcome: v.status === 'RED' ? 'failed' : 'success',
+        predeterminationStatus:
+          v.status === 'GREEN' ? 'approved' : v.status === 'YELLOW' ? 'pending' : 'denied',
+        eligibilityStatus: 'eligible',
+        supportingDocsPresent: v.missingArtifacts.length === 0,
+        appointmentVerificationId: verification.id,
+      },
+    });
+  }
+  console.log(`✅ Pre-visit verifications: ${preVisitVerifications.length}  (GREEN/YELLOW/RED)`);
+
+  // ── work-queue sync (rank scores for /work-queue) ───────────────────────────
+  const { upserted: workItemsSynced } = await syncWorkItemsForPractice(prisma, practice.id);
+  console.log(`✅ Work items synced: ${workItemsSynced}`);
+
   // ── summary ─────────────────────────────────────────────────────────────────
   const openAmounts = [
-    ...callingData.map(d => d.amount),
-    ...queuedData.map(d => d.amount),
-    ...escalatedData.map(d => d.amount),
-    ...deniedData.map(d => d.amount),
-    ...pendingData.map(d => d.amount),
-    ...holdData.map(d => d.amount),
+    ...storyClaims.map((s) => s.amount),
+    ...queuedData.map((d) => d.amount),
+    ...escalatedData.map((d) => d.amount),
+    ...deniedData.map((d) => d.amount),
+    ...pendingData.map((d) => d.amount),
+    ...holdData.map((d) => d.amount),
   ];
   const totalOpen = openAmounts.reduce((a, b) => a + b, 0);
-  const totalClaims = resolvedClaims.length + callingData.length + queuedData.length +
-    escalatedData.length + deniedData.length + pendingData.length + holdData.length;
+  const totalClaims =
+    resolvedClaims.length +
+    storyClaims.length +
+    queuedData.length +
+    escalatedData.length +
+    deniedData.length +
+    pendingData.length +
+    holdData.length;
+
+  const manulifeStory = storyClaims.find((s) => s.claimNumber === 'MAN-2025-004401')!;
+  const manulifeRank = computeWorkQueueRankScore(manulifeStory.amount, manulifeStory.days, 0.8);
 
   console.log('\n' + '─'.repeat(60));
   console.log('🎯  Demo data summary');
   console.log('─'.repeat(60));
   console.log(`   Practice:      Hasan Family Dental (id: ${practice.id})`);
   console.log(`   Login:         demo@hasanfamilydental.ca`);
-  console.log(`   Password:      CollectRx2026!`);
+  console.log(`   Password:      ${PASSWORD}`);
   console.log(`   Total claims:  ${totalClaims}`);
   console.log(`   Open AR:       $${totalOpen.toLocaleString()} CAD`);
-  console.log(`   Recovered:     $${totalRecovered.toLocaleString()} CAD (22 claims, last 30 days)`);
-  console.log(`   Recovery rate: ~${Math.round(totalRecovered / (totalRecovered + totalOpen) * 100)}%`);
+  console.log(`   Recovered:     $${totalRecovered.toLocaleString()} CAD (${resolvedClaims.length} claims)`);
+  console.log(`   Recovery rate: ~${Math.round((totalRecovered / (totalRecovered + totalOpen)) * 100)}%`);
+  console.log(`   CDCP deadlines: ${cdcpPredetCases.length} open cases (/pre-visit)`);
+  console.log(`   Pre-visit signals: ${preVisitVerifications.length} appointments`);
+  console.log(`   Work items:    ${workItemsSynced} open (MAN-2025-004401 rank ≈ ${manulifeRank.toFixed(2)})`);
   console.log('─'.repeat(60));
-  console.log('\n✨  Seed complete. Log in at your Railway URL.\n');
+  console.log('\n📋  Call-to-resolution story claims (work queue / live console):');
+  console.log('   Claim ref            Status      Route           Demo narrative');
+  for (const s of storyClaims) {
+    const rank = computeWorkQueueRankScore(s.amount, s.days, 0.75);
+    console.log(
+      `   ${s.claimNumber.padEnd(20)} ${s.status.padEnd(11)} ${s.recoveryRoute.padEnd(15)} ${s.label} (rank ${rank.toFixed(2)})`,
+    );
+  }
+  console.log('─'.repeat(60));
+  console.log('\n✨  Seed complete. Log in as demo@hasanfamilydental.ca → /work-queue or /pre-visit\n');
 }
 
 main()
