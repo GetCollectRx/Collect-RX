@@ -47,10 +47,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
-import { applyPostgresTlsToProcessEnv } from './databaseTls.js';
-
-// Before Prisma reads DATABASE_URL (Railway URLs often omit ?sslmode=require).
-applyPostgresTlsToProcessEnv();
 
 import fs from 'node:fs';
 import https from 'node:https';

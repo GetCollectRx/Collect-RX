@@ -20,14 +20,48 @@ const BASE_URL = process.env.COLLECTRX_API_URL || "http://localhost:3000";
 
 // ─── HTTP Helper ──────────────────────────────────────────────────────────────
 
-async function api(method, path, body = null) {
-  const options = {
-    method,
-    headers: { "Content-Type": "application/json" },
-  };
-  if (body) options.body = JSON.stringify(body);
+let sessionCookie = null;
 
-  const res = await fetch(`${BASE_URL}${path}`, options);
+async function login() {
+  const password = process.env.COLLECTRX_PLATFORM_DEV_PASSWORD;
+  if (!password) {
+    throw new Error(
+      "Set COLLECTRX_PLATFORM_DEV_PASSWORD to authenticate the MCP server (matches the backend's PLATFORM_DEV_PASSWORD)."
+    );
+  }
+  const res = await fetch(`${BASE_URL}/api/auth/login/platform-dev`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || `Platform-dev login failed (${res.status})`);
+  }
+  const setCookie = res.headers.get("set-cookie");
+  if (!setCookie) {
+    throw new Error("Login succeeded but no session cookie was returned.");
+  }
+  sessionCookie = setCookie.split(";")[0];
+}
+
+async function api(method, path, body = null) {
+  if (!sessionCookie) await login();
+
+  const request = async () => {
+    const options = {
+      method,
+      headers: { "Content-Type": "application/json", Cookie: sessionCookie },
+    };
+    if (body) options.body = JSON.stringify(body);
+    return fetch(`${BASE_URL}${path}`, options);
+  };
+
+  let res = await request();
+  if (res.status === 401) {
+    await login();
+    res = await request();
+  }
   const json = await res.json();
 
   if (!res.ok) {
@@ -193,10 +227,16 @@ const TOOLS = [
   {
     name: "get_carrier_stats",
     description:
-      "Get knowledge base health stats for all carriers — confidence scores, known IVR steps, success rates. Use to see which carriers the AI handles well vs. which need more data.",
+      "Get per-carrier call health for the last 30 days — total calls, resolution rate, avg hold time, block status. Use to see which carriers the AI handles well vs. which are struggling or blocked. Requires practice_id (use list_practices to find one).",
     inputSchema: {
       type: "object",
-      properties: {},
+      required: ["practice_id"],
+      properties: {
+        practice_id: {
+          type: "number",
+          description: "The practice ID to get carrier stats for",
+        },
+      },
     },
   },
 
@@ -305,8 +345,8 @@ async function handleTool(name, args) {
       return JSON.stringify(data.report, null, 2);
     }
     case "get_carrier_stats": {
-      const data = await api("GET", "/api/carriers/stats");
-      return JSON.stringify(data.stats, null, 2);
+      const data = await api("GET", `/api/carriers/health?practiceId=${args.practice_id}`);
+      return JSON.stringify(data.data, null, 2);
     }
 
     // Practices
