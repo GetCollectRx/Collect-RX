@@ -201,7 +201,19 @@
       "mcp__collectrx__get_queue_stats",
       "mcp__collectrx__get_aging_report",
       "mcp__collectrx__get_carrier_stats",
-      "mcp__collectrx__list_escalations"
+      "mcp__collectrx__list_escalations",
+      "Bash(gh auth *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d['state']\\); [print\\(s['context'], s['state'], s.get\\('description'\\)\\) for s in d['statuses']]\")",
+      "Bash(railway help *)",
+      "Bash(node scripts/check-api-coverage.mjs)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(kill 71924 71196 68268 68245 64309)",
+      "Bash(rm -f /Users/khalidegeh/Desktop/Dentist/collectrx-platform/.git/HEAD.lock && git status --short | head -3)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('overall:', d['state']\\); [print\\(s['context'], s['state'], s.get\\('description'\\), s.get\\('target_url'\\)\\) for s in d['statuses']]\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('overall:', d['state']\\); [print\\(s['context'], s['state'], s.get\\('description'\\)\\) for s in d['statuses']]\")",
+      "Bash(git fetch *)",
+      "Bash(echo \"=== ~/Desktop/Dentist/Collect-RX ===\"; test -d ~/Desktop/Dentist/Collect-RX && ls ~/Desktop/Dentist/Collect-RX || echo \"does not exist\"; echo; echo \"=== /Users/khalidegeh/Desktop/Dentist/collectrx-platform ===\"; ls /Users/khalidegeh/Desktop/Dentist/collectrx-platform; echo; echo \"=== Collect-RX-main ===\"; ls /Users/khalidegeh/Desktop/Dentist/collectrx-platform/Collect-RX-main 2>/dev/null | head -30)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

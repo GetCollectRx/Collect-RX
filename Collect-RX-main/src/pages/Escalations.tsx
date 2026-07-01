@@ -1,38 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
+import { useRoleAccess } from '../lib/useRoleAccess'
 import {
   Card, CardHeader, Badge, DataState, Button,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
-import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
 import type { EscalationDto, EscalationResolution } from '../types/practiceSettings'
-import type { UserRole } from '../types/userRole'
 
 function fmtMoney(cents: number): string {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100)
 }
 
 export default function Escalations() {
-  const ctx = usePractice()
-  const { practiceId, loading: practiceLoading, isFrontDesk } = ctx
+  const { practiceId, loading: practiceLoading, isFrontDesk, role } = usePractice()
+  const { canResolveEscalations } = useRoleAccess()
   const [items, setItems] = useState<EscalationDto[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [userRole, setUserRole] = useState<UserRole | null>(() => resolveUserRole(ctx))
-
-  const isReadOnly = resolveIsReadOnly(ctx, userRole)
-  const isOwner = userRole === 'practice_owner' || ctx.deskRole === 'owner'
-  const canResolve = !isReadOnly && (isFrontDesk || isOwner || userRole === 'billing_ops_manager')
-
-  useEffect(() => {
-    const derived = resolveUserRole(ctx)
-    if (derived) setUserRole(derived)
-    else {
-      void apiFetchJson<{ userRole?: UserRole }>('/api/auth/me').then((d) => setUserRole(d.userRole ?? null))
-    }
-  }, [ctx.isPlatformDev, ctx.isFrontDesk, ctx.deskRole])
+  const isOwner = role === 'practice_owner'
 
   const load = useCallback(async () => {
     if (!practiceId) return
@@ -55,7 +42,7 @@ export default function Escalations() {
   }, [load])
 
   async function resolve(id: string, resolution: EscalationResolution, notes?: string) {
-    if (!practiceId || !canResolve) return
+    if (!practiceId || !canResolveEscalations) return
     setBusyId(id)
     try {
       await apiFetchJson(`/api/calls/${practiceId}/escalations/${id}`, {
@@ -108,7 +95,7 @@ export default function Escalations() {
                     <Td className="max-w-[240px] truncate">{e.reason}</Td>
                     <Td muted>{new Date(e.createdAt).toLocaleDateString('en-CA')}</Td>
                     <Td>
-                      {e.status === 'open' && canResolve ? (
+                      {e.status === 'open' && canResolveEscalations ? (
                         <div className="flex flex-wrap gap-1">
                           {(isFrontDesk && !isOwner
                             ? (['resolved'] as EscalationResolution[])

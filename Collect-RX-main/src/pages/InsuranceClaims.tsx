@@ -111,7 +111,7 @@ function ClaimsTabBar({ tab, onTab }: { tab: ClaimsTab; onTab: (t: ClaimsTab) =>
 
 export default function InsuranceClaims() {
   const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
-  const { isReadOnly, canInitiateCalls } = useRoleAccess()
+  const { isReadOnly, canInitiateCalls, canClearGates } = useRoleAccess()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = parseTab(searchParams.get('tab'))
 
@@ -328,23 +328,33 @@ export default function InsuranceClaims() {
           )}
 
           {tab === 'all' && denialSummary.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
-              {denialSummary.map((d) => (
-                <div
-                  key={d.carrierId}
-                  className="relative bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-3.5 overflow-hidden"
-                >
-                  <div className={`absolute top-0 left-0 right-0 h-[2.5px] ${d.denialRate > 20 ? 'bg-red-400' : d.denialRate > 10 ? 'bg-amber-400' : 'bg-crx-500'}`} />
-                  <p className="text-2xs font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wide mb-1.5">
-                    {CARRIER_LABELS[d.carrierId] ?? d.carrierId}
-                  </p>
-                  <p className={`text-xl font-bold tabular-nums leading-none ${d.denialRate > 20 ? 'text-red-600 dark:text-red-400' : d.denialRate > 10 ? 'text-amber-600 dark:text-amber-400' : 'text-crx-600 dark:text-crx-400'}`}>
-                    {d.denialRate}%
-                  </p>
-                  <p className="text-2xs text-gray-400 dark:text-gray-600 mt-1">denial rate</p>
-                </div>
-              ))}
-            </div>
+            <details className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-3">
+              <summary className="text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                Carrier denial intel (monthly){' '}
+                <Link to="/reports/carriers" className="text-crx-600 dark:text-crx-400 underline ml-1">
+                  full report →
+                </Link>
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                {denialSummary.map((d) => (
+                  <span key={d.carrierId} className="text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">{CARRIER_LABELS[d.carrierId] ?? d.carrierId}</span>
+                    {' '}
+                    <span
+                      className={
+                        d.denialRate > 20
+                          ? 'text-red-600 dark:text-red-400 font-semibold tabular-nums'
+                          : d.denialRate > 10
+                            ? 'text-amber-600 dark:text-amber-400 font-semibold tabular-nums'
+                            : 'text-gray-600 dark:text-gray-400 tabular-nums'
+                      }
+                    >
+                      {d.denialRate}%
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </details>
           )}
 
           {(tab === 'all' || tab === 'human') && (
@@ -629,7 +639,7 @@ export default function InsuranceClaims() {
                             <Link to={`/insurance/${g.claimId}`}>
                               <Button variant="ghost" size="sm">Open claim</Button>
                             </Link>
-                            {!isReadOnly && (
+                            {canClearGates && (
                               <Button
                                 variant="secondary"
                                 size="sm"

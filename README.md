@@ -10,7 +10,7 @@ From the **repository root** (after `npm install` — installs the **Collect-RX-
 
 | Command | What it does |
 |--------|----------------|
-| `npm run dev` | Same as `dev:collectrx` — Vite + API for **Collect-RX-main** |
+| `npm run dev` | API + Vite (+ worker + Redis when `REDIS_URL` is in `.env`) |
 | `npm run ci:collectrx` | Typecheck, lint, test, production build (run before PRs) |
 | `npm run diagnose -w dental-ar-system` | **What broke?** — one report: typecheck, env, DB, tests, optional live smoke |
 | `npm run db:migrate:collectrx` | `prisma migrate deploy` in Collect-RX-main (needs `DATABASE_URL`) |

@@ -9,7 +9,6 @@ import {
 } from '../components/dashboard/PracticeHealthBrief'
 import { LiveActivityStrip } from '../components/dashboard/LiveActivityStrip'
 import { TopMoneyAtRisk } from '../components/dashboard/TopMoneyAtRisk'
-import { QueueOverview } from '../components/QueueOverview'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
 import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
@@ -384,10 +383,7 @@ function DashboardBody({
       )}
 
       {isPracticeOwner && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 relative z-10">
-          <div className="lg:col-span-2">
-            <QueueOverview />
-          </div>
+        <div className="relative z-10">
           <LivingStatCard
             label="Needs human review"
             countUp={platform?.openEscalations ?? 0}

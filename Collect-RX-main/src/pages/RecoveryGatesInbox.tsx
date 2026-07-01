@@ -45,7 +45,7 @@ function fmtMoney(v: number) {
 
 export default function RecoveryGatesInbox() {
   const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
-  const { isReadOnly } = useRoleAccess()
+  const { canClearGates } = useRoleAccess()
   const [gates, setGates] = useState<GateRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -168,7 +168,7 @@ export default function RecoveryGatesInbox() {
                         <Link to={`/insurance/${g.claimId}`}>
                           <Button variant="ghost" size="sm">Open claim</Button>
                         </Link>
-                        {!isReadOnly && (
+                        {canClearGates && (
                           <Button
                             variant="secondary"
                             size="sm"

@@ -95,7 +95,7 @@ const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
 
 export default function InsuranceClaimDetail() {
   const { id } = useParams()
-  const { isReadOnly, canInitiateCalls } = useRoleAccess()
+  const { isReadOnly, canInitiateCalls, canClearGates, canResolveEscalations } = useRoleAccess()
   const [claim, setClaim] = useState<ClaimDetail | null>(null)
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null)
   const [recoveryLoadError, setRecoveryLoadError] = useState<string | null>(null)
@@ -301,7 +301,7 @@ export default function InsuranceClaimDetail() {
                 </div>
               </div>
 
-              {!isReadOnly && (
+              {canResolveEscalations && (
                 <div className="border-t border-amber-200 dark:border-amber-800 pt-4 space-y-3">
                   <p className="text-xs font-semibold text-amber-900 dark:text-amber-300 uppercase tracking-wide">
                     After your call
@@ -332,7 +332,7 @@ export default function InsuranceClaimDetail() {
             isEscalated={isEscalated}
             recovery={recovery}
             queueScheduledFor={claim.queueEntry?.scheduledFor ?? null}
-            isReadOnly={isReadOnly}
+            canClearGates={canClearGates}
             clearingGateId={clearingGateId}
             onClearGate={(actionId) => void clearRecoveryGate(actionId)}
           />

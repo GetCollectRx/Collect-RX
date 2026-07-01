@@ -212,6 +212,21 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'Review worker logs: npm run worker',
     ],
   },
+  'recovery-practice-attention': {
+    id: 'recovery-practice-attention',
+    title: 'Recovery items need practice attention',
+    severity: 'medium',
+    affectedSystems: ['Claims recovery', 'call queue', 'practice gates'],
+    impact: [
+      'Open practice gates block automated carrier calls until staff completes the step',
+      'Payment trace deadlines may pass without a follow-up call',
+    ],
+    suggestedFixes: [
+      'Open CollectRx → Claims → Blocked gates and mark completed items',
+      'Check Dashboard “Recovery attention” or the notification bell',
+      'Confirm PMS sync if payment verification traces are due',
+    ],
+  },
 };
 
 export function getAlertDefinition(alertId: string): AlertDefinition {

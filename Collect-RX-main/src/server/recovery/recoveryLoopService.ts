@@ -94,17 +94,18 @@ async function persistRecoveryAction(
   attemptId: string,
   decision: RecoveryDecision,
   outcomeDetail: string | null,
-): Promise<void> {
+): Promise<{ id: string; blocking: boolean; title: string; detail: string | null } | null> {
   await supersedeRecoveryActions(prisma, claim.id, decision, outcomeDetail);
 
-  if (!decision.recoveryActionType || !decision.actionTitle) return;
+  if (!decision.recoveryActionType || !decision.actionTitle) return null;
 
-  await prisma.claimRecoveryAction.create({
+  const blocking = decision.route === 'PRACTICE_GATE';
+  const created = await prisma.claimRecoveryAction.create({
     data: {
       practiceId: claim.practiceId,
       claimId: claim.id,
       actionType: decision.recoveryActionType,
-      status: decision.route === 'PRACTICE_GATE' ? 'BLOCKING' : 'OPEN',
+      status: blocking ? 'BLOCKING' : 'OPEN',
       route: decision.route,
       title: decision.actionTitle,
       detail: decision.actionDetail,
@@ -113,6 +114,13 @@ async function persistRecoveryAction(
       metadata: { reason: decision.reason },
     },
   });
+
+  return {
+    id: created.id,
+    blocking,
+    title: created.title,
+    detail: created.detail,
+  };
 }
 
 async function upsertCallQueue(
@@ -198,7 +206,7 @@ export async function applyRecoveryAfterCall(
     if (cdcp) cdcpCaseId = cdcp.caseId;
   }
 
-  await prisma.$transaction(async (tx) => {
+  const gateToNotify = await prisma.$transaction(async (tx) => {
     await tx.insuranceClaim.update({
       where: { id: claim.id },
       data: {
@@ -216,7 +224,13 @@ export async function applyRecoveryAfterCall(
       attemptCount,
       params.completedAt,
     );
-    await persistRecoveryAction(tx as unknown as PrismaClient, claim, attemptId, decision, processed.outcomeDetail);
+    const createdGate = await persistRecoveryAction(
+      tx as unknown as PrismaClient,
+      claim,
+      attemptId,
+      decision,
+      processed.outcomeDetail,
+    );
 
     await tx.claimRecoveryEvent.create({
       data: {
@@ -234,7 +248,23 @@ export async function applyRecoveryAfterCall(
         },
       },
     });
+
+    return createdGate;
   });
+
+  if (gateToNotify?.blocking) {
+    const { notifyPracticeOnBlockingGate } = await import('./recoveryNotifications.js');
+    void notifyPracticeOnBlockingGate(prisma, {
+      practiceId: claim.practiceId,
+      gateId: gateToNotify.id,
+      claimId: claim.id,
+      claimNumber: claim.claimNumber,
+      title: gateToNotify.title,
+      detail: gateToNotify.detail,
+    }).catch((e) => {
+      console.error('[recoveryLoop] gate alert failed (non-fatal):', e);
+    });
+  }
 
   if (cdcpCaseId) {
     await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpCaseId);

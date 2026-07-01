@@ -3,6 +3,12 @@ import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
+  callOutcomeLabel,
+  carrierLabel,
+  outcomeBadgeColor,
+  CARRIER_LABELS,
+} from '../lib/recoveryDisplay'
+import {
   Button, Select, DataState,
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty, Badge,
 } from '../components/ui'
@@ -23,38 +29,6 @@ type HistoryRow = {
     carrierId: string
     outstandingAmount: string
   }
-}
-
-const CARRIER_LABELS: Record<string, string> = {
-  sun_life: 'Sun Life',
-  canada_life: 'Canada Life',
-  manulife: 'Manulife',
-  green_shield: 'Green Shield',
-  rbc: 'RBC',
-  telus_adjudicare: 'TELUS AdjudiCare',
-}
-
-function outcomeColor(outcome: string | null): 'green' | 'amber' | 'red' | 'gray' | 'blue' {
-  switch (outcome) {
-    case 'RESOLVED':  return 'green'
-    case 'PENDING':   return 'amber'
-    case 'DENIED':    return 'red'
-    case 'FAILED':    return 'red'
-    case 'NO_ANSWER': return 'gray'
-    default:          return 'gray'
-  }
-}
-
-function outcomeLabel(outcome: string | null): string {
-  if (!outcome) return 'In progress'
-  const map: Record<string, string> = {
-    RESOLVED:  'Resolved',
-    PENDING:   'Pending',
-    DENIED:    'Denied',
-    NO_ANSWER: 'No answer',
-    FAILED:    'Failed',
-  }
-  return map[outcome] ?? outcome
 }
 
 function formatDurationSec(sec: number | null): string {
@@ -189,12 +163,12 @@ export default function CallHistory() {
                     rows.map((r) => (
                       <Tr key={r.id}>
                         <Td>
-                          <Badge color={outcomeColor(r.outcome)} dot>
-                            {outcomeLabel(r.outcome)}
+                          <Badge color={outcomeBadgeColor(r.outcome)} dot>
+                            {callOutcomeLabel(r.outcome)}
                           </Badge>
                         </Td>
                         <Td bold>{r.claim.claimNumber}</Td>
-                        <Td muted>{CARRIER_LABELS[r.claim.carrierId] ?? r.claim.carrierId}</Td>
+                        <Td muted>{carrierLabel(r.claim.carrierId)}</Td>
                         <Td muted className="text-xs tabular-nums whitespace-nowrap">
                           {formatDate(r.initiatedAt)}
                         </Td>

@@ -26,9 +26,13 @@ export interface RoleAccess {
   canPauseClaims: boolean
   canResolveEscalations: boolean
   canTakeOverCall: boolean
+  /** Mark practice gates complete (owner/manager/coordinator; not accountant). */
+  canClearGates: boolean
+  /** See live call strip + queue stats on dashboard (read-only loop). */
+  canViewLiveLoop: boolean
   // Special modes
   isPatientLookupOnly: boolean  // front_desk
-  isReadOnly: boolean           // practice_owner, accountant
+  isReadOnly: boolean           // practice_owner, accountant — blocks settings edits & manual dials
   // Default landing route after login
   homeRoute: string
 }
@@ -45,6 +49,16 @@ const noDeskOps = {
   canTakeOverCall: false,
 } as const
 
+const gateOperator = {
+  canClearGates: true,
+  canViewLiveLoop: true,
+} as const
+
+const noGateOps = {
+  canClearGates: false,
+  canViewLiveLoop: false,
+} as const
+
 function accessForRole(role: AuthRole | null): RoleAccess {
   switch (role) {
     case 'platform_dev':
@@ -56,6 +70,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: true, canManageUsers: false, canEditAdmin: true,
         ...noDeskOps,
+        ...gateOperator,
         isPatientLookupOnly: false, isReadOnly: false,
         homeRoute: '/admin',
       }
@@ -70,6 +85,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: false, canManageUsers: true, canEditAdmin: false,
         ...noDeskOps,
         canResolveEscalations: true,
+        ...gateOperator,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/dashboard',
       }
@@ -84,6 +100,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: true, canManageUsers: true, canEditAdmin: true,
         ...noDeskOps,
         canResolveEscalations: true,
+        ...gateOperator,
         isPatientLookupOnly: false, isReadOnly: false,
         homeRoute: '/dashboard',
       }
@@ -97,6 +114,8 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
+        canResolveEscalations: true,
+        ...gateOperator,
         isPatientLookupOnly: false, isReadOnly: false,
         homeRoute: '/dashboard',
       }
@@ -110,6 +129,8 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
+        canClearGates: false,
+        canViewLiveLoop: true,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/dashboard',
       }
@@ -123,6 +144,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
+        ...noGateOps,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/reports/aging',
       }
@@ -136,6 +158,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: true, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...deskOperator,
+        ...gateOperator,
         isPatientLookupOnly: false, isReadOnly: false,
         homeRoute: '/console',
       }
@@ -150,6 +173,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         canResolveEscalations: true,
+        ...noGateOps,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/portfolio',
       }
@@ -163,6 +187,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
+        ...noGateOps,
         isPatientLookupOnly: false, isReadOnly: true,
         homeRoute: '/login',
       }

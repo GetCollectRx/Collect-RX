@@ -47,6 +47,28 @@ export function callOutcomeLabel(outcome: string | null | undefined): string {
   return OUTCOME_LABELS[outcome] ?? outcome;
 }
 
+export function outcomeBadgeColor(
+  outcome: string | null | undefined,
+): 'green' | 'amber' | 'red' | 'gray' | 'blue' {
+  switch (outcome) {
+    case 'RESOLVED':
+    case 'APPROVED_PENDING_PAYMENT':
+      return 'green';
+    case 'PENDING':
+    case 'ESCALATED':
+      return 'amber';
+    case 'DENIED':
+    case 'BLOCK_DETECTED':
+    case 'FAILED':
+      return 'red';
+    case 'NO_ANSWER':
+    case 'HUNG_UP':
+      return 'gray';
+    default:
+      return 'gray';
+  }
+}
+
 /** One-line summary for claim list rows (label + short detail). */
 export function lastOutcomeLine(
   outcome: string | null | undefined,

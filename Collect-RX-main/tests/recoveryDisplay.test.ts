@@ -5,6 +5,7 @@ import {
   lastOutcomeLine,
   carrierLabel,
   isDemoVapiCall,
+  outcomeBadgeColor,
 } from '../src/lib/recoveryDisplay';
 
 describe('recoveryDisplay', () => {
@@ -30,5 +31,12 @@ describe('recoveryDisplay', () => {
     expect(isDemoVapiCall('demo-in-progress-sl-002341')).toBe(true);
     expect(isDemoVapiCall('live-abc-123')).toBe(false);
     expect(isDemoVapiCall(null)).toBe(false);
+  });
+
+  it('maps outcomes to badge colors', () => {
+    expect(outcomeBadgeColor('RESOLVED')).toBe('green');
+    expect(outcomeBadgeColor('ESCALATED')).toBe('amber');
+    expect(outcomeBadgeColor('DENIED')).toBe('red');
+    expect(outcomeBadgeColor('NO_ANSWER')).toBe('gray');
   });
 });

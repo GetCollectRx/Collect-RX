@@ -114,14 +114,14 @@ export function ClaimNextActionCard({
   isEscalated,
   recovery,
   queueScheduledFor,
-  isReadOnly,
+  canClearGates,
   clearingGateId,
   onClearGate,
 }: {
   isEscalated: boolean
   recovery: RecoverySummaryLite | null
   queueScheduledFor: string | null
-  isReadOnly: boolean
+  canClearGates: boolean
   clearingGateId: string | null
   onClearGate: (actionId: string) => void
 }) {
@@ -174,7 +174,7 @@ export function ClaimNextActionCard({
               <p className="text-xs text-amber-900 dark:text-amber-200">
                 Gate opened {new Date(gate.createdAt).toLocaleString()}
               </p>
-              {!isReadOnly && (
+              {canClearGates && (
                 <Button
                   size="sm"
                   variant="secondary"
