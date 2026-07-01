@@ -557,6 +557,7 @@ function App() {
             <Route path="/features" element={<MarketingSite />} />
             <Route path="/carriers" element={<MarketingSite />} />
             <Route path="/compliance" element={<MarketingSite />} />
+            <Route path="/about" element={<MarketingSite />} />
             <Route path="/landing" element={<MarketingSite />} />
             <Route path="*" element={<AuthGate />} />
           </Routes>

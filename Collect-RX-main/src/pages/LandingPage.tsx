@@ -513,27 +513,6 @@ const STYLES = `
   .lp-carrier-bar-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
   .lp-carriers-note { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 16px; }
 
-  /* ─── TESTIMONIALS ───────────────────────────────── */
-  .lp-quotes { background: var(--parchment); }
-  .lp-quote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .lp-quote {
-    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
-    padding: 32px;
-  }
-  .lp-quote-mark {
-    font-family: var(--fs); font-size: 56px; line-height: 0.5;
-    color: var(--green); position: relative; top: 16px;
-  }
-  .lp-quote-body { font-family: var(--fn); font-size: 16px; color: var(--ink); line-height: 1.67; margin-bottom: 24px; font-weight: 400; }
-  .lp-quote-attr { display: flex; align-items: center; gap: 12px; }
-  .lp-quote-avatar {
-    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--bdr2);
-    background: var(--green-lo); display: grid; place-items: center; flex-shrink: 0;
-    font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--green-dark);
-  }
-  .lp-quote-name { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); }
-  .lp-quote-title { font-family: var(--fn); font-size: 13px; color: var(--graphite); margin-top: 2px; }
-
   /* ─── COMPLIANCE (product hub cards) ─────────────── */
   .lp-compliance { background: var(--cream); }
   .lp-compliance-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
@@ -551,6 +530,23 @@ const STYLES = `
   .lp-compliance-icon svg { width: 18px; height: 18px; stroke: var(--green); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .lp-compliance-h { font-family: var(--fn); font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
   .lp-compliance-p { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
+
+  /* ─── ABOUT / FOUNDER ────────────────────────────── */
+  .lp-about-founder {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 40px; display: flex; gap: 28px; align-items: flex-start;
+  }
+  .lp-about-avatar {
+    width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--bdr2);
+    background: var(--green-lo); display: grid; place-items: center; flex-shrink: 0;
+    font-family: var(--fn); font-size: 20px; font-weight: 600; color: var(--green-dark);
+  }
+  .lp-about-name { font-family: var(--fn); font-size: 17px; font-weight: 600; color: var(--ink); }
+  .lp-about-role { font-family: var(--fn); font-size: 14px; color: var(--green-dark); margin-top: 2px; margin-bottom: 16px; }
+  .lp-about-body p { font-family: var(--fn); font-size: 16px; color: var(--graphite); line-height: 1.7; margin-bottom: 16px; }
+  .lp-about-body p:last-child { margin-bottom: 0; }
+  .lp-about-cta { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .lp-about-pillars { grid-template-columns: repeat(3,1fr); margin-top: 40px; }
 
   /* ─── CTA ────────────────────────────────────────── */
   .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 80px 40px; }
@@ -828,12 +824,12 @@ const STYLES = `
     .lp-compliance-grid { grid-template-columns: 1fr 1fr; }
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
-    .lp-quote-grid { grid-template-columns: 1fr; }
     .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
     .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
     .lp-process-steps::before { display: none; }
     .lp-feat-mini-grid { grid-template-columns: 1fr; }
     .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
+    .lp-about-founder { flex-direction: column; gap: 20px; padding: 32px; }
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
@@ -1018,24 +1014,21 @@ const IVR_TRANSCRIPT = [
   'Adjudication status received.',
 ]
 
-const TESTIMONIALS = [
+const ABOUT_PILLARS = [
   {
-    body: "We were spending four to five hours a week just on hold with insurance carriers. That time is completely gone now. The claims that used to age past 90 days are now resolved by day 35.",
-    name: 'Dr. Sarah Chen',
-    title: 'Practice Owner, North York, ON',
-    initials: 'SC',
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    h: 'Started from one practice',
+    p: 'Not a market trend. One dentist described a real problem, and the CDCP and carrier data confirmed it was structural, not a one-off.',
   },
   {
-    body: "The PHIPA compliance piece was what convinced us. We had reservations about any AI touching patient workflows. Knowing that identifiers never leave our server made this a straightforward decision.",
-    name: 'Dr. Michael Patel',
-    title: 'Managing Partner, Dental Group, Mississauga',
-    initials: 'MP',
+    icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
+    h: 'Compliance built in, not bolted on',
+    p: 'PHIPA and PIPEDA architecture was a day-one requirement, the same discipline applied to every part of the build.',
   },
   {
-    body: "Our billing coordinator used to dread Mondays — that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
-    name: 'Dr. Priya Nair',
-    title: 'Owner, Family Dental, Brampton, ON',
-    initials: 'PN',
+    icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>,
+    h: 'Direct line to the founder',
+    p: "Early practices work with me directly, not a support queue. If something's broken, I hear about it the same day.",
   },
 ]
 
@@ -1950,33 +1943,6 @@ export default function LandingPage() {
         </section>
         )}
 
-        {/* ── TESTIMONIALS (home only) ── */}
-        {page === 'home' && (
-        <section className="lp-quotes">
-          <div className="lp-section-inner">
-            <div className="lp-section-heading lp-reveal">
-              <div className="lp-eyebrow">Early Access</div>
-              <h2 className="lp-section-h2">What practices say<span className="lp-dot">.</span></h2>
-            </div>
-            <div className="lp-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-              {TESTIMONIALS.map(t => (
-                <div className="lp-quote" key={t.name}>
-                  <div className="lp-quote-mark">&ldquo;</div>
-                  <p className="lp-quote-body">{t.body}</p>
-                  <div className="lp-quote-attr">
-                    <div className="lp-quote-avatar">{t.initials}</div>
-                    <div>
-                      <div className="lp-quote-name">{t.name}</div>
-                      <div className="lp-quote-title">{t.title}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-        )}
-
         {/* ── COMPLIANCE SNIPPET (home only) ── */}
         {page === 'home' && <ComplianceSnippet />}
 
@@ -1996,6 +1962,71 @@ export default function LandingPage() {
             </div>
             <div className="lp-compliance-grid lp-reveal">
               {TRUST.map(t => (
+                <div className="lp-compliance-card" key={t.h}>
+                  <div className="lp-compliance-icon">{t.icon}</div>
+                  <div className="lp-compliance-h">{t.h}</div>
+                  <div className="lp-compliance-p">{t.p}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        )}
+
+        {/* ── ABOUT ── */}
+        {page === 'about' && (
+        <section className="lp-compliance" style={{ paddingTop: 88 }} data-testid="marketing-about">
+          <div className="lp-section-inner">
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">About</div>
+              <h2 className="lp-section-h2">
+                Built because a dentist asked for it<span className="lp-dot">.</span>
+              </h2>
+              <p className="lp-section-sub">
+                CollectRx didn't start as a market opportunity. It started as a conversation,
+                and the data backed up what one practice owner already knew.
+              </p>
+            </div>
+
+            <div className="lp-about-founder lp-reveal">
+              <div className="lp-about-avatar">KE</div>
+              <div>
+                <div className="lp-about-name">Khalid Egeh</div>
+                <div className="lp-about-role">Founder, CollectRx</div>
+                <div className="lp-about-body">
+                  <p>
+                    I was building workflow automation for small businesses when I asked my
+                    dentist whether there was anything in his practice worth automating. He
+                    didn't hesitate: insurance follow-up. His front desk was losing hours every
+                    week on hold with carriers, chasing claims that should have moved on their own.
+                  </p>
+                  <p>
+                    That conversation sent me into the data. The pattern he described wasn't
+                    isolated to his practice. It showed up across Canadian dental billing more
+                    broadly, AR aging past 90 days, denial rates climbing, front desks absorbing
+                    work that has nothing to do with patient care. So I built CollectRx: an AI
+                    system that calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and
+                    TELUS AdjudiCare on a practice's behalf, the same calls a person would make,
+                    minus the hold time.
+                  </p>
+                  <p>
+                    I'm a builder first. The same approach goes into the compliance architecture,
+                    the carrier call logic, and the trial itself: understand the actual workflow,
+                    then remove the part that's repetitive and never needed a person's judgment in
+                    the first place.
+                  </p>
+                </div>
+                <div className="lp-about-cta">
+                  <button type="button" className="lp-btn-primary" onClick={() => openAccess('demo')}>
+                    Book 15 minutes with me
+                  </button>
+                  <Link to={MARKETING_PATHS.compliance} className="lp-btn-ghost">See how compliance works</Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="lp-compliance-grid lp-about-pillars lp-reveal">
+              {ABOUT_PILLARS.map(t => (
                 <div className="lp-compliance-card" key={t.h}>
                   <div className="lp-compliance-icon">{t.icon}</div>
                   <div className="lp-compliance-h">{t.h}</div>
@@ -2072,6 +2103,10 @@ export default function LandingPage() {
                   <Link to="/legal/terms">Terms of Service</Link>
                   <Link to="/legal/privacy">Privacy Policy</Link>
                   <Link to="/product">Product one-pager</Link>
+                </div>
+                <div className="lp-footer-col">
+                  <h4>Company</h4>
+                  <Link to={MARKETING_PATHS.about}>About</Link>
                 </div>
               </div>
             </div>

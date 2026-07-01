@@ -13,6 +13,7 @@ const PUBLIC_APP_PREFIXES = [
   '/features',
   '/carriers',
   '/compliance',
+  '/about',
   '/resources',
 ]
 

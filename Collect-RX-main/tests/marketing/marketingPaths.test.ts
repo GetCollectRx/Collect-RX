@@ -10,6 +10,7 @@ describe('marketingPageFromPathname', () => {
     expect(marketingPageFromPathname('/features')).toBe('features');
     expect(marketingPageFromPathname('/carriers')).toBe('carriers');
     expect(marketingPageFromPathname('/compliance')).toBe('compliance');
+    expect(marketingPageFromPathname('/about')).toBe('about');
   });
 
   it('falls back to home for unknown paths', () => {

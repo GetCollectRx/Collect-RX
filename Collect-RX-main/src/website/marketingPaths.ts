@@ -6,6 +6,7 @@ export const MARKETING_PATHS = {
   features: '/features',
   carriers: '/carriers',
   compliance: '/compliance',
+  about: '/about',
   demo: '/demo',
   product: '/product',
   resources: '/resources/',
@@ -19,6 +20,7 @@ export type MarketingPageId =
   | 'features'
   | 'carriers'
   | 'compliance'
+  | 'about'
 
 export const MARKETING_PAGE_PATHS: MarketingPageId[] = [
   'home',
@@ -27,6 +29,7 @@ export const MARKETING_PAGE_PATHS: MarketingPageId[] = [
   'features',
   'carriers',
   'compliance',
+  'about',
 ]
 
 const PATH_TO_PAGE: Record<string, MarketingPageId> = {
@@ -37,6 +40,7 @@ const PATH_TO_PAGE: Record<string, MarketingPageId> = {
   [MARKETING_PATHS.features]: 'features',
   [MARKETING_PATHS.carriers]: 'carriers',
   [MARKETING_PATHS.compliance]: 'compliance',
+  [MARKETING_PATHS.about]: 'about',
 }
 
 /** Resolve the active marketing tab from the current URL path. */
@@ -52,6 +56,7 @@ export const MARKETING_PAGE_TITLES: Record<MarketingPageId, string> = {
   features: 'Features | CollectRx',
   carriers: 'Carrier Coverage | CollectRx',
   compliance: 'Compliance | CollectRx',
+  about: 'About | CollectRx',
 }
 
 /** Nav tabs shown in the marketing header (excludes demo — separate product route). */
@@ -61,4 +66,5 @@ export const MARKETING_NAV_TABS: { id: MarketingPageId; label: string; path: str
   { id: 'features', label: 'Features', path: MARKETING_PATHS.features },
   { id: 'carriers', label: 'Carriers', path: MARKETING_PATHS.carriers },
   { id: 'compliance', label: 'Compliance', path: MARKETING_PATHS.compliance },
+  { id: 'about', label: 'About', path: MARKETING_PATHS.about },
 ]

@@ -8,6 +8,7 @@ const SECTION_IDS: Record<string, string> = {
   features: 'marketing-features',
   carriers: 'marketing-carriers',
   compliance: 'marketing-compliance',
+  about: 'marketing-about',
 };
 
 const ALL_SECTIONS = Object.values(SECTION_IDS);
