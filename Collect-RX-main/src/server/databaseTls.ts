@@ -2,7 +2,12 @@
 // CollectRx — PostgreSQL TLS guard
 //
 // Prisma talks to Postgres over TCP. In production we require TLS on that hop
-// (encryption in transit) via sslmode=require or stricter, or ssl=true.
+// (encryption in transit) via sslmode=require or stricter, or ssl=true —
+// except on Fly.io's private network (`.internal` / `.flycast` hosts), which
+// never leaves Fly's own WireGuard mesh: that hop is already encrypted at the
+// network layer, and Fly Postgres does not enable app-layer SSL on it by
+// default, so forcing sslmode=require there breaks the connection outright
+// ("server does not support SSL, but SSL was required") for no security gain.
 // See docs/operations/DATA-ENCRYPTION.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -15,6 +20,19 @@ const ALLOWED_SSLMODES = new Set(['require', 'verify-ca', 'verify-full']);
 export function isPostgresConnectionString(databaseUrl: string): boolean {
   const lower = (databaseUrl || '').trim().toLowerCase();
   return lower.startsWith('postgresql://') || lower.startsWith('postgres://');
+}
+
+/**
+ * True for hosts on Fly.io's private network — already encrypted end-to-end
+ * by Fly's WireGuard mesh, never routed over the public internet.
+ */
+export function isFlyPrivateNetworkHost(databaseUrl: string): boolean {
+  try {
+    const { hostname } = new URL(databaseUrl.replace(/^postgres:/, 'postgresql:'));
+    return hostname.endsWith('.flycast') || hostname.endsWith('.internal');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -41,15 +59,26 @@ export function postgresUrlUsesStrictSsl(databaseUrl: string): boolean {
 }
 
 /**
- * Append sslmode=require when missing so Railway's default DATABASE_URL works unchanged.
- * Still uses TLS in transit; you do not need to edit the variable in the dashboard.
+ * Force sslmode=require when the connection string doesn't already use strict
+ * TLS — replacing any weaker/explicit sslmode (e.g. sslmode=disable), not just
+ * appending. URLSearchParams.get() returns the first match on a repeated key,
+ * so appending a second sslmode param left the original (weak) value in force
+ * and made this a no-op in production regardless of how many times it ran.
  */
 export function withPostgresTlsDefault(databaseUrl: string): string {
   const trimmed = (databaseUrl || '').trim();
   if (!trimmed || !isPostgresConnectionString(trimmed)) return trimmed;
   if (postgresUrlUsesStrictSsl(trimmed)) return trimmed;
-  const sep = trimmed.includes('?') ? '&' : '?';
-  return `${trimmed}${sep}sslmode=require`;
+  if (isFlyPrivateNetworkHost(trimmed)) return trimmed;
+
+  const qIndex = trimmed.indexOf('?');
+  const base = qIndex === -1 ? trimmed : trimmed.slice(0, qIndex);
+  const query = qIndex === -1 ? '' : trimmed.slice(qIndex + 1).split('#')[0];
+  const params = new URLSearchParams(query);
+  params.delete('sslmode');
+  params.delete('ssl');
+  params.set('sslmode', 'require');
+  return `${base}?${params.toString()}`;
 }
 
 /** Mutate process.env.DATABASE_URL before Prisma reads it. */
@@ -71,6 +100,7 @@ export function assertPostgresTlsInProduction(): void {
   const url = process.env.DATABASE_URL || '';
   if (!isPostgresConnectionString(url)) return;
   if (postgresUrlUsesStrictSsl(url)) return;
+  if (isFlyPrivateNetworkHost(url)) return;
 
   console.error(
     '[server] FATAL: DATABASE_URL must require TLS to PostgreSQL in production. ' +

@@ -271,7 +271,21 @@ function spawnSyncService() {
   setStatus('starting', 'Sync service starting…');
 
   syncProcess = spawn(process.execPath, [SYNC_SERVICE_PATH], {
-    env        : { ...process.env },
+    env: {
+      PATH                        : process.env.PATH,
+      NODE_ENV                    : process.env.NODE_ENV,
+      ABELDENT_SERVER             : process.env.ABELDENT_SERVER,
+      ABELDENT_DATABASE           : process.env.ABELDENT_DATABASE,
+      ABELDENT_PRACTICE_ID        : process.env.ABELDENT_PRACTICE_ID,
+      ABELDENT_SCHEMA_MAP         : process.env.ABELDENT_SCHEMA_MAP,
+      ABELDENT_MIN_DAYS           : process.env.ABELDENT_MIN_DAYS,
+      ABELDENT_MIN_DAYS_BALANCE   : process.env.ABELDENT_MIN_DAYS_BALANCE,
+      ABELDENT_PATIENT_LEDGER_TABLE: process.env.ABELDENT_PATIENT_LEDGER_TABLE,
+      SCHEMA_MAP_PATH             : process.env.SCHEMA_MAP_PATH,
+      RAILWAY_API_URL             : process.env.RAILWAY_API_URL,
+      RAILWAY_API_TOKEN           : process.env.RAILWAY_API_TOKEN,
+      SYNC_INTERVAL_MINUTES       : process.env.SYNC_INTERVAL_MINUTES,
+    },
     stdio      : ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -284,8 +298,9 @@ function spawnSyncService() {
 
   syncProcess.stderr.on('data', (chunk) => {
     const line = chunk.toString().trim();
-    console.error('[Sync err]', line);
-    if (line.toLowerCase().includes('error')) setStatus('error', line.slice(0, 120));
+    // Sanitized only — stderr can carry PHI field values from DB/Prisma errors.
+    console.error('[Sync err]', line.replace(/\S+@\S+/g, '[redacted]').slice(0, 200));
+    if (line.toLowerCase().includes('error')) setStatus('error', 'Sync error — check logs');
   });
 
   syncProcess.on('exit', (code) => {
@@ -353,7 +368,15 @@ function runStartupHealthScan() {
   if (!fs.existsSync(script)) return;
   const apiOrigin = resolveApiOriginForScan();
   const child = spawn(process.execPath, [script], {
-    env: { ...process.env, COLLECTRX_API_ORIGIN: apiOrigin },
+    env: {
+      PATH                        : process.env.PATH,
+      NODE_ENV                    : process.env.NODE_ENV,
+      COLLECTRX_API_ORIGIN        : apiOrigin,
+      PUBLIC_APP_URL              : process.env.PUBLIC_APP_URL,
+      VITE_API_ORIGIN             : process.env.VITE_API_ORIGIN,
+      SMOKE_BASE_URL              : process.env.SMOKE_BASE_URL,
+      SERVER_URL                  : process.env.SERVER_URL,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     detached: true,

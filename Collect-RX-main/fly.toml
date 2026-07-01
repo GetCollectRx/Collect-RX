@@ -1,0 +1,32 @@
+# fly.toml app configuration for collect-rx.
+# Written to match the live config (`fly config show -a collect-rx`) after the
+# repo's fly.toml was found missing entirely — a prior fly.toml existed only on
+# the stale `flyio-new-files` branch and was already out of sync with the live
+# app (wrong port, wrong min_machines_running). This file is the source of truth
+# going forward; keep it in sync with `fly config show -a collect-rx`.
+# See https://fly.io/docs/reference/configuration/
+
+app = 'collect-rx'
+primary_region = 'yyz'
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/api/health'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
