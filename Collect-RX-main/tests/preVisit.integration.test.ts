@@ -4,18 +4,12 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { processPreVisitCallEnded } from '../src/server/preVisit/preVisitWebhook.js';
 import { buildPreVisitDeniedPayload } from './fixtures/preVisitWebhooks.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SAMPLE_CSV = join(__dirname, '..', 'sample-cdcp-predets.csv');
 
 let dbReady = false;
 try {
@@ -50,11 +44,35 @@ async function cleanupPreVisitFixture(client: PrismaClient, practiceId: string) 
   await cleanupPracticeWithUsers(client, practiceId);
 }
 
+// Denial dates are generated relative to "now" (10 to 30 days ago) instead of
+// hardcoded absolute dates. The CDCP reconsideration window is 60 days
+// (RECONSIDERATION_WINDOW_DAYS in canadianExpansion/constants.ts). A static
+// CSV with fixed 2026 dates silently expired one row at a time as real time
+// passed the denialDate + 60 mark, breaking this test starting around
+// 2026-06-30 with no code change involved. Relative dates keep every row
+// inside the window indefinitely.
+function buildSampleCdcpCsv(): string {
+  const header = 'claim_ref,patient_token,procedure_code,denial_date,clinical_evidence_summary';
+  const daysAgo = (n: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const rows = [
+    `PD-IMPORT-001,00000000-0000-4000-8000-000000000001,D2750,${daysAgo(30)},Denied — missing periapical radiograph (F-010). Crown predet.`,
+    `PD-IMPORT-002,00000000-0000-4000-8000-000000000002,D2740,${daysAgo(25)},Denied — insufficient clinical narrative for crown (F-010).`,
+    `PD-IMPORT-003,00000000-0000-4000-8000-000000000003,D5110,${daysAgo(20)},Denied — complete denture predet; treatment plan not on file (F-010).`,
+    `PD-IMPORT-004,00000000-0000-4000-8000-000000000004,D4341,${daysAgo(15)},Denied — periodontal charting required for scaling (F-010).`,
+    `PD-IMPORT-005,00000000-0000-4000-8000-000000000005,D6010,${daysAgo(10)},Denied — implant surgical predet; missing bitewing radiograph (F-010).`,
+  ];
+  return [header, ...rows].join('\n');
+}
+
 describe.skipIf(!dbReady)('Pre-visit integration — CDCP predet CSV import', () => {
   it('POST /api/pre-visit/cdcp-predets/import ingests sample CSV', async () => {
     const practice = await createPracticeForTests(prisma);
     const cookie = ownerCookie(practice.id);
-    const csv = readFileSync(SAMPLE_CSV, 'utf8');
+    const csv = buildSampleCdcpCsv();
 
     const res = await request(app)
       .post('/api/pre-visit/cdcp-predets/import')
