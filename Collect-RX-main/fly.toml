@@ -1,25 +1,21 @@
 # fly.toml app configuration for collect-rx.
-# Written to match the live config (`fly config show -a collect-rx`) after the
-# repo's fly.toml was found missing entirely - a prior fly.toml existed only on
-# the stale `flyio-new-files` branch and was already out of sync with the live
-# app (wrong port, wrong min_machines_running). This file is the source of truth
-# going forward; keep it in sync with `fly config show -a collect-rx`.
+# Written to match the live config (`fly config show -a collect-rx`).
+# This file is the source of truth going forward; keep it in sync with
+# `fly config show -a collect-rx`.
 # See https://fly.io/docs/reference/configuration/
 #
 # Process groups:
-#   app    - serves HTTP traffic, autostop/autostart, min 1 running.
-#   worker - background job/queue worker (parity with Railway's
-#            collectrx-worker service / Dockerfile.worker), runs
-#            `npm run worker` (same BullMQ entrypoint). Always on - not
-#            referenced in [http_service].processes so autostop does not
-#            apply to it.
+# app - serves HTTP traffic, autostop/autostart, min 1 running.
+# worker - background job/queue worker (parity with Railway's
+# collectrx-worker service / Dockerfile.worker), runs
+# `npm run worker` (same BullMQ entrypoint). Always on. Not
+# referenced in [http_service].processes so autostop does not
+# apply to it.
 #
-# Known gap at time of writing: this worker will share the REDIS_URL secret
-# with the app process. Railway ran a second, dedicated Redis instance
-# (Redis-aSPI) for this workload; an equivalent second Upstash Redis has not
-# yet been provisioned on Fly (requires `fly redis create` via flyctl - no
-# web UI flow exists for this). Provision it and update REDIS_URL/add a
-# worker-specific secret before treating this as a full parity migration.
+# Redis: app and worker share one REDIS_URL (BullMQ requires producer and
+# consumer on the same Redis instance). This matches Railway's architecture
+# per docs/adr/0002-background-jobs-bullmq-redis.md. There is no separate
+# dedicated worker Redis on either platform, and none is needed here.
 
 app = 'collect-rx'
 primary_region = 'yyz'
@@ -27,64 +23,32 @@ primary_region = 'yyz'
 [build]
 
 [processes]
-  app = 'npm run start'
-  worker = 'npm run worker'
+app = 'npm run start'
+worker = 'npm run worker'
 
 [http_service]
-  internal_port = 3000
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ['app']
+internal_port = 3000
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 1
+processes = ['app']
 
-  [[http_service.checks]]
-    interval = '15s'
-    timeout = '10s'
-    grace_period = '30s'
-    method = 'GET'
-    path = '/api/health'
-
-[[vm]]
-  processes = ['app']
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
+[[http_service.checks]]
+interval = '15s'
+timeout = '10s'
+grace_period = '30s'
+method = 'GET'
+path = '/api/health'
 
 [[vm]]
-  processes = ['worker']
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
-# fly.toml app configuration for collect-rx.
-# Written to match the live config (`fly config show -a collect-rx`) after the
-# repo's fly.toml was found missing entirely — a prior fly.toml existed only on
-# the stale `flyio-new-files` branch and was already out of sync with the live
-# app (wrong port, wrong min_machines_running). This file is the source of truth
-# going forward; keep it in sync with `fly config show -a collect-rx`.
-# See https://fly.io/docs/reference/configuration/
-
-app = 'collect-rx'
-primary_region = 'yyz'
-
-[build]
-
-[http_service]
-  internal_port = 3000
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ['app']
-
-  [[http_service.checks]]
-    interval = '15s'
-    timeout = '10s'
-    grace_period = '30s'
-    method = 'GET'
-    path = '/api/health'
+processes = ['app']
+memory = '512mb'
+cpu_kind = 'shared'
+cpus = 1
 
 [[vm]]
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
+processes = ['worker']
+memory = '512mb'
+cpu_kind = 'shared'
+cpus = 1
