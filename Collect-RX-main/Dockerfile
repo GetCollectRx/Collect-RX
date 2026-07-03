@@ -5,7 +5,7 @@ RUN apt-get update \
 && rm -rf /var/lib/apt/lists/*
 
 # Bump when Railway keeps serving a stale cached layer.
-ARG CACHEBUST=20260703a
+ARG CACHEBUST=20260703b
 # Previously declared but never referenced in a RUN, so bumping the value
 # above never actually busted the build cache — Depot kept serving a stale
 # COPY . . layer regardless. This RUN consumes the ARG so future bumps
