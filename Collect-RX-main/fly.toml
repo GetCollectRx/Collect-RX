@@ -22,6 +22,11 @@ primary_region = 'yyz'
 
 [build]
 
+[deploy]
+# Parity with railway.toml's releaseCommand. Runs as a one-off machine
+# before the new release rolls out; a nonzero exit blocks the deploy.
+release_command = 'npx prisma migrate deploy'
+
 [processes]
 app = 'npm run start'
 worker = 'npm run worker'
