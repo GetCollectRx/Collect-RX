@@ -2,20 +2,21 @@
  * CollectRx API Routes
  *
  * Security applied on every route:
- *   • Rate limiting  — standardLimiter (120/min) or strictLimiter (10/min)
- *   • Input validation — schema-based via security middleware; unexpected fields rejected
- *   • Sanitization   — strings trimmed + control-chars stripped before DB writes
- *   • Webhook auth   — HMAC-SHA256 signature verified before processing Vapi events
+ * • Admin API key — every route except the two Vapi HMAC-signed webhooks requires X-Api-Key
+ * • Rate limiting — standardLimiter (120/min) or strictLimiter (10/min)
+ * • Input validation — schema-based via security middleware; unexpected fields rejected
+ * • Sanitization — strings trimmed + control-chars stripped before DB writes
+ * • Webhook auth — HMAC-SHA256 signature verified before processing Vapi events
  *
  * SECRETS: No API keys or secrets are referenced here.
  * All credentials live exclusively in process.env.
  */
 
 const express = require("express");
-const router  = express.Router();
-const { query }           = require("./db.cjs");
+const router = express.Router();
+const { query } = require("./db.cjs");
 const { buildQueue, getQueueStats, pauseClaim } = require("./queue/engine");
-const { processOutcome, suspendAllQueuedClaims }  = require("./outcome/processor.legacy.cjs");
+const { processOutcome, suspendAllQueuedClaims } = require("./outcome/processor.legacy.cjs");
 const { dispatchCall, parseWebhook } = require("./vapi/client.legacy.cjs");
 const {
   getOpenEscalations,
@@ -28,9 +29,9 @@ const { importClaims, parseCSV } = require("./claims/importer");
 const piiVault = require("./pii-vault");
 const planService = require("./services/plans/planService.cjs");
 const usageService = require("./services/plans/usageService.cjs");
-const logger  = require("./logger");
+const logger = require("./logger");
 
-// Security middleware — rate limiters, validators, webhook verifier
+// Security middleware — rate limiters, validators, webhook verifier, admin auth
 const {
   standardLimiter,
   strictLimiter,
@@ -42,8 +43,16 @@ const {
   validateResolveBody,
   validatePracticeBody,
   validateImportQuery,
+  validateCarrierBlockBody,
   verifyVapiWebhook,
+  requireApiKey,
 } = require("./middleware/security");
+
+// ── Admin API key gate ────────────────────────────────────────────────────────
+// Applies to every route below except /webhooks/vapi and /vapi/phi/resolve,
+// which authenticate via Vapi's own HMAC signature instead (see requireApiKey's
+// PUBLIC_PATHS exemption list in middleware/security.js).
+router.use(requireApiKey);
 
 // ─── Helper: send a consistent 400 validation error ──────────────────────────
 function validationError(res, errors) {
@@ -53,6 +62,9 @@ function validationError(res, errors) {
 // ─── Queue ────────────────────────────────────────────────────────────────────
 
 // GET /api/queue/build — dry-run: score and return today's call queue (no calls made)
+// With no practice_id, this now builds a combined queue across every active
+// practice (each scored against its own thresholds) plus any legacy claims
+// that have no practice_id assigned at all.
 router.get("/queue/build", standardLimiter, async (req, res) => {
   try {
     const queue = await buildQueue();
@@ -65,23 +77,33 @@ router.get("/queue/build", standardLimiter, async (req, res) => {
 
 // POST /api/queue/run — dispatch all eligible claims to Vapi
 // Strict rate limit: 10/min — each run triggers real outbound calls
-// Optional body: { practice_id: 1 }
+// Optional body: { practice_id: 1 } — restrict the run to a single practice.
+// Omit practice_id to run every active practice in one pass; each claim is
+// dispatched using ITS OWN practice's config, not a single shared config.
 router.post("/queue/run", strictLimiter, async (req, res) => {
   // Validate + sanitize body
   const v = validateQueueRunBody(req.body || {});
   if (!v.valid) return validationError(res, v.errors);
 
   try {
-    const practiceId   = v.sanitized.practice_id || null;
-    const practiceConfig = await getPracticeConfig(practiceId);
-    const queue          = await buildQueue(practiceId);
+    const practiceId = v.sanitized.practice_id || null;
+    const queue = await buildQueue(practiceId);
 
     if (queue.length === 0) {
       return res.json({ success: true, message: "No eligible claims in queue", dispatched: 0 });
     }
 
+    // Cache each practice's config so a multi-practice run doesn't refetch
+    // the same practice's config once per claim.
+    const configCache = new Map();
+    async function configFor(pid) {
+      const key = pid || 0;
+      if (!configCache.has(key)) configCache.set(key, await getPracticeConfig(pid));
+      return configCache.get(key);
+    }
+
     const results = [];
-    let gateBlock = null; // Set when planService halts the run mid-loop
+    let gateBlock = null; // Set when planService blocks a practice mid-run
     for (const claim of queue) {
       // ── Plan/subscription gate (collectrx-tiering-strategy.md §7 P0) ──
       // Consult planService BEFORE every dispatch. The claim row carries
@@ -90,17 +112,20 @@ router.post("/queue/run", strictLimiter, async (req, res) => {
       const claimPracticeId = claim.practice_id || practiceId;
       const gate = claimPracticeId ? await planService.canMakeCall(claimPracticeId) : { allowed: true };
       if (!gate.allowed) {
-        logger.warn("Queue run halted by plan gate", {
+        logger.warn("Queue run: practice gated, skipping its claims", {
           practiceId: claimPracticeId,
           reason: gate.reason,
         });
         results.push({ claimId: claim.id, success: false, blocked: true, reason: gate.reason });
         gateBlock = { practiceId: claimPracticeId, reason: gate.reason };
-        // Stop the whole run as soon as any practice is gated — surfaces
-        // exactly one upgrade prompt rather than rate-limited noise.
-        break;
+        // Only skip this claim (and effectively the rest of this one
+        // practice's claims, since the same gate will keep firing for
+        // them). Do NOT break the whole run — other practices in a
+        // multi-practice pass must still get their calls dispatched.
+        continue;
       }
 
+      const practiceConfig = await configFor(claimPracticeId);
       const result = await dispatchCall(claim, practiceConfig);
       results.push({ claimId: claim.id, ...result });
       // Small delay between dispatches to avoid Vapi burst limits
@@ -123,9 +148,12 @@ router.post("/queue/run", strictLimiter, async (req, res) => {
 });
 
 // GET /api/queue/stats — queue status breakdown counts
+// Optional ?practice_id=1 to scope to a single practice; omit for the
+// platform-wide breakdown.
 router.get("/queue/stats", standardLimiter, async (req, res) => {
   try {
-    const stats = await getQueueStats();
+    const practiceId = req.query.practice_id ? parseInt(req.query.practice_id, 10) : null;
+    const stats = await getQueueStats(practiceId || null);
     res.json({ success: true, stats });
   } catch (err) {
     res.status(500).json({ success: false, error: "Internal server error" });
@@ -137,6 +165,7 @@ router.get("/queue/stats", standardLimiter, async (req, res) => {
 // POST /api/webhooks/vapi — receives call-ended events from Vapi
 // verifyVapiWebhook checks the x-vapi-secret HMAC header before processing.
 // webhookLimiter allows 300 req/min to handle Vapi event bursts.
+// Exempt from requireApiKey (see PUBLIC_PATHS) — auth is the HMAC signature.
 router.post("/webhooks/vapi", webhookLimiter, verifyVapiWebhook, async (req, res) => {
   try {
     const eventType = req.body?.message?.type;
@@ -200,12 +229,12 @@ router.get("/claims", standardLimiter, async (req, res) => {
   try {
     const { bucket, status, carrier, queue_status, limit, offset } = v.sanitized;
     const conditions = [];
-    const params     = [];
+    const params = [];
 
-    if (bucket)       { params.push(bucket);       conditions.push(`aging_bucket = $${params.length}`); }
-    if (status)       { params.push(status);        conditions.push(`status = $${params.length}`); }
-    if (carrier)      { params.push(carrier);       conditions.push(`carrier_code = $${params.length}`); }
-    if (queue_status) { params.push(queue_status);  conditions.push(`queue_status = $${params.length}`); }
+    if (bucket) { params.push(bucket); conditions.push(`aging_bucket = $${params.length}`); }
+    if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
+    if (carrier) { params.push(carrier); conditions.push(`carrier_code = $${params.length}`); }
+    if (queue_status) { params.push(queue_status); conditions.push(`queue_status = $${params.length}`); }
 
     const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
     params.push(limit, offset);
@@ -318,18 +347,18 @@ router.get("/reports/aging", standardLimiter, async (req, res) => {
   try {
     const result = await query(
       `SELECT
-         carrier_name,
-         COUNT(*) as total_claims,
-         SUM(amount_outstanding) as total_outstanding,
-         SUM(CASE WHEN aging_bucket = '0-29'   THEN amount_outstanding ELSE 0 END) as "0_29",
-         SUM(CASE WHEN aging_bucket = '30-59'  THEN amount_outstanding ELSE 0 END) as "30_59",
-         SUM(CASE WHEN aging_bucket = '60-89'  THEN amount_outstanding ELSE 0 END) as "60_89",
-         SUM(CASE WHEN aging_bucket = '90-119' THEN amount_outstanding ELSE 0 END) as "90_119",
-         SUM(CASE WHEN aging_bucket = '120+'   THEN amount_outstanding ELSE 0 END) as "120_plus"
-       FROM claims
-       WHERE queue_status NOT IN ('resolved')
-       GROUP BY carrier_name
-       ORDER BY total_outstanding DESC`
+        carrier_name,
+        COUNT(*) as total_claims,
+        SUM(amount_outstanding) as total_outstanding,
+        SUM(CASE WHEN aging_bucket = '0-29' THEN amount_outstanding ELSE 0 END) as "0_29",
+        SUM(CASE WHEN aging_bucket = '30-59' THEN amount_outstanding ELSE 0 END) as "30_59",
+        SUM(CASE WHEN aging_bucket = '60-89' THEN amount_outstanding ELSE 0 END) as "60_89",
+        SUM(CASE WHEN aging_bucket = '90-119' THEN amount_outstanding ELSE 0 END) as "90_119",
+        SUM(CASE WHEN aging_bucket = '120+' THEN amount_outstanding ELSE 0 END) as "120_plus"
+      FROM claims
+      WHERE queue_status NOT IN ('resolved')
+      GROUP BY carrier_name
+      ORDER BY total_outstanding DESC`
     );
     res.json({ success: true, report: result.rows });
   } catch (err) {
@@ -354,17 +383,23 @@ router.get("/carriers/stats", standardLimiter, async (req, res) => {
 // Called manually by staff OR automatically via a Vapi webhook when a carrier
 // detects our automated calling and blocks the number.
 //
-// Body (optional): { claim_id, reason }
+// Body: { practice_id, claim_id?, reason? } — practice_id is REQUIRED.
 //
 // Effect:
-//   1. Logs a CARRIER_BLOCK event to the escalations table
-//   2. Suspends ALL queued/in-progress claims practice-wide (queue_status → 'paused')
+// 1. Logs a CARRIER_BLOCK event to the escalations table
+// 2. Suspends queued/in-progress claims for THAT PRACTICE ONLY (queue_status → 'paused')
+//
+// practice_id is required because a carrier block is tied to one practice's
+// caller ID / calling pattern — it must never suspend another practice's
+// claims just because they happen to use the same carrier.
 //
 // To resume after review: use POST /api/claims/:id/unpause on individual claims
 // or issue a bulk unpause from the dashboard.
 router.post("/carriers/:code/block", strictLimiter, async (req, res) => {
   const { code } = req.params;
-  const { claim_id, reason } = req.body || {};
+  const v = validateCarrierBlockBody(req.body || {});
+  if (!v.valid) return validationError(res, v.errors);
+  const { practice_id: practiceId, claim_id: claimId, reason } = v.sanitized;
 
   const VALID_CARRIER_CODES = [
     'sun_life', 'canada_life', 'manulife',
@@ -387,8 +422,8 @@ router.post("/carriers/:code/block", strictLimiter, async (req, res) => {
        VALUES ($1, 'carrier_block', $2, 'open')
        RETURNING id`,
       [
-        claim_id || null,
-        `CARRIER_BLOCK event for carrier '${code}' at ${new Date().toISOString()}. ${blockReason}`,
+        claimId || null,
+        `CARRIER_BLOCK event for carrier '${code}' (practice ${practiceId}) at ${new Date().toISOString()}. ${blockReason}`,
       ]
     );
     const escalationId = escResult.rows[0]?.id;
@@ -400,18 +435,20 @@ router.post("/carriers/:code/block", strictLimiter, async (req, res) => {
       detail: blockReason,
     });
 
-    // Suspend all queued/in-progress claims practice-wide
+    // Suspend queued/in-progress claims for THIS PRACTICE ONLY.
     const suspendResult = await query(
       `UPDATE claims
        SET queue_status = 'paused',
            notes = COALESCE(notes, '') || $1,
            updated_at = NOW()
-       WHERE queue_status IN ('queued', 'in_progress')`,
-      [`\n[CARRIER_BLOCK: ${code} at ${new Date().toISOString()}. ${blockReason}]`]
+       WHERE practice_id = $2
+         AND queue_status IN ('queued', 'in_progress')`,
+      [`\n[CARRIER_BLOCK: ${code} at ${new Date().toISOString()}. ${blockReason}]`, practiceId]
     );
 
     logger.warn(`CARRIER_BLOCK logged for ${code}`, {
       escalationId,
+      practiceId,
       claimsSuspended: suspendResult.rowCount,
       reason: blockReason,
     });
@@ -419,9 +456,10 @@ router.post("/carriers/:code/block", strictLimiter, async (req, res) => {
     res.json({
       success: true,
       carrier: code,
+      practice_id: practiceId,
       escalation_id: escalationId,
       claims_suspended: suspendResult.rowCount,
-      message: `Carrier block logged. ${suspendResult.rowCount} queued claims suspended practice-wide.`,
+      message: `Carrier block logged. ${suspendResult.rowCount} queued claims suspended for practice ${practiceId}.`,
     });
   } catch (err) {
     logger.error("Carrier block error", { error: err.message });
@@ -499,12 +537,13 @@ router.delete("/practices/:id", standardLimiter, async (req, res) => {
 //
 // Allows Vapi agents to resolve a PHI token to its raw value during an active call.
 // Protected by:
-//   1. webhookLimiter — rate-limited to prevent brute-force token guessing
-//   2. verifyVapiWebhook — HMAC signature must be valid (Vapi-signed request)
-//   3. Tokens expire after 1 hour and are revoked after each call completes
+// 1. webhookLimiter — rate-limited to prevent brute-force token guessing
+// 2. verifyVapiWebhook — HMAC signature must be valid (Vapi-signed request)
+// 3. Tokens expire after 1 hour and are revoked after each call completes
 //
 // This endpoint is the "Token-to-PHI mapping resolved exclusively within the
 // Node.js backend" stated in the PHI Vault requirement.
+// Exempt from requireApiKey (see PUBLIC_PATHS) — auth is the HMAC signature.
 
 router.post("/vapi/phi/resolve", webhookLimiter, verifyVapiWebhook, (req, res) => {
   const { token } = req.body || {};
@@ -529,9 +568,9 @@ router.post("/vapi/phi/resolve", webhookLimiter, verifyVapiWebhook, (req, res) =
 
   // Log the access (token ID only — not the resolved value)
   logger.info("AUDIT: PHI token resolved", {
-    event:  "PHI_TOKEN_RESOLVED",
-    token:  token.slice(0, 12) + "...", // partial token for audit trail, not full
-    ip:     req.ip,
+    event: "PHI_TOKEN_RESOLVED",
+    token: token.slice(0, 12) + "...", // partial token for audit trail, not full
+    ip: req.ip,
   });
 
   res.json({ success: true, value });
@@ -542,7 +581,7 @@ router.post("/vapi/phi/resolve", webhookLimiter, verifyVapiWebhook, (req, res) =
 // POST /api/claims/import — import claims from AbelDent CSV or JSON array
 // Strict rate limit: parsing large CSVs is expensive
 // Accepts:
-//   Content-Type: text/csv         — raw CSV in body
+//   Content-Type: text/csv — raw CSV in body
 //   Content-Type: application/json — array of claim objects
 // Query: ?practice_id=1
 router.post(
@@ -555,7 +594,7 @@ router.post(
     if (!qv.valid) return validationError(res, qv.errors);
 
     try {
-      const practiceId  = qv.sanitized.practice_id || null;
+      const practiceId = qv.sanitized.practice_id || null;
       const contentType = req.headers["content-type"] || "";
       let rows;
 
@@ -617,11 +656,9 @@ router.get("/plan", standardLimiter, async (req, res) => {
   }
 });
 
-// POST /api/plan/tier  { practice_id, tier, status? }
+// POST /api/plan/tier { practice_id, tier, status? }
 // Used by Stripe webhook on subscription activation and by platform_admin for
-// backfills. NOT user-facing — should be gated by admin auth in prod (the
-// existing strictLimiter is the floor; tighter checks happen at the auth
-// middleware layer once it's added to the legacy router).
+// backfills. Now gated by requireApiKey at the router level (see top of file).
 router.post("/plan/tier", strictLimiter, async (req, res) => {
   try {
     const { practice_id, tier, status } = req.body || {};

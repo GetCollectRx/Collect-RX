@@ -2,26 +2,27 @@
  * CollectRx Security Middleware
  *
  * Implements OWASP-aligned security controls:
- *   1. Rate limiting  — IP-based, per-endpoint budgets, graceful 429s
- *   2. Input validation helpers — schema-based, type-checked, length-capped
- *   3. Webhook signature verification — HMAC-SHA256 (Vapi)
- *   4. Secure headers — via helmet
- *   5. CORS — allowlist-based
+ * 1. Rate limiting — IP-based, per-endpoint budgets, graceful 429s
+ * 2. Input validation helpers — schema-based, type-checked, length-capped
+ * 3. Webhook signature verification — HMAC-SHA256 (Vapi)
+ * 4. Admin API key auth — static key required on every non-webhook route
+ * 5. Secure headers — via helmet
+ * 6. CORS — allowlist-based
  *
  * IMPORTANT: No keys or secrets live here. All secrets are loaded
  * exclusively from process.env (set via Railway / .env, never hard-coded).
  */
 
 const rateLimit = require("express-rate-limit");
-const crypto    = require("crypto");   // built-in — no install needed
-const logger    = require("../logger");
+const crypto = require("crypto"); // built-in — no install needed
+const logger = require("../logger");
 
 // ─── 1. RATE LIMITING ────────────────────────────────────────────────────────
 //
 // Three tiers:
-//   • standard  — 120 req / 1 min per IP  (read endpoints)
-//   • strict    — 10  req / 1 min per IP  (expensive write operations)
-//   • webhook   — 300 req / 1 min per IP  (Vapi can batch-fire events)
+// • standard — 120 req / 1 min per IP (read endpoints)
+// • strict — 10 req / 1 min per IP (expensive write operations)
+// • webhook — 300 req / 1 min per IP (Vapi can batch-fire events)
 //
 // All tiers return a JSON 429 with Retry-After header so clients
 // can back off gracefully instead of receiving an HTML error page.
@@ -36,18 +37,18 @@ const rateLimitResponse = (req, res) => {
 
 /** Standard limiter — applied to all read/reporting endpoints. */
 const standardLimiter = rateLimit({
-  windowMs: 60 * 1000,          // 1-minute window
-  max: 120,                      // 120 requests per window per IP
-  standardHeaders: true,         // Return RateLimit-* headers (RFC 6585)
-  legacyHeaders: false,          // Suppress X-RateLimit-* (deprecated)
+  windowMs: 60 * 1000, // 1-minute window
+  max: 120, // 120 requests per window per IP
+  standardHeaders: true, // Return RateLimit-* headers (RFC 6585)
+  legacyHeaders: false, // Suppress X-RateLimit-* (deprecated)
   handler: rateLimitResponse,
   keyGenerator: (req) => req.ip, // IP-based key
 });
 
 /** Strict limiter — applied to queue/run and claims/import (expensive). */
 const strictLimiter = rateLimit({
-  windowMs: 60 * 1000,          // 1-minute window
-  max: 10,                       // Only 10 expensive ops per minute per IP
+  windowMs: 60 * 1000, // 1-minute window
+  max: 10, // Only 10 expensive ops per minute per IP
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitResponse,
@@ -81,17 +82,17 @@ const webhookLimiter = rateLimit({
 // Use these at the top of route handlers before touching req.body / req.query.
 //
 // Rules:
-//   • Type-check every field
-//   • Reject unexpected/extra fields (strict mode)
-//   • Cap string lengths to prevent oversized payloads
-//   • Whitelist enum values
-//   • Sanitize strings: trim whitespace, no control characters
+// • Type-check every field
+// • Reject unexpected/extra fields (strict mode)
+// • Cap string lengths to prevent oversized payloads
+// • Whitelist enum values
+// • Sanitize strings: trim whitespace, no control characters
 
-const ALLOWED_BUCKETS       = ["0-29", "30-59", "60-89", "90-119", "120+"];
-const ALLOWED_QUEUE_STATUS  = ["queued", "in_progress", "resolved", "escalated", "paused", "excluded"];
-const MAX_STRING_LENGTH     = 500;   // Default max for most text fields
-const MAX_NOTES_LENGTH      = 2000;  // Longer for free-text resolution notes
-const MAX_CSV_SIZE_BYTES    = 10 * 1024 * 1024; // 10 MB (matches route limit)
+const ALLOWED_BUCKETS = ["0-29", "30-59", "60-89", "90-119", "120+"];
+const ALLOWED_QUEUE_STATUS = ["queued", "in_progress", "resolved", "escalated", "paused", "excluded"];
+const MAX_STRING_LENGTH = 500; // Default max for most text fields
+const MAX_NOTES_LENGTH = 2000; // Longer for free-text resolution notes
+const MAX_CSV_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB (matches route limit)
 
 /**
  * Sanitize a string: trim, remove ASCII control characters (except \n \r \t).
@@ -257,7 +258,7 @@ function validatePracticeBody(body = {}, isUpdate = false) {
     "name", "phone", "fax", "email", "address", "city", "province", "postal_code",
     "npi", "tax_id", "primary_dentist", "secondary_dentist", "escalation_email",
     "escalation_webhook_url", "max_call_attempts", "min_claim_value",
-    "cooldown_hours", "max_calls_per_run",
+    "min_days_outstanding", "cooldown_hours", "max_calls_per_run",
   ]);
 
   // Reject unexpected fields (strict mode)
@@ -308,8 +309,9 @@ function validatePracticeBody(body = {}, isUpdate = false) {
   // Numeric fields — must be positive integers within sensible bounds
   const numericFields = {
     max_call_attempts: { min: 1, max: 20 },
-    min_claim_value:   { min: 0, max: 100000 },
-    cooldown_hours:    { min: 1, max: 168 },   // 1 hour – 1 week
+    min_claim_value: { min: 0, max: 100000 },
+    min_days_outstanding: { min: 0, max: 3650 },
+    cooldown_hours: { min: 1, max: 168 }, // 1 hour – 1 week
     max_calls_per_run: { min: 1, max: 100 },
   };
 
@@ -338,6 +340,42 @@ function validateImportQuery(query = {}) {
     const id = parseInt(query.practice_id, 10);
     if (isNaN(id) || id < 1) errors.push("practice_id must be a positive integer");
     else sanitized.practice_id = id;
+  }
+
+  return errors.length ? { valid: false, errors } : { valid: true, sanitized };
+}
+
+/**
+ * Validate body for POST /api/carriers/:code/block.
+ * practice_id is required — carrier blocks must be scoped to the practice
+ * whose calls triggered them, never applied platform-wide.
+ */
+function validateCarrierBlockBody(body = {}) {
+  const errors = [];
+  const sanitized = {};
+
+  const allowed = new Set(["practice_id", "claim_id", "reason"]);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) errors.push(`Unexpected field: '${key}'`);
+  }
+
+  const practiceId = parseInt(body.practice_id, 10);
+  if (isNaN(practiceId) || practiceId < 1) {
+    errors.push("practice_id is required and must be a positive integer");
+  } else {
+    sanitized.practice_id = practiceId;
+  }
+
+  if (body.claim_id !== undefined) {
+    const s = sanitizeString(body.claim_id, 100);
+    if (s === null) errors.push("claim_id must be a string");
+    else sanitized.claim_id = s;
+  }
+
+  if (body.reason !== undefined) {
+    const s = sanitizeString(body.reason, MAX_STRING_LENGTH);
+    if (s === null) errors.push("reason must be a string");
+    else sanitized.reason = s;
   }
 
   return errors.length ? { valid: false, errors } : { valid: true, sanitized };
@@ -383,8 +421,8 @@ function verifyVapiWebhook(req, res, next) {
       .update(JSON.stringify(req.body))
       .digest("hex");
 
-    const sigBuffer  = Buffer.from(signature, "hex");
-    const expBuffer  = Buffer.from(expected, "hex");
+    const sigBuffer = Buffer.from(signature, "hex");
+    const expBuffer = Buffer.from(expected, "hex");
 
     if (sigBuffer.length !== expBuffer.length || !crypto.timingSafeEqual(sigBuffer, expBuffer)) {
       logger.warn("Webhook rejected: invalid signature", { ip: req.ip });
@@ -393,6 +431,55 @@ function verifyVapiWebhook(req, res, next) {
   } catch (err) {
     logger.error("Webhook signature verification error", { error: err.message });
     return res.status(401).json({ success: false, error: "Signature verification failed" });
+  }
+
+  next();
+}
+
+// ─── 4. ADMIN API KEY AUTH ────────────────────────────────────────────────────
+//
+// Every /api/* route except the two Vapi-signed webhook endpoints requires a
+// static API key in the X-Api-Key header. This exists because — before this
+// change — NOTHING checked who was calling these routes: rate limiting and
+// input validation are not authentication, and CORS only restricts browser
+// callers (curl/Postman/server-to-server calls bypass it entirely).
+//
+// SETUP: set ADMIN_API_KEY as a Fly secret. Requests without a matching
+// X-Api-Key header are rejected with 401. If ADMIN_API_KEY is not configured
+// at all, every request is rejected with 503 — fail closed, never open.
+
+const PUBLIC_PATHS = new Set([
+  "/webhooks/vapi",    // authenticated separately via verifyVapiWebhook (HMAC)
+  "/vapi/phi/resolve", // authenticated separately via verifyVapiWebhook (HMAC)
+]);
+
+function safeCompare(a, b) {
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function requireApiKey(req, res, next) {
+  if (PUBLIC_PATHS.has(req.path)) return next();
+
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected) {
+    logger.error(
+      "SECURITY: ADMIN_API_KEY is not set — rejecting all admin API requests (fail closed).",
+      { event: "AUTH_MISCONFIGURED", path: req.path }
+    );
+    return res.status(503).json({ success: false, error: "Service misconfigured" });
+  }
+
+  const provided = req.headers["x-api-key"];
+  if (!provided || !safeCompare(provided, expected)) {
+    logger.warn("AUDIT: rejected unauthenticated API request", {
+      event: "AUTH_REJECTED",
+      path: req.path,
+      ip: req.ip,
+    });
+    return res.status(401).json({ success: false, error: "Unauthorized" });
   }
 
   next();
@@ -414,9 +501,13 @@ module.exports = {
   validateResolveBody,
   validatePracticeBody,
   validateImportQuery,
+  validateCarrierBlockBody,
 
   // Webhook verification
   verifyVapiWebhook,
+
+  // Admin API key auth
+  requireApiKey,
 
   // Utility (exported for testing)
   sanitizeString,
