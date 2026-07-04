@@ -16,8 +16,8 @@ import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
 import type { PreVisitJobPayload } from './preVisit/preVisitJobs.js';
-import { dispatchPreVisitCall } from './preVisit/preVisitDispatch.js';
-import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
+import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 
 assertPostgresTlsInProduction();
 
@@ -53,6 +53,15 @@ async function handlePreVisitCdcpPredet(prisma: PrismaClient, payload: PreVisitJ
   }
 }
 
+async function handlePreVisitTelusTx23(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await dispatchTelusTx23Check(prisma, payload);
+  if (result.resolved) {
+    console.log('[worker] PRE_VISIT_TELUS_TX23 resolved');
+  } else {
+    console.log('[worker] PRE_VISIT_TELUS_TX23 unresolved:', result.reason);
+  }
+}
+
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
@@ -70,8 +79,10 @@ const worker = new Worker(
       await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
     } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
       await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
+    } else if (job.name === 'PRE_VISIT_TELUS_TX23') {
+      await handlePreVisitTelusTx23(prisma, job.data as PreVisitJobPayload);
     } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
-      const n = await sweepUpcomingAppointments(prisma);
+      const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
       if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
     } else {
       throw new Error(`Unknown job name: ${job.name}`);

@@ -75,6 +75,53 @@ export async function tryCanadaLifePortalPreVisit(
   return { resolved: false, reason: gate.portalResult.dispatchDecision };
 }
 
+interface TelusTx23Identification {
+  supported: boolean;
+  reason?: string;
+  memberId?: string;
+  groupNumber?: string;
+}
+
+function identifyTelusTx23(patientToken: string): TelusTx23Identification {
+  const det = piiVault.detokenize(patientToken, 'pre-visit-tx23');
+  if (!det.success || !det.phi) {
+    return { supported: false, reason: 'detokenize_failed' };
+  }
+  const memberId = det.phi.subscriberId;
+  const groupNumber = det.phi.groupPolicyNumber;
+
+  const tpa = identifyTelusPlan(memberId, groupNumber);
+  const tpaEntry = Object.values(TELUS_TPA_CONFIGS).find((c) => c.displayName === tpa.identifiedTpa);
+  const tx23Supported = tpaEntry ? tpaSupportsTransaction23(tpaEntry.carrierId) : false;
+
+  if (!tx23Supported || tpa.confidence === 'low') {
+    return { supported: false, reason: 'tx23_not_supported' };
+  }
+
+  return { supported: true, memberId, groupNumber };
+}
+
+/**
+ * Identification-only check — does not submit a live Tx23 inquiry. Safe to
+ * call inline during appointment verification to decide whether a Tx23 check
+ * is required; the actual dispatch happens later via `tryTelusTx23PreVisit`,
+ * run from the worker.
+ */
+export function checkTelusTx23Support(
+  carrierId: CarrierId,
+  patientToken: string,
+): { supported: boolean; reason?: string } {
+  if (carrierId !== 'telus_adjudicare') {
+    return { supported: false, reason: 'not_telus' };
+  }
+  const identification = identifyTelusTx23(patientToken);
+  return { supported: identification.supported, reason: identification.reason };
+}
+
+/**
+ * Submits a live CDAnet Tx23 inquiry. Only call from the worker
+ * (PRE_VISIT_TELUS_TX23 job) — never inline in the verification request path.
+ */
 export async function tryTelusTx23PreVisit(
   prisma: PrismaClient,
   params: {
@@ -89,22 +136,12 @@ export async function tryTelusTx23PreVisit(
     return { resolved: false };
   }
 
-  let memberId = '';
-  let groupNumber = '';
-  const det = piiVault.detokenize(params.patientToken, 'pre-visit-tx23');
-  if (!det.success || !det.phi) {
-    return { resolved: false, reason: 'detokenize_failed' };
+  const identification = identifyTelusTx23(params.patientToken);
+  if (!identification.supported || !identification.memberId || !identification.groupNumber) {
+    return { resolved: false, reason: identification.reason };
   }
-  memberId = det.phi.subscriberId;
-  groupNumber = det.phi.groupPolicyNumber;
-
-  const tpa = identifyTelusPlan(memberId, groupNumber);
-  const tpaEntry = Object.values(TELUS_TPA_CONFIGS).find((c) => c.displayName === tpa.identifiedTpa);
-  const tx23Supported = tpaEntry ? tpaSupportsTransaction23(tpaEntry.carrierId) : false;
-
-  if (!tx23Supported || tpa.confidence === 'low') {
-    return { resolved: false, reason: 'tx23_not_supported' };
-  }
+  const memberId = identification.memberId;
+  const groupNumber = identification.groupNumber;
 
   const settings = await getPracticeSettings(prisma, params.practiceId);
   const carrierCfg = settings.carrierConfigs.find((c) => c.carrierId === 'telus_adjudicare');

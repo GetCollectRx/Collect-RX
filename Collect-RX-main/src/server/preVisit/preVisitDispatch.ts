@@ -13,6 +13,7 @@ import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import type { PreVisitJobPayload } from './preVisitJobs.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
+import { tryTelusTx23PreVisit } from './electronicPreVisit.js';
 
 const MAX_PRE_VISIT_ATTEMPTS = 3;
 
@@ -50,13 +51,12 @@ export async function dispatchPreVisitCall(
     return { skipped: true, reason: planGate.reason ?? 'plan_gate' };
   }
 
-  let phi;
   const phiResult = piiVault.detokenize(payload.patientToken, 'pre-visit-dispatch');
   if (!phiResult.success || !phiResult.phi) {
     console.error('[preVisitDispatch] detokenize failed:', phiResult.error ?? 'unknown');
     return { skipped: true, reason: 'detokenize_failed' };
   }
-  phi = phiResult.phi;
+  const phi = phiResult.phi;
 
   const settings = await getPracticeSettings(prisma, payload.practiceId);
   const practice = await prisma.practice.findUnique({
@@ -109,4 +109,38 @@ export async function dispatchPreVisitCall(
   });
 
   return { vapiCallId: result.vapiCallId };
+}
+
+/**
+ * Runs the deferred TELUS Tx23 electronic inquiry (PRE_VISIT_TELUS_TX23 job).
+ * `verifyBeforeAppointment` only flags `tx23CheckRequired`; the live CDAnet
+ * submission happens here, off the request path.
+ */
+export async function dispatchTelusTx23Check(
+  prisma: PrismaClient,
+  payload: PreVisitJobPayload,
+): Promise<{ resolved: boolean; reason?: string }> {
+  const verification = await prisma.appointmentVerification.findUnique({
+    where: { id: payload.appointmentVerificationId },
+  });
+  if (!verification) {
+    return { resolved: false, reason: 'verification_not_found' };
+  }
+
+  const tx23 = await tryTelusTx23PreVisit(prisma, {
+    practiceId: payload.practiceId,
+    patientToken: payload.patientToken,
+    carrierId: payload.carrierId,
+    procedureCodes: payload.procedureCodes,
+    appointmentVerificationId: payload.appointmentVerificationId,
+  });
+
+  if (tx23.resolved) {
+    await prisma.appointmentVerification.update({
+      where: { id: verification.id },
+      data: { status: 'GREEN', reason: 'tx23_resolved', tx23Resolved: true },
+    });
+  }
+
+  return { resolved: tx23.resolved, reason: tx23.reason };
 }

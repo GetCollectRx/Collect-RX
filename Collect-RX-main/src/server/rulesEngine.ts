@@ -5,7 +5,7 @@ import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
 import { processPaymentTraceDue } from './recovery/recoveryLoopService.js';
 import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
-import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 
 /**
  * Insurance operations tick: call queue priority, EMR outbox, payment trace recalls,
@@ -69,7 +69,7 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
   // Pre-visit: sweep upcoming appointments once per hour at minute 5.
   if (now.getUTCMinutes() === 5) {
     try {
-      const swept = await sweepUpcomingAppointments(prisma);
+      const swept = await sweepUpcomingAppointmentsAcrossPractices(prisma);
       if (swept > 0) {
         console.log(`[rulesEngine] pre-visit sweep verified ${swept} appointment(s)`);
       }

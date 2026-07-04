@@ -639,8 +639,9 @@ model InsurancePlan {
 model EligibilitySnapshot {
   snapshotId                String            @id @default(uuid()) @map("snapshot_id")
   practiceId                String            @map("practice_id")
-  patientId                 String            @map("patient_id")
-  /// PIIVault UUID when written by pre-visit pipeline; bridges to patientToken.
+  /// PMS record ID (from the practice management system, e.g. Estimate flow writes). Not a PIIVault token.
+  patientId                 String?           @map("patient_id")
+  /// PIIVault UUID (see src/pii-vault.ts). Not interchangeable with patientId — never conflate the two.
   patientToken              String?           @map("patient_token")
   carrier                   CarrierId
   planId                    String?           @map("plan_id")
