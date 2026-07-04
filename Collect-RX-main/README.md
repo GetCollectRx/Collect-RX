@@ -1,6 +1,4 @@
 # CollectRx — Dental A/R execution
-<!-- ops: fly redeploy trigger, no functional change -->
-
 
 Web application for dental practices to run **rules-based** patient A/R workflows: stages, messaging, and payment collection, with a full **audit trail** in the app database.
 
@@ -10,7 +8,7 @@ Web application for dental practices to run **rules-based** patient A/R workflow
 
 ## 🎯 Overview
 
-This system sits alongside Dentrix (which remains the system of record) and provides automated execution of A/R collection workflows:
+This system sits alongside the practice's PMS (practice management software — e.g. AbelDent, Dentrix, ClearDent — which remains the system of record) and provides automated execution of A/R collection workflows:
 - **Rules Engine**: Automatically advances balances through collection stages based on time and amount thresholds
 - **Automated Messaging**: Sends progressive messages (friendly → firm) as balances age
 - **Payment Collection**: Provides payment links and tracks all payment events
@@ -60,11 +58,11 @@ Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACT
 
 2. **Local webhooks:** install the [Stripe CLI](https://stripe.com/docs/stripe-cli) and run:
 
-   ```bash
-   stripe listen --forward-to localhost:3000/api/stripe/webhook
-   ```
+```bash
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
 
-   Use the `whsec_` value the CLI prints as **`STRIPE_WEBHOOK_SECRET`** while that process is running (or create a [fixed endpoint](https://docs.stripe.com/webhooks#test-webhook) in the Dashboard for a public tunnel URL in staging/prod).
+Use the `whsec_` value the CLI prints as **`STRIPE_WEBHOOK_SECRET`** while that process is running (or create a [fixed endpoint](https://docs.stripe.com/webhooks#test-webhook) in the Dashboard for a public tunnel URL in staging/prod).
 
 3. Complete [Stripe Connect](https://docs.stripe.com/connect) onboarding for the practice in the app so Payment Links are created on a **connected** account.
 
@@ -93,51 +91,51 @@ Follow these steps to see the system in action:
 ### Step 1: View Dashboard (30 seconds)
 1. Open http://localhost:5173 in your browser
 2. You'll see the dashboard with:
-   - Total open A/R amount
-   - Aging buckets (0-30, 31-60, >60 days)
-   - Balance counts by stage
+- Total open A/R amount
+- Aging buckets (0-30, 31-60, >60 days)
+- Balance counts by stage
 
 ### Step 2: Watch the Rules Engine (1 minute)
 1. Check your terminal where you ran `npm run dev`
 2. Watch for log messages like:
-   ```
-   📨 Balance xxx → NOTIFIED
-   📨 Balance xxx → REMINDER_1
-   ⚠️  Balance xxx → ESCALATED + STAFF_REVIEW
-   ```
+```
+📨 Balance xxx → NOTIFIED
+📨 Balance xxx → REMINDER_1
+⚠️ Balance xxx → ESCALATED + STAFF_REVIEW
+```
 3. The rules engine runs every 60 seconds and automatically processes balances based on:
-   - **CREATED** → Immediately send NOTIFIED message
-   - **NOTIFIED** (5+ days old) → Send REMINDER_1
-   - **REMINDER_1** (10+ days old) → Send REMINDER_2
-   - **REMINDER_2** (20+ days old OR ≥$500) → ESCALATED
+- **CREATED** → Immediately send NOTIFIED message
+- **NOTIFIED** (5+ days old) → Send REMINDER_1
+- **REMINDER_1** (10+ days old) → Send REMINDER_2
+- **REMINDER_2** (20+ days old OR ≥$500) → ESCALATED
 
 ### Step 3: View Message Outbox (1 minute)
 1. Click **"Message Outbox"** in the navigation
 2. You'll see all messages sent by the rules engine
 3. Messages show progressive tone ladder:
-   - **NOTIFIED**: Friendly reminder
-   - **REMINDER_1**: Neutral follow-up
-   - **REMINDER_2**: Firm notice
-   - **ESCALATED**: Policy-based final notice
+- **NOTIFIED**: Friendly reminder
+- **REMINDER_1**: Neutral follow-up
+- **REMINDER_2**: Firm notice
+- **ESCALATED**: Policy-based final notice
 
 ### Step 4: Simulate Patient Response (2 minutes)
 1. In the Message Outbox, find any message with response buttons
 2. Click **"💰 Pay Now"** to simulate a payment
-   - Balance immediately closes
-   - Payment event is recorded
-   - Stage advances to CLOSED
+- Balance immediately closes
+- Payment event is recorded
+- Stage advances to CLOSED
 3. Try **"⚠️ Dispute"** on another message
-   - Balance status changes to IN_DISPUTE
-   - Stage advances to STAFF_REVIEW
+- Balance status changes to IN_DISPUTE
+- Stage advances to STAFF_REVIEW
 
 ### Step 5: View Balance Details (1 minute)
 1. Click **"Balances"** in navigation
 2. Click **"View Details"** on any balance
 3. See complete timeline showing:
-   - All stage transitions
-   - All messages sent with full text
-   - All payment events
-   - Full audit trail
+- All stage transitions
+- All messages sent with full text
+- All payment events
+- Full audit trail
 
 ### Step 6: Generate More Balances (30 seconds)
 1. Click **"Admin"** in navigation
@@ -158,23 +156,23 @@ Follow these steps to see the system in action:
 ```
 dental-ar-system/
 ├── prisma/
-│   └── schema.prisma          # Database schema
+│ └── schema.prisma # Database schema
 ├── src/
-│   ├── server/
-│   │   ├── index.ts           # Express API server
-│   │   ├── rulesEngine.ts     # Rules evaluation logic
-│   │   ├── messageTemplates.ts # Message templates with tone ladder
-│   │   └── seed.ts            # Database seeding
-│   ├── pages/
-│   │   ├── Dashboard.tsx      # Main dashboard with stats
-│   │   ├── Balances.tsx       # Balance list with filters
-│   │   ├── BalanceDetail.tsx  # Balance timeline view
-│   │   ├── Outbox.tsx         # Message outbox with response simulation
-│   │   ├── Admin.tsx          # Admin tools
-│   │   └── PaymentPage.tsx    # Payment portal
-│   ├── App.tsx                # Main React app
-│   ├── App.css               # Styles
-│   └── main.tsx              # React entry point
+│ ├── server/
+│ │ ├── index.ts # Express API server
+│ │ ├── rulesEngine.ts # Rules evaluation logic
+│ │ ├── messageTemplates.ts # Message templates with tone ladder
+│ │ └── seed.ts # Database seeding
+│ ├── pages/
+│ │ ├── Dashboard.tsx # Main dashboard with stats
+│ │ ├── Balances.tsx # Balance list with filters
+│ │ ├── BalanceDetail.tsx # Balance timeline view
+│ │ ├── Outbox.tsx # Message outbox with response simulation
+│ │ ├── Admin.tsx # Admin tools
+│ │ └── PaymentPage.tsx # Payment portal
+│ ├── App.tsx # Main React app
+│ ├── App.css # Styles
+│ └── main.tsx # React entry point
 ├── package.json
 └── README.md
 ```
@@ -184,7 +182,7 @@ dental-ar-system/
 **Core Entities:**
 - `Practice`: Dental practice information
 - `Patient`: Synthetic patient data (no PHI)
-- `Balance`: Patient balances from "Dentrix sync"
+- `Balance`: Patient balances from PMS sync
 - `BalanceState`: Stage history for each balance
 - `OutreachEvent`: All messages sent
 - `PaymentEvent`: All payments received
@@ -225,7 +223,7 @@ Every action is recorded:
 - Patient responses (simulated)
 - Payment events
 
-### 5. Dentrix Integration Simulator
+### 5. PMS Integration Simulator
 - CSV upload ready (not implemented in POC)
 - Button to generate synthetic balances
 - Simulates "balance created after visit" workflow
@@ -245,8 +243,8 @@ Rules are stored in the database and can be edited via the API:
 ```typescript
 PUT /api/rules/:id
 {
-  "conditions": { "days": 7 },
-  "actionParams": { "templateKey": "REMINDER_1" }
+"conditions": { "days": 7 },
+"actionParams": { "templateKey": "REMINDER_1" }
 }
 ```
 
@@ -303,10 +301,10 @@ PUT /api/rules/:id
 
 Intentional or in-progress gaps:
 
-1. **Integrations:** Full **Dentrix** (or other PMS) sync, production **SMS/email**, and **payment processor** paths are not all wired for production; see `SCREENS-API-DATA-MAP` and Phase 3–4 in `OUTSTANDING-FIXES-PRODUCT-READY.md`.
+1. **Integrations:** Full **PMS** sync (Dentrix, AbelDent, or other systems), production **SMS/email**, and **payment processor** paths are not all wired for production; see `SCREENS-API-DATA-MAP` and Phase 3–4 in `OUTSTANDING-FIXES-PRODUCT-READY.md`.
 2. **Identity:** **Practice shared login** today; per-user accounts, RBAC, and password reset are backlog items unless explicitly in scope.
 3. **Single-practice focus:** Data model can represent more; **UI** often assumes one practice per deployment.
-4. **Dentrix import:** **CSV** path / UI not fully productized; Admin “generate” supports demos.
+4. **PMS import:** **CSV** path / UI not fully productized; Admin “generate” supports demos.
 5. **Rules engine:** Runs in the **Node** process (not a distributed queue yet).
 6. **UI/UX:** Pilot-ready v1 shell (CollectRx green, Inter, dark mode, shared components); Lighthouse and stakeholder sign-off tracked in Phase 5 PRD.
 7. **Some UI routes** call APIs not yet on this server (e.g. certain benefits / patient-balance list routes)—see the screens map doc.
@@ -316,32 +314,32 @@ Intentional or in-progress gaps:
 For production deployment, you would need:
 
 1. **Real Integrations**:
-   - Dentrix API or HL7 integration
-   - Twilio for SMS
-   - SendGrid for email
-   - Stripe/Square for payments
+- PMS API or HL7 integration (Dentrix, AbelDent, or other systems, depending on the practice)
+- Twilio for SMS
+- SendGrid for email
+- Stripe/Square for payments
 
 2. **Authentication & Authorization**:
-   - User accounts with roles
-   - Practice/office level permissions
-   - Audit log access controls
+- User accounts with roles
+- Practice/office level permissions
+- Audit log access controls
 
 3. **Scalability**:
-   - Move to PostgreSQL
-   - Distributed task queue (Bull/BullMQ)
-   - Multiple worker processes
+- Move to PostgreSQL
+- Distributed task queue (Bull/BullMQ)
+- Multiple worker processes
 
 4. **Compliance**:
-   - HIPAA compliance measures
-   - Encrypted data at rest and in transit
-   - Comprehensive audit logs
-   - BAA agreements with all vendors
+- HIPAA compliance measures
+- Encrypted data at rest and in transit
+- Comprehensive audit logs
+- BAA agreements with all vendors
 
 5. **UX Improvements**:
-   - Real-time updates via WebSocket
-   - CSV upload UI
-   - Advanced rule builder
-   - Reporting and analytics
+- Real-time updates via WebSocket
+- CSV upload UI
+- Advanced rule builder
+- Reporting and analytics
 
 ## 📝 License
 
