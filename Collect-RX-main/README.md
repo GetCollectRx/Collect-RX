@@ -1,4 +1,6 @@
 # CollectRx — Dental A/R execution
+<!-- ops: fly redeploy trigger, no functional change -->
+
 
 Web application for dental practices to run **rules-based** patient A/R workflows: stages, messaging, and payment collection, with a full **audit trail** in the app database.
 
