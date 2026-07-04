@@ -128,7 +128,9 @@ export function LoginPage() {
           </p>
           <form onSubmit={onPlatformUserSubmit}>
             <div className="crx-portal-field">
+              <label htmlFor="crx-platform-email" className="crx-portal-label">Email</label>
               <input
+                id="crx-platform-email"
                 type="email"
                 className="crx-portal-input"
                 placeholder="ops@collectrx.ca"
@@ -139,7 +141,9 @@ export function LoginPage() {
               />
             </div>
             <div className="crx-portal-field">
+              <label htmlFor="crx-platform-pw" className="crx-portal-label">Password</label>
               <input
+                id="crx-platform-pw"
                 type="password"
                 className="crx-portal-input"
                 placeholder="Password"
