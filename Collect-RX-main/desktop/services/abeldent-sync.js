@@ -17,7 +17,6 @@
  *
  * Optional:
  *   ABELDENT_SCHEMA_MAP      Path to schema-map.json (see schema-map.example.json + discover-schema.cjs)
- *   ABELDENT_PATIENT_LEDGER_TABLE  Override patient ledger table name only
  */
 
 'use strict';
@@ -30,7 +29,6 @@ const { URL } = require('url');
 const {
   mergeMap,
   buildClaimsQuery,
-  buildPatientBalanceQuery,
 } = require('./abeldentQueryTemplates.cjs');
 
 // Config
@@ -41,7 +39,6 @@ const API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
 const PRACTICE_ID = process.env.ABELDENT_PRACTICE_ID || null;
 const INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
 const MIN_DAYS = parseInt(process.env.ABELDENT_MIN_DAYS, 10) || 14;
-const MIN_DAYS_BALANCE = parseInt(process.env.ABELDENT_MIN_DAYS_BALANCE, 10) || 7;
 
 /** Schema map path (JSON) — from `scripts/sync-query-builder.cjs` + discover-schema; optional. */
 function loadSchemaMapOverrides() {
@@ -54,9 +51,6 @@ function loadSchemaMapOverrides() {
 }
 
 const _schemaMap = mergeMap(loadSchemaMapOverrides());
-if (process.env.ABELDENT_PATIENT_LEDGER_TABLE) {
-  _schemaMap.patientLedger.table = process.env.ABELDENT_PATIENT_LEDGER_TABLE.replace(/[^A-Za-z0-9_]/g, '');
-}
 
 const CLAIMS_SYNC_SQL = buildClaimsQuery(_schemaMap);
 
@@ -163,18 +157,6 @@ function postToRailway(payload, endpoint) {
   });
 }
 
-const PATIENT_BALANCE_SQL = buildPatientBalanceQuery(_schemaMap);
-
-async function fetchPatientBalances() {
-  if (!sql) throw new Error('mssql not available');
-  const pool = await sql.connect(sqlConfig);
-  const request = pool.request();
-  request.input('minDaysBalance', sql.Int, MIN_DAYS_BALANCE);
-  const result = await request.query(PATIENT_BALANCE_SQL);
-  await pool.close();
-  return result.recordset;
-}
-
 // Sync cycles
 async function runClaimsSync() {
   sendStatus('syncing');
@@ -197,25 +179,12 @@ async function runClaimsSync() {
   }
 }
 
-async function runPatientBalanceSync() {
-  try {
-    const rows = await fetchPatientBalances();
-    const result = await postToRailway(rows, '/api/patients/balances');
-    sendStatus('ok', `Patient balances: ${result.imported ?? 0} new, ${result.updated ?? 0} updated`);
-    return true;
-  } catch (err) {
-    sendStatus('error', `Patient balance sync failed: ${err.message}`);
-    return false;
-  }
-}
-
 async function runAllSyncs() {
   if (!sql) {
     sendStatus('offline', 'mssql driver not available');
     return;
   }
   await runClaimsSync();
-  await runPatientBalanceSync();
 }
 
 // Listen for manual trigger

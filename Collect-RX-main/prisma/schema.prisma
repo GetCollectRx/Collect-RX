@@ -771,8 +771,6 @@ enum WorkItemType {
 
 enum WorkItemSource {
   insurance_claim
-  patient_balance
-  outreach_balance
 
   @@map("work_item_source")
 }

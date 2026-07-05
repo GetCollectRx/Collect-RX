@@ -36,28 +36,6 @@ const DEFAULT_MAP = {
       claimStatus: 'ClaimStatus',
     },
   },
-  patientLedger: {
-    table: 'PatientLedger',
-    alias: 'pl',
-    patientTable: 'Patients',
-    patientAlias: 'p',
-    joinOn: { ledger: 'PatientID', patient: 'PatientID' },
-    columns: {
-      patientId: 'PatientID',
-      patientFirstName: 'FirstName',
-      patientLastName: 'LastName',
-      patientEmail: 'Email',
-      cellPhone: 'CellPhone',
-      homePhone: 'HomePhone',
-      procedureCode: 'ProcedureCode',
-      procedureDescription: 'ProcedureDescription',
-      treatmentDate: 'TreatmentDate',
-      adjudicationDate: 'AdjudicationDate',
-      fee: 'Fee',
-      insurancePaid: 'InsurancePaid',
-      patientPaid: 'PatientPaid',
-    },
-  },
 };
 
 /**
@@ -75,15 +53,6 @@ function mergeMap(overrides) {
     }
     if (o.claims.joinOn && typeof o.claims.joinOn === 'object') {
       Object.assign(base.claims.joinOn, o.claims.joinOn);
-    }
-  }
-  if (o.patientLedger && typeof o.patientLedger === 'object') {
-    Object.assign(base.patientLedger, o.patientLedger);
-    if (o.patientLedger.columns && typeof o.patientLedger.columns === 'object') {
-      Object.assign(base.patientLedger.columns, o.patientLedger.columns);
-    }
-    if (o.patientLedger.joinOn && typeof o.patientLedger.joinOn === 'object') {
-      Object.assign(base.patientLedger.joinOn, o.patientLedger.joinOn);
     }
   }
   return base;
@@ -126,47 +95,8 @@ function buildClaimsQuery(map) {
 `.trim();
 }
 
-/**
- * @param {typeof DEFAULT_MAP} map
- * @returns {string}
- */
-function buildPatientBalanceQuery(map) {
-  const { patientLedger: plm } = map;
-  const pl = ident(plm.alias);
-  const p = ident(plm.patientAlias);
-  const tPl = ident(plm.table);
-  const tPt = ident(plm.patientTable);
-  const c = plm.columns;
-  const jl = ident(plm.joinOn.ledger);
-  const jp = ident(plm.joinOn.patient);
-
-  return `
-    SELECT
-      CAST(${p}.${ident(c.patientId)} AS VARCHAR(20)) AS abeldent_patient_id,
-      ${p}.${ident(c.patientFirstName)} AS patient_first_name,
-      ${p}.${ident(c.patientLastName)} AS patient_last_name,
-      ${p}.${ident(c.patientEmail)} AS patient_email,
-      COALESCE(${p}.${ident(c.cellPhone)}, ${p}.${ident(c.homePhone)}) AS patient_phone,
-      CAST(${pl}.${ident(c.procedureCode)} AS VARCHAR(20)) AS procedure_code,
-      ${pl}.${ident(c.procedureDescription)} AS procedure_description,
-      CONVERT(VARCHAR(10), ${pl}.${ident(c.treatmentDate)}, 23) AS treatment_date,
-      CONVERT(VARCHAR(10), ${pl}.${ident(c.adjudicationDate)}, 23) AS adjudication_date,
-      ${pl}.${ident(c.fee)} AS amount_billed,
-      COALESCE(${pl}.${ident(c.insurancePaid)}, 0) AS insurance_paid,
-      (${pl}.${ident(c.fee)} - COALESCE(${pl}.${ident(c.insurancePaid)}, 0) - COALESCE(${pl}.${ident(c.patientPaid)}, 0)) AS patient_owes,
-      DATEDIFF(day, ${pl}.${ident(c.adjudicationDate)}, GETDATE()) AS days_since_adjudication
-    FROM ${tPl} ${pl}
-    JOIN ${tPt} ${p} ON ${p}.${jp} = ${pl}.${jl}
-    WHERE ${pl}.${ident(c.adjudicationDate)} IS NOT NULL
-      AND (${pl}.${ident(c.fee)} - COALESCE(${pl}.${ident(c.insurancePaid)}, 0) - COALESCE(${pl}.${ident(c.patientPaid)}, 0)) > 0
-      AND DATEDIFF(day, ${pl}.${ident(c.adjudicationDate)}, GETDATE()) >= @minDaysBalance
-    ORDER BY patient_owes DESC
-  `.trim();
-}
-
 module.exports = {
   DEFAULT_MAP,
   mergeMap,
   buildClaimsQuery,
-  buildPatientBalanceQuery,
 };

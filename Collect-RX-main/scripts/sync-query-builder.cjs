@@ -14,7 +14,6 @@ const path = require('path');
 const {
   mergeMap,
   buildClaimsQuery,
-  buildPatientBalanceQuery,
 } = require('../desktop/services/abeldentQueryTemplates.cjs');
 
 function parseArgs(argv) {
@@ -66,7 +65,7 @@ function main() {
   --map path              Schema map JSON (see schema-map.example.json)
   --discovery path        Output from discover-schema.cjs (for --validate)
   --validate              Ensure mapped tables/columns exist in discovery file
-  --emit-queries path     Write claimsSql + patientBalancesSql JSON for inspection / docs
+  --emit-queries path     Write claimsSql JSON for inspection / docs
 `);
     process.exit(0);
   }
@@ -93,7 +92,7 @@ function main() {
       checks.push({ ok, label: `${label}: [${schema}].[${table}].[${colName}]` });
     }
 
-    const { claims, patientLedger } = map;
+    const { claims } = map;
     const ct = resolveTable(discovery, claims.table);
     const pt = resolveTable(discovery, claims.patientTable);
     const claimsOnPatient = new Set(['patientFirstName', 'patientLastName']);
@@ -103,23 +102,6 @@ function main() {
     }
     checkLogical('claims.join (ic)', ct.table, claims.joinOn.claims);
     checkLogical('claims.join (p)', pt.table, claims.joinOn.patient);
-
-    const plt = resolveTable(discovery, patientLedger.table);
-    const ppt = resolveTable(discovery, patientLedger.patientTable);
-    const ledgerOnPatient = new Set([
-      'patientId',
-      'patientFirstName',
-      'patientLastName',
-      'patientEmail',
-      'cellPhone',
-      'homePhone',
-    ]);
-    for (const [k, v] of Object.entries(patientLedger.columns)) {
-      const tbl = ledgerOnPatient.has(k) ? ppt.table : plt.table;
-      checkLogical(`patientLedger.${k}`, tbl, v);
-    }
-    checkLogical('ledger.join (pl)', plt.table, patientLedger.joinOn.ledger);
-    checkLogical('ledger.join (p)', ppt.table, patientLedger.joinOn.patient);
 
     const failed = checks.filter((c) => !c.ok);
     for (const c of checks) {
@@ -137,7 +119,6 @@ function main() {
       version: 1,
       generatedAt: new Date().toISOString(),
       claimsSql: buildClaimsQuery(map),
-      patientBalancesSql: buildPatientBalanceQuery(map),
     };
     const outPath = path.isAbsolute(args.emitQueries)
       ? args.emitQueries
