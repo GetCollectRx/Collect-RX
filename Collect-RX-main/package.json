@@ -78,6 +78,7 @@
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@clickhouse/client": "^1.19.0",
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.3.0",
     "@prisma/client": "^5.8.0",
     "@sendgrid/eventwebhook": "^8.0.0",
