@@ -100,7 +100,7 @@
     "lucide-react": "^1.17.0",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.3",
     "notebooklm-sdk": "^0.3.4",
     "pg": "^8.11.3",
     "rate-limit-redis": "^5.0.0",
