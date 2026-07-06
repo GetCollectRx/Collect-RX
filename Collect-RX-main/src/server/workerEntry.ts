@@ -86,7 +86,7 @@ worker.on('failed', (job, err) => {
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
 
-/** API uses PORT (3000) in dev; worker health must not collide. Railway worker service uses PORT. */
+/** API uses PORT (3000) in dev; worker health must not collide. The Fly worker process uses PORT. */
 function resolveWorkerHealthPort(): number {
   if (process.env.WORKER_HEALTH_PORT) {
     return parseInt(process.env.WORKER_HEALTH_PORT, 10);

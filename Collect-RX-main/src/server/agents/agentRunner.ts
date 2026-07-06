@@ -18,7 +18,7 @@ import { appendAuditLog } from '../audit/auditLog.js';
 
 // ── Path resolution ───────────────────────────────────────────────────────────
 // agents/ is bundled inside Collect-RX-main/ (copied at repo level, included in Docker image).
-// Railway: AGENTS_DIR=/app/agents (set in env vars).
+// Production: AGENTS_DIR=/app/agents (set in env vars).
 // Local dev: defaults to ./agents relative to Collect-RX-main cwd.
 function getAgentsDir(): string {
   return process.env.AGENTS_DIR ?? path.resolve(process.cwd(), './agents');

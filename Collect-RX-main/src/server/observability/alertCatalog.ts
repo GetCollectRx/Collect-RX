@@ -43,7 +43,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
     ],
     suggestedFixes: [
       'Run: npm run check:env',
-      'Set missing variables in Railway/host (see ✗ lines)',
+      'Set missing variables with fly secrets set (see ✗ lines)',
       'Compare with Collect-RX-main/.env.example',
     ],
   },
@@ -58,7 +58,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       '/api/health/ready will return 503',
     ],
     suggestedFixes: [
-      'Confirm Postgres is up (Railway plugin / host console)',
+      'Confirm Postgres is up (fly postgres list / fly status)',
       'Run: npm run db:migrate',
       'Run: npm run db:verify-tables',
       'Verify DATABASE_URL uses TLS in production (sslmode=require)',
@@ -90,7 +90,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
     ],
     suggestedFixes: [
       'Run: npm run smoke:live',
-      'Check Railway deploy logs and recent migrations',
+      'Check fly logs and recent migrations',
       'curl /api/health/ready on the public URL',
     ],
   },
@@ -104,9 +104,9 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'No webhooks (Stripe, Vapi, SendGrid) are being processed',
     ],
     suggestedFixes: [
-      'Check Railway service status / restart collectrx-web',
+      'Check fly status -a collect-rx / fly machine restart',
       'Review deploy logs for crash on boot',
-      'Verify PORT and healthcheckPath in railway.toml',
+      'Verify internal_port and http_service checks in fly.toml',
     ],
   },
   readiness: {

@@ -324,7 +324,7 @@ export default function Admin() {
       <Card>
         <CardHeader
           title="Integrations (go-live)"
-          subtitle="Confirms env and Stripe Connect for this practice. Set keys in your host (e.g. Railway Variables), not in git."
+          subtitle="Confirms env and Stripe Connect for this practice. Set keys in your host (e.g. fly secrets), not in git."
         />
         {integrationsLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>

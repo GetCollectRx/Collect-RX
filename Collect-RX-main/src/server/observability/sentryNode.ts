@@ -24,7 +24,7 @@ export function initSentry(): void {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || 'development',
-    release: process.env.SENTRY_RELEASE || process.env.RAILWAY_GIT_COMMIT_SHA,
+    release: process.env.SENTRY_RELEASE,
     tracesSampleRate: Math.min(1, Math.max(0, Number.isNaN(traces) ? 0 : traces)),
     integrations: [Sentry.expressIntegration()],
   });

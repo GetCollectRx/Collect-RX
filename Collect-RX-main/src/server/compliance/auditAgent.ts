@@ -239,7 +239,7 @@ function checkEncryption(): ComplianceCheck[] {
         ? 'CRITICAL: PHI_ENCRYPTION_AT_REST=true but PHI_ENCRYPTION_KEY is not set — encryption will throw at runtime.'
         : 'PHI_ENCRYPTION_KEY not set; PHI_ENCRYPTION_AT_REST not enabled. Acceptable for dev/test; required in production.',
     {
-      recommendation: !keySet ? 'Set PHI_ENCRYPTION_KEY from your KMS / Railway secret manager and enable PHI_ENCRYPTION_AT_REST=true in production.' : undefined,
+      recommendation: !keySet ? 'Set PHI_ENCRYPTION_KEY from your KMS / fly secrets and enable PHI_ENCRYPTION_AT_REST=true in production.' : undefined,
       reference: 'PHIPA s.12; docs/operations/DATA-ENCRYPTION.md',
     },
   ));
@@ -522,7 +522,7 @@ function checkRateLimiting(): ComplianceCheck[] {
         : 'rateLimiter.ts: RedisStore code present but REDIS_URL not set — falling back to in-process counters. Multi-replica deployments may under-enforce.'
       : 'MISSING: Redis rate limit store not found.',
     {
-      recommendation: !redisEnvSet ? 'Set REDIS_URL (Railway Redis add-on) so rate limits are accurate across all API replicas.' : undefined,
+      recommendation: !redisEnvSet ? 'Set REDIS_URL (Fly Redis) so rate limits are accurate across all API replicas.' : undefined,
     },
   ));
 

@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CollectRx — Express Backend Server
-// Port: 3001 (Railway)
+// Port: 3000 (Fly.io)
 //
 // Route map:
 //   /api/auth/*            authRoutes.ts (login, logout, me)
@@ -133,9 +133,9 @@ const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // Without these, an uncaught error anywhere (e.g. a background async path) kills the
-// process silently — Railway then just sees the healthcheck fail with no indication why.
+// process silently — the platform then just sees the healthcheck fail with no indication why.
 // Per Node's own guidance, the process is in an unknown state after either event, so we
-// log full detail for visibility in Railway logs and then exit so the platform restarts
+// log full detail for visibility in fly logs and then exit so the platform restarts
 // the container cleanly, instead of leaving a half-broken process running.
 process.on('uncaughtException', (err) => {
   console.error('[server] FATAL: uncaughtException —', err);
@@ -154,7 +154,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
+// Behind Fly / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
 if (
   process.env.TRUST_PROXY === '1' ||
   process.env.TRUST_PROXY === 'true' ||
@@ -181,7 +181,7 @@ app.use(
 if (process.env.NODE_ENV === 'production' && !process.env.VAPI_WEBHOOK_SECRET) {
   console.error(
     '[server] FATAL: VAPI_WEBHOOK_SECRET is not set in production. ' +
-    'Set this env var in Railway to enable webhook signature verification. Refusing to start.',
+    'Set this env var (fly secrets set) to enable webhook signature verification. Refusing to start.',
   );
   process.exit(1);
 }
@@ -488,7 +488,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
   // ── Autonomous agent system ──────────────────────────────────────────────────
   // 23 cron-based agents + 6 event-triggered agents.
-  // Activate by setting AGENTS_ENABLED=true in Railway env vars.
+  // Activate by setting AGENTS_ENABLED=true in the host env vars.
   // Also requires GEMINI_API_KEY (already used by learning + marketing modules)
   // and AGENTS_DIR pointing to the agents/ folder (defaults to ../../agents).
   startScheduledAgents(prisma);
