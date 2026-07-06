@@ -175,7 +175,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canResolveEscalations: true,
         ...noGateOps,
         isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/portfolio',
+        homeRoute: '/group-dashboard',
       }
 
     default:

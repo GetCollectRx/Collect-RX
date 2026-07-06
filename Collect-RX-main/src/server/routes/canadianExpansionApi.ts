@@ -7,6 +7,9 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog';
+import { getComplianceDisclosures } from '../canadianExpansion/complianceDisclosures';
+import { computeEightDimensions } from '../canadianExpansion/eightDimensionMetrics';
+import { getItransStatus } from '../canadianExpansion/itrans2';
 import { estimatePrecisionGapWithDb } from '../canadianExpansion/gapEstimator';
 import {
   importFeeGuide,
@@ -360,6 +363,64 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
       return res.json({ ok: true });
     } catch (e) {
       return handleError('writeback-ack', e, res);
+    }
+  });
+
+  /** MOD-02 — Law 25 / AIDA transparency / CRTC ADAD disclosure bundle */
+  r.get('/canadian/compliance/disclosures', (_req: Request, res: Response) => {
+    return res.json(getComplianceDisclosures());
+  });
+
+  /** Phase-2 command metrics: reconsideration funnel, write-backs, 8 dimensions, ITRANS 2 */
+  r.get('/analytics/canadian-phase2', async (req: Request, res: Response) => {
+    try {
+      const pid = practiceId(req);
+      const now = new Date();
+      const [
+        reconsiderationCasesTotal,
+        reconsiderationPipelineActive,
+        reconsiderationWindowAttention,
+        pmsWritebacksLast7Days,
+        pmsWritebacksPending,
+        eightDimensions,
+      ] = await Promise.all([
+        prisma.cdcpReconsiderationCase.count({ where: { practiceId: pid } }),
+        prisma.cdcpReconsiderationCase.count({
+          where: {
+            practiceId: pid,
+            status: { in: ['open', 'pending_evidence', 'submitted'] },
+          },
+        }),
+        prisma.cdcpReconsiderationCase.count({
+          where: {
+            practiceId: pid,
+            status: { in: ['open', 'pending_evidence'] },
+            denialDate: { gte: new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000) },
+          },
+        }),
+        prisma.pmsWritebackLog.count({
+          where: {
+            practiceId: pid,
+            createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+          },
+        }),
+        prisma.pmsWritebackLog.count({
+          where: { practiceId: pid, processedAt: null },
+        }),
+        computeEightDimensions(prisma, pid),
+      ]);
+      return res.json({
+        reconsiderationCasesTotal,
+        reconsiderationPipelineActive,
+        reconsiderationWindowAttention,
+        pmsWritebacksLast7Days,
+        pmsWritebacksPending,
+        itrans2: getItransStatus(now),
+        eightDimensions,
+        eightDimensionLabels: eightDimensions.map((d) => ({ id: d.id, name: d.name })),
+      });
+    } catch (e) {
+      return handleError('canadian-phase2 analytics', e, res);
     }
   });
 

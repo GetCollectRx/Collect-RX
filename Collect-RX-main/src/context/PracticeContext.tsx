@@ -3,7 +3,7 @@ import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
 import { isPracticeRole, type AuthRole, type PracticeRole } from '../lib/authTypes'
 import { authRoleToBriefPersona } from '../lib/personaRole'
-import { isReadOnlyRole, type UserRole } from '../types/userRole'
+import { type UserRole } from '../types/userRole'
 import { configureApiSession } from '../lib/practiceScopedApi'
 import type { SessionHealthPayload } from '../types/sessionHealth'
 
@@ -138,7 +138,10 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const isPlatformDevFlag = role === 'platform_dev'
   const isFrontDesk = userRole === 'front_desk'
   const isPracticeOwner = userRole === 'practice_owner'
-  const isReadOnly = userRole ? isReadOnlyRole(userRole) || role === 'practice_owner' || role === 'associate_dentist' || role === 'accountant' : false
+  // Keyed on the raw session role, NOT the persona: office_manager and
+  // billing_coordinator collapse to the practice_owner persona but are the
+  // operator roles — persona-based read-only would strip their controls.
+  const isReadOnly = role === 'practice_owner' || role === 'associate_dentist' || role === 'accountant'
   const deskRole: 'owner' | 'front_desk' | null = userRole === 'front_desk' ? 'front_desk' : userRole === 'practice_owner' ? 'owner' : null
 
   const stateSetters = { setPractices, setPracticeId, setRole, setPhiAccess, setSessionUser, setSubscription, setAuthState, setSessionHealth }

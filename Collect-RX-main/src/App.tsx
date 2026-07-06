@@ -15,6 +15,8 @@ import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
 import PracticeBillingPage   from './pages/PracticeBillingPage'
 import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
+import CanadianExpansion     from './pages/CanadianExpansion'
+import GroupDashboard        from './pages/GroupDashboard'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
@@ -59,8 +61,22 @@ function isPostAuthEntryPath(pathname: string): boolean {
   return path === '/' || path === '/login'
 }
 
+/**
+ * Practice-user group admins (sessionUser present) home on the PHI-free
+ * GroupDashboard. Platform billing-ops/admin sessions also carry the legacy
+ * shim role 'group_admin' but have no sessionUser — they keep the
+ * billing-ops persona home (/portfolio), whose APIs accept their JWT.
+ */
+function isPracticeGroupAdmin(role: string | null, sessionUser: unknown): boolean {
+  return role === 'group_admin' && sessionUser != null
+}
+
+function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
+  return groupAdmin ? '/group-dashboard' : HOME_ROUTE[userRole]
+}
+
 function PublicDemoRoute() {
-  const { authState, userRole } = usePractice()
+  const { authState, userRole, role, sessionUser } = usePractice()
   if (authState === 'loading') {
     return (
       <div
@@ -72,17 +88,28 @@ function PublicDemoRoute() {
     )
   }
   if (authState === 'ready' && userRole) {
-    return <Navigate to={HOME_ROUTE[userRole]} replace />
+    return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
   }
   return <PilotDemo />
 }
 
 function AppHomeFallback() {
-  const { userRole, authState } = usePractice()
+  const { userRole, authState, role, sessionUser } = usePractice()
   if (authState === 'anon' || !userRole) {
     return <Navigate to="/login" replace />
   }
-  return <Navigate to={HOME_ROUTE[userRole]} replace />
+  return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
+}
+
+function GroupAdminRoute({ children }: { children: ReactNode }) {
+  const { authState, role } = usePractice()
+  if (authState === 'anon') {
+    return <Navigate to="/login" replace />
+  }
+  if (authState === 'ready' && role !== 'group_admin') {
+    return <AppHomeFallback />
+  }
+  return <>{children}</>
 }
 
 type NavItem = { to: string; exact: boolean; label: string; icon: NavIconName }
@@ -133,7 +160,10 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
   },
   {
     label: 'Before visit',
-    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
+    ],
   },
   {
     label: 'Account',
@@ -148,6 +178,10 @@ const AUDITOR_NAV: NavItem[] = [
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/reports/queue', exact: true, label: 'Queue stats', icon: 'workqueue' },
+]
+
+const GROUP_ADMIN_NAV: NavItem[] = [
+  { to: '/group-dashboard', exact: true, label: 'Group overview', icon: 'portfolio' },
 ]
 
 const BILLING_OPS_NAV: NavItem[] = [
@@ -178,7 +212,10 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
   },
   {
     label: 'Account',
-    items: [{ to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' }],
+    items: [
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+    ],
   },
 ]
 
@@ -274,21 +311,28 @@ function sidebarNavSections(
   userRole: string | null,
   isPlatformDev: boolean,
   isPracticeOwner: boolean,
+  groupAdmin?: boolean,
+  role?: string | null,
 ): NavSection[] {
+  // Raw-role checks come first: office_manager and billing_coordinator
+  // collapse to the practice_owner persona, so their authored navs are only
+  // reachable via the session role.
   const personaNav: NavSection[] =
-    userRole === 'auditor'
+    groupAdmin
+      ? [{ label: 'Group', items: GROUP_ADMIN_NAV }]
+      : role === 'office_manager'
+      ? OFFICE_MANAGER_SECTIONS
+      : role === 'billing_coordinator'
+      ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
+      : userRole === 'auditor'
       ? [{ label: 'Reports', items: AUDITOR_NAV }]
       : userRole === 'billing_ops_manager'
         ? [{ label: 'Operations', items: BILLING_OPS_NAV }]
         : userRole === 'platform_admin' || isPlatformDev
           ? [{ label: 'Platform', items: PLATFORM_ADMIN_NAV }]
-          : userRole === 'office_manager'
-            ? OFFICE_MANAGER_SECTIONS
-            : userRole === 'billing_coordinator'
-              ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
-              : isPracticeOwner
-                ? PRACTICE_OWNER_SECTIONS
-                : NAV_SECTIONS
+          : isPracticeOwner
+            ? PRACTICE_OWNER_SECTIONS
+            : NAV_SECTIONS
 
   if (isPlatformDev && userRole !== 'platform_admin') {
     return NAV_SECTIONS.map((section) => ({
@@ -301,7 +345,7 @@ function sidebarNavSections(
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
-  const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole } = usePractice()
+  const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole, role, sessionUser } = usePractice()
 
   if (isFrontDesk) {
     return (
@@ -318,7 +362,7 @@ function Sidebar() {
     )
   }
 
-  const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner)
+  const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner, isPracticeGroupAdmin(role, sessionUser), role)
 
   return (
     <aside className="crx-sidebar" aria-label="Main navigation">
@@ -401,7 +445,7 @@ function AppShell() {
           <Route path="/reports/aging" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin']}><AgingReport /></ProtectedRoute>} />
           <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
           <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
           <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
@@ -427,9 +471,11 @@ function AppShell() {
           <Route path="/estimate"      element={<Navigate to="/insurance" replace />} />
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
-          <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
+          <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
+          <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
+          <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
         </PlatformDevRouteGuard>
@@ -470,7 +516,7 @@ function AnonRoutes() {
 }
 
 function AuthGate() {
-  const { authState, loading, subscription, isPlatformDev, userRole } = usePractice()
+  const { authState, loading, subscription, isPlatformDev, userRole, role, sessionUser } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
   const [bootComplete, setBootComplete] = useState(false)
@@ -481,6 +527,8 @@ function AuthGate() {
     if (authReady) setBootComplete(true)
   }, [authReady])
 
+  const groupAdmin = isPracticeGroupAdmin(role, sessionUser)
+
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
     const redirect = consumeLoginRedirect()
@@ -489,9 +537,9 @@ function AuthGate() {
       return
     }
     if (isPostAuthEntryPath(location.pathname)) {
-      navigate(HOME_ROUTE[userRole], { replace: true })
+      navigate(signedInHomeRoute(groupAdmin, userRole), { replace: true })
     }
-  }, [loading, authState, userRole, location.pathname, navigate])
+  }, [loading, authState, userRole, groupAdmin, location.pathname, navigate])
 
   useEffect(() => {
     if (loading || authState !== 'anon') return
