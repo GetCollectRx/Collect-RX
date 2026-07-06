@@ -1,8 +1,7 @@
 /**
  * Pre-visit verification API routes.
  */
-import { Router, type Request, type Response } from 'express';
-import express from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import type { CarrierId } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';

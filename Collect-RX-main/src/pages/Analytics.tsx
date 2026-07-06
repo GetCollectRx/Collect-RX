@@ -569,25 +569,19 @@ export default function Analytics() {
         const [col, fun, pri, eff, trends, car, perf] = parsed.map((p) =>
           p.ok ? p.data : {},
         ) as [
-          Record<string, unknown>,
-          { funnel?: unknown[] },
-          { priorityBalances?: unknown[] },
-          { effectiveness?: unknown[] },
-          { trends?: unknown[] },
+          CollectionRate,
+          { funnel?: FunnelStage[] },
+          { priorityBalances?: PriorityBalance[] },
+          { effectiveness?: MsgEffectRow[] },
+          { trends?: PaymentTrendRow[] },
           { performance?: CarrierPerfRow[] },
           { success?: boolean; data?: typeof practicePerf },
         ]
-        // @ts-ignore — col shape validated at runtime; API response typed loosely
         setCollectionRate(col)
-        // @ts-ignore
         setFunnel(fun.funnel ?? [])
-        // @ts-ignore
         setPriorityBal(pri.priorityBalances ?? [])
-        // @ts-ignore
         setMsgEffect(eff.effectiveness ?? [])
-        // @ts-ignore
         setPaymentTrends(trends.trends ?? [])
-        // @ts-ignore
         setCarrierPerf(car.performance ?? [])
         setPracticePerf(perf.data ?? null)
         if (failed.length > 0) {

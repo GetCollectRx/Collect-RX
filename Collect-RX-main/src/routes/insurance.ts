@@ -549,7 +549,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         error: 'PHI token has expired — re-import the claim to refresh it',
       });
     }
-    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+    logger.audit('PHI_TOKEN_RESOLVED', {
       claimId,
       patientToken: claim.patientToken,
       callerContext: 'insurance-trigger',
