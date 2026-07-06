@@ -1,12 +1,12 @@
 /**
- * Demo seed — creates "Hasan Family Dental" with realistic AR data for the Dr. Hasan pilot demo.
+ * Demo seed — creates a fictional practice ("Maple Grove Dental") with realistic
+ * AR data for prospect demos. All names are fictional; no real practice data.
  *
  * Usage:
- *   DATABASE_URL=<railway_url> npx ts-node --esm scripts/seed-demo.ts
- *   or add to package.json: "demo:seed": "ts-node --esm scripts/seed-demo.ts"
+ *   npm run demo:seed              — seed (fails if the demo practice exists)
+ *   npm run demo:seed -- --reset   — delete the existing demo practice and reseed
  *
- * Sets login: demo@hasanfamilydental.ca / CollectRx2026!
- * Delete the practice afterwards: DELETE FROM practices WHERE name = 'Hasan Family Dental';
+ * Sets login: demo@maplegrovedental.ca / CollectRx2026!
  */
 
 import 'dotenv/config';
@@ -17,6 +17,28 @@ import { syncWorkItemsForPractice } from '../src/server/services/workQueueServic
 import { computeWorkQueueRankScore } from '../src/lib/workQueuePriority.js';
 
 const prisma = new PrismaClient();
+
+const DEMO_PRACTICE_NAME = 'Maple Grove Dental';
+const DEMO_EMAIL = 'demo@maplegrovedental.ca';
+const DEMO_OWNER_NAME = 'Dr. Morgan';
+/** Prior demo identity — cleaned up by --reset so old seeds don't linger. */
+const LEGACY_DEMO_PRACTICE_NAME = 'Hasan Family Dental';
+
+/** Delete a demo practice and every row the seed creates for it, children first. */
+async function deleteDemoPractice(practiceId: string): Promise<void> {
+  await prisma.callAttempt.deleteMany({ where: { claim: { practiceId } } });
+  await prisma.claimRecoveryEvent.deleteMany({ where: { practiceId } });
+  await prisma.claimRecoveryAction.deleteMany({ where: { practiceId } });
+  await prisma.adjudicationEvent.deleteMany({ where: { practiceId } });
+  await prisma.callQueue.deleteMany({ where: { practiceId } });
+  await prisma.appointmentVerification.deleteMany({ where: { practiceId } });
+  await prisma.cdcpReconsiderationCase.deleteMany({ where: { practiceId } });
+  await prisma.scheduledAppointment.deleteMany({ where: { practiceId } });
+  await prisma.workItem.deleteMany({ where: { practiceId } });
+  await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
+  await prisma.user.deleteMany({ where: { practiceId } });
+  await prisma.practice.delete({ where: { id: practiceId } });
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -187,15 +209,22 @@ async function main() {
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
   // ── 1. Practice ──────────────────────────────────────────────────────────
-  const existing = await prisma.practice.findFirst({ where: { name: 'Hasan Family Dental' } });
-  if (existing) {
-    console.log('⚠️  Demo practice already exists. Delete it first:\n   DELETE FROM practices WHERE name = \'Hasan Family Dental\';\n');
+  const reset = process.argv.includes('--reset');
+  const existing = await prisma.practice.findMany({
+    where: { name: { in: [DEMO_PRACTICE_NAME, LEGACY_DEMO_PRACTICE_NAME] } },
+  });
+  if (existing.length > 0 && !reset) {
+    console.log('⚠️  Demo practice already exists. Re-run with:\n   npm run demo:seed -- --reset\n');
     return;
+  }
+  for (const p of existing) {
+    await deleteDemoPractice(p.id);
+    console.log(`🗑️  Removed existing demo practice: ${p.name} (${p.id})`);
   }
 
   const practice = await prisma.practice.create({
     data: {
-      name: 'Hasan Family Dental',
+      name: DEMO_PRACTICE_NAME,
       timezone: 'America/Toronto',
       passwordHash,
     },
@@ -206,14 +235,14 @@ async function main() {
   await prisma.user.create({
     data: {
       practiceId: practice.id,
-      email: 'demo@hasanfamilydental.ca',
+      email: DEMO_EMAIL,
       passwordHash,
       role: 'practice_owner',
-      displayName: 'Dr. Hasan',
+      displayName: DEMO_OWNER_NAME,
       isActive: true,
     },
   });
-  console.log(`✅ User: demo@hasanfamilydental.ca / ${PASSWORD}`);
+  console.log(`✅ User: ${DEMO_EMAIL} / ${PASSWORD}`);
 
   // ── 3. Resolved claims (22) — drive "dollars recovered" KPI ───────────────
   const carriers: Array<'sun_life' | 'canada_life' | 'manulife' | 'green_shield' | 'rbc' | 'telus_adjudicare'> =
@@ -997,8 +1026,8 @@ async function main() {
   console.log('\n' + '─'.repeat(60));
   console.log('🎯  Demo data summary');
   console.log('─'.repeat(60));
-  console.log(`   Practice:      Hasan Family Dental (id: ${practice.id})`);
-  console.log(`   Login:         demo@hasanfamilydental.ca`);
+  console.log(`   Practice:      ${DEMO_PRACTICE_NAME} (id: ${practice.id})`);
+  console.log(`   Login:         ${DEMO_EMAIL}`);
   console.log(`   Password:      ${PASSWORD}`);
   console.log(`   Total claims:  ${totalClaims}`);
   console.log(`   Open AR:       $${totalOpen.toLocaleString()} CAD`);
@@ -1017,7 +1046,7 @@ async function main() {
     );
   }
   console.log('─'.repeat(60));
-  console.log('\n✨  Seed complete. Log in as demo@hasanfamilydental.ca → /work-queue or /pre-visit\n');
+  console.log('\n✨  Seed complete. Log in as ' + DEMO_EMAIL + ' → /work-queue or /pre-visit\n');
 }
 
 main()

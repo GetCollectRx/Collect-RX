@@ -55,7 +55,7 @@ This roadmap consolidates 24 recommendations from the Claims UX review. All item
 
 ## Demo walkthrough
 
-**Login:** `demo@hasanfamilydental.ca` / `CollectRx2026!`  
+**Login:** `demo@maplegrovedental.ca` / `CollectRx2026!`  
 **Seed:** `npm run demo:seed`
 
 | Claim ref | Story |

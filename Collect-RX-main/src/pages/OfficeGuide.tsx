@@ -114,8 +114,8 @@ export default function OfficeGuide() {
 
       <Card>
         <CardHeader
-          title="Demo walkthrough (Hasan Family Dental)"
-          subtitle="Run npm run demo:seed — login demo@hasanfamilydental.ca / CollectRx2026!"
+          title="Demo walkthrough (Maple Grove Dental)"
+          subtitle="Run npm run demo:seed — login demo@maplegrovedental.ca / CollectRx2026!"
         />
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Four story claims teach the call-to-resolution loop. Calls prefixed with <code className="text-xs">demo-</code>{' '}
