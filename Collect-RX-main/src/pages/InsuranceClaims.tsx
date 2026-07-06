@@ -141,6 +141,17 @@ export default function InsuranceClaims() {
     }
   }
 
+  // Shared-axis slide: content enters from the side you're moving toward.
+  // Direction is captured as state at the moment the tab changes (adjust-
+  // during-render pattern) so it survives the loading unmount/remount.
+  const [slide, setSlide] = useState<{ tab: ClaimsTab; dir: 'fwd' | 'back' }>({ tab, dir: 'fwd' })
+  if (slide.tab !== tab) {
+    const prevIndex = TAB_ITEMS.findIndex((t) => t.id === slide.tab)
+    const nextIndex = TAB_ITEMS.findIndex((t) => t.id === tab)
+    setSlide({ tab, dir: nextIndex >= prevIndex ? 'fwd' : 'back' })
+  }
+  const slideDir = slide.dir
+
   const loadClaims = useCallback(() => {
     if (!practiceId) return
     setLoading(true)
@@ -320,6 +331,7 @@ export default function InsuranceClaims() {
 
         <div className="p-6 space-y-5 max-w-6xl">
           <SubscriptionUsageCard compact />
+          <div key={tab} className={`crx-tab-panel crx-tab-panel--${slideDir} space-y-5`}>
           {callError && (
             <p className="text-sm text-red-600 dark:text-red-400" role="alert">{callError}</p>
           )}
@@ -658,6 +670,7 @@ export default function InsuranceClaims() {
               </TableContainer>
             </>
           )}
+          </div>
         </div>
       </div>
     </DataState>

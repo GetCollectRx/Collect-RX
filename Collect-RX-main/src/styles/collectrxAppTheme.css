@@ -1833,3 +1833,178 @@
   margin-top: 0.35rem;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Motion layer — fintech-precision micro-interactions.
+   One easing family (the house curve), transforms and shadows only: no color
+   values are introduced here beyond existing tokens.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.crx-app {
+  --crx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Metric cards: lift + ring shift on hover, stable numerals for count-up ── */
+.crx-app .practice-health-card {
+  transition:
+    transform 0.28s var(--crx-ease),
+    box-shadow 0.28s var(--crx-ease);
+  will-change: transform;
+}
+.crx-app .practice-health-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--crx-shadow-lift), 0 14px 28px -18px rgba(20, 45, 32, 0.35);
+}
+.crx-app .practice-health-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── "Needs you" action rows: slide on hover ── */
+.crx-app .practice-health-action {
+  transition:
+    transform 0.22s var(--crx-ease),
+    box-shadow 0.22s var(--crx-ease),
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+.crx-app .practice-health-action:hover {
+  transform: translateX(4px);
+}
+
+/* ── Arrow links: nudge forward ── */
+.crx-app .practice-health-link {
+  transition: transform 0.22s var(--crx-ease), color 0.15s ease;
+}
+.crx-app .practice-health-link:hover {
+  transform: translateX(3px);
+}
+
+/* ── Sidebar: icon lift on hover, active indicator grows in ── */
+.crx-app .crx-nav-icon {
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.22s var(--crx-ease);
+}
+.crx-app .crx-nav-item:hover .crx-nav-icon {
+  transform: translateY(-1px) scale(1.05);
+}
+@keyframes crx-indicator-grow {
+  from { height: 0; opacity: 0; }
+  to   { height: 55%; opacity: 1; }
+}
+.crx-app .crx-nav-item.active::before {
+  animation: crx-indicator-grow 0.32s var(--crx-ease) both;
+}
+
+/* ── Buttons: tactile press everywhere, no layout shift ── */
+.crx-app button:not(:disabled) {
+  transition:
+    transform 0.16s var(--crx-ease),
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.2s var(--crx-ease),
+    opacity 0.15s ease;
+}
+.crx-app button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* ── Stat tiles (CDCP, reports): lift + accent stripe draws in ── */
+.crx-app .crx-stat-tile {
+  transition:
+    transform 0.28s var(--crx-ease),
+    box-shadow 0.28s var(--crx-ease),
+    border-color 0.2s ease;
+  will-change: transform;
+}
+.crx-app .crx-stat-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--crx-shadow-lift), 0 14px 28px -18px rgba(20, 45, 32, 0.35);
+}
+@keyframes crx-stripe-draw {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.crx-app .crx-stat-accent {
+  transform-origin: left;
+  animation: crx-stripe-draw 0.7s var(--crx-ease) 0.15s both;
+}
+
+/* ── Tables: rows cascade in once, glide on hover ── */
+@keyframes crx-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.crx-app tbody tr {
+  transition: background-color 0.15s ease;
+  animation: crx-row-in 0.4s var(--crx-ease) both;
+}
+.crx-app tbody tr:nth-child(1)  { animation-delay: 0.02s; }
+.crx-app tbody tr:nth-child(2)  { animation-delay: 0.05s; }
+.crx-app tbody tr:nth-child(3)  { animation-delay: 0.08s; }
+.crx-app tbody tr:nth-child(4)  { animation-delay: 0.11s; }
+.crx-app tbody tr:nth-child(5)  { animation-delay: 0.14s; }
+.crx-app tbody tr:nth-child(6)  { animation-delay: 0.17s; }
+.crx-app tbody tr:nth-child(7)  { animation-delay: 0.20s; }
+.crx-app tbody tr:nth-child(8)  { animation-delay: 0.23s; }
+.crx-app tbody tr:nth-child(n+9) { animation-delay: 0.26s; }
+
+/* ── Sign-in portal: card settles in on load ── */
+@keyframes crx-portal-settle {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.crx-portal-card {
+  animation: crx-portal-settle 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Reduced motion: the layer disappears entirely ── */
+@media (prefers-reduced-motion: reduce) {
+  .crx-app .practice-health-card,
+  .crx-app .practice-health-action,
+  .crx-app .practice-health-link,
+  .crx-app .crx-nav-icon,
+  .crx-app button:not(:disabled),
+  .crx-app .crx-stat-tile {
+    transition: none;
+  }
+  .crx-app .crx-nav-item.active::before,
+  .crx-app .crx-stat-accent,
+  .crx-app tbody tr,
+  .crx-portal-card {
+    animation: none;
+  }
+  .crx-app .practice-health-card:hover,
+  .crx-app .practice-health-action:hover,
+  .crx-app .practice-health-link:hover,
+  .crx-app .crx-stat-tile:hover,
+  .crx-app .crx-nav-item:hover .crx-nav-icon {
+    transform: none;
+  }
+}
+
+/* ── Claims hub: shared-axis tab slide ── */
+@keyframes crx-tab-in-fwd {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes crx-tab-in-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.crx-app .crx-tab-panel--fwd {
+  animation: crx-tab-in-fwd 0.32s var(--crx-ease) both;
+}
+.crx-app .crx-tab-panel--back {
+  animation: crx-tab-in-back 0.32s var(--crx-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crx-app .crx-tab-panel--fwd,
+  .crx-app .crx-tab-panel--back {
+    animation: none;
+  }
+}

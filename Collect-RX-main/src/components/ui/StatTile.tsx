@@ -1,3 +1,5 @@
+import { AnimatedNumber } from './AnimatedNumber'
+
 type TrendDir = 'up' | 'down' | 'neutral'
 
 interface StatTileProps {
@@ -46,12 +48,12 @@ const trendArrow: Record<TrendDir, string> = {
 export function StatTile({ label, value, sub, trend, icon, accent = 'default' }: StatTileProps) {
   return (
     <div
-      className="relative bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 shadow-card overflow-hidden flex items-start gap-4"
+      className="crx-stat-tile relative bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 shadow-card overflow-hidden flex items-start gap-4"
       role="group"
       aria-label={label}
     >
       {/* Top accent stripe */}
-      <div className={`absolute top-0 left-0 right-0 h-[2.5px] ${accentBar[accent]}`} />
+      <div className={`crx-stat-accent absolute top-0 left-0 right-0 h-[2.5px] ${accentBar[accent]}`} />
 
       {icon && (
         <div
@@ -66,7 +68,7 @@ export function StatTile({ label, value, sub, trend, icon, accent = 'default' }:
           {label}
         </p>
         <p className={`text-2xl font-bold mt-1.5 leading-none tabular-nums ${accentValue[accent]}`}>
-          {value}
+          {typeof value === 'number' ? <AnimatedNumber value={value} /> : value}
         </p>
         <div className="flex items-center gap-2 mt-1.5">
           {sub && (

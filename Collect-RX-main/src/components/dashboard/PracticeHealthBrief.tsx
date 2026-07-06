@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { AnimatedNumber } from '../ui/AnimatedNumber'
 import type { DashboardLastPmsImport } from './PmsSyncBanner'
 import type { PracticePmsInfo } from '../../types/pms'
 
@@ -152,7 +153,9 @@ export function PracticeHealthBrief({
       <section className="practice-health-answers" aria-label="Key metrics">
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">What did we recover this month?</h2>
-          <MetricValue loading={loading}>{fmtCurrency(m.recovered30d)}</MetricValue>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.recovered30d} format={fmtCurrency} />
+          </MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
@@ -167,7 +170,9 @@ export function PracticeHealthBrief({
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">How much is at risk over 60 days?</h2>
-          <MetricValue loading={loading}>{fmtCurrency(m.agingOver60)}</MetricValue>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.agingOver60} format={fmtCurrency} />
+          </MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
@@ -182,7 +187,9 @@ export function PracticeHealthBrief({
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
           <h2 className="practice-health-q">What&apos;s blocking the next calls?</h2>
-          <MetricValue loading={loading}>{m.blockingGatesOpen + m.openEscalations}</MetricValue>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.blockingGatesOpen + m.openEscalations} />
+          </MetricValue>
           <p className="crx-sub">
             {loading
               ? 'Loading…'
