@@ -3,11 +3,12 @@
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
     "CollectRx" "$INSTDIR\CollectRx.exe --hidden"
 
-  ; Seed agent-config.json for IT (edit token + SQL server — no env var editing)
-  CreateDirectory "$COMMONAPPDATA\CollectRx"
-  IfFileExists "$COMMONAPPDATA\CollectRx\agent-config.json" +3 0
-    CopyFiles "$INSTDIR\resources\app\desktop\config\agent-config.example.json" \
-      "$COMMONAPPDATA\CollectRx\agent-config.json"
+  ; ProgramData\CollectRx\agent-config.json (ReadEnvStr — $COMMONAPPDATA is not defined in NSIS)
+  ReadEnvStr $0 ProgramData
+  CreateDirectory "$0\CollectRx"
+  IfFileExists "$0\CollectRx\agent-config.json" +3 0
+    CopyFiles "$INSTDIR\resources\desktop\config\agent-config.example.json" \
+      "$0\CollectRx\agent-config.json"
 !macroend
 
 !macro customUnInstall

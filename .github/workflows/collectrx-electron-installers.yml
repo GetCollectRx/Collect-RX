@@ -4,6 +4,9 @@
 
 name: CollectRx Electron installers
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -59,7 +62,7 @@ jobs:
           NODE_ENV: production
           COPYFILE_DISABLE: '1'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --no-install -p electron-builder electron-builder --mac
+        run: npx --no-install -p electron-builder electron-builder --mac --publish never
 
       - name: List dist-electron (debug)
         if: failure() || cancelled()
@@ -115,7 +118,7 @@ jobs:
         env:
           NODE_ENV: production
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --no-install -p electron-builder electron-builder --win --x64
+        run: npx --no-install -p electron-builder electron-builder --win --x64 --publish never
 
       - name: List dist-electron (debug)
         if: failure() || cancelled()
@@ -175,7 +178,7 @@ jobs:
         env:
           NODE_ENV: production
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --no-install -p electron-builder electron-builder --linux
+        run: npx --no-install -p electron-builder electron-builder --linux --publish never
 
       - name: Stage Linux artifacts
         run: |
