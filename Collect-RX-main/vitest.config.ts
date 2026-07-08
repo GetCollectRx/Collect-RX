@@ -17,6 +17,7 @@ export default defineConfig({
       VITEST: 'true',
       CONNECTOR_MONITOR_ENABLED: '0',
       DISABLE_SCHEDULER: '1',
+      REDIS_URL: '',
     },
     testTimeout: 30_000,
     hookTimeout: 60_000,
