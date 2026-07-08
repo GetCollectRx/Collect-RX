@@ -293,6 +293,9 @@ app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
   res.json(buildPublicHealthMetricsBody(req));
 });
 
+// Public download metadata — must not sit behind session auth (download page is unauthenticated).
+app.use('/api', createDesktopReleasesRouter());
+
 // Product telemetry ingestion — higher limit than standard /api (SDK batches every 5 s).
 app.use('/api/telemetry/events', telemetryEventsLimiter);
 
@@ -321,7 +324,6 @@ app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
-app.use('/api',            createDesktopReleasesRouter());
 app.use('/api/connector',  createConnectorRouter());
 app.use('/api/admin/connector', createConnectorAdminRouter());
 app.use('/api',            createBenefitsApiRouter(prisma));

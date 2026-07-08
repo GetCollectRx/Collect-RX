@@ -122,11 +122,21 @@ Option B — Deploy `fly.staging.toml` as app `collect-rx-staging` with separate
 
 ## 11. Deploy + migrate
 
+**Prerequisite:** Fly CLI logged into the org that owns `collect-rx`. If `fly apps list` is empty, switch org (`fly orgs list` → `fly config save -a collect-rx -o <org>`) or use the account that created the app.
+
 ```bash
-git push origin main
+cd Collect-RX-main
 fly deploy -a collect-rx
-# release_command runs prisma migrate deploy automatically
+# release_command in fly.toml runs: npx prisma migrate deploy
 ```
+
+Verify after deploy:
+
+```bash
+node scripts/go-live-verify.mjs https://www.collectrx.ca
+```
+
+Expected: health ok, ready, desktop releases endpoint, 401 on protected routes.
 
 ---
 

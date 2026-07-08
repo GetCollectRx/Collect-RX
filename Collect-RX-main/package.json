@@ -49,6 +49,7 @@
     "diagnose:alert": "node scripts/diagnose-breakage.mjs -- --alert",
     "alert:diagnosis": "tsx scripts/send-ops-alerts.ts",
     "smoke:live": "node scripts/smoke-live.mjs",
+    "go-live:verify": "node scripts/go-live-verify.mjs",
     "startup-scan": "node scripts/startup-scan.mjs",
     "test:smoke-map": "vitest run tests/smoke/breakage-map.smoke.test.ts",
     "e2e": "playwright test",

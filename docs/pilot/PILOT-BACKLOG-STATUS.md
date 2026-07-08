@@ -50,7 +50,7 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 27 | tsc --noEmit | ✅ | ioredis/bullmq cast in `arQueue.ts`, `workerEntry.ts` |
-| 28 | Test suite green | 🔧 | Run `npm test`; connector unit tests added |
+| 28 | Test suite green | ✅ | 820 passed locally; `REDIS_URL` cleared in vitest |
 | 29 | Vite production build | ✅ | `vite.config.ts` target `es2022` |
 | 30 | Playwright E2E on CI | 🔧 | Re-run after push |
 
