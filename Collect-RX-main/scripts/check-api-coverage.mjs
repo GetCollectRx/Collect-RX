@@ -47,6 +47,8 @@ const SERVER_PREFIXES = [
   '/api/dashboard/',
   '/api/admin/',
   '/api/connector/',
+  '/api/connector/writeback-pending',
+  '/api/connector/writeback-ack',
   '/api/cdcp/',
   '/api/work-queue/',
   '/api/pms/',

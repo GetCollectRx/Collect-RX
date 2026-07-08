@@ -171,6 +171,12 @@
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "desktop/config/agent-config.example.json",
+        "to": "desktop/config/agent-config.example.json"
+      }
+    ],
     "publish": [
       {
         "provider": "github",

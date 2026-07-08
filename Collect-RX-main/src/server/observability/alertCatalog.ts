@@ -227,6 +227,38 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'Confirm PMS sync if payment verification traces are due',
     ],
   },
+  connector_stale: {
+    id: 'connector_stale',
+    title: 'Desktop connector offline or stale',
+    severity: 'high',
+    affectedSystems: ['AbelDent sync', 'PMS import', 'work queue'],
+    impact: [
+      'Claims are not syncing from the practice PMS — queue and calls run on stale data',
+      'Staff may need emergency CSV upload under Admin → Sync ops',
+    ],
+    suggestedFixes: [
+      'Confirm CollectRx desktop app is running on the practice PC (tray icon)',
+      'Check COLLECTRX_API_TOKEN is set and not revoked (Admin → Sync ops)',
+      'Verify ABELDENT_SERVER and SQL connectivity on the practice LAN',
+      'Review connector agent row in Admin → Sync ops for last heartbeat',
+    ],
+  },
+  connector_sync_failed: {
+    id: 'connector_sync_failed',
+    title: 'Desktop connector sync failed',
+    severity: 'high',
+    affectedSystems: ['AbelDent sync', 'PMS import'],
+    impact: [
+      'Last sync cycle failed — new claims may not appear in CollectRx',
+      'Automated carrier follow-up may miss recently submitted claims',
+    ],
+    suggestedFixes: [
+      'Open Admin → Sync ops → connector status for last error message',
+      'On practice PC: check sync worker logs (CollectRx tray → Sync now)',
+      'Run abeldent:discover and validate schema-map if SQL errors mention missing columns',
+      'Re-mint connector token if auth returns 401',
+    ],
+  },
 };
 
 export function getAlertDefinition(alertId: string): AlertDefinition {

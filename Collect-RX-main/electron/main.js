@@ -20,6 +20,7 @@ const path  = require('path');
 const fs    = require('fs');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const { loadAgentConfig, applyAgentConfigToEnv } = require('./loadAgentConfig.cjs');
 
 // Load repo-root .env in development so COLLECTRX_* applies when launching `electron .` from the repo.
 if (!app.isPackaged) {
@@ -413,6 +414,10 @@ function runStartupHealthScan() {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  const appRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'app')
+    : path.join(__dirname, '..');
+  applyAgentConfigToEnv(loadAgentConfig(appRoot));
   createTray();
   createWindow();
   spawnSyncService();

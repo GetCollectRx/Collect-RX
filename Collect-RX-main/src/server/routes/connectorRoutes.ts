@@ -6,6 +6,7 @@ import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
 import { recordConnectorHeartbeat } from '../services/desktopConnectorService.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 
 const router = Router();
 
@@ -71,6 +72,13 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
         pmsVendor: result.pmsVendor,
       },
     });
+    if (result.failed > 0) {
+      void dispatchOpsAlert({
+        alertId: 'connector_sync_failed',
+        detail: `Practice ${auth.practiceId}: import partial — ${result.failed} failed, ${result.imported} imported`,
+        source: `connector:${auth.agentId}`,
+      });
+    }
     return res.json({
       success: true,
       pmsVendor: result.pmsVendor,
@@ -88,7 +96,60 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
         status: 'error',
         message: apiErrorMessageForResponse(err),
       }).catch(() => undefined);
+      void dispatchOpsAlert({
+        alertId: 'connector_sync_failed',
+        detail: `Practice ${auth.practiceId}: ${apiErrorMessageForResponse(err)}`,
+        source: `connector:${auth.agentId}`,
+      });
     }
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/writeback-pending', async (req: Request, res: Response) => {
+  try {
+    const auth = req.connectorAuth!;
+    const take = Math.min(50, Math.max(1, Number(req.query.limit) || 25));
+    const rows = await prisma.pmsWritebackLog.findMany({
+      where: { practiceId: auth.practiceId, processedAt: null, processError: null },
+      orderBy: { createdAt: 'asc' },
+      take,
+    });
+    return res.json({ success: true, entries: rows });
+  } catch (err) {
+    console.error('[GET /connector/writeback-pending]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/writeback-ack', strictLimiter, async (req: Request, res: Response) => {
+  try {
+    const auth = req.connectorAuth!;
+    const b = (req.body || {}) as Record<string, unknown>;
+    const id = String(b.id || '').trim();
+    if (!id) return res.status(400).json({ success: false, error: 'id required' });
+    const ok = Boolean(b.ok);
+    const errMsg = typeof b.error === 'string' ? b.error.slice(0, 500) : null;
+    const existing = await prisma.pmsWritebackLog.findFirst({
+      where: { id, practiceId: auth.practiceId },
+    });
+    if (!existing) return res.status(404).json({ success: false, error: 'Not found' });
+    await prisma.pmsWritebackLog.update({
+      where: { id },
+      data: ok
+        ? { processedAt: new Date(), processError: null }
+        : { processError: errMsg || 'unknown error' },
+    });
+    void appendAuditLog(prisma, {
+      practiceId: auth.practiceId,
+      action: ok ? 'connector.writeback.ack' : 'connector.writeback.error',
+      subjectType: 'PmsWritebackLog',
+      subjectId: id,
+      details: { ok, error: errMsg },
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /connector/writeback-ack]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

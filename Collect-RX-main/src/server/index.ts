@@ -111,6 +111,7 @@ import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js'
 import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
@@ -471,6 +472,8 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     startMarketingLoopInProcess(prisma);
     startMarketingLearningInProcess(prisma);
   }
+
+  startConnectorMonitorScheduler(prisma);
 
   attachDeskWebSocket(server);
 

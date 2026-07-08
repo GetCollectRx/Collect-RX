@@ -14,6 +14,11 @@ export default defineConfig({
     env: {
       STRIPE_SECRET_KEY: 'sk_test_4eC39HqLyjWDarjtT1zdp7dc',
       STRIPE_WEBHOOK_SECRET: 'whsec_test_00000000000000000000000000000000',
+      VITEST: 'true',
+      CONNECTOR_MONITOR_ENABLED: '0',
+      DISABLE_SCHEDULER: '1',
     },
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 })

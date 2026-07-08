@@ -201,12 +201,45 @@ async function runClaimsSync() {
   }
 }
 
+async function runWritebackCycle() {
+  if (!sql || !API_URL || !API_TOKEN) return;
+  try {
+    const pending = await postToApi({}, '/api/connector/writeback-pending');
+    const entries = pending.entries || [];
+    for (const entry of entries) {
+      const payload = entry.payload || {};
+      const sqlText = typeof payload.sql === 'string' ? payload.sql.trim() : '';
+      let ok = false;
+      let errMsg = null;
+      try {
+        if (sqlText && /^UPDATE\s/i.test(sqlText)) {
+          const pool = await sql.connect(sqlConfig);
+          await pool.request().query(sqlText);
+          await pool.close();
+          ok = true;
+        } else {
+          errMsg = 'No supported writeback SQL in payload (expected payload.sql UPDATE statement)';
+        }
+      } catch (e) {
+        errMsg = e.message;
+      }
+      await postToApi(
+        { id: entry.id, ok, error: errMsg },
+        '/api/connector/writeback-ack',
+      );
+    }
+  } catch (err) {
+    console.warn('[Sync] Writeback cycle failed:', err.message);
+  }
+}
+
 async function runAllSyncs() {
   if (!sql) {
     sendStatus('offline', 'mssql driver not available');
     return;
   }
   await runClaimsSync();
+  await runWritebackCycle();
 }
 
 // Listen for manual trigger

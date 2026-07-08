@@ -1761,8 +1761,8 @@ export default function LandingPage() {
               </h1>
               <p className="lp-hero-body">
                 Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
-                that never lands. CollectRx runs follow-up to six major Canadian insurers, tracks
-                claim status, and handles denials, from a simple PMS export.
+                that never lands. CollectRx syncs outstanding claims from your PMS automatically,
+                runs follow-up to six major Canadian insurers, and handles denials — no daily CSV exports.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
@@ -1776,7 +1776,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <div className="lp-trust-row">
-                {['PHIPA compliant by design', '6 major Canadian carriers', 'No IT setup required'].map(t => (
+                {['PHIPA compliant by design', 'Automatic PMS sync', '6 major Canadian carriers'].map(t => (
                   <div className="lp-trust-item" key={t}>
                     <svg className="lp-trust-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                       <path d="M5 13l4 4L19 7" />

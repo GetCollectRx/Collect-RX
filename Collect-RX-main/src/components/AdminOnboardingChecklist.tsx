@@ -3,14 +3,19 @@ import { Card, CardHeader } from './ui'
 
 const STEPS = [
   {
-    id: 'import',
-    title: 'Import balances',
-    body: 'Set your PMS under Practice Settings, then upload a claim export under Admin → Sync ops (or use the AbelDent desktop connector). Fix row errors until validation passes.',
+    id: 'agent',
+    title: 'Install desktop agent',
+    body: 'Set PMS to AbelDent under Practice Settings. Mint a connector token in Admin → Sync ops, install the CollectRx desktop app on the practice PC, and paste the token into %ProgramData%\\CollectRx\\agent-config.json (created by the installer).',
+  },
+  {
+    id: 'sync',
+    title: 'Confirm automatic sync',
+    body: 'In Sync ops, the connector should show Online with a recent import run. Claims appear in Insurance → Queue without CSV uploads. CSV upload remains available as an emergency fallback only.',
   },
   {
     id: 'verify',
-    title: 'Verify Patient A/R',
-    body: 'Open Patient A/R: confirm amounts, patients, and carrier fields. Adjust Admin carrier blocks if needed.',
+    title: 'Verify insurance queue',
+    body: 'Open Insurance → Queue: confirm outstanding claims imported from your PMS. Adjust Admin carrier blocks if needed.',
   },
   {
     id: 'integrations',
@@ -18,14 +23,9 @@ const STEPS = [
     body: 'In Admin → Integrations, work through SendGrid, Twilio, Stripe Connect, and Vapi until your go-live checklist is green.',
   },
   {
-    id: 'pay',
-    title: 'Test a payment link',
-    body: 'From Patient A/R, create a payment link and run a Stripe test card flow in test mode before going live.',
-  },
-  {
     id: 'live',
     title: 'Go live',
-    body: 'Switch Stripe to live when ready; confirm production webhooks and reminder schedule (see ops runbooks).',
+    body: 'Enable carrier calls when integrations are green. Monitor Sync ops connector status for the first week — you should not need daily CSV exports.',
   },
 ] as const
 
@@ -67,7 +67,7 @@ export function AdminOnboardingChecklist({ practiceId }: { practiceId: string | 
     <Card>
       <CardHeader
         title="Onboarding checklist"
-        subtitle="New practice path: import → verify → go live. Checked state is stored in this browser only."
+        subtitle="Agent-first path: install desktop connector → verify sync → go live. Checked state is stored in this browser only."
       />
       <div className="mb-3 text-2xs text-gray-500 dark:text-gray-400">
         {n} / {total} complete

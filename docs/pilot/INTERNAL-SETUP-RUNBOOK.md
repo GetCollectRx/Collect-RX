@@ -24,18 +24,23 @@ Use this when onboarding the first AbelDent (or PMS) pilot. Target: practice doe
 ### Install desktop agent (Windows)
 
 1. Install CollectRx desktop from release `.exe`.
-2. Set environment variables (system or `.env` next to app — see `electron/main.js`):
+2. Edit **`%ProgramData%\CollectRx\agent-config.json`** (created by installer from template):
 
-```text
-COLLECTRX_API_URL=https://www.collectrx.ca
-COLLECTRX_API_TOKEN=<minted connector token>
-ABELDENT_SERVER=(local)\ABELDENT
-ABELDENT_DATABASE=AbelDent
-SYNC_INTERVAL_MINUTES=15
+```json
+{
+  "apiUrl": "https://www.collectrx.ca",
+  "apiToken": "<minted connector token>",
+  "abeldentServer": "(local)\\ABELDENT",
+  "abeldentDatabase": "AbelDent",
+  "syncIntervalMinutes": 15
+}
 ```
 
-3. Ensure **Node native `mssql` + `msnodesqlv8`** are available (bundled in installer or `npm install mssql` in packaged `desktop/` — document per build).
-4. Launch app — tray icon should appear; hosted UI opens to dashboard.
+No manual environment variables required when using this file. See `desktop/config/agent-config.example.json`.
+
+3. Run **`desktop/scripts/windows-install-mssql.ps1`** as Administrator (installs ODBC + mssql).
+4. For schema mapping on site, follow **`docs/pilot/SCHEMA-DISCOVERY-RUNBOOK.md`** (<60 min).
+5. Launch app — tray icon should appear; hosted UI opens to dashboard.
 5. Confirm sync: **Admin → Sync ops** shows connector **Online** and a recent import run.
 
 ### Verify pipeline
