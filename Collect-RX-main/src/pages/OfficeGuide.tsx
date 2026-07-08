@@ -224,8 +224,11 @@ export default function OfficeGuide() {
       </Card>
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        CollectRx runs as a secure web app — same screens in browser or desktop shortcut. Your login and data are tied to
-        your practice.
+        CollectRx runs as a secure web app — same screens in browser or{' '}
+        <Link to="/download" className="underline text-crx-600 dark:text-crx-400">
+          desktop app
+        </Link>
+        . Your login and data are tied to your practice.
       </p>
     </div>
   )

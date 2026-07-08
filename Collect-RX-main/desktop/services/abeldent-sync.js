@@ -3,7 +3,7 @@
  *
  * Runs inside Electron via utilityProcess.fork().
  * Queries the on-premise AbelDent SQL Server database (Windows Integrated Auth)
- * and POSTs outstanding claims to the Railway backend for queue processing.
+ * and POSTs outstanding claims to the CollectRx API for queue processing.
  *
  * IPC (via process.parentPort):
  *   Receives: { type: 'trigger' }   — run a sync immediately
@@ -12,8 +12,11 @@
  * Required env vars:
  *   ABELDENT_SERVER          SQL Server instance, e.g. "(local)\ABELDENT" or "192.168.1.10"
  *   ABELDENT_DATABASE        Database name, default "AbelDent"
- *   RAILWAY_API_URL          CollectRx backend root
- *   RAILWAY_API_TOKEN        Long-lived JWT for the service account
+ *   COLLECTRX_API_URL        CollectRx API root (preferred)
+ *   COLLECTRX_API_TOKEN      Long-lived connector token (minted in Admin → Sync ops)
+ *   COLLECTRX_CONNECTOR_TOKEN Alias for COLLECTRX_API_TOKEN
+ *   RAILWAY_API_URL          Legacy alias for COLLECTRX_API_URL
+ *   RAILWAY_API_TOKEN        Legacy alias for COLLECTRX_API_TOKEN
  *
  * Optional:
  *   ABELDENT_SCHEMA_MAP      Path to schema-map.json (see schema-map.example.json + discover-schema.cjs)
@@ -34,8 +37,13 @@ const {
 // Config
 const SERVER = process.env.ABELDENT_SERVER || String.raw`(local)\ABELDENT`;
 const DATABASE = process.env.ABELDENT_DATABASE || 'AbelDent';
-const RAILWAY_URL = (process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
-const API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
+const API_URL = (process.env.COLLECTRX_API_URL || process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
+const API_TOKEN = process.env.COLLECTRX_API_TOKEN
+  || process.env.COLLECTRX_CONNECTOR_TOKEN
+  || process.env.RAILWAY_API_TOKEN
+  || '';
+const AGENT_VERSION = process.env.COLLECTRX_AGENT_VERSION || '1.0.0';
+const HEARTBEAT_MS = (parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES, 10) || 5) * 60_000;
 const PRACTICE_ID = process.env.ABELDENT_PRACTICE_ID || null;
 const INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
 const MIN_DAYS = parseInt(process.env.ABELDENT_MIN_DAYS, 10) || 14;
@@ -111,14 +119,14 @@ async function fetchFromAbeldent() {
   return result.recordset;
 }
 
-// Post to Railway
-function postToRailway(payload, endpoint) {
+// Post to CollectRx API (connector token auth — practice is bound to the token)
+function postToApi(payload, endpoint) {
   return new Promise((resolve, reject) => {
-    if (!RAILWAY_URL || !API_TOKEN) {
-      return reject(new Error('RAILWAY_API_URL or RAILWAY_API_TOKEN is not set'));
+    if (!API_URL || !API_TOKEN) {
+      return reject(new Error('COLLECTRX_API_URL and COLLECTRX_API_TOKEN (connector token) must be set'));
     }
 
-    const url = `${RAILWAY_URL}${endpoint}${PRACTICE_ID ? `?practice_id=${PRACTICE_ID}` : ''}`;
+    const url = `${API_URL}${endpoint}`;
     const parsed = new URL(url);
     const body = Buffer.from(JSON.stringify(payload));
 
@@ -157,24 +165,38 @@ function postToRailway(payload, endpoint) {
   });
 }
 
+async function sendHeartbeat(extra = {}) {
+  if (!API_URL || !API_TOKEN) return;
+  try {
+    await postToApi(
+      {
+        version: AGENT_VERSION,
+        hostname: require('os').hostname(),
+        platform: process.platform,
+        ...extra,
+      },
+      '/api/connector/heartbeat',
+    );
+  } catch (err) {
+    console.warn('[Sync] Heartbeat failed:', err.message);
+  }
+}
+
 // Sync cycles
 async function runClaimsSync() {
   sendStatus('syncing');
   try {
     const rows = await fetchFromAbeldent();
-    const result = await postToRailway(
+    const result = await postToApi(
       { records: rows, pmsVendor: 'abeldent', pmsSource: 'abeldent' },
-      '/api/insurance/claims/import',
+      '/api/connector/claims/import',
     );
-    try {
-      await postToRailway({}, '/api/work-queue/sync');
-    } catch (syncErr) {
-      console.warn('[Sync] Work queue refresh failed:', syncErr.message);
-    }
     sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
+    await sendHeartbeat({ status: 'ok', message: `Synced ${result.imported ?? rows.length} claims`, imported: result.imported ?? rows.length });
     return true;
   } catch (err) {
     sendStatus('error', err.message);
+    await sendHeartbeat({ status: 'error', message: err.message });
     return false;
   }
 }
@@ -209,5 +231,6 @@ if (process.stdin && !process.stdin.destroyed) {
 }
 
 // Initial sync on start, then on interval
-runAllSyncs();
+sendHeartbeat({ status: 'starting' }).finally(() => runAllSyncs());
 setInterval(runAllSyncs, INTERVAL_MS);
+setInterval(() => { void sendHeartbeat(); }, HEARTBEAT_MS);

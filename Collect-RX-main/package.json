@@ -5,7 +5,7 @@
   "author": "CollectRx",
   "repository": {
     "type": "git",
-    "url": "https://github.com/khalidegeh/Collect-RX.git"
+    "url": "https://github.com/GetCollectRx/Collect-RX.git"
   },
   "engines": {
     "node": ">=20.10.0"
@@ -25,6 +25,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
     "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:desktop": "npm run build && electron-builder --mac --win --linux",
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
@@ -157,6 +159,7 @@
   "build": {
     "appId": "com.collectrx.app",
     "productName": "CollectRx",
+    "icon": "electron/icon.png",
     "afterPack": "./electron/afterPack.cjs",
     "afterAllArtifactBuild": "./electron/afterAllArtifactBuild.cjs",
     "directories": {
@@ -167,6 +170,13 @@
       "desktop/**/*",
       "dist/**/*",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GetCollectRx",
+        "repo": "Collect-RX"
+      }
     ],
     "mac": {
       "target": [
@@ -204,6 +214,14 @@
       "createStartMenuShortcut": true,
       "shortcutName": "CollectRx",
       "include": "electron/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "CollectRx <billing@collectrx.ca>"
     }
   }
 }

@@ -798,6 +798,27 @@ model PmsImportRun {
   @@map("pms_import_runs")
 }
 
+/// Practice desktop agent (Electron) — long-lived API token + heartbeat/sync telemetry.
+model DesktopConnectorAgent {
+  id              String    @id @default(uuid())
+  practiceId      String    @map("practice_id")
+  label           String    @default("Practice PC")
+  tokenHash       String    @map("token_hash")
+  hostname        String?
+  agentVersion    String?   @map("agent_version")
+  platform        String?
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  lastSyncAt      DateTime? @map("last_sync_at")
+  lastSyncStatus  String?   @map("last_sync_status")
+  lastSyncMessage String?   @map("last_sync_message")
+  lastImported    Int?      @map("last_imported")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId])
+  @@map("desktop_connector_agents")
+}
+
 /// Unified AR work queue — merged from insurance claims, patient AR, outreach balances.
 model WorkItem {
   id               String         @id @default(uuid())

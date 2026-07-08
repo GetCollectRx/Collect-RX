@@ -46,6 +46,7 @@ const SERVER_PREFIXES = [
   '/api/queue/',
   '/api/dashboard/',
   '/api/admin/',
+  '/api/connector/',
   '/api/cdcp/',
   '/api/work-queue/',
   '/api/pms/',

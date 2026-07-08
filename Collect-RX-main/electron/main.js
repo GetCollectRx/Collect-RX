@@ -99,7 +99,7 @@ function dashboardIsRemoteHttps() {
 /**
  * When the window loads https://www.collectrx.ca but api-origin is still http://127.0.0.1:3000
  * (dev .env or leftover api-origin.txt), Chromium blocks mixed content and API calls fail.
- * Drop loopback origins in that case so the renderer uses resolveApiUrl fallbacks (Railway API).
+ * Drop loopback origins in that case so the renderer uses resolveApiUrl fallbacks (hosted API).
  */
 function sanitizeApiOriginForDashboard(apiOrigin) {
   const o = (apiOrigin || '').trim().replace(/\/$/, '');
@@ -147,7 +147,7 @@ const WINDOW_ENTRY_URL = electronWindowEntryUrl(DASHBOARD_URL);
 if (!isDev && _dash.source === 'default') {
   const hintPath = path.join(app.getPath('userData'), 'dashboard-url.txt');
   console.warn(
-    `[CollectRx] Dashboard URL not configured — using placeholder (Railway may show 404).\n` +
+    `[CollectRx] Dashboard URL not configured — using default ${DEFAULT_PROD_DASHBOARD}.\n` +
       `  Set env COLLECTRX_DASHBOARD_URL when launching, or create this file with one line (your public app URL):\n` +
       `  ${hintPath}`
   );
@@ -165,7 +165,10 @@ let tray        = null;
 let syncProcess = null;
 let syncStatus  = 'starting';
 let syncLastMsg = 'Starting…';
+let loadFallbackAttempted = false;
 app.isQuitting  = false;
+
+const OFFLINE_PAGE = path.join(__dirname, 'offline.html');
 
 // ── Tray icons ───────────────────────────────────────────────────────────────
 function makeDotIcon(hex) {
@@ -218,6 +221,12 @@ function createTray() {
   tray.on('double-click', () => { mainWindow?.show(); mainWindow?.focus(); });
 }
 
+function loadDashboardUrl() {
+  if (!mainWindow) return;
+  loadFallbackAttempted = false;
+  mainWindow.loadURL(WINDOW_ENTRY_URL);
+}
+
 // ── BrowserWindow ─────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -227,16 +236,18 @@ function createWindow() {
     minHeight : 600,
     title  : 'CollectRx',
     show   : false,
+    backgroundColor: '#f0ece4',
     webPreferences: {
       preload          : path.join(__dirname, 'preload.js'),
       contextIsolation : true,
       nodeIntegration  : false,
       sandbox          : true,
       webSecurity      : true,
+      backgroundThrottling: false,
     },
   });
 
-  mainWindow.loadURL(WINDOW_ENTRY_URL);
+  loadDashboardUrl();
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
   // Minimise to tray on close
@@ -250,11 +261,17 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
-    console.error(`[Window] Failed to load: ${code} ${desc}`);
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, validatedURL) => {
+    console.error(`[Window] Failed to load: ${code} ${desc} (${validatedURL})`);
     if (isDev) {
-      // Retry after 2s — Vite dev server may still be starting
-      setTimeout(() => mainWindow?.loadURL(WINDOW_ENTRY_URL), 2000);
+      setTimeout(() => loadDashboardUrl(), 2000);
+      return;
+    }
+    if (!loadFallbackAttempted && validatedURL && validatedURL.startsWith('http')) {
+      loadFallbackAttempted = true;
+      if (fs.existsSync(OFFLINE_PAGE)) {
+        mainWindow.loadFile(OFFLINE_PAGE);
+      }
     }
   });
 }
@@ -282,6 +299,9 @@ function spawnSyncService() {
       ABELDENT_MIN_DAYS_BALANCE   : process.env.ABELDENT_MIN_DAYS_BALANCE,
       ABELDENT_PATIENT_LEDGER_TABLE: process.env.ABELDENT_PATIENT_LEDGER_TABLE,
       SCHEMA_MAP_PATH             : process.env.SCHEMA_MAP_PATH,
+      COLLECTRX_API_URL           : process.env.COLLECTRX_API_URL || process.env.RAILWAY_API_URL,
+      COLLECTRX_API_TOKEN         : process.env.COLLECTRX_API_TOKEN || process.env.COLLECTRX_CONNECTOR_TOKEN || process.env.RAILWAY_API_TOKEN,
+      COLLECTRX_CONNECTOR_TOKEN   : process.env.COLLECTRX_CONNECTOR_TOKEN,
       RAILWAY_API_URL             : process.env.RAILWAY_API_URL,
       RAILWAY_API_TOKEN           : process.env.RAILWAY_API_TOKEN,
       SYNC_INTERVAL_MINUTES       : process.env.SYNC_INTERVAL_MINUTES,
@@ -322,6 +342,11 @@ function triggerManualSync() {
 ipcMain.handle('get-sync-status',    () => ({ status: syncStatus, message: syncLastMsg }));
 ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; });
 ipcMain.handle('get-app-version',    () => app.getVersion());
+ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
+ipcMain.handle('restart-to-update',  () => {
+  if (!isDev) autoUpdater.quitAndInstall(false, true);
+  return true;
+});
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 function setupAutoUpdater() {

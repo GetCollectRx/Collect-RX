@@ -11,7 +11,7 @@ try {
 }
 
 contextBridge.exposeInMainWorld('collectrx', {
-  /** API base for /api in the renderer (COLLECTRX_API_ORIGIN or api-origin.txt). Loopback is ignored when the window loads a remote https dashboard — see electron/main.js. */
+  /** API base for /api in the renderer (COLLECTRX_API_ORIGIN or api-origin.txt). */
   apiOrigin,
   getSyncStatus    : () => ipcRenderer.invoke('get-sync-status'),
   onSyncStatusChange: (cb) => {
@@ -21,4 +21,16 @@ contextBridge.exposeInMainWorld('collectrx', {
   },
   triggerManualSync: () => ipcRenderer.invoke('trigger-manual-sync'),
   getAppVersion    : () => ipcRenderer.invoke('get-app-version'),
+  onUpdateAvailable: (cb) => {
+    const fn = (_e, data) => cb(data);
+    ipcRenderer.on('update-available', fn);
+    return () => ipcRenderer.removeListener('update-available', fn);
+  },
+  onUpdateDownloaded: (cb) => {
+    const fn = (_e, data) => cb(data);
+    ipcRenderer.on('update-downloaded', fn);
+    return () => ipcRenderer.removeListener('update-downloaded', fn);
+  },
+  restartToUpdate  : () => ipcRenderer.invoke('restart-to-update'),
+  retryDashboardLoad: () => ipcRenderer.invoke('retry-dashboard-load'),
 });

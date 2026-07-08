@@ -7,7 +7,7 @@ import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './d
 applyPostgresTlsToProcessEnv();
 
 import { PrismaClient } from '@prisma/client';
-import { Worker } from 'bullmq';
+import { Worker, type ConnectionOptions } from 'bullmq';
 import express from 'express';
 import IORedis from 'ioredis';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
@@ -77,7 +77,7 @@ const worker = new Worker(
       throw new Error(`Unknown job name: ${job.name}`);
     }
   },
-  { connection, concurrency: 1 }
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 }
 );
 
 worker.on('failed', (job, err) => {

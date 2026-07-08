@@ -148,3 +148,54 @@ jobs:
           files: _artifacts_win/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux-appimage:
+    name: Linux (AppImage + deb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Prisma, TypeScript, Vite build
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npm run db:generate && npm run typecheck && npx --no-install -p vite vite build
+
+      - name: Package Linux installers
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --no-install -p electron-builder electron-builder --linux
+
+      - name: Stage Linux artifacts
+        run: |
+          mkdir -p _artifacts_linux
+          find Collect-RX-main/dist-electron -maxdepth 1 \( -name '*.AppImage' -o -name '*.deb' \) -exec cp -f {} _artifacts_linux/ \;
+          ls -la _artifacts_linux
+          test "$(find _artifacts_linux -type f | wc -l | tr -d ' ')" -ge 1
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CollectRx-linux
+          path: _artifacts_linux/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: _artifacts_linux/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

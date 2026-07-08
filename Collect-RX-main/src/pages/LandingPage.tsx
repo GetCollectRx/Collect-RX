@@ -2082,6 +2082,7 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.features}>Features</Link>
                   <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
+                  <Link to="/download">Desktop app</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
                 </div>
                 <div className="lp-footer-col">

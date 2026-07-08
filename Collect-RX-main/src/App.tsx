@@ -7,6 +7,7 @@ import Changelog from './pages/Changelog'
 import PilotDemo  from './pages/PilotDemo'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
+import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Analytics             from './pages/Analytics'
@@ -21,6 +22,7 @@ import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
 import SyncOpsDashboard      from './pages/SyncOpsDashboard'
+import DesktopDownload       from './pages/DesktopDownload'
 import LiveConsole           from './pages/LiveConsole'
 import CallHistory           from './pages/CallHistory'
 import AgingReport           from './pages/AgingReport'
@@ -169,6 +171,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'Account',
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/download', exact: true, label: 'Desktop app', icon: 'download' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
     ],
   },
@@ -214,6 +217,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     label: 'Account',
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/download', exact: true, label: 'Desktop app', icon: 'download' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
     ],
   },
@@ -435,6 +439,7 @@ function AppShell() {
           health={sessionHealth}
           isPlatformAdmin={userRole === 'platform_admin'}
         />
+        <DesktopConnectorBanner />
         <main className="crx-app-content" id="main-content">
         <PlatformDevRouteGuard>
         <Routes>
@@ -458,6 +463,7 @@ function AppShell() {
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
+          <Route path="/download" element={<DesktopDownload />} />
           <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
           <Route path="/insurance/gates" element={<Navigate to="/insurance?tab=blocked" replace />} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
@@ -506,6 +512,7 @@ function AnonRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/download" element={<DesktopDownload />} />
       <Route path="/dashboard" element={<RedirectToLogin />} />
       <Route path="/dashboard/*" element={<RedirectToLogin />} />
       <Route path="/" element={<MarketingSite />} />
