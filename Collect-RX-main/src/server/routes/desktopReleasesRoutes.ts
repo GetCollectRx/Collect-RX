@@ -3,6 +3,8 @@ import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
 import {
   getDesktopReleaseInfo,
+  canResolveDesktopRelease,
+  getDesktopReleaseDiagnostics,
   isDesktopReleaseDownloadConfigured,
   streamGithubReleaseAsset,
 } from '../services/desktopReleaseService.js';
@@ -14,14 +16,26 @@ export function createDesktopReleasesRouter(): Router {
   router.get('/desktop/releases', async (_req, res) => {
     try {
       const data = await getDesktopReleaseInfo();
+      const downloadsConfigured =
+        isDesktopReleaseDownloadConfigured() && (await canResolveDesktopRelease());
       return res.json({
         success: true,
         data,
-        downloadsConfigured: isDesktopReleaseDownloadConfigured(),
+        downloadsConfigured,
       });
     } catch (err) {
       console.error('[desktop/releases]', (err as Error).message);
       return res.status(500).json({ success: false, error: 'Failed to load release metadata' });
+    }
+  });
+
+  /** Public — debug Fly ↔ GitHub (no secrets exposed). */
+  router.get('/desktop/releases/diagnostics', async (_req, res) => {
+    try {
+      const diagnostics = await getDesktopReleaseDiagnostics();
+      return res.json({ success: true, ...diagnostics });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
@@ -42,7 +56,12 @@ export function createDesktopReleasesRouter(): Router {
     try {
       const streamed = await streamGithubReleaseAsset(fileName);
       if (!streamed) {
-        return res.status(404).json({ success: false, error: 'Installer not found' });
+        console.error('[desktop/releases/assets] not found or GitHub denied:', fileName);
+        return res.status(404).json({
+          success: false,
+          error:
+            'Installer not found. Check GITHUB_RELEASES_TOKEN on Fly has Contents read for GetCollectRx/Collect-RX.',
+        });
       }
 
       const contentType = streamed.headers.get('content-type') || 'application/octet-stream';

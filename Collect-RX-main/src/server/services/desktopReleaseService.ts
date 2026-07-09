@@ -20,7 +20,12 @@ type GithubRelease = {
 let cachedRelease: { at: number; release: GithubRelease } | null = null;
 
 function githubToken(): string | undefined {
-  return process.env.GITHUB_RELEASES_TOKEN || process.env.GITHUB_TOKEN;
+  const raw =
+    process.env.GITHUB_RELEASES_TOKEN ||
+    process.env.GITHUB_TOKEN ||
+    process.env.COLLECTRX;
+  const trimmed = raw?.trim();
+  return trimmed || undefined;
 }
 
 function githubHeaders(accept = 'application/vnd.github+json'): Record<string, string> {
@@ -36,8 +41,29 @@ function githubHeaders(accept = 'application/vnd.github+json'): Record<string, s
 
 async function fetchGithubRelease(url: string): Promise<GithubRelease | null> {
   const res = await fetch(url, { headers: githubHeaders() });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.error('[desktop/releases] GitHub API', res.status, url.replace(GITHUB_REPO, '***'));
+    return null;
+  }
   return (await res.json()) as GithubRelease;
+}
+
+async function fetchReleaseWithAssets(): Promise<GithubRelease | null> {
+  const token = githubToken();
+  if (!token) return null;
+
+  const cached = await resolveGithubRelease();
+  if (cached?.assets?.length) return cached;
+
+  const byTag = await fetchGithubRelease(
+    `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`,
+  );
+  if (byTag?.assets?.length) {
+    cachedRelease = { at: Date.now(), release: byTag };
+    return byTag;
+  }
+
+  return null;
 }
 
 async function resolveGithubRelease(): Promise<GithubRelease | null> {
@@ -50,11 +76,11 @@ async function resolveGithubRelease(): Promise<GithubRelease | null> {
   let release: GithubRelease | null = null;
 
   if (token) {
-    release = await fetchGithubRelease(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+    release = await fetchGithubRelease(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`,
+    );
     if (!release) {
-      release = await fetchGithubRelease(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`,
-      );
+      release = await fetchGithubRelease(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
     }
   }
 
@@ -88,7 +114,7 @@ export async function getDesktopReleaseInfo(): Promise<DesktopReleaseInfo> {
 }
 
 export async function findGithubAsset(fileName: string): Promise<GithubAsset | null> {
-  const release = await resolveGithubRelease();
+  const release = await fetchReleaseWithAssets();
   if (!release?.assets?.length) return null;
   return release.assets.find((a) => a.name === fileName) ?? null;
 }
@@ -101,17 +127,58 @@ export async function streamGithubReleaseAsset(
   if (!token) return null;
 
   const asset = await findGithubAsset(fileName);
-  if (!asset) return null;
+  if (!asset) {
+    console.error('[desktop/releases] asset not in release:', fileName);
+    return null;
+  }
 
   const res = await fetch(
     `https://api.github.com/repos/${GITHUB_REPO}/releases/assets/${asset.id}`,
     { headers: githubHeaders('application/octet-stream'), redirect: 'follow' },
   );
-  if (!res.ok || !res.body) return null;
+  if (!res.ok || !res.body) {
+    console.error('[desktop/releases] asset stream', res.status, fileName);
+    return null;
+  }
 
   return { status: res.status, headers: res.headers, body: res.body };
 }
 
 export function isDesktopReleaseDownloadConfigured(): boolean {
   return Boolean(githubToken());
+}
+
+export async function canResolveDesktopRelease(): Promise<boolean> {
+  if (!githubToken()) return false;
+  const release = await fetchReleaseWithAssets();
+  return Boolean(release?.assets?.length);
+}
+
+/** Safe prod check — never exposes the token. */
+export async function getDesktopReleaseDiagnostics(): Promise<{
+  tokenPresent: boolean;
+  tokenLength: number;
+  githubStatus: number | null;
+  assetCount: number;
+  message: string | null;
+}> {
+  const token = githubToken();
+  if (!token) {
+    return { tokenPresent: false, tokenLength: 0, githubStatus: null, assetCount: 0, message: 'No token' };
+  }
+
+  const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`;
+  const res = await fetch(url, { headers: githubHeaders() });
+  const body = (await res.json().catch(() => ({}))) as {
+    message?: string;
+    assets?: unknown[];
+  };
+
+  return {
+    tokenPresent: true,
+    tokenLength: token.length,
+    githubStatus: res.status,
+    assetCount: body.assets?.length ?? 0,
+    message: body.message ?? null,
+  };
 }
