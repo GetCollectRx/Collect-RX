@@ -30,6 +30,7 @@
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { assertAllowedEvalModel, assertAnthropicEvalAllowed } from './anthropicEvalGuard.js';
 import { LLM_RESIDENCY_HEADERS } from '../pii-vault';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -263,6 +264,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const JUDGE_MODEL = 'claude-sonnet-4-6';
 
 function getAnthropicKey(): string {
+  assertAnthropicEvalAllowed('ConversationRobustnessEval');
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('[ConversationRobustnessEval] ANTHROPIC_API_KEY not set');
   return key;
@@ -275,6 +277,7 @@ async function callAnthropic(params: {
   temperature?: number;
   maxTokens?: number;
 }): Promise<string> {
+  assertAllowedEvalModel(params.model, 'ConversationRobustnessEval');
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
