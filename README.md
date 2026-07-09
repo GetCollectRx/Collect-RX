@@ -6,7 +6,7 @@ Monorepo-style workspace for **CollectRx** — dental practice accounts receivab
 
 ## Monorepo commands (canonical app)
 
-From the **repository root** (after `npm install` — installs the **Collect-RX-main** workspace):
+From the **repository root** (after `npm install` at the root — **do not** run `npm ci` inside `Collect-RX-main/`; the workspace uses the root `package-lock.json`):
 
 | Command | What it does |
 |--------|----------------|
@@ -40,7 +40,7 @@ npm run db:seed:collectrx
 npm run dev
 ```
 
-- **Frontend:** http://localhost:5173 (log in with seed practice password — `SEED_PRACTICE_PASSWORD` in dev, see [Collect-RX-main/README](Collect-RX-main/README.md))
+- **Frontend:** http://localhost:5173 (log in at `/login` with `SEED_USER_EMAIL` + `SEED_PRACTICE_PASSWORD` — see [Collect-RX-main/README](Collect-RX-main/README.md))
 - **API:** http://localhost:3000
 
 Database and migrations: [docs/DATABASE.md](docs/DATABASE.md). Details: [Collect-RX-main/README.md](Collect-RX-main/README.md).

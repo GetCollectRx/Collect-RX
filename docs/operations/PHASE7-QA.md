@@ -6,7 +6,7 @@ This document ties **P7-01…P7-08** in [OUTSTANDING-FIXES-PRODUCT-READY.md](../
 
 | Item | What | Command / location |
 |------|------|--------------------|
-| **P7-01** | E2E: login → dashboard (Playwright) | `npm run e2e -w dental-ar-system` (see below) |
+| **P7-01** | E2E: login → dashboard + pre-visit (Playwright) | `npm run e2e -w dental-ar-system` (see below) |
 | **P7-02** | Stripe webhook with mock HMAC (no CLI in CI) | `tests/app.integration.test.ts` (Stripe `generateTestHeaderString`) |
 | **P7-03** | API integration (health, auth, session) | Same file + `vitest run` |
 | **P7-04** | Reproducible fixtures | `db:seed` (CI) + `tests/factories/practice.ts` for factory-created practices |
@@ -21,16 +21,15 @@ Requires a reachable PostgreSQL and `DATABASE_URL` (e.g. local `docker-compose` 
 
 ### E2E (Playwright)
 
-1. `npm run db:migrate -w dental-ar-system && npm run db:seed -w dental-ar-system`
-2. `export E2E_PRACTICE_ID=$(npm run e2e:print-id -w dental-ar-system --silent)`  
-   (or copy the practice ID from the seed log)
+1. `npm run db:migrate -w dental-ar-system && SEED_PRACTICE_PASSWORD=your-dev-password npm run db:seed -w dental-ar-system`
+2. Optional: `export E2E_USER_PASSWORD=your-dev-password` (must match `SEED_PRACTICE_PASSWORD`; `globalSetup` auto-detects the first seeded user if unset)
 3. `npm run build -w dental-ar-system`
 4. In one terminal: `PORT=3000 npm run start -w dental-ar-system`  
-5. In another: `E2E_PRACTICE_ID=... npm run e2e -w dental-ar-system`
+5. In another: `npm run e2e -w dental-ar-system`
 
-**CI** runs the same flow: migrate → seed → set `E2E_PRACTICE_ID` from `e2e:print-id` → build → `playwright install` → `e2e:ci` with `webServer` starting the API+static server on port 3000.
+**CI** runs the same flow: migrate → seed → build → `playwright install` → `e2e:ci` with `webServer` starting the API+static server on port 3000. `globalSetup` resolves login email from the seeded `User` row (or auto-seeds `e2e@collectrx.test` / `changeme` on an empty DB).
 
-Default password for seeded data is `changeme` unless `SEED_PRACTICE_PASSWORD` is set (see `src/server/seed.ts`). Override in E2E with `E2E_PRACTICE_PASSWORD`.
+Default login after seed: `owner@tenthline.local` + `SEED_PRACTICE_PASSWORD` (override email with `SEED_USER_EMAIL`). Override in E2E with `E2E_USER_EMAIL` / `E2E_USER_PASSWORD`.
 
 ## Load — P7-05 (k6, read-heavy)
 

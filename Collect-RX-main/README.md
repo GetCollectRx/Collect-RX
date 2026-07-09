@@ -25,6 +25,7 @@ This system sits alongside the practice's PMS (practice management software — 
 ```bash
 # 0. From repository root: install workspaces (PostgreSQL must be running separately unless you use Docker)
 cd .. && npm install && cd Collect-RX-main
+# Install only from the repo root — there is no Collect-RX-main/package-lock.json (workspace uses root lockfile).
 
 # 1. Environment — `.env` is not in git (secrets). Copy the template to create it:
 cp .env.example .env
@@ -42,11 +43,11 @@ npm run db:seed
 npm run dev
 ```
 
-Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACTICE_PASSWORD` / `src/server/seed.ts` for dev defaults). For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
+Log in at `/login` with **`SEED_USER_EMAIL`** (default `owner@tenthline.local`) and **`SEED_PRACTICE_PASSWORD`** from `.env`. For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
 
 **Hasan Family Dental demo (`npm run demo:seed`):** Creates a separate pilot practice with realistic AR and pre-visit data that walks through the call-to-resolution loop — one live call, a practice gate, a recall-due claim, and a high-value aging Manulife claim. Login: `demo@hasanfamilydental.ca` / `CollectRx2026!`. Re-run only after deleting the existing practice (`DELETE FROM practices WHERE name = 'Hasan Family Dental';`). See [docs/architecture/call-to-resolution.md](docs/architecture/call-to-resolution.md).
 
-**Automated tests (P7):** `npm test` (Vitest: unit + API/Stripe mock integration). **When something breaks:** `npm run diagnose` prints a subsystem report (typecheck → env → DB → tests → optional live smoke). **Notify on-call:** `npm run diagnose -- --alert` with `OPS_ALERTS_ENABLED=1` (SMS/email/Slack with impact + fixes). See [../docs/operations/BREAKAGE-DIAGNOSIS.md](../docs/operations/BREAKAGE-DIAGNOSIS.md) and [../docs/operations/OPS-ALERTS.md](../docs/operations/OPS-ALERTS.md). E2E: `npm run build` then `npm start` (port 3000), set `E2E_PRACTICE_ID` from `npm run e2e:print-id` after a seed, then `npm run e2e` (Playwright). Details, k6 load example, and i18n decision: [../docs/operations/PHASE7-QA.md](../docs/operations/PHASE7-QA.md), [../docs/product/I18N-DECISION.md](../docs/product/I18N-DECISION.md).
+**Automated tests (P7):** `npm test` (Vitest: unit + API/Stripe mock integration). **When something breaks:** `npm run diagnose` prints a subsystem report (typecheck → env → DB → tests → optional live smoke). **Notify on-call:** `npm run diagnose -- --alert` with `OPS_ALERTS_ENABLED=1` (SMS/email/Slack with impact + fixes). See [../docs/operations/BREAKAGE-DIAGNOSIS.md](../docs/operations/BREAKAGE-DIAGNOSIS.md) and [../docs/operations/OPS-ALERTS.md](../docs/operations/OPS-ALERTS.md). E2E: `npm run build` then `npm start` (port 3000), `npm run db:seed` (creates a login user), set `E2E_USER_PASSWORD` to match `SEED_PRACTICE_PASSWORD` if needed, then `npm run e2e` (Playwright). Details, k6 load example, and i18n decision: [../docs/operations/PHASE7-QA.md](../docs/operations/PHASE7-QA.md), [../docs/product/I18N-DECISION.md](../docs/product/I18N-DECISION.md).
 
 **Background jobs (P8):** With **`REDIS_URL`** in `.env`, `npm run dev` auto-starts Redis (Docker) and the BullMQ **worker** alongside API + Vite — no second terminal. Without Redis, rules run in-process. See [../docs/operations/PHASE8-BACKGROUND.md](../docs/operations/PHASE8-BACKGROUND.md).
 
