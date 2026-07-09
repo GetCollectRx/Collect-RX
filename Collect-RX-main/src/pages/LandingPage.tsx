@@ -1705,6 +1705,7 @@ export default function LandingPage() {
                 <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
               ))}
               <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
+              <Link to={MARKETING_PATHS.download} className="lp-nav-link">Desktop app</Link>
             </div>
             <div className="lp-nav-right">
               <button
@@ -1735,6 +1736,7 @@ export default function LandingPage() {
             </Link>
           ))}
           <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+          <Link to={MARKETING_PATHS.download} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Desktop app</Link>
           <button
             type="button"
             className="lp-btn-primary"

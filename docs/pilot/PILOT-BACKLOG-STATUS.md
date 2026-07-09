@@ -1,6 +1,6 @@
 # Pilot engineering backlog — status tracker (52 items)
 
-Last updated: 2026-07-08. **Engineering** = code/docs/CI in repo. **Ops** = run on Fly/dashboards with credentials. **Field** = requires practice Windows PC.
+Last updated: 2026-07-09. **Engineering** = code/docs/CI in repo. **Ops** = run on Fly/dashboards with credentials. **Field** = requires practice Windows PC.
 
 Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · ⏭ N/A or deferred
 
@@ -14,7 +14,7 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | 4 | Schema discovery runbook | ✅ | `docs/pilot/SCHEMA-DISCOVERY-RUNBOOK.md`, `npm run abeldent:discover` |
 | 5 | Sync health → ops alerted | ✅ | `connectorSyncMonitor.ts`, cron `connectorMonitorScheduler.ts`, `alertCatalog` |
 | 6 | Idempotent sync | ✅ | `prismaClaimImporter.ts` upsert by `practiceId_claimNumber` |
-| 7 | Windows installer shipped | 🔧 | CI: `.github/workflows/collectrx-electron-installers.yml`; tag `v1.0.0-pilot` |
+| 7 | Windows installer shipped | ✅ | CI green on `v1.0.0-pilot`; `CollectRx.Setup.1.0.0.exe` on GitHub Releases |
 | 8 | Agent env without hand-editing | ✅ | `%ProgramData%\CollectRx\agent-config.json`, `loadAgentConfig.cjs`, NSIS seeds file |
 | 9 | Import → queue → dispatch unattended | ✅ | `pmsImportPipeline.ts` → `syncWorkItemsForPractice`; 🔧 enable Vapi + gates |
 | 10 | Redis + worker on Fly | ✅ | `fly.toml` worker process; 🔧 set `REDIS_URL` secret |
@@ -43,14 +43,14 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | 23 | electron/icon.png + builder | ✅ | `electron/icon.png`, `package.json` build |
 | 24 | Linux CI job | ✅ | `linux-appimage` job in workflow |
 | 25 | GET /api/desktop/releases | ✅ | `desktopReleasesRoutes.ts`; 🔧 `GITHUB_RELEASES_TOKEN` on Fly |
-| 26 | Pilot tag → CI .exe | 🔧 | `git tag v1.0.0-pilot && git push --tags` |
+| 26 | Pilot tag → CI .exe | ✅ | Tag `v1.0.0-pilot` pushed; workflow run 28984095404 succeeded |
 
 ## Tier 3 — CI / quality
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 27 | tsc --noEmit | ✅ | ioredis/bullmq cast in `arQueue.ts`, `workerEntry.ts` |
-| 28 | Test suite green | ✅ | 820 passed locally; `REDIS_URL` cleared in vitest |
+| 28 | Test suite green | ✅ | 821 passed locally; `REDIS_URL` cleared in vitest |
 | 29 | Vite production build | ✅ | `vite.config.ts` target `es2022` |
 | 30 | Playwright E2E on CI | 🔧 | Re-run after push |
 
@@ -102,8 +102,16 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 
 ## Engineering complete when
 
-1. This commit pushed to `main`
-2. `prisma migrate deploy` on Fly
-3. Tag `v1.0.0-pilot` → Windows `.exe` in GitHub Releases
-4. Ops checklist in `GO-LIVE-ENGINEERING.md` executed
-5. Field proof: item **#1** on practice PC
+1. ✅ Pushed to `main` — production v25 on Fly
+2. ✅ `prisma migrate deploy` on Fly (connector agents migration live)
+3. ✅ Tag `v1.0.0-pilot` → Windows `.exe` in GitHub Releases
+4. 🔧 Ops checklist in `GO-LIVE-ENGINEERING.md` — **defer until practice signed** (Stripe live, webhooks, Sentry, etc.)
+5. 🏥 Field proof: item **#1** on practice PC — **next gate when you have a practice**
+
+## When you have a practice (same-day checklist)
+
+1. **Admin → Sync ops** — mint connector token
+2. Send practice `CollectRx.Setup.1.0.0.exe` from [v1.0.0-pilot release](https://github.com/GetCollectRx/Collect-RX/releases/tag/v1.0.0-pilot) or https://www.collectrx.ca/download
+3. On-site: `agent-config.json` + `windows-install-mssql.ps1` — see `INTERNAL-SETUP-RUNBOOK.md`
+4. Optional before go-live: disable Fly autostop (`auto_stop_machines = false`) for snappier first load
+5. Run Tier 1 ops from `GO-LIVE-ENGINEERING.md` if billing/calls/email go live that day

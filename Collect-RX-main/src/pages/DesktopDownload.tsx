@@ -30,6 +30,7 @@ export default function DesktopDownload() {
   const desktop = useDesktopConnector()
   const recommended = useMemo(() => getRecommendedPlatform(), [])
   const [release, setRelease] = useState<DesktopReleaseInfo | null>(null)
+  const [downloadsConfigured, setDownloadsConfigured] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,9 +38,15 @@ export default function DesktopDownload() {
     let cancelled = false
     setLoading(true)
     void fetchDesktopReleases()
-      .then((data) => {
+      .then((result) => {
         if (cancelled) return
-        setRelease(data ?? fallbackDesktopReleaseInfo())
+        if (result) {
+          setRelease(result.info)
+          setDownloadsConfigured(result.downloadsConfigured)
+        } else {
+          setRelease(fallbackDesktopReleaseInfo())
+          setDownloadsConfigured(false)
+        }
       })
       .catch((e) => {
         if (!cancelled) {
@@ -62,6 +69,15 @@ export default function DesktopDownload() {
       <div className="crx-app min-h-screen">
       <div className="page-enter p-6 max-w-3xl mx-auto space-y-6">
         <DesktopConnectorBanner />
+
+        {!downloadsConfigured && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Installers are listed below, but direct download requires server configuration. If a link fails,
+            sign in and use <Link to="/admin/sync" className="underline font-medium">Admin → Sync ops</Link>, or email{' '}
+            <a href="mailto:support@collectrx.ca" className="underline font-medium">support@collectrx.ca</a> for the
+            Windows installer.
+          </div>
+        )}
 
         <header className="flex items-start gap-4">
           <CollectRxLogoMark size={48} />
@@ -132,8 +148,8 @@ export default function DesktopDownload() {
         <Card>
           <CardHeader title="Windows AbelDent setup" subtitle="One-time configuration on the practice PC" />
           <ol className="px-4 pb-4 text-sm text-crx-t2 space-y-2 list-decimal list-inside">
-            <li>Install the Windows desktop app and sign in with your practice credentials.</li>
-            <li>Set <code className="text-xs">ABELDENT_SERVER</code> and <code className="text-xs">ABELDENT_SCHEMA_MAP</code> in the app environment (see <code className="text-xs">.env.example</code>).</li>
+            <li>Install the Windows desktop app and paste your connector token into <code className="text-xs">%ProgramData%\CollectRx\agent-config.json</code>.</li>
+            <li>Run <code className="text-xs">windows-install-mssql.ps1</code> once (ODBC + SQL driver).</li>
             <li>Confirm sync status in the green banner above, or under Admin → Sync ops.</li>
           </ol>
           <p className="px-4 pb-4 text-xs text-crx-t3">

@@ -10,7 +10,7 @@ const base = (process.argv[2] || process.env.PUBLIC_APP_URL || 'https://www.coll
 const checks = [
   { name: 'GET /api/health', path: '/api/health', expect: (b) => b.status === 'ok' },
   { name: 'GET /api/health/ready', path: '/api/health/ready', expect: (b) => b.status === 'ready' || b.status === 'not_ready' },
-  { name: 'GET /api/desktop/releases', path: '/api/desktop/releases', expect: (b) => b.success === true || Array.isArray(b.data?.assets) },
+  { name: 'GET /api/desktop/releases', path: '/api/desktop/releases', expect: (b) => b.success === true && Array.isArray(b.data?.assets) && b.data.assets.length > 0 },
   { name: 'Protected route 401', path: '/api/insurance/claims', expect: () => true, status: 401 },
 ];
 

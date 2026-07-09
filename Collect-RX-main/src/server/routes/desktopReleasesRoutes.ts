@@ -1,57 +1,64 @@
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
 import {
-  DESKTOP_RELEASES_PAGE,
-  parseGithubReleaseAssets,
-  type DesktopReleaseInfo,
-} from '../../lib/desktopReleases.js';
-
-const GITHUB_REPO = 'GetCollectRx/Collect-RX';
-
-async function fetchLatestGithubRelease(): Promise<DesktopReleaseInfo | null> {
-  const token = process.env.GITHUB_RELEASES_TOKEN || process.env.GITHUB_TOKEN;
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'CollectRx-Desktop-Releases',
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { headers });
-  if (!res.ok) return null;
-
-  const body = (await res.json()) as {
-    tag_name?: string;
-    published_at?: string;
-    html_url?: string;
-    assets?: { name: string; browser_download_url: string; size?: number }[];
-  };
-
-  const version = (body.tag_name || 'latest').replace(/^v/, '');
-  const releasePageUrl = body.html_url || DESKTOP_RELEASES_PAGE;
-  const assets = body.assets ?? [];
-  if (assets.length === 0) return null;
-
-  return parseGithubReleaseAssets(version, body.published_at ?? null, releasePageUrl, assets);
-}
+  getDesktopReleaseInfo,
+  isDesktopReleaseDownloadConfigured,
+  streamGithubReleaseAsset,
+} from '../services/desktopReleaseService.js';
 
 export function createDesktopReleasesRouter(): Router {
   const router = Router();
 
-  /** Public — download page uses this to list signed GitHub release assets when a token is configured. */
+  /** Public — lists desktop installers (proxied URLs when GitHub repo is private). */
   router.get('/desktop/releases', async (_req, res) => {
     try {
-      const data = await fetchLatestGithubRelease();
-      if (!data) {
-        return res.json({
-          success: true,
-          data: null,
-          message: 'No release metadata available — use the GitHub releases page.',
-        });
-      }
-      return res.json({ success: true, data });
+      const data = await getDesktopReleaseInfo();
+      return res.json({
+        success: true,
+        data,
+        downloadsConfigured: isDesktopReleaseDownloadConfigured(),
+      });
     } catch (err) {
       console.error('[desktop/releases]', (err as Error).message);
       return res.status(500).json({ success: false, error: 'Failed to load release metadata' });
+    }
+  });
+
+  /** Public — streams a GitHub release asset (requires GITHUB_RELEASES_TOKEN on the server). */
+  router.get('/desktop/releases/assets/:fileName', async (req, res) => {
+    const fileName = decodeURIComponent(String(req.params.fileName ?? ''));
+    if (!fileName || fileName.includes('..') || fileName.includes('/')) {
+      return res.status(400).json({ success: false, error: 'Invalid file name' });
+    }
+
+    if (!isDesktopReleaseDownloadConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Desktop downloads are not configured on this server. Contact support@collectrx.ca.',
+      });
+    }
+
+    try {
+      const streamed = await streamGithubReleaseAsset(fileName);
+      if (!streamed) {
+        return res.status(404).json({ success: false, error: 'Installer not found' });
+      }
+
+      const contentType = streamed.headers.get('content-type') || 'application/octet-stream';
+      const contentLength = streamed.headers.get('content-length');
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+
+      await pipeline(Readable.fromWeb(streamed.body as import('stream/web').ReadableStream), res);
+      return undefined;
+    } catch (err) {
+      console.error('[desktop/releases/assets]', fileName, (err as Error).message);
+      if (!res.headersSent) {
+        return res.status(502).json({ success: false, error: 'Failed to download installer' });
+      }
+      return undefined;
     }
   });
 
