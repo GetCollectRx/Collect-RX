@@ -350,12 +350,24 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
       })
       .filter(Boolean);
 
-    // Calls not yet evaluated — process up to 10 per request to respect rate limits.
+    // Calls not yet evaluated — only when live eval is explicitly enabled.
     const needsEval = completedCalls.filter((c) => !c.evalCompletedAt).slice(0, 10);
     const freshResults = [];
 
+    if (needsEval.length > 0) {
+      const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
+      if (!isAnthropicEvalAllowed()) {
+        console.warn(
+          '[eval-scores] Skipping live Anthropic eval (%d pending). Set COLLECTRX_ANTHROPIC_EVAL=1 to enable.',
+          needsEval.length,
+        );
+      }
+    }
+
     for (const call of needsEval) {
       try {
+        const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
+        if (!isAnthropicEvalAllowed()) break;
         const transcriptText = call.transcriptUrl ?? '';
         if (transcriptText.length < 50) continue;
 

@@ -16,6 +16,7 @@
 //   and Alberta HIA production requirements.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { assertAllowedEvalModel, assertAnthropicEvalAllowed } from './anthropicEvalGuard.js';
 import { LLM_RESIDENCY_HEADERS } from '../pii-vault';
 
 // ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const EVAL_MODEL = 'claude-sonnet-4-6';
 
 function getAnthropicKey(): string {
+  assertAnthropicEvalAllowed('AutomatedEval');
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('[AutomatedEval] ANTHROPIC_API_KEY not set');
   return key;
@@ -134,6 +136,8 @@ interface LLMEvalOutput {
 
 async function runLLMEvaluation(transcript: string, carrierId: string): Promise<LLMEvalOutput> {
   const userMessage = `Evaluate this call transcript. Carrier: ${carrierId}.\n\nTranscript:\n${transcript}`;
+
+  assertAllowedEvalModel(EVAL_MODEL, 'AutomatedEval');
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
