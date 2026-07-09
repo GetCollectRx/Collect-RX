@@ -22,6 +22,16 @@ describe('GET /api/desktop/releases', () => {
   });
 });
 
+describe('GET /api/desktop/releases/diagnostics', () => {
+  it('returns safe GitHub diagnostics', async () => {
+    const res = await request(app).get('/api/desktop/releases/diagnostics');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(typeof res.body.tokenPresent).toBe('boolean');
+    expect(res.body).not.toHaveProperty('token');
+  });
+});
+
 describe('GET /api/desktop/releases/assets/:fileName', () => {
   it('rejects path traversal', async () => {
     const res = await request(app).get('/api/desktop/releases/assets/..%2Fetc%2Fpasswd');
@@ -31,8 +41,10 @@ describe('GET /api/desktop/releases/assets/:fileName', () => {
   it('returns 503 when GitHub token is not configured', async () => {
     const prev = process.env.GITHUB_RELEASES_TOKEN;
     const prevGh = process.env.GITHUB_TOKEN;
+    const prevCr = process.env.COLLECTRX;
     delete process.env.GITHUB_RELEASES_TOKEN;
     delete process.env.GITHUB_TOKEN;
+    delete process.env.COLLECTRX;
     try {
       const res = await request(app).get(
         `/api/desktop/releases/assets/${encodeURIComponent(PILOT_DESKTOP_RELEASE.assets[0].fileName)}`,
@@ -41,6 +53,7 @@ describe('GET /api/desktop/releases/assets/:fileName', () => {
     } finally {
       if (prev !== undefined) process.env.GITHUB_RELEASES_TOKEN = prev;
       if (prevGh !== undefined) process.env.GITHUB_TOKEN = prevGh;
+      if (prevCr !== undefined) process.env.COLLECTRX = prevCr;
     }
   });
 });

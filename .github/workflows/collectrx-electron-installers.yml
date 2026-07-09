@@ -71,8 +71,9 @@ jobs:
       - name: Stage macOS zip artifacts
         run: |
           mkdir -p _artifacts_mac
-          find Collect-RX-main/dist-electron -name '*.zip' -print
           find Collect-RX-main/dist-electron -name '*.zip' -exec cp -f {} _artifacts_mac/ \;
+          find Collect-RX-main/dist-electron -maxdepth 1 -name '*.yml' -exec cp -f {} _artifacts_mac/ \;
+          find Collect-RX-main/dist-electron -maxdepth 1 -name '*.blockmap' -exec cp -f {} _artifacts_mac/ \;
           ls -la _artifacts_mac
           test "$(find _artifacts_mac -name '*.zip' | wc -l | tr -d ' ')" -ge 1
 
@@ -80,7 +81,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CollectRx-mac-zip
-          path: _artifacts_mac/*.zip
+          path: _artifacts_mac/*
           if-no-files-found: error
           retention-days: 7
 
@@ -88,7 +89,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: _artifacts_mac/*.zip
+          files: _artifacts_mac/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -130,7 +131,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force _artifacts_win | Out-Null
           Get-ChildItem -Path Collect-RX-main/dist-electron -Recurse -Filter *.exe -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host $_.FullName
+            Copy-Item $_.FullName _artifacts_win -Force
+          }
+          Get-ChildItem -Path Collect-RX-main/dist-electron -Filter *.yml -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName _artifacts_win -Force
+          }
+          Get-ChildItem -Path Collect-RX-main/dist-electron -Filter *.blockmap -ErrorAction SilentlyContinue | ForEach-Object {
             Copy-Item $_.FullName _artifacts_win -Force
           }
           Get-ChildItem _artifacts_win
@@ -140,7 +146,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CollectRx-windows-installer
-          path: _artifacts_win/*.exe
+          path: _artifacts_win/*
           if-no-files-found: error
           retention-days: 7
 
@@ -148,7 +154,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: _artifacts_win/*.exe
+          files: _artifacts_win/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -183,7 +189,7 @@ jobs:
       - name: Stage Linux artifacts
         run: |
           mkdir -p _artifacts_linux
-          find Collect-RX-main/dist-electron -maxdepth 1 \( -name '*.AppImage' -o -name '*.deb' \) -exec cp -f {} _artifacts_linux/ \;
+          find Collect-RX-main/dist-electron -maxdepth 1 \( -name '*.AppImage' -o -name '*.deb' -o -name '*.yml' -o -name '*.blockmap' \) -exec cp -f {} _artifacts_linux/ \;
           ls -la _artifacts_linux
           test "$(find _artifacts_linux -type f | wc -l | tr -d ' ')" -ge 1
 

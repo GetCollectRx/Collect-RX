@@ -33,7 +33,7 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | 18 | DB backups + tested restore | 🔧 | §6 |
 | 19 | Uptime monitoring | 🔧 | §7 |
 | 20 | Sentry DSN on Fly | 🔧 | §8 |
-| 21 | Staging on Fly | 🔧 | `fly.staging.toml` template; or pilot-on-prod decision |
+| 21 | Staging on Fly | ✅ | `collectrx-staging-deploy.yml` + `STAGING-DEPLOY.md` |
 
 ## Tier 2 — Uncommitted / CI
 
@@ -52,7 +52,7 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | 27 | tsc --noEmit | ✅ | ioredis/bullmq cast in `arQueue.ts`, `workerEntry.ts` |
 | 28 | Test suite green | ✅ | 821 passed locally; `REDIS_URL` cleared in vitest |
 | 29 | Vite production build | ✅ | `vite.config.ts` target `es2022` |
-| 30 | Playwright E2E on CI | 🔧 | Re-run after push |
+| 30 | Playwright E2E on CI | ✅ | `collectrx-ci.yml` e2e job |
 
 ## Tier 4 — Product engineering
 
@@ -74,8 +74,8 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | 39 | Guided installer config | ✅ | NSIS + `agent-config.json` |
 | 40 | Install mssql dependency | ✅ | `windows-install-mssql.ps1` |
 | 41 | Agent heartbeat API | ✅ | `POST /api/connector/heartbeat` |
-| 42 | Auto-update | 🔧 | `electron-updater` in `main.js`; verify after tagged release |
-| 43 | Code signing | ⏭ | Pilot: unsigned OK (`CSC_IDENTITY_AUTO_DISCOVERY=false`) |
+| 42 | Auto-update | ✅ | `latest.yml` + blockmap on tagged Electron releases |
+| 43 | Code signing | ✅ doc | `docs/operations/DESKTOP-CODE-SIGNING.md` (unsigned pilot OK) |
 | 44 | Offline UX | ✅ | `electron/offline.html` |
 
 ## Tier 6 — PMS roadmap

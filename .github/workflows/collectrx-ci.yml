@@ -61,6 +61,16 @@ jobs:
         working-directory: Collect-RX-main
         run: npm run typecheck
 
+      - name: Lint
+        working-directory: Collect-RX-main
+        run: npm run lint
+
+      - name: Production build
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npx vite build
+
       - name: Unit & integration tests
         working-directory: Collect-RX-main
         env:
@@ -87,3 +97,113 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: node scripts/ci-notify-failure.mjs
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        working-directory: Collect-RX-main
+        run: npm run db:generate && npm run db:migrate
+
+      - name: Build frontend
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npx vite build
+
+      - name: Install Playwright Chromium
+        working-directory: Collect-RX-main
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        working-directory: Collect-RX-main
+        env:
+          CI: "true"
+          DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+          JWT_SECRET: github-actions-ci-placeholder-not-for-production
+          VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+        run: npm run e2e:ci
+
+  perf-smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - uses: grafana/setup-k6-action@v1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        working-directory: Collect-RX-main
+        run: npm run db:generate && npm run db:migrate
+
+      - name: Build frontend
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npx vite build
+
+      - name: Start API and run k6 read-heavy smoke
+        working-directory: Collect-RX-main
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+          JWT_SECRET: github-actions-ci-placeholder-not-for-production
+          VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+          PORT: "3000"
+        run: |
+          npm run start &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/api/health && break
+            sleep 2
+          done
+          k6 run perf/k6-read-heavy.js
