@@ -66,6 +66,7 @@ model Practice {
   usagePeriods          UsagePeriod[]
   featureFlags          FeatureFlag[]
   inviteTokens          InviteToken[]
+  notifications         PracticeNotification[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -236,6 +237,37 @@ model ProcessedVapiWebhook {
   createdAt DateTime @default(now())
 }
 
+/// Async claims validator webhook — idempotent processing via body hash
+model ProcessedValidatorWebhook {
+  id        String   @id @default(cuid())
+  bodyHash  String   @unique @map("body_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ProcessedValidatorWebhook")
+}
+
+/// Practice notifications — escalations, carrier blocks, payment updates, etc. Displayed on dashboard.
+model PracticeNotification {
+  id        String   @id @default(cuid())
+  practiceId String  @map("practice_id")
+  type      String  // VALIDATION_ESCALATION, CARRIER_BLOCK, PAYMENT_RECEIVED, CLAIM_DENIED
+  subject   String
+  message   String
+  claimId   String? @map("claim_id")
+  severity  String  @default("info") // info, warning, critical
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  claim    InsuranceClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@index([practiceId])
+  @@index([claimId])
+  @@index([readAt])
+  @@index([createdAt])
+  @@map("PracticeNotification")
+}
+
 /// P8-04: one row per automated reminder *attempt* slot (per balance / nextStatus / UTC day) so queue retries do not double-send the same day.
 model ReminderSendLedger {
   id        String   @id
@@ -403,6 +435,7 @@ model InsuranceClaim {
   queueEntry       CallQueue?
   recoveryActions  ClaimRecoveryAction[]
   recoveryEvents   ClaimRecoveryEvent[]
+  notifications    PracticeNotification[]
 
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
@@ -493,6 +526,10 @@ model CallAttempt {
   takenOverByStaffAt   DateTime?   @map("taken_over_by_staff_at")
   takenOverByStaffId   String?     @map("taken_over_by_staff_id")
   createdAt            DateTime    @default(now()) @map("created_at")
+  /// Async validator webhook result — true if validation passed, false if escalated
+  validationPassed     Boolean?    @map("validation_passed")
+  /// Full validator output JSON (violations, safety_score, carrier_block_risk, etc.)
+  validationResult     Json?       @map("validation_result")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
   guardrailAudits      GuardrailAudit[]

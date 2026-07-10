@@ -99,6 +99,7 @@ import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
+import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
@@ -231,6 +232,17 @@ app.use(
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   vapiWebhookRouter,
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Claims Validator webhook — async validation after call ends
+// Runs OFF-CALL after Claims_Agent completes; validates extraction & safety
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/claims/validate',
+  webhookLimiter,
+  express.json({ limit: '10mb' }),
+  claimsValidatorRouter,
 );
 
 app.post(
