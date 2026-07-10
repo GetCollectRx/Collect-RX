@@ -19,10 +19,16 @@ export default defineConfig({
     ? {
         command: 'npm run start',
         url: `${baseURL.replace(/\/$/, '')}/api/health`,
-        reuseExistingServer: false,
+        reuseExistingServer: !isCI,
         timeout: 120_000,
         env: { ...process.env, PORT: '3000' },
       }
-    : undefined,
+    : {
+        command: 'npm run start',
+        url: `${baseURL.replace(/\/$/, '')}/api/health`,
+        reuseExistingServer: true,
+        timeout: 120_000,
+        env: { ...process.env, PORT: '3000' },
+      },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

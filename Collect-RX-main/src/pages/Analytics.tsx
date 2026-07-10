@@ -577,17 +577,16 @@ export default function Analytics() {
           { performance?: CarrierPerfRow[] },
           { success?: boolean; data?: typeof practicePerf },
         ]
-        // @ts-ignore — col shape validated at runtime; API response typed loosely
+        // @ts-expect-error legacy analytics API shapes vary at runtime
         setCollectionRate(col)
-        // @ts-ignore
+        // @ts-expect-error legacy analytics API shapes vary at runtime
         setFunnel(fun.funnel ?? [])
-        // @ts-ignore
+        // @ts-expect-error legacy analytics API shapes vary at runtime
         setPriorityBal(pri.priorityBalances ?? [])
-        // @ts-ignore
+        // @ts-expect-error legacy analytics API shapes vary at runtime
         setMsgEffect(eff.effectiveness ?? [])
-        // @ts-ignore
+        // @ts-expect-error legacy analytics API shapes vary at runtime
         setPaymentTrends(trends.trends ?? [])
-        // @ts-ignore
         setCarrierPerf(car.performance ?? [])
         setPracticePerf(perf.data ?? null)
         if (failed.length > 0) {

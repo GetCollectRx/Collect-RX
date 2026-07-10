@@ -164,7 +164,8 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       });
       continue;
     }
-    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+    const auditLogger = logger as { audit?: (event: string, meta: Record<string, unknown>) => void };
+    auditLogger.audit?.('PHI_TOKEN_RESOLVED', {
       claimId: next.claimId,
       patientToken: next.claim.patientToken,
       callerContext: 'queue-engine',

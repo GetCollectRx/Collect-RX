@@ -7,7 +7,6 @@
 
 import { createHash } from 'crypto';
 import type { PrismaClient } from '@prisma/client';
-import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
 import {
@@ -72,37 +71,6 @@ export async function isWebhookDuplicate(
 
 export async function markWebhookProcessed(prisma: PrismaClient, bodyHash: string): Promise<void> {
   await prisma.processedVapiWebhook.create({ data: { bodyHash } });
-}
-
-function verifyVapiAuth(req: Request): boolean {
-  const secret = process.env.VAPI_WEBHOOK_SECRET;
-  if (!secret) {
-    return process.env.NODE_ENV !== 'production';
-  }
-  const x = req.get('x-vapi-secret') || req.get('X-Vapi-Secret');
-  if (x && x === secret) return true;
-  const auth = req.get('authorization') || '';
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (m?.[1] && m[1] === secret) return true;
-  return false;
-}
-
-function responseForVapiMessage(body: unknown): Record<string, unknown> {
-  const b = body as { message?: { type?: string; toolWithToolCallList?: Array<{ name: string; toolCall?: { id?: string } }> } };
-  const type = b?.message?.type;
-  if (type === 'assistant-request' && process.env.VAPI_DEFAULT_ASSISTANT_ID) {
-    return { assistantId: process.env.VAPI_DEFAULT_ASSISTANT_ID };
-  }
-  if (type === 'tool-calls' && b.message?.toolWithToolCallList?.length) {
-    return {
-      results: b.message.toolWithToolCallList.map((t) => ({
-        name: t.name,
-        toolCallId: t.toolCall?.id,
-        result: JSON.stringify({ ok: false, error: 'No tool handlers configured.' }),
-      })),
-    };
-  }
-  return {};
 }
 
 async function fireCarrierBlockProtocol(
@@ -379,56 +347,4 @@ export async function processRecoveryCallEnded(
   rawBody?: unknown,
 ): Promise<void> {
   return processCallEnded(payload, prisma, rawBody);
-}
-
-/**
- * @deprecated L-1: SUPERSEDED — never mounted, never called.
- *
- * The active webhook handler is `src/webhooks/vapi.ts` (HMAC-SHA256 auth,
- * atomic idempotency via markWebhookProcessed, processVapiDeskWebhook).
- * This function uses a different auth mechanism (shared-secret header check)
- * and routes directly to processCallEnded, bypassing the desk event pipeline.
- * Do NOT add new call sites. Remove this function when the codebase has
- * confirmed zero test references.
- */
-export async function handleVapiWebhook(
-  req: Request & { vapiRawBody?: Buffer },
-  res: Response,
-  prisma: PrismaClient,
-): Promise<void> {
-  if (!verifyVapiAuth(req)) {
-    res.status(401).json({ error: 'Invalid or missing Vapi authentication' });
-    return;
-  }
-
-  const buf = req.vapiRawBody;
-  if (!buf || !Buffer.isBuffer(buf)) {
-    res.status(400).json({ error: 'Missing raw body' });
-    return;
-  }
-
-  const bodyHash = hashBody(buf);
-  const payload = req.body as VapiWebhookPayload;
-
-  const existing = await prisma.processedVapiWebhook.findUnique({ where: { bodyHash } });
-  if (existing) {
-    res.status(200).json({ ok: true, duplicate: true });
-    return;
-  }
-
-  if (payload.type === 'call.ended' || payload.type === 'call.failed') {
-    try {
-      await processCallEnded(payload, prisma, req.body);
-      await prisma.processedVapiWebhook.create({ data: { bodyHash } });
-    } catch (err) {
-      console.error('[vapi-webhook] processCallEnded failed:', err);
-      res.status(500).json({ error: 'Call processing failed' });
-      return;
-    }
-  } else {
-    await prisma.processedVapiWebhook.create({ data: { bodyHash } });
-  }
-
-  const out = responseForVapiMessage(payload);
-  res.status(200).json(out);
 }

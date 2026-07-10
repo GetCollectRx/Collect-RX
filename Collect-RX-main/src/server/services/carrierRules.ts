@@ -91,12 +91,12 @@ export const PROVINCIAL_FEE_GUIDES_2026: Record<string, ProvincialFeeGuide2026> 
   QC: {
     province: 'Quebec',
     provinceCode: 'QC',
-    incrementPct: 3.0,           // placeholder — confirm with OAQ
-    multiplier: 1.030,
+    incrementPct: 3.4,           // ACDQ 2026 average rate increase (Jan 1, 2026)
+    multiplier: 1.034,
     cdcpReimbursementPct: 90,
-    cdcpCeilingMultiplier: 1.030 * 0.90,
+    cdcpCeilingMultiplier: 1.034 * 0.90,
     effectiveDate: '2026-01-01',
-    notes: 'OAQ 2026 fee guide. Verify final increment when published.',
+    notes: 'ACDQ 2026 fee guide — 3.4% average increase (SAI Inc. summary of ACDQ publication). Reference rates only; dentists set own fees.',
   },
   MB: {
     province: 'Manitoba',

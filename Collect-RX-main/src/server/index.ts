@@ -57,7 +57,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
-import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
+import { resolveContentSecurityPolicy } from './security/contentSecurityPolicy.js';
+import { resolveCorsAllowedOrigins } from './corsAllowedOrigins.js';
 import { prisma } from '../lib/prisma';
 // Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
 // H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
@@ -169,7 +170,7 @@ app.use(
       process.env.NODE_ENV === 'production'
         ? { maxAge: 31536000, includeSubDomains: true, preload: false }
         : false,
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: resolveContentSecurityPolicy(),
   }),
 );
 

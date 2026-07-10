@@ -67,6 +67,7 @@
     "personas:reset-passwords": "node scripts/set-persona-test-passwords.mjs",
     "db:reset": "prisma migrate reset",
     "check:env": "node scripts/check-deploy-env.mjs",
+    "sync-fly-secrets": "node scripts/sync-fly-secrets.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "abeldent:discover": "node scripts/discover-schema.cjs",

@@ -36,7 +36,27 @@ docker compose up -d
 
 Then set `DATABASE_URL` to the compose defaults, e.g. `postgresql://collectrx:collectrx_local_dev_only@localhost:5433/collectrx` (host **5433** maps into the container’s 5432; see [docker-compose.yml](../docker-compose.yml)). The file lives at the repo root, not inside `Collect-RX-main/`.
 
-## Railway PostgreSQL
+## Fly.io PostgreSQL (production)
+
+**Authoritative production database:** Fly Postgres app **`collect-rx-db`** (region `yyz`). Railway Postgres is **retired** — rotate or delete stale Railway credentials if any remain in password managers.
+
+**From your laptop** (migrations, seed, Prisma Studio):
+
+1. Start a proxy in a separate terminal (keep it running):
+   ```bash
+   fly proxy 15432:5432 --app collect-rx-db --bind-addr 127.0.0.1
+   ```
+2. Set `Collect-RX-main/.env`:
+   ```env
+   DATABASE_URL=postgresql://collect_rx:PASSWORD@127.0.0.1:15432/collect_rx?sslmode=disable
+   ```
+   Use credentials from `fly postgres connect --app collect-rx-db` or your team secret store. **Do not** use `*.flycast` hosts from macOS — they only resolve inside Fly’s private network.
+
+**On the deployed API** (`collect-rx` Fly app), `DATABASE_URL` is set via `fly secrets` and uses the internal Fly Postgres hostname.
+
+Sync local `.env` secrets to Fly: `npm run sync-fly-secrets -w dental-ar-system` (from monorepo root). See [FLY-PRODUCTION-OPS.md](operations/FLY-PRODUCTION-OPS.md).
+
+## Railway PostgreSQL (legacy)
 
 If Postgres runs on **[Railway](https://railway.app/)**, you do not run Docker or a local server for that database.
 

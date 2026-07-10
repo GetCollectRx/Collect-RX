@@ -9,6 +9,7 @@ import {
   CARRIER_CONFIGS,
   validateDispatch,
   checkCarrierAuthorizationGate,
+  checkCarrierBlock,
 } from '../../src/carriers/adapter';
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
 
@@ -64,6 +65,32 @@ afterEach(() => {
 });
 
 describe('CarrierAdapter', () => {
+  describe('checkCarrierBlock (scheduling layer)', () => {
+    it('blocks dispatch when an active CARRIER_BLOCK exists', async () => {
+      const prisma = {
+        carrierBlockEvent: {
+          findFirst: async () => ({
+            blockedAt: new Date('2026-06-01T12:00:00Z'),
+            resumedAt: null,
+          }),
+        },
+      } as unknown as PrismaClient;
+
+      const r = await checkCarrierBlock(prisma, 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/CARRIER_BLOCK active/i);
+    });
+
+    it('allows dispatch when no active block', async () => {
+      const prisma = {
+        carrierBlockEvent: { findFirst: async () => null },
+      } as unknown as PrismaClient;
+
+      const r = await checkCarrierBlock(prisma, 'practice-1', 'sun_life');
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   describe('CARRIER_CONFIGS', () => {
     it('defines all 6 supported carriers', () => {
       const carriers = Object.keys(CARRIER_CONFIGS);

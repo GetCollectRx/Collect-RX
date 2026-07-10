@@ -36,6 +36,10 @@ import {
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
+import {
+  generatePasswordResetToken,
+  hashPasswordResetToken,
+} from '../auth/resetTokenHash.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 
@@ -643,12 +647,12 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         data: { usedAt: new Date() },
       });
 
-      const { randomBytes } = await import('node:crypto');
-      const token = randomBytes(32).toString('hex');
+      const token = generatePasswordResetToken();
+      const tokenHash = hashPasswordResetToken(token);
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt },
+        data: { userId: user.id, token: tokenHash, expiresAt },
       });
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
@@ -662,25 +666,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('reset-password request error:', e);
       return res.status(500).json({ error: 'Failed to process request' });
-    }
-  });
-
-  /**
-   * GET /api/auth/reset-password/token/:userId
-   * Platform-dev only — retrieves the current active reset token for a user.
-   * Used by admin to relay the token to the user until email delivery is wired up.
-   */
-  r.get('/reset-password/token/:userId', authenticate, authorizeRole('platform_dev'), async (req, res) => {
-    try {
-      const record = await prisma.passwordResetToken.findFirst({
-        where: { userId: req.params.userId, usedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!record) return res.status(404).json({ error: 'No active reset token found' });
-      return res.json({ token: record.token, expiresAt: record.expiresAt });
-    } catch (e) {
-      console.error('get reset token error:', e);
-      return res.status(500).json({ error: 'Failed' });
     }
   });
 
@@ -700,7 +685,12 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
       }
 
-      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+      const tokenHash = hashPasswordResetToken(token);
+      let record = await prisma.passwordResetToken.findUnique({ where: { token: tokenHash } });
+      // Legacy rows issued before hashing migration (plaintext in DB).
+      if (!record) {
+        record = await prisma.passwordResetToken.findUnique({ where: { token } });
+      }
       if (!record || record.usedAt || record.expiresAt < new Date()) {
         return res.status(400).json({ error: 'Invalid or expired reset token' });
       }

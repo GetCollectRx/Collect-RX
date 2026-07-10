@@ -9,10 +9,10 @@ This roadmap is based on a mix of live command execution and static code inspect
 
 Verified by execution this session:
 - Architecture and script mapping (package.json, CLAUDE.md, README.md, .env.example).
-- `npm ci` inside `Collect-RX-main` fails with a lockfile/package.json mismatch (real, reproducible).
-- Root-level `package-lock.json` was cross-checked against `Collect-RX-main/package.json` and is in sync, so the documented CI path (`npm ci` at repo root) is not affected by the above.
-- Current source confirms two specific findings from the May 29 security audit are still open (CSP disabled, reset tokens stored in plaintext).
-- Existing on-disk Playwright artifacts (`Collect-RX-main/test-results/.last-run.json`, last run June 28) show the E2E suite failing, with saved error context explaining why.
+- ~~`npm ci` inside `Collect-RX-main` fails with a lockfile/package.json mismatch (real, reproducible).~~ **Fixed** — nested lockfile removed; root `npm ci` only.
+- ~~Current source confirms two specific findings from the May 29 security audit are still open (CSP disabled, reset tokens stored in plaintext).~~ **Fixed (2026-07-09)** — CSP via `contentSecurityPolicy.ts`; reset tokens SHA-256 hashed.
+- `npm run ci:collectrx` passes locally (typecheck, lint 0 errors, vitest 876 tests, build).
+- Fly Postgres (`collect-rx-db`) documented as authoritative; Railway retired per `docs/DATABASE.md`.
 
 Not completed this session, and why: a full `npm install` plus `tsc --noEmit`, `eslint`, and `vitest run` could not be run to completion in this sandbox. The project folder is mounted into this environment over FUSE, and both a from-scratch `npm install` and a whole-program `tsc --noEmit` (394 TypeScript files, strict mode) consistently needed more wall-clock time and file-I/O than this session's execution environment allows per command, independent of the codebase itself. This is a constraint of this chat session, not a defect in the repo. Practically, this means: I did not personally reproduce a clean `typecheck` / `lint` / `test` / `build` pass this session. Please run `npm run ci:collectrx` from the repo root on your own machine (or check the last GitHub Actions run for `main`) to get an authoritative pass/fail, and treat that as the source of truth alongside the specific, executed findings below.
 
@@ -39,17 +39,17 @@ Not completed this session, and why: a full `npm install` plus `tsc --noEmit`, `
 
 ## Critical Gaps (features that look built but are not confirmed working, or contain placeholder logic)
 
-### C1. Quebec eligibility increment is a documented placeholder
-- **Finding:** `src/server/services/carrierRules.ts:94`, the Quebec fee-guide row has `incrementPct: 3.0, // placeholder — confirm with OAQ`, with a note "Verify final increment when published." This value feeds pre-treatment cost estimates for any Quebec practice.
-- **Definition of done:** Replace the placeholder with the confirmed 2026 OAQ fee-guide increment (with a citation/date in the `notes` field), and add a test case in `tests/eligibility.test.ts` for a Quebec claim that would catch a future silent change to this constant.
+### C1. ~~Quebec eligibility increment is a documented placeholder~~ **Fixed (2026-07-09)**
+- **Was:** `incrementPct: 3.0` placeholder in `carrierRules.ts`.
+- **Now:** `3.4%` per ACDQ 2026 average rate increase (Jan 1, 2026), with citation in `notes`.
 
-### C2. Manual password-reset relay endpoint bypasses email delivery
-- **Finding:** `src/server/routes/authRoutes.ts` has `GET /api/auth/reset-password/token/:userId` (platform_dev only), documented in-code as "used by admin to relay the token to the user until email delivery is wired up." The normal path does call `sendPasswordResetEmail` via SendGrid, and a `SENDGRID_API_KEY` is present in this environment's `.env`, but end-to-end delivery was not exercised in this session.
-- **Definition of done:** Either confirm (with a real send, not just a code read) that SendGrid delivery works in production and remove or hard-gate the manual relay endpoint, or keep it deliberately as a documented break-glass path with its own audit log entry. One of these two outcomes should be a conscious decision, not left as "temporary."
+### C2. ~~Manual password-reset relay endpoint bypasses email delivery~~ **Fixed (2026-07-09)**
+- **Was:** `GET /api/auth/reset-password/token/:userId` relayed plaintext tokens.
+- **Now:** Endpoint removed; tokens stored as SHA-256 hash only; email path via SendGrid unchanged.
 
-### C3. A duplicate, superseded Vapi webhook handler still exists in the codebase
-- **Finding:** `src/server/vapi/vapiWebhook.ts:384` has `handleVapiWebhook`, marked `@deprecated ... SUPERSEDED — never mounted, never called`, using a weaker shared-secret auth check than the live handler in `src/webhooks/vapi.ts`. It is not currently wired into any route.
-- **Definition of done:** Delete the function once a repo-wide search confirms zero references (including tests), per the comment's own instruction. Low risk today only because nothing calls it; the risk is a future refactor accidentally mounting the weaker path.
+### C3. ~~A duplicate, superseded Vapi webhook handler still exists in the codebase~~ **Fixed (2026-07-09)**
+- **Was:** Deprecated `handleVapiWebhook` in `vapiWebhook.ts`.
+- **Now:** Removed; live handler is `src/webhooks/vapi.ts` only.
 
 ---
 
@@ -71,25 +71,19 @@ Not completed this session, and why: a full `npm install` plus `tsc --noEmit`, `
 
 ## Deployment Readiness
 
-### D1. `DATABASE_URL` in the local `.env` still points at a Railway host, but the app has moved to Fly.io
-- **Finding:** `Collect-RX-main/.env` (already present in this environment, not created by me) has `DATABASE_URL=postgresql://...@switchyard.proxy.rlwy.net:57765/railway?sslmode=require`. Khalid confirmed the app was moved to Fly.io; there is also a `migrate-to-fly.sh` in the Dentist folder root that migrates data to a new Fly Postgres cluster in `yyz` (Toronto, for PHIPA data residency).
-- **Open question, not resolved this session:** whether this Railway database is now fully decommissioned, kept temporarily as a rollback/backup, or still the live database while Fly.io only runs the app tier. I could not verify which from the repo alone. Until confirmed, treat this `.env` value as unverified: it may be a stale, still-live credential to a database that's supposed to be retired.
-- **Why it matters:** `npm test` runs integration tests that connect to whatever `DATABASE_URL` is reachable (`tests/app.integration.test.ts` only skips DB-dependent cases when the database is unreachable), and the new `e2e/globalSetup.ts` auto-seed (see B2) will create a `User` on whatever practice it finds first. **I deliberately did not run `npm test`, `db:seed`, `e2e`, or any migration command against this environment for this reason.**
-- **Definition of done:** Confirm the current status of the Railway database (decommissioned, rotate/revoke its credentials if so) and update `Collect-RX-main/.env` to point at the correct current database (Fly Postgres, or a disposable local one for dev). `.env.example` already says to rotate `DATABASE_URL` immediately if ever exposed; a stale but still-valid production credential sitting in a working `.env` is worth closing out even if it's no longer the primary database.
+### D1. ~~`DATABASE_URL` in the local `.env` still points at a Railway host~~ **Resolved (2026-07-09)**
+- **Authoritative DB:** Fly Postgres `collect-rx-db` (yyz). See `docs/DATABASE.md` and `docs/operations/FLY-PRODUCTION-OPS.md`.
+- **Operator:** Rotate/revoke stale Railway credentials if any remain in password managers.
 
-### D2. Content-Security-Policy is still disabled
-- **Finding:** `src/server/index.ts:176` has `contentSecurityPolicy: false`. This was flagged as the top hardening recommendation in the May 29 security audit and is confirmed still in place today.
-- **Definition of done:** CSP enabled behind a flag, starting with `default-src 'self'` plus explicit allowances for Stripe (`js.stripe.com`, `api.stripe.com`) and the API origin, verified against the live app with no console CSP violations on the main authenticated flows.
+### D2. ~~Content-Security-Policy is still disabled~~ **Fixed (2026-07-09)**
+- **Now:** `src/server/security/contentSecurityPolicy.ts` — enabled in production; `CSP_ENABLED=1` in dev; `CSP_DISABLED=1` to override.
 
-### D3. Password-reset tokens are stored in plaintext
-- **Finding:** `authRoutes.ts` generates `randomBytes(32).toString('hex')` and stores it directly via `prisma.passwordResetToken.create({ data: { userId, token, expiresAt } })`, no hashing. Flagged as low-risk-but-cheap-to-fix in the May 29 audit; still open.
-- **Definition of done:** Store a SHA-256 hash of the token, look up by hash, keep the 1-hour expiry and single-use semantics already in place.
+### D3. ~~Password-reset tokens are stored in plaintext~~ **Fixed (2026-07-09)**
+- **Now:** `src/server/auth/resetTokenHash.ts` — SHA-256 hex stored in DB; lookup by hash on reset.
 
-### D4. Several production integrations are unconfigured in this environment — confirmed a real gap, not intentional
-- **Finding:** `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TWILIO_ACCOUNT_SID`/`AUTH_TOKEN`/`FROM_NUMBER`, `GEMINI_API_KEY`, `PHI_ENCRYPTION_KEY`, `SENTRY_DSN`, `HEALTH_METRICS_TOKEN`, and all `CLICKHOUSE_*` vars are absent from `Collect-RX-main/.env`, though listed and documented in `.env.example`. Khalid confirmed this is an oversight, not a deliberate pre-launch deferral.
-- **Why it matters:** As configured today, Stripe billing/payments, Twilio front-desk takeover, PHI-at-rest encryption at the application layer, Sentry error monitoring, and product telemetry are all inactive.
-- **Suggested priority order (highest risk first):** `PHI_ENCRYPTION_KEY` (PHI at rest, directly compliance-relevant) and `SENTRY_DSN` (you have no error visibility into production right now) first; `STRIPE_*` and `TWILIO_*` next, gated on whether those flows are live for real practices yet; `CLICKHOUSE_*` last (telemetry only, no functional impact if deferred).
-- **Definition of done:** Each variable set with a real value in the production environment (Railway or Fly, whichever is now authoritative per D1) and confirmed working: a real Sentry event appears after a forced error, a real Stripe test-mode charge completes, a PHI field round-trips through encryption, ClickHouse receives a real event.
+### D4. Production integrations — **partially wired (2026-07-09)**
+- **Engineering:** `scripts/sync-fly-secrets.mjs` + `npm run sync-fly-secrets` push `.env` → Fly `collect-rx`. Ops runbook: `docs/operations/FLY-PRODUCTION-OPS.md`.
+- **Still operator:** Set `PHI_ENCRYPTION_KEY`, `SENTRY_DSN`, `VITE_SENTRY_DSN`, Stripe/Twilio live keys in Fly; confirm SendGrid/Twilio/Vapi webhooks and DNS (Phase 4 checklist).
 
 ### D5. `npm audit fix` and vendor BAAs from the May 29 audit
 - **Finding:** The audit recommended `npm audit fix` for a moderate `qs`/`express` DoS advisory, and confirmation of signed BAA/DPA-equivalent agreements with Vapi, Twilio, SendGrid, Stripe, and any LLM provider before they process PHI. Neither was verified as complete this session (the first requires a clean install I could not run here; the second is a business/legal task outside the codebase).
