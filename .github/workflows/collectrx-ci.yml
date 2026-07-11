@@ -58,7 +58,7 @@ jobs:
         run: npm run db:migrate
 
       - name: Grant CI test role RLS bypass (integration tests use platform-level DB access)
-        run: psql "$DATABASE_URL" -c "ALTER ROLE prisma BYPASSRLS;"
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
 
       - name: Typecheck
         working-directory: Collect-RX-main
@@ -136,7 +136,7 @@ jobs:
         run: npm run db:generate && npm run db:migrate
 
       - name: Grant CI test role RLS bypass
-        run: psql "$DATABASE_URL" -c "ALTER ROLE prisma BYPASSRLS;"
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
 
       - name: Build frontend
         working-directory: Collect-RX-main
@@ -194,7 +194,7 @@ jobs:
         run: npm run db:generate && npm run db:migrate
 
       - name: Grant CI test role RLS bypass
-        run: psql "$DATABASE_URL" -c "ALTER ROLE prisma BYPASSRLS;"
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
 
       - name: Build frontend
         working-directory: Collect-RX-main
