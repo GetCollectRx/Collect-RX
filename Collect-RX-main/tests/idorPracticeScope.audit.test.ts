@@ -40,6 +40,10 @@ const AUTH_ROUTE_FILES = [
   'server/routes/canadianExpansionApi.ts',
   'server/routes/frontDeskApi.ts',
   'server/routes/practiceReportsApi.ts',
+  'server/routes/preVisitRoutes.ts',
+  'server/routes/pmsApiRoutes.ts',
+  'server/routes/connectorAdminRoutes.ts',
+  'server/routes/productTelemetry.ts',
 ];
 
 /**
@@ -52,6 +56,7 @@ const PLATFORM_ROLE_GATED_ROUTE_FILES = [
   'server/routes/platformPersonaAdminApi.ts',
   'server/routes/groupAdminRoutes.ts',
   'server/routes/complianceRoutes.ts',
+  'server/routes/partnershipsRouter.ts',
 ];
 
 describe('IDOR practice scope audit', () => {

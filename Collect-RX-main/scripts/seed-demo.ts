@@ -10,6 +10,8 @@
  *   SEED_PRACTICE_NAME=MyPractice npm run demo:seed
  *   SEED_PRACTICE_EMAIL=admin@mypractice.local npm run demo:seed
  *   SEED_PRACTICE_PASSWORD=secure_password npm run demo:seed
+ *
+ * SEED_PRACTICE_PASSWORD is required (min 8 chars) — no default password.
  */
 
 import 'dotenv/config';
@@ -212,7 +214,11 @@ const DENIED_OUTCOMES: Array<{ outcomeDetail: string }> = [
 async function main() {
   console.log('🌱 Seeding demo practice with insurance AR data...\n');
 
-  const PASSWORD = process.env.SEED_PRACTICE_PASSWORD || 'CollectRx2026!';
+  const PASSWORD = process.env.SEED_PRACTICE_PASSWORD?.trim();
+  if (!PASSWORD || PASSWORD.length < 8) {
+    console.error('Set SEED_PRACTICE_PASSWORD (min 8 chars) before running demo seed.');
+    process.exit(1);
+  }
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
   const practiceName = process.env.SEED_PRACTICE_NAME || DEMO_PRACTICE_NAME;

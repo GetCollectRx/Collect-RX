@@ -2,8 +2,9 @@
  * Seeds one user per practice role into the demo practice so every persona's
  * workflow can be demoed or verified. Idempotent (upserts by email).
  *
- * Usage: npx tsx scripts/seed-demo-personas.ts
- * All logins share the demo password: CollectRx2026!
+ * Usage: SEED_PRACTICE_PASSWORD=... npx tsx scripts/seed-demo-personas.ts
+ *
+ * SEED_PRACTICE_PASSWORD is required (min 8 chars).
  */
 
 import 'dotenv/config';
@@ -13,7 +14,11 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 const DEMO_PRACTICE_NAME = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
-const PASSWORD = process.env.SEED_PRACTICE_PASSWORD || 'CollectRx2026!';
+const PASSWORD = process.env.SEED_PRACTICE_PASSWORD?.trim();
+if (!PASSWORD || PASSWORD.length < 8) {
+  console.error('Set SEED_PRACTICE_PASSWORD (min 8 chars) before running persona seed.');
+  process.exit(1);
+}
 
 const PERSONAS: Array<{ email: string; role: PracticeRole; displayName: string; providerId?: string; tokenDays?: number }> = [
   { email: 'om@collectrx-test.local', role: 'office_manager', displayName: 'Olivia Manager' },

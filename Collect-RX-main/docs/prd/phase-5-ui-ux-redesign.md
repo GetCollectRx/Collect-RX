@@ -9,7 +9,7 @@
 
 ## Problem Statement
 
-The current CollectRx interface is described internally as unacceptable for the target market. Dental practice owners evaluate software on first impression — if the product doesn't feel like a $500/month SaaS, it won't convert at that price point. A full UI redesign is required before Dr. Hasan sees the live product.
+The current CollectRx interface is described internally as unacceptable for the target market. Dental practice owners evaluate software on first impression — if the product doesn't feel like a $500/month SaaS, it won't convert at that price point. A full UI redesign is required before the first pilot practice sees the live product.
 
 ---
 
@@ -27,7 +27,7 @@ The current CollectRx interface is described internally as unacceptable for the 
 
 | Metric | Target |
 |--------|--------|
-| Dr. Hasan's first-impression rating | ≥ 8/10 |
+| Pilot practice first-impression rating | ≥ 8/10 |
 | Time to understand dashboard state | < 10 seconds for new user |
 | Lighthouse accessibility score | ≥ 90 |
 | Component library coverage | All 8+ primary views |
@@ -109,5 +109,5 @@ The current CollectRx interface is described internally as unacceptable for the 
 - [x] Dark mode works across authenticated views (`ThemeContext`, `class` strategy)
 - [x] Storybook documents core primitives (`src/components/ui/*.stories.tsx`); extend as new components ship
 - [x] Dashboard renders correctly with live data from Railway backend
-- [ ] Dr. Hasan approves the interface before pilot go-live *(stakeholder sign-off)*
+- [ ] Pilot practice approves the interface before pilot go-live *(stakeholder sign-off)*
 - [ ] Lighthouse accessibility score ≥ 90 *(run in Chrome against production URL; track in pilot)*

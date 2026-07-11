@@ -2,6 +2,8 @@
 
 Product requirements for every build phase. These are the source of truth — Notion links here.
 
+**Platform scope (2026):** CollectRx is **multi-tenant SaaS** — any Canadian dental practice signs up, creates a tenant, and imports data via CSV or PMS connector. PRDs refer to a **pilot practice** generically (first onboarded site); do not hardcode practice names in code, seeds, or env. Per-tenant identity (name, phone, NPI) lives in the `Practice` database row and Admin UI.
+
 ## Phase Index
 
 | Phase | File | Status |
