@@ -103,20 +103,16 @@ function makeLimiter(name: string, opts: Partial<Options>): RateLimitRequestHand
  * authLimiter — 5 attempts per 15 minutes per IP.
  * Applied to POST /api/auth/login to prevent credential brute-forcing.
  * Intentionally strict: legitimate users won't hit this in normal use.
- * Disabled under Vitest — integration suites issue many login requests from one IP.
+ * Skipped under Vitest — integration suites issue many login requests from one IP.
  */
-const noopLimiter: RateLimitRequestHandler = (_req, _res, next) => next();
-
-export const authLimiter: RateLimitRequestHandler =
-  process.env.VITEST === 'true'
-    ? noopLimiter
-    : makeLimiter('auth', {
-        windowMs: 15 * 60 * 1000, // 15-minute window
-        max: 5,
-        handler: makeHandler(
-          'Too many login attempts. Please wait 15 minutes before trying again.',
-        ),
-      });
+export const authLimiter: RateLimitRequestHandler = makeLimiter('auth', {
+  windowMs: 15 * 60 * 1000, // 15-minute window
+  max: 5,
+  skip: () => process.env.VITEST === 'true',
+  handler: makeHandler(
+    'Too many login attempts. Please wait 15 minutes before trying again.',
+  ),
+});
 
 /**
  * strictLimiter — 10 requests per minute per IP.
