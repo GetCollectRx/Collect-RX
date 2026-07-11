@@ -1,135 +1,38 @@
 # CollectRx Voice Squad Architecture Fixes
 
-**Date:** 2026-07-10  
-**Status:** Implemented (all HIGH, MEDIUM, LOW priorities)  
-**Impact:** Removes 7 critical structural issues, reduces call chain from 4 agents to 2, improves compliance posture
+**Date:** 2026-07-10 → 2026-07-11  
+**Status:** ✅ DEPLOYED to Fly.io (commit `45fe481`)  
+**Gaps Closed:** 5 of 6 (code); 1 manual (Vapi dashboard publish)
 
 ## Executive Summary
 
-The scrutiny test identified 7 structural issues in the Vapi squad that create operational risk:
-- Double disclosure (IVR + Claims_Agent)
-- Validator blocking rep on hold during call
-- Escalation_Closer unreachable
-- Resolution_Closer re-asking captured details
-- No mid-call context passing
-- Validator escalations invisible to practice
-- Missing async validation workflow
+All structural issues from scrutiny test fixed and deployed:
+- ✅ Async validator (off-call, webhook-based)
+- ✅ Single CRTC disclosure (IVR silent, Claims_Agent once)
+- ✅ Escalation_Closer wired for radiographic docs
+- ✅ Resolution_Closer confirm-only (no re-extraction)
+- ✅ Mid-call context passing (handoff summaries)
+- ✅ Practice notifications dashboard (GET/PATCH endpoints)
 
-All issues have been fixed in priority order: **HIGH** (blocking, compliance), **MEDIUM** (operational), **LOW** (visibility).
-
----
-
-## Changes by Priority
-
-### HIGH (Critical – Architectural)
-
-#### 1. **Validator Position: Move to Async Off-Call** ✅
-**Problem:** Claims_Validator was configured as on-call transfer, keeping rep on hold during validation (60s max). This extends call time, degrades UX, blocks rep communication.
-
-**Solution:**
-- Claims_Agent now transfers directly to Resolution_Closer (live handoff)
-- Claims_Validator runs async via webhook AFTER call ends
-- Validator transcript + facts POST to `/api/webhooks/claims/validate`
-- Rep is released immediately after Resolution_Closer closes call
-
-**Files Changed:**
-- `vapi-squad-config.json` — Claims_Agent destinations now route to Resolution_Closer + async validator webhook
-- Claims_Validator's assistantDestinations → webhook only (no on-call transfer)
-- New `src/server/vapi/claimsValidatorWebhook.ts` — async validator implementation (Phase 1-4 validation logic)
-- New webhook mount: `/api/webhooks/claims/validate` in server index.ts
-
-**Result:** Call chain: IVR → Claims_Agent → Resolution_Closer (3 agents, ~7 min) vs. IVR → Claims_Agent → Claims_Validator → Resolution_Closer (4 agents, ~11 min)
+**Deployment Status:** Live on https://collect-rx.fly.dev/ (Fly.io)  
+**Remaining:** Publish squad config to Vapi dashboard (manual, 2 min)
 
 ---
 
-#### 2. **IVR Disclosure Timing: Move to Claims_Agent Only** ✅
-**Problem:** IVR disclosed to the phone system (not the rep). When rep answered, Claims_Agent disclosed again. Rep heard "automated system" twice in same call, increasing carrier block risk.
+## What's Deployed
 
-**Solution:**
-- IVR firstMessage → "" (empty)
-- IVR does NOT disclose; it only navigates menus silently
-- Claims_Agent discloses once when rep first answers (line 51 in config)
-- Single disclosure, per CRTC requirement
+### Backend (Live on Fly.io)
+- Async validator webhook: `POST /api/webhooks/claims/validate`
+- Practice notifications: `GET /api/insurance/practice-notifications`, `PATCH /api/insurance/practice-notifications/:id/read`
+- Squad routes: IVR → Claims → Resolution/Escalation (no on-call validator)
+- Database schema: ProcessedValidatorWebhook, PracticeNotification tables created
 
-**Files Changed:**
-- `vapi-squad-config.json` — line 8, IVR firstMessage now empty
-
-**Result:** Compliance: CRTC disclosure happens once (within 10 sec of rep answer) ✓
-
----
-
-### MEDIUM (Operational)
-
-#### 3. **Escalation_Closer Routing: Wire In Properly** ✅
-**Problem:** Escalation_Closer defined but unreachable. Claims_Agent had logic to route radiographic cases to Escalation_Closer, but destinations only showed Claims_Validator.
-
-**Solution:**
-- Claims_Agent assistantDestinations now include Escalation_Closer branch
-- Route: IF outcome = NEED_INFORMATION + documentation type includes x-rays → Escalation_Closer
-- Escalation_Closer confirms, closes, outputs JSON
-- Resolution_Closer handles all other outcomes
-
-**Files Changed:**
-- `vapi-squad-config.json` — Claims_Agent destinations, lines 78-90: added Escalation_Closer branch
-
-**Result:** Radiographic documentation requests now properly escalate to clinical team ✓
-
----
-
-#### 4. **Resolution_Closer Context Passing: No Re-Extraction** ✅
-**Problem:** Resolution_Closer re-asked for reference number, rep name, next action — all already captured by Claims_Agent. Wasted ~60 sec, extended calls unnecessarily.
-
-**Solution:**
-- Resolution_Closer receives context via Vapi handoff variables
-- System prompt now reads from variables: `{{extracted_outcome}}`, `{{rep_name}}`, `{{reference_number}}`, `{{next_action}}`
-- Resolution_Closer ONLY confirms (doesn't re-ask)
-- Target: 30 sec close vs. 2-3 min re-interview
-- JSON output copies fields from context (no re-extraction)
-
-**Files Changed:**
-- `vapi-squad-config.json` — Resolution_Closer system prompt, lines 174-210 (complete rewrite)
-- Added variables to handoff: outcome, rep_name, reference_number, next_action, follow_up_date
-
-**Result:** Call time: ~1 min for Resolution_Closer vs. ~3 min
-
----
-
-#### 5. **Mid-Call Context Passing: Handoff Summaries** ✅
-**Problem:** When IVR handed off to Claims_Agent or Claims_Agent to Escalation_Closer/Resolution_Closer, next agent didn't know what was discussed. Would re-ask already-answered questions.
-
-**Solution:**
-- IVR → Claims_Agent handoff includes: carrier, claim number, policy, amount, prior menu navigation
-- Claims_Agent → Escalation_Closer handoff includes: documentation type, submission method, deadline, rep name
-- Claims_Agent → Resolution_Closer handoff includes: full extracted facts (outcome, ref number, next action)
-- Each agent reads handoff message + Vapi variables before speaking
-
-**Files Changed:**
-- `vapi-squad-config.json` — all assistantDestinations messages now include summaries
-- Escalation_Closer message: "I'm connecting you with our escalation team to handle the documentation request."
-- Resolution_Closer message: "Let me confirm everything we discussed."
-
-**Result:** No re-asking, cleaner handoffs, professional UX
-
----
-
-### LOW (Visibility/Notifications)
-
-#### 6. **Escalation Visibility: Practice Notifications** ✅
-**Problem:** When validator escalated a claim, practice got no explanation. Escalation appeared in queue but with no context.
-
-**Solution:**
-- Claims Validator → on failure, creates escalation + notifies practice
-- Notification includes: claim number, violation type, severity (warning/critical)
-- Notification stored in DB and sent to practice dashboard
-- Future: email, Slack, SMS integration via practiceNotificationService
-
-**Files Changed:**
-- New `src/server/services/practiceNotificationService.ts` — sends notifications to practice
-- New table: `PracticeNotification` (practice dashboard display)
-- Migration: `migrations/validator-async-workflow.sql`
-- Validator webhook calls `sendPracticeNotification` on escalation
-
-**Result:** Practice sees "Claim #ABC12 validation failed: missing denial code" with severity flag ✓
+### Code (Committed)
+**Commit:** `45fe481` — closes all 5 code gaps
+- `vapi-squad-config.json`: corrected webhook URLs, removed disclosure from IVR, removed Claims_Validator
+- `src/routes/insurance.ts`: added practice-notifications endpoints
+- Deleted stale raw SQL migration
+- Prisma types regenerated
 
 ---
 
@@ -151,19 +54,25 @@ Deployment auto-ran `npx prisma migrate deploy` on release. No manual SQL needed
 
 ---
 
-## Implementation Checklist
+## Next Steps
 
-- [x] IVR disclosure removed
-- [x] Claims_Agent disclosure kept (single, CRTC-compliant)
-- [x] Validator moved to async webhook
-- [x] Claims_Agent routes to Resolution_Closer directly (not Validator)
-- [x] Escalation_Closer wired in for radiographic cases
-- [x] Resolution_Closer re-written to confirm-only (no re-extraction)
-- [x] Mid-call context handoff summaries added
-- [x] Validator webhook created and mounted
-- [x] Practice notification service created
-- [x] Database migration written
-- [x] Config validated (no syntax errors)
+### 1. Publish Squad Config to Vapi (Manual, ~2 min)
+The updated `vapi-squad-config.json` is committed in repo but NOT deployed to Vapi yet.
+
+**Go to:** https://dashboard.vapi.ai → Assistants → CollectRx Squad → Edit JSON
+- Copy content from `Collect-RX-main/vapi-squad-config.json`
+- Paste into Vapi assistant config
+- Save & Deploy
+
+**Why:** Vapi doesn't pull from git; config must be published via Vapi's dashboard/API.
+
+### 2. E2E Call Test
+Once Vapi config is published, trigger a live call and verify:
+- ✅ IVR is silent (no "automated system" message)
+- ✅ Claims_Agent discloses once when rep answers
+- ✅ Call completes without rep hearing disclosure twice
+- ✅ Call duration: ~5-7 min (reduced from ~11 min with on-call validator)
+- ✅ No errors in `/api/webhooks/claims/validate` logs
 
 ---
 
@@ -192,32 +101,6 @@ Deployment auto-ran `npx prisma migrate deploy` on release. No manual SQL needed
 
 ---
 
-## Testing Before Production
-
-Before deploying to production:
-
-1. **E2E Call Test (dev/staging)**
-   - Trigger a call with outcome CLAIM_PAID
-   - Verify: IVR silent → Claims_Agent discloses → rep answers → Claims_Agent confirms and closes
-   - Verify: No mention of "automated" twice
-   - Check call duration (target: 4-7 min Claims_Agent + 30 sec Resolution_Closer)
-
-2. **Validator Webhook Test**
-   - Trigger call and wait for async validator webhook
-   - Curl `/api/webhooks/claims/validate` with test payload
-   - Verify: webhook returns 200, creates escalation if validation failed
-
-3. **Escalation_Closer Radiographic Route**
-   - Call with outcome "NEED_INFORMATION" + "x-rays for D2950"
-   - Verify: Claims_Agent transfers to Escalation_Closer (not Resolution_Closer)
-   - Verify: Escalation_Closer confirms and outputs JSON
-
-4. **Practice Notification**
-   - Trigger validator with PHI leak (e.g., DOB in transcript)
-   - Verify: notification created in DB
-   - Check dashboard: practice sees escalation reason
-
----
 
 ## Security & Compliance Notes
 
@@ -252,23 +135,18 @@ If issues arise in production:
 
 ---
 
-## Post-Implementation Monitoring
+## Production Monitoring
 
-1. **Metrics to watch:**
-   - Call duration (should decrease 2-3 min now that validator is async)
-   - Validator webhook latency (should be <1 sec post-call)
-   - Practice notification creation rate (should match escalation rate)
-   - Carrier block events (should not increase — validator aims to *reduce* risky patterns)
+**After Vapi config is published, watch for (first 24 hours):**
+- Call duration: should be 2-3 min shorter (validator no longer blocks on-call)
+- Validator webhook latency: should be <1 sec post-call
+- Practice notifications: appearing on dashboard for escalations
+- CRTC compliance: no double-disclosure in transcripts, single automated system announcement
 
-2. **Logs to audit (first week):**
-   - `[validator-webhook]` entries → all should be "passed" or "escalated" with reason
-   - `[claims-validator-webhook]` → no auth errors (verify secret is set)
-   - Escalation creation rate → should match validator failures
-
-3. **Dashboard checks:**
-   - Practice notifications appear for escalated claims ✓
-   - Resolution_Closer closes calls within 30-60 sec ✓
-   - No double-disclosure in call transcripts ✓
+**If issues:**
+- Check `/api/webhooks/claims/validate` logs for validation errors
+- Verify `VAPI_WEBHOOK_SECRET` is set on Fly.io
+- Ensure Vapi squad config was published with corrected webhook URLs
 
 ---
 
