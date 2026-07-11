@@ -193,6 +193,19 @@ router.post('/', async (req: Request, res: Response) => {
           if (validation.status === 'escalated') {
             console.warn('[vapi-webhook] Validation escalated:', validation.result.escalationReason);
           }
+
+          // ── Learning loop: propose carrier lessons from this transcript ──
+          // Lessons land as PROPOSED for human review; nothing here changes
+          // live behavior without approval.
+          try {
+            const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
+            const stored = await extractLessonsFromCall(prisma, callAttempt.id);
+            if (stored > 0) {
+              console.warn(`[vapi-webhook] learning loop proposed ${stored} carrier lesson(s)`);
+            }
+          } catch (lessonErr) {
+            console.error('[vapi-webhook] lesson extraction failed (non-fatal):', lessonErr);
+          }
         }
       }
     } catch (guardrailsErr) {

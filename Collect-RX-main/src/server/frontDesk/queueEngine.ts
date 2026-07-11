@@ -8,6 +8,8 @@ import { canMakeCall } from '../plans/planBridge.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness } from './patientDataCompleteness.js';
+import { probeClaimStatus } from '../triage/claimStatusProbe.js';
+import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -136,6 +138,35 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       continue;
     }
 
+    // ── PRE-CALL TRIAGE ────────────────────────────────────────────────────────
+    // Cheapest channel first: if any non-phone channel can already answer this
+    // claim (PMS sync shows it paid; later: carrier portal / CDAnet), close it
+    // here — before PHI is detokenized and before a call is paid for.
+    const triage = await probeClaimStatus(prisma, {
+      id: next.claimId,
+      practiceId,
+    });
+    if (triage) {
+      logger.warn('[deskQueueEngine] triage resolved claim without a call', {
+        claimId: next.claimId,
+        channel: triage.channel,
+        detail: triage.detail,
+      });
+      await prisma.callQueue.update({
+        where: { id: next.id },
+        data: { status: 'COMPLETED' },
+      });
+      await prisma.claimRecoveryEvent.create({
+        data: {
+          practiceId,
+          claimId: next.claimId,
+          eventType: `triage_closed_${triage.channel}`,
+          metadata: { detail: triage.detail },
+        },
+      });
+      continue;
+    }
+
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
 
     const practice = await prisma.practice.findUnique({
@@ -198,8 +229,10 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
-    // Build IVR instructions from carrier adapter knowledge base.
-    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+    // Build IVR instructions from carrier adapter knowledge base, plus any
+    // human-APPROVED lessons the learning loop has produced for this carrier.
+    const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
+    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ') + learnedNotes;
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
