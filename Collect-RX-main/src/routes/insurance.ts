@@ -768,6 +768,41 @@ router.get('/recovery/notifications', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/insurance/practice-notifications — validation escalations + system alerts
+// ---------------------------------------------------------------------------
+router.get('/practice-notifications', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const notifications = await prisma.practiceNotification.findMany({
+      where: { practiceId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return res.json({ success: true, data: notifications });
+  } catch (err) {
+    console.error('[GET /insurance/practice-notifications]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/insurance/practice-notifications/:id/read — mark as read
+// ---------------------------------------------------------------------------
+router.patch('/practice-notifications/:id/read', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const notification = await prisma.practiceNotification.updateMany({
+      where: { id: req.params.id, practiceId },
+      data: { readAt: new Date() },
+    });
+    return res.json({ success: true, modified: notification.count });
+  } catch (err) {
+    console.error('[PATCH /insurance/practice-notifications/:id/read]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/insurance/claims/:id/route-explanation — staff "why this route?"
 // ---------------------------------------------------------------------------
 router.get('/claims/:id/route-explanation', async (req: Request, res: Response) => {

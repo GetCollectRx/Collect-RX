@@ -135,12 +135,9 @@ All issues have been fixed in priority order: **HIGH** (blocking, compliance), *
 
 ## Database Migrations
 
-Run this migration to add new tables/columns:
+**Status: DEPLOYED** ✅ (Fly.io — commit `6cbbf34`)
 
-```bash
-# Migration: validator-async-workflow.sql
-psql $DATABASE_URL -f migrations/validator-async-workflow.sql
-```
+Prisma migration `20260710203455_validator_async_workflow` handles all schema changes:
 
 **New tables:**
 - `ProcessedValidatorWebhook` — idempotent webhook processing (bodyHash unique key)
@@ -149,6 +146,8 @@ psql $DATABASE_URL -f migrations/validator-async-workflow.sql
 **New columns:**
 - `CallAttempt.validationPassed` (boolean)
 - `CallAttempt.validationResult` (JSONB — full validator output)
+
+Deployment auto-ran `npx prisma migrate deploy` on release. No manual SQL needed.
 
 ---
 
@@ -165,6 +164,31 @@ psql $DATABASE_URL -f migrations/validator-async-workflow.sql
 - [x] Practice notification service created
 - [x] Database migration written
 - [x] Config validated (no syntax errors)
+
+---
+
+## Gap Closure (Post-Code Review)
+
+### Gaps Fixed ✅
+1. **Webhook URLs corrected** — Vapi config now points to `https://collect-rx.fly.dev/api/webhooks/claims/validate`
+2. **Single CRTC disclosure enforced** — IVR handoff is now silent ("Connecting you now."); Claims_Agent discloses once
+3. **Claims_Validator removed from squad** — Validation is backend-only (webhook handler post-call)
+4. **Stale raw SQL migration deleted** — References Prisma migration `20260710203455_*` only
+5. **Dashboard notifications wired** — New endpoints: `GET /api/insurance/practice-notifications`, `PATCH /api/insurance/practice-notifications/:id/read`
+
+### Manual Steps Remaining ⚠️
+**Vapi Squad Config Deployment** — The updated `vapi-squad-config.json` is committed but NOT yet deployed to Vapi API. 
+
+**Action:** Publish squad config to Vapi:
+```bash
+# Option A: Via Vapi Dashboard → Assistants → Update squad config JSON
+# Upload Collect-RX-main/vapi-squad-config.json
+
+# Option B: Via Vapi API (if using vapi-cli or custom script)
+# See: https://docs.vapi.ai/api-reference/assistants/update-assistant
+```
+
+**Why manual:** Vapi squad config is not git-pulled by Fly.io; it must be published via Vapi's admin interface or API.
 
 ---
 
