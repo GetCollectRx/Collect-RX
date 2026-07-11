@@ -1,0 +1,6 @@
+tier
+count
+layers
+P0,179,conversation; ivr; handoff; post_call; dispatch; ops
+P1,60,conversation; ivr; dispatch; post_call; handoff; ops
+P2,9,conversation; dispatch; post_call; ops

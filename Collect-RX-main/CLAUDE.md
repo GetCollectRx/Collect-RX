@@ -37,7 +37,7 @@ npm run build:main
 # Package Windows .exe installer (requires Windows or CI)
 npx electron-builder --windows --x64 --config electron-builder.config.js
 
-# Abeldent schema discovery (run once on Dr. Hasan's Windows machine; requires `npm install mssql`)
+# Abeldent schema discovery (requires access to AbelDent SQL Server and `npm install mssql`)
 npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
 
 # After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
@@ -50,6 +50,44 @@ npm run abeldent:emit-queries
 ```
 
 CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
+
+---
+
+## Seeding (Multi-Tenant)
+
+Both `db:seed` and `demo:seed` create generic, reusable test practices — not specific to any pilot or demo.
+
+**Baseline seed (empty practice):**
+```bash
+npm run db:seed
+# Creates "CollectRx Demo Practice" with login only (no claims)
+```
+
+**Demo seed (rich insurance data):**
+```bash
+npm run demo:seed
+# Creates "CollectRx Demo Practice" with 60+ claims across all statuses, carriers, and recovery routes
+```
+
+**Customization via environment variables:**
+```bash
+SEED_PRACTICE_NAME="My Clinic" npm run demo:seed
+SEED_PRACTICE_EMAIL="admin@myclinic.local" npm run demo:seed
+SEED_PRACTICE_PASSWORD="custom_password" npm run demo:seed
+```
+
+**Test call (Vapi agent test script):**
+```bash
+node test-call.js
+# Dials your phone with a dummy claim, using "CollectRx Demo Practice" as the practice name
+```
+
+Customize practice info for test calls:
+```bash
+VAPI_PRACTICE_NAME="My Clinic" node test-call.js
+VAPI_PRACTICE_ADDRESS="123 Main St, Toronto" node test-call.js
+VAPI_PRACTICE_PHONE="416-555-0100" node test-call.js
+```
 
 ---
 

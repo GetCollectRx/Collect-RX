@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database (insurance-only baseline)...');
+  console.log('🌱 Seeding database (baseline practice, no claims)...');
 
   const defaultPassword = (process.env.SEED_PRACTICE_PASSWORD || '').trim();
   if (!defaultPassword) {
@@ -13,9 +13,10 @@ async function main() {
   }
   const passwordHash = await bcrypt.hash(defaultPassword, 12);
 
+  const practiceName = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
   const practice = await prisma.practice.create({
     data: {
-      name: 'Tenth Line Family Dentistry',
+      name: practiceName,
       timezone: 'America/Toronto',
       passwordHash,
     },

@@ -10,6 +10,20 @@ Six Canadian carriers are supported: Sun Life, Canada Life, Manulife, Green Shie
 
 ---
 
+## Architecture: Multi-Tenant SaaS
+
+CollectRx is a **generic platform for any Canadian dental practice**, not a single-practice tool.
+
+**Standing rules:**
+- **No hardcoded practice names, emails, or credentials in code** — this includes seed scripts, demos, defaults, and documentation examples
+- **Seeds create generic test practices** — practice name is configurable via `SEED_PRACTICE_NAME` env var (default: "CollectRx Demo Practice"); email uses `SEED_PRACTICE_EMAIL` (default: "demo@collectrx-test.local")
+- **Real onboarding flow:** user signs up → creates their own practice via UI → imports patient data (CSV or PMS connector)
+- **Fixtures and seeds are for testing system logic**, not for branding a specific practice or pilot demo
+
+This applies retroactively: references to "Hasan Family Dental", "Tenth Line Family Dentistry", "Dr. Hasan's machine", or other specific-practice language in code should be treated as technical debt and removed or generalized.
+
+---
+
 ## Commands
 
 ```bash

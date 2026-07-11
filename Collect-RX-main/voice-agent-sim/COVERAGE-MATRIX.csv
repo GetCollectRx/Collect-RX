@@ -1,0 +1,8 @@
+carrier,Authentication adversity,Carrier-specific,Claim complexity,Compliance trap,Error recovery,Happy path,IVR adversity,IVR navigation,Multi-agent handoff,Outcome taxonomy,Pilot & production,Queue rules,Rep behavior adversity,Trainer minimum set,Transcript & webhook,TOTAL,P0_count,P0_pass,P1_count,P1_pass
+All,4,14,4,4,10,4,4,44,15,60,10,20,15,10,30,248,179,0,60,0
+Sun Life,1,2,1,1,10,1,0,7,15,10,10,20,11,10,30,129,82,0,38,0
+Canada Life,1,2,1,0,10,2,0,8,15,10,10,20,10,10,30,129,83,0,37,0
+Manulife,1,2,1,0,10,1,1,7,15,10,10,20,10,10,30,128,83,0,36,0
+Green Shield Canada,1,2,0,1,10,0,1,7,15,10,10,20,11,10,30,128,83,0,36,0
+RBC Insurance,0,2,0,1,10,0,1,7,15,10,10,20,12,10,30,128,83,0,36,0
+TELUS AdjudiCare,0,4,1,1,10,0,1,8,15,10,10,20,11,10,30,131,85,0,37,0

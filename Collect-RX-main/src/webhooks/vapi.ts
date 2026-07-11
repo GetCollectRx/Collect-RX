@@ -28,6 +28,7 @@ import {
   hashWebhookBody,
   markWebhookProcessed,
 } from '../server/vapi/vapiWebhook.js';
+import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 
 // H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
 function isUniqueConstraintError(err: unknown): boolean {
@@ -91,6 +92,24 @@ router.post('/', async (req: Request, res: Response) => {
     payload = JSON.parse(rawBody.toString('utf-8')) as VapiWebhookPayload;
   } catch {
     return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+
+  // ── 3. METADATA TAMPERING VALIDATION ─────────────────────────────────────
+  // Prevents cross-practice claim hijacking. If an attacker changes the
+  // vapiCallId to reference a call from a different practice, or changes
+  // the claimId to reference a claim from a different practice, this
+  // validation will detect the mismatch and reject the request.
+  const metadataValidation = await validateWebhookMetadata(prisma, payload);
+  if (!metadataValidation.valid) {
+    console.warn(
+      '[vapi-webhook] METADATA TAMPERING DETECTED:',
+      formatValidationError(metadataValidation),
+      { vapiCallId: payload.call?.id, metadata: payload.metadata }
+    );
+    return res.status(403).json({
+      error: 'Metadata validation failed',
+      details: metadataValidation.details,
+    });
   }
 
   // H-4: atomically claim this webhook delivery before processing.

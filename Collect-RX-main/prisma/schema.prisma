@@ -67,6 +67,8 @@ model Practice {
   featureFlags          FeatureFlag[]
   inviteTokens          InviteToken[]
   notifications         PracticeNotification[]
+  deletionRequests      PHIPADeletionRequest[]
+  breachNotifications   PHIPABreachNotification[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -1393,4 +1395,56 @@ model InviteToken {
 
   @@index([token])
   @@index([practiceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHIPA Compliance — Deletion Request and Breach Notification
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// PHIPA s.37-39 — Deletion request tracking for regulatory compliance.
+/// Workflow: PENDING → IN_PROGRESS → COMPLETED | FAILED
+model PHIPADeletionRequest {
+  id                   String   @id @default(uuid())
+  practiceId           String   @map("practice_id")
+  patientToken         String   @map("patient_token")
+  status               String   @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | FAILED
+  requestedAt          DateTime @default(now()) @map("requested_at")
+  completedAt          DateTime? @map("completed_at")
+  failureReason        String?  @map("failure_reason")
+  purgedClaimsCount    Int      @default(0) @map("purged_claims_count")
+  purgedCallsCount     Int      @default(0) @map("purged_calls_count")
+  purgedRecordingsCount Int     @default(0) @map("purged_recordings_count")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([patientToken])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("phipa_deletion_requests")
+}
+
+/// PHIPA s.65-68 — Breach notification tracking with 14-day compliance deadline.
+model PHIPABreachNotification {
+  id                    String   @id @default(uuid())
+  practiceId            String   @map("practice_id")
+  notificationType      String   // DELETION_BREACH | DATA_EXPOSURE | UNAUTHORIZED_ACCESS | SECURITY_INCIDENT | POLICY_VIOLATION
+  description           String
+  notificationDeadline  DateTime @map("notification_deadline")
+  notifiedAt            DateTime? @map("notified_at")
+  affectedPatientToken  String?  @map("affected_patient_token")
+  affectedRecordsCount  Int      @default(0) @map("affected_records_count")
+  remediationSteps      String?  @map("remediation_steps")
+  remediationCompleted  DateTime? @map("remediation_completed_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([notificationDeadline])
+  @@index([notifiedAt])
+  @@index([createdAt(sort: Desc)])
+  @@map("phipa_breach_notifications")
 }

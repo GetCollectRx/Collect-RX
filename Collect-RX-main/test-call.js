@@ -16,9 +16,12 @@ require("dotenv").config();
 const axios = require("axios");
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const VAPI_API_KEY     = process.env.VAPI_API_KEY;
-const PHONE_NUMBER_ID  = process.env.VAPI_PHONE_NUMBER_ID; // The Vapi number that calls OUT
-const YOUR_PHONE       = process.env.TEST_PHONE_NUMBER;    // Your number — gets called
+const VAPI_API_KEY       = process.env.VAPI_API_KEY;
+const PHONE_NUMBER_ID    = process.env.VAPI_PHONE_NUMBER_ID; // The Vapi number that calls OUT
+const YOUR_PHONE         = process.env.TEST_PHONE_NUMBER;    // Your number — gets called
+const PRACTICE_NAME      = process.env.VAPI_PRACTICE_NAME || 'CollectRx Demo Practice';
+const PRACTICE_ADDRESS   = process.env.VAPI_PRACTICE_ADDRESS || 'test location';
+const PRACTICE_PHONE     = process.env.VAPI_PRACTICE_PHONE || '555-0100';
 
 if (!VAPI_API_KEY || !PHONE_NUMBER_ID || !YOUR_PHONE) {
   console.error(`
@@ -27,6 +30,11 @@ if (!VAPI_API_KEY || !PHONE_NUMBER_ID || !YOUR_PHONE) {
     VAPI_API_KEY=your_vapi_api_key
     VAPI_PHONE_NUMBER_ID=your_vapi_outbound_phone_number_id
     TEST_PHONE_NUMBER=+1XXXXXXXXXX   ← your personal number
+
+  Optional:
+    VAPI_PRACTICE_NAME=My Dental Practice        (default: CollectRx Demo Practice)
+    VAPI_PRACTICE_ADDRESS=123 Main St, City      (default: test location)
+    VAPI_PRACTICE_PHONE=555-0100                 (default: 555-0100)
 
   `);
   process.exit(1);
@@ -108,7 +116,7 @@ if (!claim) {
 }
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
-const systemPrompt = `You are an AI dental insurance collections agent calling on behalf of Tenth Line Family Dentistry, a dental practice located at 1675 Tenth Line Rd., Unit A20, Orleans, Ontario. The practice phone number is 613-837-2121. Always refer to the practice as "Tenth Line Family Dentistry" — never by a dentist's name.
+const systemPrompt = `You are an AI dental insurance collections agent calling on behalf of ${PRACTICE_NAME}, a dental practice located at ${PRACTICE_ADDRESS}. The practice phone number is ${PRACTICE_PHONE}. Always refer to the practice by name — never by a dentist's name.
 
 You are calling ${claim.carrier_name} provider services to follow up on an outstanding insurance claim.
 
@@ -125,7 +133,7 @@ YOUR GOAL:
 Find out the current status of this claim and why payment has not been received.
 
 HOW TO START:
-Greet naturally and warmly, like a real billing coordinator would. Example: "Hi there, thanks for taking my call. I'm calling from Tenth Line Family Dentistry in Orleans — we're just following up on a claim we submitted a while back. I've got all the details here whenever you're ready."
+Greet naturally and warmly, like a real billing coordinator would. Example: "Hi there, thanks for taking my call. I'm calling from ${PRACTICE_NAME} — we're just following up on a claim we submitted a while back. I've got all the details here whenever you're ready."
 
 SPEECH STYLE — VERY IMPORTANT:
 - Speak naturally, like a real person. Use contractions: "I've", "we're", "hasn't", "didn't".

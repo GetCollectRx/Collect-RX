@@ -1,12 +1,14 @@
 /**
- * Demo seed — creates "Hasan Family Dental" with realistic AR data for the Dr. Hasan pilot demo.
+ * Demo seed — creates a practice with realistic insurance AR data for testing and development.
  *
  * Usage:
  *   DATABASE_URL=<railway_url> npx ts-node --esm scripts/seed-demo.ts
  *   or add to package.json: "demo:seed": "ts-node --esm scripts/seed-demo.ts"
  *
- * Sets login: demo@hasanfamilydental.ca / CollectRx2026!
- * Delete the practice afterwards: DELETE FROM practices WHERE name = 'Hasan Family Dental';
+ * Customization via environment variables:
+ *   SEED_PRACTICE_NAME=MyPractice npm run demo:seed
+ *   SEED_PRACTICE_EMAIL=admin@mypractice.local npm run demo:seed
+ *   SEED_PRACTICE_PASSWORD=secure_password npm run demo:seed
  */
 
 import 'dotenv/config';
@@ -181,21 +183,25 @@ const DENIED_OUTCOMES: Array<{ outcomeDetail: string }> = [
 // ─── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('🌱 Seeding demo practice...\n');
+  console.log('🌱 Seeding demo practice with insurance AR data...\n');
 
-  const PASSWORD = 'CollectRx2026!';
+  const PASSWORD = process.env.SEED_PRACTICE_PASSWORD || 'CollectRx2026!';
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
+  const practiceName = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
+  const practiceEmail = process.env.SEED_PRACTICE_EMAIL || 'admin@collectrx-demo.local';
+  const practiceDisplayName = process.env.SEED_PRACTICE_DISPLAY_NAME || 'Demo Admin';
+
   // ── 1. Practice ──────────────────────────────────────────────────────────
-  const existing = await prisma.practice.findFirst({ where: { name: 'Hasan Family Dental' } });
+  const existing = await prisma.practice.findFirst({ where: { name: practiceName } });
   if (existing) {
-    console.log('⚠️  Demo practice already exists. Delete it first:\n   DELETE FROM practices WHERE name = \'Hasan Family Dental\';\n');
+    console.log(`⚠️  Practice "${practiceName}" already exists. Delete it first:\n   DELETE FROM practices WHERE name = '${practiceName}';\n`);
     return;
   }
 
   const practice = await prisma.practice.create({
     data: {
-      name: 'Hasan Family Dental',
+      name: practiceName,
       timezone: 'America/Toronto',
       passwordHash,
     },
@@ -206,14 +212,14 @@ async function main() {
   await prisma.user.create({
     data: {
       practiceId: practice.id,
-      email: 'demo@hasanfamilydental.ca',
+      email: practiceEmail,
       passwordHash,
       role: 'practice_owner',
-      displayName: 'Dr. Hasan',
+      displayName: practiceDisplayName,
       isActive: true,
     },
   });
-  console.log(`✅ User: demo@hasanfamilydental.ca / ${PASSWORD}`);
+  console.log(`✅ User: ${practiceEmail} / ${PASSWORD}`);
 
   // ── 3. Resolved claims (22) — drive "dollars recovered" KPI ───────────────
   const carriers: Array<'sun_life' | 'canada_life' | 'manulife' | 'green_shield' | 'rbc' | 'telus_adjudicare'> =
@@ -997,8 +1003,8 @@ async function main() {
   console.log('\n' + '─'.repeat(60));
   console.log('🎯  Demo data summary');
   console.log('─'.repeat(60));
-  console.log(`   Practice:      Hasan Family Dental (id: ${practice.id})`);
-  console.log(`   Login:         demo@hasanfamilydental.ca`);
+  console.log(`   Practice:      ${practiceName} (id: ${practice.id})`);
+  console.log(`   Login:         ${practiceEmail}`);
   console.log(`   Password:      ${PASSWORD}`);
   console.log(`   Total claims:  ${totalClaims}`);
   console.log(`   Open AR:       $${totalOpen.toLocaleString()} CAD`);
