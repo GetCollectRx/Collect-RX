@@ -9,7 +9,7 @@
           "firstMessageMode": "assistant-waits-for-user",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
@@ -168,7 +168,7 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
@@ -336,7 +336,7 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
@@ -485,7 +485,7 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
