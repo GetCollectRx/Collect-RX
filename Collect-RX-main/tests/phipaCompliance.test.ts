@@ -199,6 +199,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     const phiVaultEntry = await prisma.phiVaultEntry.create({
       data: {
         token: patientToken,
+        practiceId: practice.id,
         ciphertext: 'encrypted-phi-data',
         iv: '12345678901234567890',
         authTag: '9876543210987654',
@@ -729,6 +730,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     const phiEntry = await prisma.phiVaultEntry.create({
       data: {
         token: patientToken,
+        practiceId: practice.id,
         ciphertext: 'encrypted-patient-data',
         iv: 'initialization-vector',
         authTag: 'auth-tag-value',
