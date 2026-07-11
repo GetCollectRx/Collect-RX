@@ -20,7 +20,7 @@ ALTER TABLE "phi_vault_entries" ALTER COLUMN "practice_id" SET NOT NULL;
 
 ALTER TABLE "phi_vault_entries"
   ADD CONSTRAINT "phi_vault_entries_practice_id_fkey"
-  FOREIGN KEY ("practice_id") REFERENCES "practices"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("practice_id") REFERENCES "Practice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 CREATE INDEX IF NOT EXISTS "phi_vault_entries_practice_id_idx" ON "phi_vault_entries" ("practice_id");
 
