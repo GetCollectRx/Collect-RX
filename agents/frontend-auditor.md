@@ -24,7 +24,7 @@
 | `/compliance` | 4 compliance cards (PHIPA, PIPEDA, PHI, Business hours) | Check all 4 render |
 | `/roi` | Calculator sliders functional; output cards update on change | Interactive check |
 | `/login` | Practice portal login + Developer login visible | Confirm both sections render |
-| `/demo` | Dark-green app shell loads; "Tenth Line" pilot copy | Check it loads |
+| `/demo` | Dark-green app shell loads; generic demo practice copy | Check it loads |
 
 **Known bug to recheck on every run:** The homepage stat counter animation renders 0 for all four counters. The root cause is likely a race condition between the Intersection Observer triggering before the component mounts, or a missing `data-target` attribute. Flag if still broken.
 
@@ -51,7 +51,7 @@ For these, test with a valid `front_desk` or `practice_owner` token (from a test
 
 These are disclosure requirements under CRTC UTR Part IV Rule 4. Every Vapi agent call must open with:
 
-- [ ] Practice name stated (e.g. "Hasan Family Dentistry")
+- [ ] Practice name stated (e.g. "CollectRx Demo Practice")
 - [ ] CollectRx identified as billing agent ("...calling on behalf of [PRACTICE_NAME] through their billing representative, CollectRx")
 - [ ] Purpose stated ("...to inquire about the status of claim [CLAIM_REF]")
 - [ ] Callback number provided (must display in caller ID AND be stated or available on request)

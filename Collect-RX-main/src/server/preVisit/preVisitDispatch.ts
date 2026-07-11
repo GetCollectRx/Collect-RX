@@ -50,13 +50,14 @@ export async function dispatchPreVisitCall(
     return { skipped: true, reason: planGate.reason ?? 'plan_gate' };
   }
 
-  let phi;
-  const phiResult = piiVault.detokenize(payload.patientToken, 'pre-visit-dispatch');
+  const phiResult = piiVault.detokenize(payload.patientToken, 'pre-visit-dispatch', {
+    practiceId: payload.practiceId,
+  });
   if (!phiResult.success || !phiResult.phi) {
     console.error('[preVisitDispatch] detokenize failed:', phiResult.error ?? 'unknown');
     return { skipped: true, reason: 'detokenize_failed' };
   }
-  phi = phiResult.phi;
+  const phi = phiResult.phi;
 
   const settings = await getPracticeSettings(prisma, payload.practiceId);
   const practice = await prisma.practice.findUnique({

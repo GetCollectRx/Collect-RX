@@ -8,6 +8,10 @@ declare global {
       onSyncStatusChange: (cb: (data: unknown) => void) => () => void
       triggerManualSync: () => Promise<unknown>
       getAppVersion: () => Promise<unknown>
+      onUpdateAvailable?: (cb: (data: unknown) => void) => () => void
+      onUpdateDownloaded?: (cb: (data: unknown) => void) => () => void
+      restartToUpdate?: () => Promise<unknown>
+      retryDashboardLoad?: () => Promise<unknown>
     }
   }
 }
@@ -33,3 +37,5 @@ declare module '*.jpg' {
   const content: string;
   export default content;
 }
+
+export {}

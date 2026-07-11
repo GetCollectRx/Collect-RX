@@ -42,7 +42,9 @@ export async function tryCanadaLifePortalPreVisit(
 
   let claimRef = `PREVISIT-${params.appointmentVerificationId.slice(0, 8)}`;
   try {
-    const det = piiVault.detokenize(params.patientToken, 'pre-visit-portal');
+    const det = piiVault.detokenize(params.patientToken, 'pre-visit-portal', {
+      practiceId: params.practiceId,
+    });
     if (det.success && det.phi?.subscriberId) claimRef = det.phi.subscriberId;
   } catch {
     /* use synthetic ref */
@@ -91,7 +93,9 @@ export async function tryTelusTx23PreVisit(
 
   let memberId = '';
   let groupNumber = '';
-  const det = piiVault.detokenize(params.patientToken, 'pre-visit-tx23');
+  const det = piiVault.detokenize(params.patientToken, 'pre-visit-tx23', {
+    practiceId: params.practiceId,
+  });
   if (!det.success || !det.phi) {
     return { resolved: false, reason: 'detokenize_failed' };
   }

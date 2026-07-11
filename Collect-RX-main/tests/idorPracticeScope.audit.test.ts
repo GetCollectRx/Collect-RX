@@ -38,6 +38,20 @@ const AUTH_ROUTE_FILES = [
   'server/routes/billingRoutes.ts',
   'server/routes/cdcp.ts',
   'server/routes/canadianExpansionApi.ts',
+  'server/routes/frontDeskApi.ts',
+  'server/routes/practiceReportsApi.ts',
+];
+
+/**
+ * Platform-level routers that intentionally read/aggregate across ALL practices
+ * for a role-gated platform persona (platform_admin, platform_dev, group_admin,
+ * auditor) — session `practiceId` scoping does not apply here by design, so they
+ * are audited separately: authenticated, and gated by a role check.
+ */
+const PLATFORM_ROLE_GATED_ROUTE_FILES = [
+  'server/routes/platformPersonaAdminApi.ts',
+  'server/routes/groupAdminRoutes.ts',
+  'server/routes/complianceRoutes.ts',
 ];
 
 describe('IDOR practice scope audit', () => {
@@ -59,9 +73,24 @@ describe('IDOR practice scope audit', () => {
 
   it('no authenticated route file uses only req.body.practiceId for DB where (grep heuristic)', () => {
     const badPattern = /where:\s*\{\s*practiceId:\s*req\.body/;
-    for (const rel of AUTH_ROUTE_FILES) {
+    for (const rel of [...AUTH_ROUTE_FILES, ...PLATFORM_ROLE_GATED_ROUTE_FILES]) {
       const src = readFileSync(join(ROOT, rel), 'utf8');
       expect(src, rel).not.toMatch(badPattern);
+    }
+  });
+
+  it('platform-level routers are authenticated and role-gated (not merely session practiceId scoped)', () => {
+    const roleGatePattern =
+      /requirePlatformAdmin|authorizeRole\(|role\s*!==|getUserRole\(|isPlatformAdmin\(|isAuditor\(/;
+    for (const rel of PLATFORM_ROLE_GATED_ROUTE_FILES) {
+      const src = readFileSync(join(ROOT, rel), 'utf8');
+      expect(
+        src.includes('router.use(authenticate)') ||
+          src.includes('r.use(authenticate)') ||
+          /authenticate\s*,/.test(src),
+        rel,
+      ).toBe(true);
+      expect(roleGatePattern.test(src), rel).toBe(true);
     }
   });
 

@@ -1,22 +1,23 @@
 /**
  * P7-01 — E2E happy path: sign in and land on dashboard.
- * Set E2E_PRACTICE_ID (e.g. from `npm run e2e:print-id` after `db:seed`); password defaults to `changeme`.
+ * E2E_USER_EMAIL / E2E_USER_PASSWORD are seeded by e2e/globalSetup.ts when unset.
  */
 import { test, expect } from '@playwright/test';
 
-const practiceId = process.env.E2E_PRACTICE_ID;
-const password = process.env.E2E_PRACTICE_PASSWORD || 'changeme';
+const email = process.env.E2E_USER_EMAIL;
+const password = process.env.E2E_USER_PASSWORD || 'changeme';
 
 test('sees dashboard after sign-in', async ({ page }) => {
-  test.skip(!practiceId, 'Set E2E_PRACTICE_ID (db:seed, then npm run e2e:print-id)');
+  test.skip(!email, 'E2E_USER_EMAIL missing — check DATABASE_URL for e2e auto-seed');
 
-  await page.goto('/');
+  await page.goto('/login');
 
-  await expect(page.getByRole('heading', { name: /Sign in to CollectRx/i })).toBeVisible();
+  await expect(page.getByRole('main', { name: 'Sign in' })).toBeVisible();
 
-  await page.getByLabel('Practice ID').fill(practiceId!);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Email').fill(email!);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
+  await expect(page.getByText('Command center', { exact: true })).toBeVisible();
 });

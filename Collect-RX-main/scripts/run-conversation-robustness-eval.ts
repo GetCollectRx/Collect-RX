@@ -4,7 +4,8 @@
  * off-script responses and judges whether the agent stays focused on
  * recovering payment for the claim.
  *
- * Live LLM calls — requires ANTHROPIC_API_KEY. Not part of `npm test`.
+ * Live LLM calls — requires ANTHROPIC_API_KEY and COLLECTRX_ANTHROPIC_EVAL=1.
+ * Not part of `npm test`. Default: disabled to prevent accidental API spend.
  *
  * Usage:
  *   npm run eval:conversation-robustness                  # all scenarios

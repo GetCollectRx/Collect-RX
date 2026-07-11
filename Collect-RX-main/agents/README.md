@@ -1,5 +1,7 @@
 # CollectRx Agent System
 
+> **Billing (2026-07-09):** Do **not** run these markdown prompts via Claude Code / `loop_runner.py` with your Anthropic API key — that pattern caused ~$56/week in Opus API charges. Use the **free** vitest agents instead: `npm run agents` (deterministic, no LLM). Paid LLM evals require `COLLECTRX_ANTHROPIC_EVAL=1` explicitly.
+
 **29 agents** covering every dimension of building and running CollectRx as a company: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk.
 
 > **Compliance status (2026-06-20):** PHI boundary closed (Option B — ephemeral Vapi variables). BAAL hard gate enforced in `validateDispatch()`. Legal templates pending counsel — see `docs/compliance/LEGAL-REVIEW-PROMPT.md`.
@@ -126,7 +128,11 @@ Client Acquisition → ROI Proof (prospect estimates)
 
 ## How to Invoke Any Agent
 
-Paste the "How to Run This Agent" prompt from the relevant file into a new Cowork session. Each prompt is self-contained — it tells the agent what to read, what to check, and what format to report in.
+**Preferred (free):** `npm run agents` — runs vitest validation agents in `tests/agents/` (no Anthropic API).
+
+**Legacy (paid — avoid):** Pasting markdown prompts into Claude Code / Cowork sessions bills your Anthropic API console directly, especially with Opus. Do not use for routine development.
+
+Each `agents/*.md` file documents what to check; the vitest agents encode the same checks without LLM cost.
 
 ---
 

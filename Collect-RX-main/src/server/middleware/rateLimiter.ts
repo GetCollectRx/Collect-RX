@@ -8,7 +8,7 @@
 //   webhookLimiter  — 300 req / 1 min  per IP  (Vapi can fire bursts)
 //
 // When REDIS_URL is set, all limiters use a Redis-backed store so counts are shared
-// across multiple API processes (Railway horizontal scaling).
+// across multiple API processes (horizontal scaling).
 //
 // All tiers return JSON 429 with Retry-After so clients can back off cleanly.
 // ─────────────────────────────────────────────────────────────────────────────

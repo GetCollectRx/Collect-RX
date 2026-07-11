@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CollectRx — Express Backend Server
-// Port: 3001 (Railway)
+// Port: 3000 (Fly.io)
 //
 // Route map:
 //   /api/auth/*            authRoutes.ts (login, logout, me)
@@ -73,6 +73,7 @@ import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
 import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
+import { runWithRlsBypass } from './db/rlsContext.js';
 import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
   assertResourcePagesBuilt,
@@ -112,6 +113,7 @@ import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js'
 import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
@@ -123,6 +125,9 @@ import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
+import { createDesktopReleasesRouter } from './routes/desktopReleasesRoutes.js';
+import { createConnectorRouter } from './routes/connectorRoutes.js';
+import { createConnectorAdminRouter } from './routes/connectorAdminRoutes.js';
 import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
 import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
 import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
@@ -134,9 +139,9 @@ const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // Without these, an uncaught error anywhere (e.g. a background async path) kills the
-// process silently — Railway then just sees the healthcheck fail with no indication why.
+// process silently — the platform then just sees the healthcheck fail with no indication why.
 // Per Node's own guidance, the process is in an unknown state after either event, so we
-// log full detail for visibility in Railway logs and then exit so the platform restarts
+// log full detail for visibility in fly logs and then exit so the platform restarts
 // the container cleanly, instead of leaving a half-broken process running.
 process.on('uncaughtException', (err) => {
   console.error('[server] FATAL: uncaughtException —', err);
@@ -155,7 +160,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
+// Behind Fly / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
 if (
   process.env.TRUST_PROXY === '1' ||
   process.env.TRUST_PROXY === 'true' ||
@@ -182,7 +187,7 @@ app.use(
 if (process.env.NODE_ENV === 'production' && !process.env.VAPI_WEBHOOK_SECRET) {
   console.error(
     '[server] FATAL: VAPI_WEBHOOK_SECRET is not set in production. ' +
-    'Set this env var in Railway to enable webhook signature verification. Refusing to start.',
+    'Set this env var (fly secrets set) to enable webhook signature verification. Refusing to start.',
   );
   process.exit(1);
 }
@@ -301,6 +306,9 @@ app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
   res.json(buildPublicHealthMetricsBody(req));
 });
 
+// Public download metadata — must not sit behind session auth (download page is unauthenticated).
+app.use('/api', createDesktopReleasesRouter());
+
 // Product telemetry ingestion — higher limit than standard /api (SDK batches every 5 s).
 app.use('/api/telemetry/events', telemetryEventsLimiter);
 
@@ -329,6 +337,8 @@ app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
+app.use('/api/connector',  createConnectorRouter());
+app.use('/api/admin/connector', createConnectorAdminRouter());
 app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
@@ -478,6 +488,8 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     startMarketingLearningInProcess(prisma);
   }
 
+  startConnectorMonitorScheduler(prisma);
+
   attachDeskWebSocket(server);
 
   // ── PHI Vault: attach persistent store + rehydrate before queue engine ─────
@@ -487,7 +499,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   // PHI_ENCRYPTION_KEY must be set (asserted above by assertPhiEncryptionAtRestConfigured).
   claimsPiiVault.useStore(prisma);
   try {
-    const rehydrated = await claimsPiiVault.rehydrate();
+    const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
     console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
   } catch (err) {
     // Non-fatal — calls will fail detokenize checks until re-import, but server still runs
@@ -500,7 +512,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
   // ── Autonomous agent system ──────────────────────────────────────────────────
   // 23 cron-based agents + 6 event-triggered agents.
-  // Activate by setting AGENTS_ENABLED=true in Railway env vars.
+  // Activate by setting AGENTS_ENABLED=true in the host env vars.
   // Also requires GEMINI_API_KEY (already used by learning + marketing modules)
   // and AGENTS_DIR pointing to the agents/ folder (defaults to ../../agents).
   startScheduledAgents(prisma);

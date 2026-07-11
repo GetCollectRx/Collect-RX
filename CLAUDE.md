@@ -51,7 +51,7 @@ npm run build:main
 # Package Windows .exe installer (requires Windows or CI)
 npx electron-builder --windows --x64 --config electron-builder.config.js
 
-# Abeldent schema discovery (run once on Dr. Hasan's Windows machine; requires `npm install mssql`)
+# Abeldent schema discovery (run once on a practice Windows machine with AbelDent; requires `npm install mssql`)
 npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
 
 # After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
@@ -168,7 +168,7 @@ Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedur
 
 ## Windows build & deployment
 
-The Electron app is packaged as a signed NSIS `.exe` installer for Dr. Hasan's Windows machine. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
+The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
 Never ship an unsigned build to the pilot site.
 

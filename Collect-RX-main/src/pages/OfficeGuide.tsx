@@ -114,8 +114,8 @@ export default function OfficeGuide() {
 
       <Card>
         <CardHeader
-          title="Demo walkthrough (Hasan Family Dental)"
-          subtitle="Run npm run demo:seed — login demo@hasanfamilydental.ca / CollectRx2026!"
+          title="Demo walkthrough (CollectRx Demo Practice)"
+          subtitle="Run npm run demo:seed — login demo@collectrx-test.local / CollectRx2026!"
         />
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Four story claims teach the call-to-resolution loop. Calls prefixed with <code className="text-xs">demo-</code>{' '}
@@ -224,8 +224,11 @@ export default function OfficeGuide() {
       </Card>
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        CollectRx runs as a secure web app — same screens in browser or desktop shortcut. Your login and data are tied to
-        your practice.
+        CollectRx runs as a secure web app — same screens in browser or{' '}
+        <Link to="/download" className="underline text-crx-600 dark:text-crx-400">
+          desktop app
+        </Link>
+        . Your login and data are tied to your practice.
       </p>
     </div>
   )

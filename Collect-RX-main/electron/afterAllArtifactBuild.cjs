@@ -23,14 +23,8 @@ and open the app inside mac/ or mac-arm64/ as above.
 
 Railway / hosted dashboard (packaged app opens a URL in the window)
 ────────────────────────────────────────
-The placeholder host often shows Railway "404 / train" — that is not your Mac,
-it means the wrong URL or nothing deployed there.
-
-After first launch, create this file with ONE line (your real public URL, no quotes):
-  ~/Library/Application Support/dental-ar-system/dashboard-url.txt
-
-Or set env COLLECTRX_DASHBOARD_URL before opening the app (advanced).
-Restart CollectRx after saving the file.
+The default host is https://www.collectrx.ca. If you use a custom deployment,
+set dashboard-url.txt or COLLECTRX_DASHBOARD_URL (see electron/main.js).
 `;
   try {
     fs.mkdirSync(dist, { recursive: true });

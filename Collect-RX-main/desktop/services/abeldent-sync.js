@@ -3,7 +3,7 @@
  *
  * Runs inside Electron via utilityProcess.fork().
  * Queries the on-premise AbelDent SQL Server database (Windows Integrated Auth)
- * and POSTs outstanding claims to the Railway backend for queue processing.
+ * and POSTs outstanding claims to the CollectRx API for queue processing.
  *
  * IPC (via process.parentPort):
  *   Receives: { type: 'trigger' }   — run a sync immediately
@@ -12,12 +12,14 @@
  * Required env vars:
  *   ABELDENT_SERVER          SQL Server instance, e.g. "(local)\ABELDENT" or "192.168.1.10"
  *   ABELDENT_DATABASE        Database name, default "AbelDent"
- *   RAILWAY_API_URL          CollectRx backend root
- *   RAILWAY_API_TOKEN        Long-lived JWT for the service account
+ *   COLLECTRX_API_URL        CollectRx API root (preferred)
+ *   COLLECTRX_API_TOKEN      Long-lived connector token (minted in Admin → Sync ops)
+ *   COLLECTRX_CONNECTOR_TOKEN Alias for COLLECTRX_API_TOKEN
+ *   RAILWAY_API_URL          Legacy alias for COLLECTRX_API_URL
+ *   RAILWAY_API_TOKEN        Legacy alias for COLLECTRX_API_TOKEN
  *
  * Optional:
  *   ABELDENT_SCHEMA_MAP      Path to schema-map.json (see schema-map.example.json + discover-schema.cjs)
- *   ABELDENT_PATIENT_LEDGER_TABLE  Override patient ledger table name only
  */
 
 'use strict';
@@ -30,18 +32,21 @@ const { URL } = require('url');
 const {
   mergeMap,
   buildClaimsQuery,
-  buildPatientBalanceQuery,
 } = require('./abeldentQueryTemplates.cjs');
 
 // Config
 const SERVER = process.env.ABELDENT_SERVER || String.raw`(local)\ABELDENT`;
 const DATABASE = process.env.ABELDENT_DATABASE || 'AbelDent';
-const RAILWAY_URL = (process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
-const API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
+const API_URL = (process.env.COLLECTRX_API_URL || process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
+const API_TOKEN = process.env.COLLECTRX_API_TOKEN
+  || process.env.COLLECTRX_CONNECTOR_TOKEN
+  || process.env.RAILWAY_API_TOKEN
+  || '';
+const AGENT_VERSION = process.env.COLLECTRX_AGENT_VERSION || '1.0.0';
+const HEARTBEAT_MS = (parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES, 10) || 5) * 60_000;
 const PRACTICE_ID = process.env.ABELDENT_PRACTICE_ID || null;
 const INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
 const MIN_DAYS = parseInt(process.env.ABELDENT_MIN_DAYS, 10) || 14;
-const MIN_DAYS_BALANCE = parseInt(process.env.ABELDENT_MIN_DAYS_BALANCE, 10) || 7;
 
 /** Schema map path (JSON) — from `scripts/sync-query-builder.cjs` + discover-schema; optional. */
 function loadSchemaMapOverrides() {
@@ -54,9 +59,6 @@ function loadSchemaMapOverrides() {
 }
 
 const _schemaMap = mergeMap(loadSchemaMapOverrides());
-if (process.env.ABELDENT_PATIENT_LEDGER_TABLE) {
-  _schemaMap.patientLedger.table = process.env.ABELDENT_PATIENT_LEDGER_TABLE.replace(/[^A-Za-z0-9_]/g, '');
-}
 
 const CLAIMS_SYNC_SQL = buildClaimsQuery(_schemaMap);
 
@@ -117,14 +119,14 @@ async function fetchFromAbeldent() {
   return result.recordset;
 }
 
-// Post to Railway
-function postToRailway(payload, endpoint) {
+// Post to CollectRx API (connector token auth — practice is bound to the token)
+function postToApi(payload, endpoint) {
   return new Promise((resolve, reject) => {
-    if (!RAILWAY_URL || !API_TOKEN) {
-      return reject(new Error('RAILWAY_API_URL or RAILWAY_API_TOKEN is not set'));
+    if (!API_URL || !API_TOKEN) {
+      return reject(new Error('COLLECTRX_API_URL and COLLECTRX_API_TOKEN (connector token) must be set'));
     }
 
-    const url = `${RAILWAY_URL}${endpoint}${PRACTICE_ID ? `?practice_id=${PRACTICE_ID}` : ''}`;
+    const url = `${API_URL}${endpoint}`;
     const parsed = new URL(url);
     const body = Buffer.from(JSON.stringify(payload));
 
@@ -163,16 +165,21 @@ function postToRailway(payload, endpoint) {
   });
 }
 
-const PATIENT_BALANCE_SQL = buildPatientBalanceQuery(_schemaMap);
-
-async function fetchPatientBalances() {
-  if (!sql) throw new Error('mssql not available');
-  const pool = await sql.connect(sqlConfig);
-  const request = pool.request();
-  request.input('minDaysBalance', sql.Int, MIN_DAYS_BALANCE);
-  const result = await request.query(PATIENT_BALANCE_SQL);
-  await pool.close();
-  return result.recordset;
+async function sendHeartbeat(extra = {}) {
+  if (!API_URL || !API_TOKEN) return;
+  try {
+    await postToApi(
+      {
+        version: AGENT_VERSION,
+        hostname: require('os').hostname(),
+        platform: process.platform,
+        ...extra,
+      },
+      '/api/connector/heartbeat',
+    );
+  } catch (err) {
+    console.warn('[Sync] Heartbeat failed:', err.message);
+  }
 }
 
 // Sync cycles
@@ -180,32 +187,49 @@ async function runClaimsSync() {
   sendStatus('syncing');
   try {
     const rows = await fetchFromAbeldent();
-    const result = await postToRailway(
+    const result = await postToApi(
       { records: rows, pmsVendor: 'abeldent', pmsSource: 'abeldent' },
-      '/api/insurance/claims/import',
+      '/api/connector/claims/import',
     );
-    try {
-      await postToRailway({}, '/api/work-queue/sync');
-    } catch (syncErr) {
-      console.warn('[Sync] Work queue refresh failed:', syncErr.message);
-    }
     sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
+    await sendHeartbeat({ status: 'ok', message: `Synced ${result.imported ?? rows.length} claims`, imported: result.imported ?? rows.length });
     return true;
   } catch (err) {
     sendStatus('error', err.message);
+    await sendHeartbeat({ status: 'error', message: err.message });
     return false;
   }
 }
 
-async function runPatientBalanceSync() {
+async function runWritebackCycle() {
+  if (!sql || !API_URL || !API_TOKEN) return;
   try {
-    const rows = await fetchPatientBalances();
-    const result = await postToRailway(rows, '/api/patients/balances');
-    sendStatus('ok', `Patient balances: ${result.imported ?? 0} new, ${result.updated ?? 0} updated`);
-    return true;
+    const pending = await postToApi({}, '/api/connector/writeback-pending');
+    const entries = pending.entries || [];
+    for (const entry of entries) {
+      const payload = entry.payload || {};
+      const sqlText = typeof payload.sql === 'string' ? payload.sql.trim() : '';
+      let ok = false;
+      let errMsg = null;
+      try {
+        if (sqlText && /^UPDATE\s/i.test(sqlText)) {
+          const pool = await sql.connect(sqlConfig);
+          await pool.request().query(sqlText);
+          await pool.close();
+          ok = true;
+        } else {
+          errMsg = 'No supported writeback SQL in payload (expected payload.sql UPDATE statement)';
+        }
+      } catch (e) {
+        errMsg = e.message;
+      }
+      await postToApi(
+        { id: entry.id, ok, error: errMsg },
+        '/api/connector/writeback-ack',
+      );
+    }
   } catch (err) {
-    sendStatus('error', `Patient balance sync failed: ${err.message}`);
-    return false;
+    console.warn('[Sync] Writeback cycle failed:', err.message);
   }
 }
 
@@ -215,7 +239,7 @@ async function runAllSyncs() {
     return;
   }
   await runClaimsSync();
-  await runPatientBalanceSync();
+  await runWritebackCycle();
 }
 
 // Listen for manual trigger
@@ -240,5 +264,6 @@ if (process.stdin && !process.stdin.destroyed) {
 }
 
 // Initial sync on start, then on interval
-runAllSyncs();
+sendHeartbeat({ status: 'starting' }).finally(() => runAllSyncs());
 setInterval(runAllSyncs, INTERVAL_MS);
+setInterval(() => { void sendHeartbeat(); }, HEARTBEAT_MS);

@@ -35,11 +35,11 @@ function buildPatientPHI(row: NormalizedPmsClaimRow): PatientPHI {
   };
 }
 
-function patientTokenForRow(_practiceId: string, row: NormalizedPmsClaimRow): string {
+function patientTokenForRow(practiceId: string, row: NormalizedPmsClaimRow): string {
   // Tokenize full PatientPHI into the main AES-256-GCM vault so the queue engine
   // can detokenize at call dispatch time. The old services/pii-vault.ts stored only
   // a string ID and was disconnected from the queue engine — that path is removed.
-  return piiVault.tokenize(buildPatientPHI(row), 'pms-import');
+  return piiVault.tokenize(buildPatientPHI(row), 'pms-import', practiceId);
 }
 
 async function upsertInsuranceClaim(

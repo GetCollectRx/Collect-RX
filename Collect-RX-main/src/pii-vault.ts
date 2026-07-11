@@ -90,6 +90,7 @@ export interface PatientToken {
 
 interface VaultEntry {
   token: string;
+  practiceId: string;
   phi: PatientPHI;
   createdAt: Date;
   expiresAt: Date;
@@ -108,6 +109,11 @@ export interface DetokenizeResult {
   phi?: PatientPHI;
   error?: string;
 }
+
+export type DetokenizeOptions = {
+  practiceId: string;
+  ipAddress?: string;
+};
 
 export interface VaultStats {
   activeTokens: number;
@@ -132,13 +138,19 @@ export class PIIVault {
     this.db = prisma;
   }
 
-  tokenize(phi: PatientPHI, callerContext: string): string {
+  tokenize(phi: PatientPHI, callerContext: string, practiceId: string): string {
+    const tenantId = practiceId.trim();
+    if (!tenantId) {
+      throw new Error('[PIIVault] tokenize requires a non-empty practiceId');
+    }
     this.enforceVaultLimit();
     const token = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + TOKEN_TTL_MS);
     this.vault.set(token, {
-      token, phi,
+      token,
+      practiceId: tenantId,
+      phi,
       createdAt: now,
       expiresAt,
       accessLog: [{ action: 'tokenize', timestamp: now, callerContext }],
@@ -146,21 +158,37 @@ export class PIIVault {
     this.totalIssued++;
     // Persist to encrypted DB store (non-blocking — in-memory vault is the fast path)
     if (this.db) {
-      this.persistToken(token, phi, expiresAt).catch((err) => {
+      this.persistToken(token, tenantId, phi, expiresAt).catch((err) => {
         console.error('[PIIVault] persist failed (non-fatal — token lives in memory):', err);
       });
     }
     return token;
   }
 
-  detokenize(token: string, callerContext: string, ipAddress?: string): DetokenizeResult {
+  /**
+   * Resolve a token to PHI. Requires the caller's practiceId — tokens are
+   * tenant-bound in memory and in phi_vault_entries.
+   */
+  detokenize(token: string, callerContext: string, options: DetokenizeOptions): DetokenizeResult {
+    const practiceId = options.practiceId.trim();
+    if (!practiceId) {
+      return { success: false, error: 'PRACTICE_ID_REQUIRED' };
+    }
     const entry = this.vault.get(token);
     if (!entry) return { success: false, error: 'TOKEN_NOT_FOUND' };
+    if (entry.practiceId !== practiceId) {
+      return { success: false, error: 'PRACTICE_MISMATCH' };
+    }
     if (new Date() > entry.expiresAt) {
       this.expireToken(token, callerContext);
       return { success: false, error: 'TOKEN_EXPIRED' };
     }
-    entry.accessLog.push({ action: 'detokenize', timestamp: new Date(), callerContext, ipAddress });
+    entry.accessLog.push({
+      action: 'detokenize',
+      timestamp: new Date(),
+      callerContext,
+      ipAddress: options.ipAddress,
+    });
     return { success: true, phi: entry.phi };
   }
 
@@ -183,13 +211,13 @@ export class PIIVault {
    * Encrypt and write a token to the PhiVaultEntry table.
    * Called automatically by tokenize() when a store is attached.
    */
-  async persistToken(token: string, phi: PatientPHI, expiresAt: Date): Promise<void> {
+  async persistToken(token: string, practiceId: string, phi: PatientPHI, expiresAt: Date): Promise<void> {
     if (!this.db) throw new Error('[PIIVault] persistToken called without a store');
     const { ciphertext, iv, authTag } = encryptPhi(phi);
     await this.db.phiVaultEntry.upsert({
       where: { token },
-      create: { token, ciphertext, iv, authTag, expiresAt },
-      update: { ciphertext, iv, authTag, expiresAt },
+      create: { token, practiceId, ciphertext, iv, authTag, expiresAt },
+      update: { practiceId, ciphertext, iv, authTag, expiresAt },
     });
   }
 
@@ -226,6 +254,7 @@ export class PIIVault {
         const phi = decryptPhi(row.ciphertext, row.iv, row.authTag);
         this.vault.set(row.token, {
           token: row.token,
+          practiceId: row.practiceId,
           phi,
           createdAt: row.createdAt,
           expiresAt: row.expiresAt,

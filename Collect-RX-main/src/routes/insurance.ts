@@ -528,7 +528,9 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
     // only — never stored in DB, never in logs. Token must still be live in
     // piiVault (4-hour TTL from import time).
-    const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger');
+    const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger', {
+      practiceId: claim.practiceId,
+    });
     if (!phiResult.success || !phiResult.phi) {
       logger.warn?.('[insurance trigger] PHI token expired or missing', {
         claimId,
@@ -551,7 +553,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         error: 'PHI token has expired — re-import the claim to refresh it',
       });
     }
-    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+    logger.audit('PHI_TOKEN_RESOLVED', {
       claimId,
       patientToken: claim.patientToken,
       callerContext: 'insurance-trigger',

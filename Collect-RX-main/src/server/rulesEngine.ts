@@ -7,6 +7,7 @@ import { escalateOverdueRecoveryActions } from './recovery/overdueActionEscalati
 import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
 
 /**
  * Insurance operations tick: call queue priority, EMR outbox, payment trace recalls,
@@ -14,6 +15,7 @@ import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
  * was removed — CollectRx is insurance-carrier recovery only.
  */
 export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
+  await runWithRlsBypass(async () => {
   try {
     const sync = await syncCallQueueSchedulingFromPriority(prisma);
     if (sync.rowsUpdated > 0) {
@@ -59,8 +61,10 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     try {
       const practices = await prisma.practice.findMany({ select: { id: true } });
       for (const p of practices) {
-        await syncWorkItemsForPractice(prisma, p.id);
-        await dispatchRecoveryPracticeAlerts(prisma, p.id);
+        await runWithPracticeRls(p.id, async () => {
+          await syncWorkItemsForPractice(prisma, p.id);
+          await dispatchRecoveryPracticeAlerts(prisma, p.id);
+        });
       }
     } catch (err) {
       console.error('[rulesEngine] hourly work queue / recovery alerts failed:', err);
@@ -87,6 +91,7 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
       console.error('[rulesEngine] pre-visit appointment sweep failed:', (err as Error).message);
     }
   }
+  });
 }
 
 export function startRulesEngine(prisma: PrismaClient) {

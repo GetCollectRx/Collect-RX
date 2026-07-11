@@ -40,13 +40,27 @@ function postgresUrlUsesStrictSsl(databaseUrl) {
   }
 }
 
+/**
+ * True for hosts on Fly.io's private network — already encrypted end-to-end
+ * by Fly's WireGuard mesh, never routed over the public internet. Mirrors
+ * isFlyPrivateNetworkHost() in src/server/databaseTls.ts.
+ */
+function isFlyPrivateNetworkHost(databaseUrl) {
+  try {
+    const { hostname } = new URL(databaseUrl.replace(/^postgres:/, 'postgresql:'));
+    return hostname.endsWith('.flycast') || hostname.endsWith('.internal');
+  } catch {
+    return false;
+  }
+}
+
 if (prod) {
   const dbUrl = (process.env.DATABASE_URL || '').trim();
-  if (dbUrl && !postgresUrlUsesStrictSsl(dbUrl)) {
+  if (dbUrl && !postgresUrlUsesStrictSsl(dbUrl) && !isFlyPrivateNetworkHost(dbUrl)) {
     bad += !ok(
       'DATABASE_URL (TLS)',
       false,
-      'PostgreSQL URL must include sslmode=require (or verify-full / verify-ca) or ssl=true — see docs/operations/DATA-ENCRYPTION.md',
+      'PostgreSQL URL must include sslmode=require (or verify-full / verify-ca) or ssl=true, unless it is a Fly .flycast/.internal private-network host — see docs/operations/DATA-ENCRYPTION.md',
     )
       ? 1
       : 0;

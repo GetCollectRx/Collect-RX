@@ -459,13 +459,13 @@ export default function ProductOnePager() {
       <section style={{ background: G.greenDk, padding: 'clamp(48px,6vw,80px) 24px' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: '4px 14px', marginBottom: 20 }}>
-            <span style={{ color: '#6EE7B7', fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tenth Line Family Dentistry</span>
+            <span style={{ color: '#6EE7B7', fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Founding practice pilot</span>
           </div>
           <h2 style={{ fontSize: 'clamp(22px,3.5vw,34px)', fontWeight: 800, color: '#fff', letterSpacing: '-0.6px', lineHeight: 1.2, marginBottom: 16 }}>
-            You are the founding practice.<br />One afternoon to start.
+            Start with one afternoon of setup.<br />Calls begin the next business day.
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, lineHeight: 1.7, marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
-            Connect your Abeldent database in one setup session. CollectRx starts calling your AR the next business morning. Zero cost during the pilot. Results visible within 30 days.
+            Connect your PMS via CSV import or the desktop connector. CollectRx starts calling your aged AR the next business morning. Zero cost during the pilot. Results visible within 30 days.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/demo" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: G.greenDk, padding: '13px 28px', borderRadius: 10, fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>

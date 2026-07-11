@@ -31,6 +31,8 @@
     "build:electron:mac": "npm run build:mac -w dental-ar-system",
     "build:electron:mac:arm64": "npm run build:mac:arm64 -w dental-ar-system",
     "build:electron:win": "npm run build:win -w dental-ar-system",
+    "build:electron:linux": "npm run build:linux -w dental-ar-system",
+    "build:electron:all": "npm run build:desktop -w dental-ar-system",
     "dev:prototype": "NODE_ENV=development node server.js",
     "dev:api": "ts-node --project tsconfig.server.json src/api/server.ts",
     "dev:ui": "vite",

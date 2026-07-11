@@ -10,6 +10,7 @@ import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -67,15 +68,18 @@ export async function setPracticeQueuePaused(
 async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
-  const practices = await prisma.practice.findMany({ select: { id: true } });
+  const practices = await runWithRlsBypass(async () =>
+    prisma.practice.findMany({ select: { id: true } }),
+  );
 
   for (const { id: practiceId } of practices) {
-    if (await isPracticeQueuePaused(prisma, practiceId)) continue;
+    await runWithPracticeRls(practiceId, async () => {
+    if (await isPracticeQueuePaused(prisma, practiceId)) return;
 
     const inProgress = await prisma.callQueue.count({
       where: { practiceId, status: 'IN_PROGRESS' },
     });
-    if (inProgress > 0) continue;
+    if (inProgress > 0) return;
 
     // M-7: architectural constraint — one simultaneous call per practice at a time.
     // Any in-progress call attempt (completedAt = null) blocks dispatch of all other
@@ -88,7 +92,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         claim: { practiceId },
       },
     });
-    if (activeAttempt) continue;
+    if (activeAttempt) return;
 
     const next = await prisma.callQueue.findFirst({
       where: {
@@ -102,7 +106,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       },
     });
 
-    if (!next) continue;
+    if (!next) return;
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
@@ -110,7 +114,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         practiceId,
         reason: planGate.reason,
       });
-      continue;
+      return;
     }
 
     const attemptsSoFar = next.attempts;
@@ -135,7 +139,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           data: { status: 'ESCALATED' },
         });
       }
-      continue;
+      return;
     }
 
     // ── PRE-CALL TRIAGE ────────────────────────────────────────────────────────
@@ -164,7 +168,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           metadata: { detail: triage.detail },
         },
       });
-      continue;
+      return;
     }
 
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
@@ -186,6 +190,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     const phiResult = piiVault.detokenize(
       next.claim.patientToken,
       'queue-engine',
+      { practiceId },
     );
     if (!phiResult.success || !phiResult.phi) {
       logger.warn('[deskQueueEngine] PHI token expired or missing — skipping claim', {
@@ -193,9 +198,10 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         patientToken: next.claim.patientToken,
         error: phiResult.error,
       });
-      continue;
+      return;
     }
-    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+    const phi = phiResult.phi;
+    logger.audit('PHI_TOKEN_RESOLVED', {
       claimId: next.claimId,
       patientToken: next.claim.patientToken,
       callerContext: 'queue-engine',
@@ -206,14 +212,14 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // Carriers require patientName, dateOfBirth, and subscriberId at minimum.
     // Missing any of these causes the agent to fail authentication immediately.
     // Skip the claim now; staff can correct the data and the next tick will retry.
-    const completeness = checkPatientDataCompleteness(phiResult.phi);
+    const completeness = checkPatientDataCompleteness(phi);
     if (!completeness.ok) {
       logger.warn('[deskQueueEngine] patient PHI incomplete — skipping dispatch', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
         missing: completeness.missing,
       });
-      continue;
+      return;
     }
     if (completeness.warnings.length > 0) {
       logger.warn('[deskQueueEngine] patient PHI has optional fields absent — proceeding with caution', {
@@ -239,12 +245,12 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       carrierId: next.claim.carrierId,
       patientToken: next.claim.patientToken,
       // ── PHI — resolved from piiVault.detokenize() above; ephemeral, never stored ──
-      patientName:            phiResult.phi.patientName,
-      patientDob:             phiResult.phi.dateOfBirth,
-      policyNumber:           phiResult.phi.subscriberId,
-      groupNumber:            phiResult.phi.groupPolicyNumber,
-      subscriberName:         phiResult.phi.subscriberName,
-      subscriberDob:          phiResult.phi.subscriberDateOfBirth,
+      patientName:            phi.patientName,
+      patientDob:             phi.dateOfBirth,
+      policyNumber:           phi.subscriberId,
+      groupNumber:            phi.groupPolicyNumber,
+      subscriberName:         phi.subscriberName,
+      subscriberDob:          phi.subscriberDateOfBirth,
       // ── Claim fields ──────────────────────────────────────────────────────────
       carrierPhone:           carrierConfig.phone,
       claimNumber:            next.claim.claimNumber,
@@ -318,5 +324,6 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         });
       }
     }
+    }); // runWithPracticeRls
   }
 }

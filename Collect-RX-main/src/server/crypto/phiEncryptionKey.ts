@@ -2,7 +2,7 @@
 // AES-256 key material for PHI field encryption.
 //
 // Production: inject from AWS KMS / Azure Key Vault / GCP KMS / host secret manager
-// (e.g. Railway variables populated from a vault). Never commit key material to git.
+// (e.g. fly secrets populated from a vault). Never commit key material to git.
 //
 // Accepted formats for PHI_ENCRYPTION_KEY:
 //   - 64 hex characters (32 bytes), or

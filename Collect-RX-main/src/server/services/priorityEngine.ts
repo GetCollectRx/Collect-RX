@@ -47,8 +47,8 @@ export interface RankedClaim {
   scores: RankedClaimScores;
 }
 
-function displayPatientName(patientToken: string): string {
-  const r = piiVault.detokenize(patientToken, 'priority-queue');
+function displayPatientName(patientToken: string, practiceId: string): string {
+  const r = piiVault.detokenize(patientToken, 'priority-queue', { practiceId });
   if (!r.success || !r.phi?.patientName?.trim()) {
     return `Patient ${patientToken.slice(0, 8)}…`;
   }
@@ -89,7 +89,7 @@ export async function buildPriorityQueue(
 
     ranked.push({
       claimId: c.id,
-      patientName: displayPatientName(c.patientToken),
+      patientName: displayPatientName(c.patientToken, practiceId),
       carrier: carrierName,
       amountCents,
       daysOutstanding: c.daysOutstanding,

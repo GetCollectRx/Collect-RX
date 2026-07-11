@@ -1,7 +1,7 @@
 /**
  * Scheduled Agents — Cron-based registration for CollectRx's autonomous agents.
  *
- * Trigger map (all times ET / Railway TZ):
+ * Trigger map (all times ET):
  *
  * DAILY
  *   05:00  analytics-pipeline, database-health
@@ -334,7 +334,7 @@ const SCHEDULED_AGENTS: ScheduledAgent[] = [
 // ── Scheduler boot ────────────────────────────────────────────────────────────
 
 function isAgentSystemEnabled(): boolean {
-  // Disabled by default — set AGENTS_ENABLED=true in Railway to activate
+  // Disabled by default — set AGENTS_ENABLED=true in the host env to activate
   return ['1', 'true', 'yes'].includes(
     String(process.env.AGENTS_ENABLED ?? '').toLowerCase(),
   );

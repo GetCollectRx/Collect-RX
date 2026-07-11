@@ -199,7 +199,7 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 ### Abeldent Connector (Phase 4)
 
-Abeldent Local Plus is the dental practice management software running on SQL Server on Dr. Hasan's Windows machine.
+Abeldent Local Plus is dental practice management software running on SQL Server at the practice site.
 
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
@@ -237,7 +237,7 @@ Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedur
 
 ## Windows build & deployment
 
-The Electron app is packaged as a signed NSIS `.exe` installer for Dr. Hasan's Windows machine. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
+The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
 Never ship an unsigned build to the pilot site.
 

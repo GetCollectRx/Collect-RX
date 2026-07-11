@@ -15,7 +15,7 @@
  *
  * NOTE: These tests require RLS policies to be defined at the database level.
  * If policies are not yet deployed, run:
- *   psql $DATABASE_URL -f migrations/rls-policies.sql
+ *   npx prisma migrate deploy
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';

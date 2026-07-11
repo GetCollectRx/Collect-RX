@@ -5,7 +5,7 @@
   "author": "CollectRx",
   "repository": {
     "type": "git",
-    "url": "https://github.com/khalidegeh/Collect-RX.git"
+    "url": "https://github.com/GetCollectRx/Collect-RX.git"
   },
   "engines": {
     "node": ">=20.10.0"
@@ -25,6 +25,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
     "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:desktop": "npm run build && electron-builder --mac --win --linux",
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
@@ -47,6 +49,7 @@
     "diagnose:alert": "node scripts/diagnose-breakage.mjs -- --alert",
     "alert:diagnosis": "tsx scripts/send-ops-alerts.ts",
     "smoke:live": "node scripts/smoke-live.mjs",
+    "go-live:verify": "node scripts/go-live-verify.mjs",
     "startup-scan": "node scripts/startup-scan.mjs",
     "test:smoke-map": "vitest run tests/smoke/breakage-map.smoke.test.ts",
     "e2e": "playwright test",
@@ -55,7 +58,6 @@
     "db:generate": "prisma generate",
     "db:generate:collectrx": "prisma generate",
     "db:verify-tables": "tsx scripts/verify-db-tables.ts",
-    "db:baseline-railway": "node scripts/baseline-railway-migrations.mjs",
     "db:apply-schema-drift": "node scripts/apply-schema-drift-if-needed.mjs",
     "db:inspect-schema": "tsx scripts/inspect-db-schema.ts",
     "db:migrate": "prisma migrate deploy",
@@ -78,6 +80,7 @@
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@clickhouse/client": "^1.19.0",
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.3.0",
     "@prisma/client": "^5.8.0",
     "@sendgrid/eventwebhook": "^8.0.0",
@@ -99,7 +102,7 @@
     "lucide-react": "^1.17.0",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.3",
     "notebooklm-sdk": "^0.3.4",
     "pg": "^8.11.3",
     "rate-limit-redis": "^5.0.0",
@@ -157,6 +160,7 @@
   "build": {
     "appId": "com.collectrx.app",
     "productName": "CollectRx",
+    "icon": "electron/icon.png",
     "afterPack": "./electron/afterPack.cjs",
     "afterAllArtifactBuild": "./electron/afterAllArtifactBuild.cjs",
     "directories": {
@@ -167,6 +171,19 @@
       "desktop/**/*",
       "dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/config/agent-config.example.json",
+        "to": "desktop/config/agent-config.example.json"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GetCollectRx",
+        "repo": "Collect-RX"
+      }
     ],
     "mac": {
       "target": [
@@ -204,6 +221,14 @@
       "createStartMenuShortcut": true,
       "shortcutName": "CollectRx",
       "include": "electron/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "CollectRx <billing@collectrx.ca>"
     }
   }
 }

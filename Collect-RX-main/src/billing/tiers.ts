@@ -2,7 +2,7 @@
  * CollectRx Billing — Tier Definitions
  *
  * Real cost per minute delivered: ~$0.115
- * (Vapi $0.05 + GPT-5 Mini $0.02 + Deepgram Nova 3 $0.01 + Tara TTS $0.02 + Twilio $0.015 + Railway $0.01)
+ * (Vapi $0.05 + GPT-5 Mini $0.02 + Deepgram Nova 3 $0.01 + Tara TTS $0.02 + Twilio $0.015 + hosting $0.01)
  *
  * Pricing targets 50%+ gross margin on all paid tiers.
  * Overage priced at $0.25/min (Core/Growth) and $0.20/min (Scale) — profitable above cost.
@@ -132,7 +132,7 @@ export const UNIT_ECONOMICS = {
     deepgramNova3: 0.01,
     taraVoice: 0.02,
     twilio: 0.015,
-    railway: 0.01,
+    hosting: 0.01,
   },
   overageMinMargin: 0.085, // $0.20 overage (Scale) - $0.115 cost
   overageMaxMargin: 0.135, // $0.25 overage (Core/Growth) - $0.115 cost

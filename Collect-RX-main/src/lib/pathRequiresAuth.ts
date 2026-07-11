@@ -14,6 +14,7 @@ const PUBLIC_APP_PREFIXES = [
   '/carriers',
   '/compliance',
   '/about',
+  '/download',
   '/resources',
 ]
 

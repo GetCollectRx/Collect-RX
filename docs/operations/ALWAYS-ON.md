@@ -90,6 +90,6 @@ pm2 save
 
 | Goal | Use |
 |------|-----|
-| Live product for Dr. Hasan / pilot | **Railway** |
+| Live product / pilot deployment | **Fly.io** |
 | Mac always serves API locally | **PM2** + `docker compose` Postgres |
 | Phase 6 learns daily + texts you | Railway or PM2 + `LEARNING_LOOP_ENABLED=1` + Notion + Twilio |

@@ -43,7 +43,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
     ],
     suggestedFixes: [
       'Run: npm run check:env',
-      'Set missing variables in Railway/host (see ✗ lines)',
+      'Set missing variables with fly secrets set (see ✗ lines)',
       'Compare with Collect-RX-main/.env.example',
     ],
   },
@@ -58,7 +58,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       '/api/health/ready will return 503',
     ],
     suggestedFixes: [
-      'Confirm Postgres is up (Railway plugin / host console)',
+      'Confirm Postgres is up (fly postgres list / fly status)',
       'Run: npm run db:migrate',
       'Run: npm run db:verify-tables',
       'Verify DATABASE_URL uses TLS in production (sslmode=require)',
@@ -90,7 +90,7 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
     ],
     suggestedFixes: [
       'Run: npm run smoke:live',
-      'Check Railway deploy logs and recent migrations',
+      'Check fly logs and recent migrations',
       'curl /api/health/ready on the public URL',
     ],
   },
@@ -104,9 +104,9 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'No webhooks (Stripe, Vapi, SendGrid) are being processed',
     ],
     suggestedFixes: [
-      'Check Railway service status / restart collectrx-web',
+      'Check fly status -a collect-rx / fly machine restart',
       'Review deploy logs for crash on boot',
-      'Verify PORT and healthcheckPath in railway.toml',
+      'Verify internal_port and http_service checks in fly.toml',
     ],
   },
   readiness: {
@@ -225,6 +225,38 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'Open CollectRx → Claims → Blocked gates and mark completed items',
       'Check Dashboard “Recovery attention” or the notification bell',
       'Confirm PMS sync if payment verification traces are due',
+    ],
+  },
+  connector_stale: {
+    id: 'connector_stale',
+    title: 'Desktop connector offline or stale',
+    severity: 'high',
+    affectedSystems: ['AbelDent sync', 'PMS import', 'work queue'],
+    impact: [
+      'Claims are not syncing from the practice PMS — queue and calls run on stale data',
+      'Staff may need emergency CSV upload under Admin → Sync ops',
+    ],
+    suggestedFixes: [
+      'Confirm CollectRx desktop app is running on the practice PC (tray icon)',
+      'Check COLLECTRX_API_TOKEN is set and not revoked (Admin → Sync ops)',
+      'Verify ABELDENT_SERVER and SQL connectivity on the practice LAN',
+      'Review connector agent row in Admin → Sync ops for last heartbeat',
+    ],
+  },
+  connector_sync_failed: {
+    id: 'connector_sync_failed',
+    title: 'Desktop connector sync failed',
+    severity: 'high',
+    affectedSystems: ['AbelDent sync', 'PMS import'],
+    impact: [
+      'Last sync cycle failed — new claims may not appear in CollectRx',
+      'Automated carrier follow-up may miss recently submitted claims',
+    ],
+    suggestedFixes: [
+      'Open Admin → Sync ops → connector status for last error message',
+      'On practice PC: check sync worker logs (CollectRx tray → Sync now)',
+      'Run abeldent:discover and validate schema-map if SQL errors mention missing columns',
+      'Re-mint connector token if auth returns 401',
     ],
   },
 };

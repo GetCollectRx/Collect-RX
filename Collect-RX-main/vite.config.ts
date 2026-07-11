@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => {
   const vitePort = /^\d{1,5}$/.test(String(rawVite)) ? Number(rawVite) : 5173
 
   return {
+    build: {
+      target: 'es2022',
+    },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {

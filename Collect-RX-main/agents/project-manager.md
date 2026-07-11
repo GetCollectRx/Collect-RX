@@ -61,7 +61,7 @@ These are project-level risks that could delay or derail delivery:
 | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|
 | PHI/Vapi decision delays go-live | High (currently open) | High | Make this decision by [date] — flag if >14 days unresolved |
-| Dr. Hasan never re-engages | High | Medium | AbelDent connector parked; CSV path is primary — no dependency |
+| Pilot partner never re-engages | High | Medium | AbelDent connector parked; CSV path is primary — no dependency |
 | CRTC 2026-132 rules tighten | Medium | Critical | Monitor monthly; pause plan ready in compliance-checker.md |
 | Vapi changes their API or pricing | Medium | High | Abstract vapiService.ts; never hardcode Vapi-specific calls outside that file |
 | Railway outage during call window | Low | High | Health endpoint monitoring; auto-retry in queue engine |

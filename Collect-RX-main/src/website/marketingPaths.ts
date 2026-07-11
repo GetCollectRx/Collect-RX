@@ -9,6 +9,7 @@ export const MARKETING_PATHS = {
   about: '/about',
   demo: '/demo',
   product: '/product',
+  download: '/download',
   resources: '/resources/',
   login: '/login',
 } as const

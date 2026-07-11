@@ -6,10 +6,12 @@ import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './d
 
 applyPostgresTlsToProcessEnv();
 
-import { PrismaClient } from '@prisma/client';
-import { Worker } from 'bullmq';
+import type { PrismaClient } from '@prisma/client';
+import { Worker, type ConnectionOptions } from 'bullmq';
 import express from 'express';
 import IORedis from 'ioredis';
+import { prisma } from '../lib/prisma.js';
+import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
@@ -33,10 +35,11 @@ if (!process.env.REDIS_URL) {
 }
 
 const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-const prisma = new PrismaClient();
 
-async function handlePreVisitEligibility(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
-  const result = await dispatchPreVisitCall(prisma, 'PRE_VISIT_ELIGIBILITY', payload);
+async function handlePreVisitEligibility(db: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await runWithPracticeRls(payload.practiceId, async () =>
+    dispatchPreVisitCall(db, 'PRE_VISIT_ELIGIBILITY', payload),
+  );
   if ('skipped' in result) {
     console.log('[worker] PRE_VISIT_ELIGIBILITY skipped:', result.reason);
   } else {
@@ -44,8 +47,10 @@ async function handlePreVisitEligibility(prisma: PrismaClient, payload: PreVisit
   }
 }
 
-async function handlePreVisitCdcpPredet(prisma: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
-  const result = await dispatchPreVisitCall(prisma, 'PRE_VISIT_CDCP_PREDET', payload);
+async function handlePreVisitCdcpPredet(db: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await runWithPracticeRls(payload.practiceId, async () =>
+    dispatchPreVisitCall(db, 'PRE_VISIT_CDCP_PREDET', payload),
+  );
   if ('skipped' in result) {
     console.log('[worker] PRE_VISIT_CDCP_PREDET skipped:', result.reason);
   } else {
@@ -56,28 +61,30 @@ async function handlePreVisitCdcpPredet(prisma: PrismaClient, payload: PreVisitJ
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
-    if (job.name === 'RULES_TICK') {
-      await runRulesEngineTick(prisma);
-    } else if (job.name === 'REMINDER_CYCLE') {
-      console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
-    } else if (job.name === 'LEARNING_CYCLE') {
-      await runLearningCycle(prisma);
-    } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
-      await runMarketingSequenceTick(prisma);
-    } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
-      await runMarketingLearningCycle(prisma);
-    } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
-      await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
-    } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
-      await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
-    } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
-      const n = await sweepUpcomingAppointments(prisma);
-      if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
-    } else {
-      throw new Error(`Unknown job name: ${job.name}`);
-    }
+    await runWithRlsBypass(async () => {
+      if (job.name === 'RULES_TICK') {
+        await runRulesEngineTick(prisma);
+      } else if (job.name === 'REMINDER_CYCLE') {
+        console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
+      } else if (job.name === 'LEARNING_CYCLE') {
+        await runLearningCycle(prisma);
+      } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
+        await runMarketingSequenceTick(prisma);
+      } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
+        await runMarketingLearningCycle(prisma);
+      } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
+        await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
+      } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
+        await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
+      } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
+        const n = await sweepUpcomingAppointments(prisma);
+        if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
+      } else {
+        throw new Error(`Unknown job name: ${job.name}`);
+      }
+    });
   },
-  { connection, concurrency: 1 }
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
 );
 
 worker.on('failed', (job, err) => {
@@ -86,7 +93,7 @@ worker.on('failed', (job, err) => {
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
 
-/** API uses PORT (3000) in dev; worker health must not collide. Railway worker service uses PORT. */
+/** API uses PORT (3000) in dev; worker health must not collide. The Fly worker process uses PORT. */
 function resolveWorkerHealthPort(): number {
   if (process.env.WORKER_HEALTH_PORT) {
     return parseInt(process.env.WORKER_HEALTH_PORT, 10);

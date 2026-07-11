@@ -17,7 +17,7 @@ import { createClient, ClickHouseClient } from '@clickhouse/client';
 
 let _client: ClickHouseClient | null = null;
 
-/** When unset, telemetry is accepted but not stored (safe for Railway without ClickHouse). */
+/** When unset, telemetry is accepted but not stored (safe when ClickHouse is not provisioned). */
 export function isClickHouseMockMode(): boolean {
   return !(process.env.CLICKHOUSE_URL ?? '').trim();
 }

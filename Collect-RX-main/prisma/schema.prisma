@@ -69,6 +69,7 @@ model Practice {
   notifications                  PracticeNotification[]
   deletionRequests               PHIPADeletionRequest[]
   breachNotifications            PHIPABreachNotification[]
+  phiVaultEntries                PhiVaultEntry[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -817,8 +818,6 @@ enum WorkItemType {
 
 enum WorkItemSource {
   insurance_claim
-  patient_balance
-  outreach_balance
 
   @@map("work_item_source")
 }
@@ -844,6 +843,27 @@ model PmsImportRun {
 
   @@index([practiceId, startedAt(sort: Desc)])
   @@map("pms_import_runs")
+}
+
+/// Practice desktop agent (Electron) — long-lived API token + heartbeat/sync telemetry.
+model DesktopConnectorAgent {
+  id              String    @id @default(uuid())
+  practiceId      String    @map("practice_id")
+  label           String    @default("Practice PC")
+  tokenHash       String    @map("token_hash")
+  hostname        String?
+  agentVersion    String?   @map("agent_version")
+  platform        String?
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  lastSyncAt      DateTime? @map("last_sync_at")
+  lastSyncStatus  String?   @map("last_sync_status")
+  lastSyncMessage String?   @map("last_sync_message")
+  lastImported    Int?      @map("last_imported")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId])
+  @@map("desktop_connector_agents")
 }
 
 /// Unified AR work queue — merged from insurance claims, patient AR, outreach balances.
@@ -1185,6 +1205,7 @@ model UsagePeriod {
 model PhiVaultEntry {
   /// UUID token — same value stored in InsuranceClaim.patientToken.
   token      String   @id
+  practiceId String   @map("practice_id")
   /// AES-256-GCM ciphertext of JSON.stringify(PatientPHI), hex-encoded.
   ciphertext String
   /// Hex-encoded 12-byte random IV.
@@ -1194,6 +1215,9 @@ model PhiVaultEntry {
   createdAt  DateTime @default(now()) @map("created_at")
   expiresAt  DateTime @map("expires_at")
 
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
   @@index([expiresAt])
   @@map("phi_vault_entries")
 }

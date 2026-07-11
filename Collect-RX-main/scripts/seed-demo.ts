@@ -1,9 +1,10 @@
 /**
- * Demo seed — creates a practice with realistic insurance AR data for testing and development.
+ * Demo seed — creates the generic CollectRx demo practice with realistic
+ * insurance AR data for development and prospect walkthroughs.
  *
  * Usage:
- *   DATABASE_URL=<railway_url> npx ts-node --esm scripts/seed-demo.ts
- *   or add to package.json: "demo:seed": "ts-node --esm scripts/seed-demo.ts"
+ *   npm run demo:seed              — seed (fails if the demo practice exists)
+ *   npm run demo:seed -- --reset   — delete the existing demo practice and reseed
  *
  * Customization via environment variables:
  *   SEED_PRACTICE_NAME=MyPractice npm run demo:seed
@@ -19,6 +20,32 @@ import { syncWorkItemsForPractice } from '../src/server/services/workQueueServic
 import { computeWorkQueueRankScore } from '../src/lib/workQueuePriority.js';
 
 const prisma = new PrismaClient();
+
+const DEMO_PRACTICE_NAME = 'CollectRx Demo Practice';
+const DEMO_EMAIL = 'demo@collectrx-test.local';
+const DEMO_OWNER_NAME = 'Demo Admin';
+/** Prior demo identities — cleaned up by --reset so old seeds don't linger. */
+const LEGACY_DEMO_PRACTICE_NAMES = [
+  'Hasan Family Dental',
+  'Maple Grove Dental',
+  'Tenth Line Family Dentistry',
+] as const;
+
+/** Delete a demo practice and every row the seed creates for it, children first. */
+async function deleteDemoPractice(practiceId: string): Promise<void> {
+  await prisma.callAttempt.deleteMany({ where: { claim: { practiceId } } });
+  await prisma.claimRecoveryEvent.deleteMany({ where: { practiceId } });
+  await prisma.claimRecoveryAction.deleteMany({ where: { practiceId } });
+  await prisma.adjudicationEvent.deleteMany({ where: { practiceId } });
+  await prisma.callQueue.deleteMany({ where: { practiceId } });
+  await prisma.appointmentVerification.deleteMany({ where: { practiceId } });
+  await prisma.cdcpReconsiderationCase.deleteMany({ where: { practiceId } });
+  await prisma.scheduledAppointment.deleteMany({ where: { practiceId } });
+  await prisma.workItem.deleteMany({ where: { practiceId } });
+  await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
+  await prisma.user.deleteMany({ where: { practiceId } });
+  await prisma.practice.delete({ where: { id: practiceId } });
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -188,15 +215,22 @@ async function main() {
   const PASSWORD = process.env.SEED_PRACTICE_PASSWORD || 'CollectRx2026!';
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
-  const practiceName = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
-  const practiceEmail = process.env.SEED_PRACTICE_EMAIL || 'admin@collectrx-demo.local';
-  const practiceDisplayName = process.env.SEED_PRACTICE_DISPLAY_NAME || 'Demo Admin';
+  const practiceName = process.env.SEED_PRACTICE_NAME || DEMO_PRACTICE_NAME;
+  const practiceEmail = process.env.SEED_PRACTICE_EMAIL || DEMO_EMAIL;
+  const practiceDisplayName = process.env.SEED_PRACTICE_DISPLAY_NAME || DEMO_OWNER_NAME;
 
   // ── 1. Practice ──────────────────────────────────────────────────────────
-  const existing = await prisma.practice.findFirst({ where: { name: practiceName } });
-  if (existing) {
-    console.log(`⚠️  Practice "${practiceName}" already exists. Delete it first:\n   DELETE FROM practices WHERE name = '${practiceName}';\n`);
+  const reset = process.argv.includes('--reset');
+  const existing = await prisma.practice.findMany({
+    where: { name: { in: [practiceName, DEMO_PRACTICE_NAME, ...LEGACY_DEMO_PRACTICE_NAMES] } },
+  });
+  if (existing.length > 0 && !reset) {
+    console.log('⚠️  Demo practice already exists. Re-run with:\n   npm run demo:seed -- --reset\n');
     return;
+  }
+  for (const p of existing) {
+    await deleteDemoPractice(p.id);
+    console.log(`🗑️  Removed existing demo practice: ${p.name} (${p.id})`);
   }
 
   const practice = await prisma.practice.create({
@@ -1023,7 +1057,7 @@ async function main() {
     );
   }
   console.log('─'.repeat(60));
-  console.log('\n✨  Seed complete. Log in as demo@hasanfamilydental.ca → /work-queue or /pre-visit\n');
+  console.log('\n✨  Seed complete. Log in as ' + DEMO_EMAIL + ' → /work-queue or /pre-visit\n');
 }
 
 main()

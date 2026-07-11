@@ -15,7 +15,7 @@
  * protocols) keep absolute resolution from Electron / meta / `VITE_API_ORIGIN`.
  *
  * Public marketing host (www.collectrx.ca) often serves only static HTML; `/api` there is not JSON.
- * When no origin is configured, production builds on collectrx.ca default to the Railway app URL used
+ * When no origin is configured, production builds on collectrx.ca default to the canonical app URL used
  * across this repo (override with VITE_API_ORIGIN or meta if your API lives elsewhere).
  */
 const COLLECTRX_DEFAULT_API_ORIGIN = 'https://www.collectrx.ca'
@@ -66,7 +66,7 @@ function effectiveElectronApiOrigin(): string {
 
 const viteOrigin = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? ''
 
-/** When the SPA is on collectrx.ca but Express is on Railway (or another host), avoid same-origin /api → HTML. */
+/** When the SPA is on collectrx.ca but Express is on another host, avoid same-origin /api → HTML. */
 function inferredCollectRxApiOrigin(): string {
   if (typeof window === 'undefined' || import.meta.env.DEV) return ''
   const host = window.location.hostname.replace(/^www\./i, '')
