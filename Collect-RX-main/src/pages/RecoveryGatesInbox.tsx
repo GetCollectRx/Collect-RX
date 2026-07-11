@@ -28,6 +28,8 @@ interface GateRow {
   detail: string | null
   createdAt: string
   recoveryRoute: string | null
+  deadline: string | null
+  escalatedAt: string | null
 }
 
 const CARRIER_LABELS: Record<string, string> = {
@@ -132,6 +134,7 @@ export default function RecoveryGatesInbox() {
                   <Th>Carrier</Th>
                   <Th>Gate</Th>
                   <Th align="right">Outstanding</Th>
+                  <Th>Deadline</Th>
                   <Th>Opened</Th>
                   <Th />
                 </Tr>
@@ -139,7 +142,7 @@ export default function RecoveryGatesInbox() {
               <Tbody>
                 {gates.length === 0 ? (
                   <TableEmpty
-                    colSpan={6}
+                    colSpan={7}
                     message="No open gates, carrier calls will proceed when dispatch rules allow."
                   />
                 ) : (
@@ -161,6 +164,22 @@ export default function RecoveryGatesInbox() {
                         </div>
                       </Td>
                       <Td align="right" bold>{fmtMoney(g.outstandingAmount)}</Td>
+                      <Td className="text-xs">
+                        {g.deadline ? (
+                          <div className="space-y-1">
+                            <span className={new Date(g.deadline) < new Date() ? 'font-semibold text-red-600 dark:text-red-400' : ''}>
+                              {new Date(g.deadline).toLocaleDateString()}
+                            </span>
+                            {g.escalatedAt ? (
+                              <Badge color="red">Escalated</Badge>
+                            ) : new Date(g.deadline) < new Date() ? (
+                              <Badge color="red">Overdue</Badge>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </Td>
                       <Td muted className="text-xs">
                         {new Date(g.createdAt).toLocaleDateString()}
                       </Td>

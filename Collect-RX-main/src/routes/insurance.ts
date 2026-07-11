@@ -273,6 +273,8 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
             repName: true,
             referenceNumber: true,
             carrierBlockDetected: true,
+            validationPassed: true,
+            validationResult: true,
           },
         },
         queueEntry: {

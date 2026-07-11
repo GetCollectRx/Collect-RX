@@ -458,6 +458,13 @@ model ClaimRecoveryAction {
   title             String
   detail            String?
   scheduledRecallAt DateTime?            @map("scheduled_recall_at")
+  /// Carrier-imposed deadline for this action (e.g. documentation submission date).
+  deadline          DateTime?
+  /// When the overdue job should escalate if the action is still open. Defaults
+  /// to the deadline at creation time; null means never auto-escalate.
+  autoEscalateAt    DateTime?            @map("auto_escalate_at")
+  /// Set once the overdue job has escalated — prevents repeat escalations.
+  escalatedAt       DateTime?            @map("escalated_at")
   callAttemptId     String?              @map("call_attempt_id")
   cdcpCaseId        String?              @map("cdcp_case_id")
   metadata          Json?
@@ -471,6 +478,7 @@ model ClaimRecoveryAction {
   @@index([claimId, status])
   @@index([practiceId, status])
   @@index([actionType, status, scheduledRecallAt])
+  @@index([autoEscalateAt], map: "idx_recovery_actions_auto_escalate")
   @@map("claim_recovery_actions")
 }
 

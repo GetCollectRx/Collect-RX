@@ -12,6 +12,8 @@ export interface PracticeGateInboxRow {
   detail: string | null;
   createdAt: string;
   recoveryRoute: RecoveryRoute | null;
+  deadline: string | null;
+  escalatedAt: string | null;
 }
 
 export interface ClaimRecoveryListFields {
@@ -39,7 +41,7 @@ export async function listPracticeRecoveryGates(
         },
       },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ deadline: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
   });
 
   return actions.map((a) => ({
@@ -53,6 +55,8 @@ export async function listPracticeRecoveryGates(
     detail: a.detail,
     createdAt: a.createdAt.toISOString(),
     recoveryRoute: a.claim.recoveryRoute,
+    deadline: a.deadline?.toISOString() ?? null,
+    escalatedAt: a.escalatedAt?.toISOString() ?? null,
   }));
 }
 

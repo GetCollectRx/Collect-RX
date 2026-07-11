@@ -3,6 +3,7 @@ import { syncCallQueueSchedulingFromPriority } from './services/priorityEngine.j
 import { syncWorkItemsForPractice } from './services/workQueueService.js';
 import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
 import { processPaymentTraceDue } from './recovery/recoveryLoopService.js';
+import { escalateOverdueRecoveryActions } from './recovery/overdueActionEscalation.js';
 import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
@@ -42,6 +43,15 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     }
   } catch (err) {
     console.error('[rulesEngine] payment trace due failed:', (err as Error).message);
+  }
+
+  try {
+    const overdueEscalated = await escalateOverdueRecoveryActions(prisma);
+    if (overdueEscalated > 0) {
+      console.log(`[rulesEngine] overdue practice actions escalated: ${overdueEscalated}`);
+    }
+  } catch (err) {
+    console.error('[rulesEngine] overdue action sweep failed:', (err as Error).message);
   }
 
   const now = new Date();

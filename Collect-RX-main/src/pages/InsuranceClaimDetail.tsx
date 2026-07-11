@@ -27,6 +27,8 @@ interface CallAttempt {
   repName: string | null
   referenceNumber: string | null
   transcriptUrl: string | null
+  validationPassed?: boolean | null
+  validationResult?: { escalationReason?: string; safetyScore?: number } | null
 }
 
 interface ClaimDetail {
@@ -509,6 +511,19 @@ export default function InsuranceClaimDetail() {
                       {/* Non-escalation outcome detail */}
                       {!isEscalatedAttempt && a.outcomeDetail && (
                         <p className="text-xs text-gray-600 dark:text-gray-400">{a.outcomeDetail}</p>
+                      )}
+
+                      {/* Async validation verdict */}
+                      {a.validationPassed === false && (
+                        <div className="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 leading-relaxed">
+                          <strong>Validation escalated:</strong>{' '}
+                          {a.validationResult?.escalationReason ?? 'The post-call validator flagged this call for manual review.'}
+                        </div>
+                      )}
+                      {a.validationPassed === true && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          Post-call validation passed
+                        </p>
                       )}
 
                       {/* Rep + reference */}
