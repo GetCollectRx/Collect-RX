@@ -131,8 +131,12 @@ function validateHardConstraints(
     }
   }
 
-  // CLAIM NUMBER MATCH
-  if (payload.extractedFacts.claimNumber !== originalClaimNumber) {
+  // CLAIM NUMBER MATCH — normalized: voice transcription mangles separators and
+  // leading zeros ("CLM-001" → "CLM minus 1" → "CLM-1"), so compare alphanumerics
+  // with digit runs stripped of leading zeros.
+  const normalizeClaimNumber = (s: string): string =>
+    s.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/0+(\d)/g, '$1');
+  if (normalizeClaimNumber(payload.extractedFacts.claimNumber) !== normalizeClaimNumber(originalClaimNumber)) {
     violations.push({
       phase: 'HARD_CONSTRAINTS',
       rule: 'CLAIM_NUMBER_MATCH',
