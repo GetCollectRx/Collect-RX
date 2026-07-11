@@ -29,6 +29,8 @@ import {
   markWebhookProcessed,
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
+import { normalizeVapiWebhook } from './vapiNormalizer.js';
+import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 
 // H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
 function isUniqueConstraintError(err: unknown): boolean {
@@ -86,12 +88,20 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  // ── 2. Parse payload ─────────────────────────────────────────────────────
-  let payload: VapiWebhookPayload;
+  // ── 2. Parse + normalize payload ─────────────────────────────────────────
+  // Vapi delivers {message: {type: 'end-of-call-report' | ...}} envelopes;
+  // normalizeVapiWebhook maps them to the flat shape downstream code consumes.
+  let parsed: unknown;
   try {
-    payload = JSON.parse(rawBody.toString('utf-8')) as VapiWebhookPayload;
+    parsed = JSON.parse(rawBody.toString('utf-8'));
   } catch {
     return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+
+  const payload: VapiWebhookPayload | null = normalizeVapiWebhook(parsed);
+  if (!payload) {
+    // Authenticated but not a message type we consume — ACK so Vapi stops retrying.
+    return res.status(200).json({ received: true, ignored: true });
   }
 
   // ── 3. METADATA TAMPERING VALIDATION ─────────────────────────────────────
@@ -167,6 +177,22 @@ router.post('/', async (req: Request, res: Response) => {
         const auditResult = await enqueueForAudit(callAttempt.id);
         if (!auditResult.enqueued) {
           console.warn('[guardrails] Failed to enqueue audit job:', auditResult.error);
+        }
+
+        // ── Async claims validation — runs off-call on end-of-call-report ──
+        if (
+          payload.type === 'call.ended' &&
+          payload.transcript &&
+          payload.analysis?.structuredData
+        ) {
+          const validation = await runClaimsValidation(prisma, {
+            callAttemptId: callAttempt.id,
+            transcript: payload.transcript,
+            extractedFacts: coerceExtractedFacts(payload.analysis.structuredData),
+          });
+          if (validation.status === 'escalated') {
+            console.warn('[vapi-webhook] Validation escalated:', validation.result.escalationReason);
+          }
         }
       }
     } catch (guardrailsErr) {

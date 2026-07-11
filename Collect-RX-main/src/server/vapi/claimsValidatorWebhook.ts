@@ -18,28 +18,47 @@ import { createHash } from 'crypto';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 
-interface ValidatorWebhookPayload {
+export interface ValidatorExtractedFacts {
+  claimNumber: string;
+  outcome?: string;
+  referenceNumber?: string;
+  repName?: string;
+  callbackNumber?: string;
+  paymentAmount?: string;
+  paymentDate?: string;
+  paymentReference?: string;
+  denialCode?: string;
+  denialReason?: string;
+  expectedCompletionDate?: string;
+  requiredDocumentation?: string;
+  submissionMethod?: string;
+  submissionDestination?: string;
+  submissionDeadline?: string;
+  nextAction?: string;
+  [key: string]: unknown;
+}
+
+export interface ValidatorWebhookPayload {
   callAttemptId: string;
   transcript: string;
-  extractedFacts: {
-    claimNumber: string;
-    outcome?: string;
-    referenceNumber?: string;
-    repName?: string;
-    callbackNumber?: string;
-    paymentAmount?: string;
-    paymentDate?: string;
-    paymentReference?: string;
-    denialCode?: string;
-    denialReason?: string;
-    expectedCompletionDate?: string;
-    requiredDocumentation?: string;
-    submissionMethod?: string;
-    submissionDestination?: string;
-    submissionDeadline?: string;
-    nextAction?: string;
-    [key: string]: unknown;
+  extractedFacts: ValidatorExtractedFacts;
+}
+
+/**
+ * Coerce analysisPlan.structuredDataPlan output (untyped JSON) into the
+ * validator's fact shape. Non-string values for known string fields are
+ * dropped rather than stringified so completeness checks stay meaningful.
+ */
+export function coerceExtractedFacts(sd: Record<string, unknown>): ValidatorExtractedFacts {
+  const facts: ValidatorExtractedFacts = {
+    claimNumber: typeof sd.claimNumber === 'string' ? sd.claimNumber : '',
   };
+  for (const [key, value] of Object.entries(sd)) {
+    if (key === 'claimNumber') continue;
+    if (typeof value === 'string' && value.length > 0) facts[key] = value;
+    else if (typeof value === 'boolean') facts[key] = value;
+  }
+  return facts;
 }
 
 interface ValidationResult {
@@ -334,6 +353,109 @@ async function validateExtraction(_prisma: PrismaClient, payload: ValidatorWebho
   };
 }
 
+export type ClaimsValidationOutcome =
+  | { status: 'not_found' }
+  | { status: 'passed' | 'escalated'; result: ValidationResult };
+
+/**
+ * When the carrier gave a submission deadline, stamp it (and the overdue-sweep
+ * trigger) onto the open practice-facing recovery action for this claim so
+ * escalateOverdueRecoveryActions() can enforce it.
+ */
+async function applyDeadlineFromFacts(
+  prisma: PrismaClient,
+  claimId: string,
+  facts: ValidatorExtractedFacts,
+): Promise<void> {
+  if (typeof facts.submissionDeadline !== 'string') return;
+  const parsed = Date.parse(facts.submissionDeadline);
+  if (!Number.isFinite(parsed)) return;
+  const deadline = new Date(parsed);
+
+  await prisma.claimRecoveryAction.updateMany({
+    where: {
+      claimId,
+      status: { in: ['OPEN', 'BLOCKING'] },
+      actionType: { in: ['PRACTICE_DOCS', 'PRACTICE_RESUBMIT'] },
+      clearedAt: null,
+      deadline: null,
+    },
+    data: { deadline, autoEscalateAt: deadline },
+  });
+}
+
+/**
+ * Core async validation — callable from the webhook route and directly from
+ * the end-of-call-report path in src/webhooks/vapi.ts. Stores the result on
+ * the CallAttempt; on failure creates an escalation and notifies the practice.
+ */
+export async function runClaimsValidation(
+  prisma: PrismaClient,
+  input: ValidatorWebhookPayload,
+): Promise<ClaimsValidationOutcome> {
+  const attempt = await prisma.callAttempt.findUnique({
+    where: { id: input.callAttemptId },
+    include: {
+      claim: {
+        select: {
+          id: true,
+          practiceId: true,
+          claimNumber: true,
+          carrierId: true,
+          billedAmount: true,
+        },
+      },
+    },
+  });
+
+  if (!attempt) return { status: 'not_found' };
+
+  const result = await validateExtraction(prisma, input, attempt.claim.claimNumber);
+
+  await prisma.callAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      validationPassed: result.passed,
+      validationResult: JSON.parse(JSON.stringify(result)),
+    },
+  });
+
+  try {
+    await applyDeadlineFromFacts(prisma, attempt.claim.id, input.extractedFacts);
+  } catch (deadlineErr) {
+    console.error('[validator] deadline stamping failed (non-fatal):', deadlineErr);
+  }
+
+  if (!result.passed) {
+    await createEscalation(prisma, {
+      practiceId: attempt.claim.practiceId,
+      claimId: attempt.claim.id,
+      claimRef: attempt.claim.claimNumber,
+      carrierId: attempt.claim.carrierId,
+      amountClaimedCents: Math.round(Number(attempt.claim.billedAmount) * 100),
+      reason: result.escalationReason || 'Validation failed',
+      callAttemptId: attempt.id,
+    });
+
+    try {
+      await sendPracticeNotification(prisma, {
+        practiceId: attempt.claim.practiceId,
+        type: 'VALIDATION_ESCALATION',
+        subject: `Claim ${attempt.claim.claimNumber}: Validation Issues`,
+        message: `Claim validation detected issues requiring manual review. Reason: ${result.escalationReason}`,
+        claimId: attempt.claim.id,
+        severity: result.carrierBlockRisk === 'HIGH' ? 'critical' : 'warning',
+      });
+    } catch (notifErr) {
+      console.error('[validator] Practice notification failed (non-fatal):', notifErr);
+    }
+
+    return { status: 'escalated', result };
+  }
+
+  return { status: 'passed', result };
+}
+
 /**
  * Webhook handler entry point
  */
@@ -358,77 +480,26 @@ export async function handleClaimsValidatorWebhook(
     }
 
     const payload: ValidatorWebhookPayload = rawBody;
+    const outcome = await runClaimsValidation(prisma, payload);
 
-    const attempt = await prisma.callAttempt.findUnique({
-      where: { id: payload.callAttemptId },
-      include: {
-        claim: {
-          select: {
-            id: true,
-            practiceId: true,
-            claimNumber: true,
-            carrierId: true,
-            billedAmount: true,
-          },
-        },
-      },
-    });
-
-    if (!attempt) {
+    if (outcome.status === 'not_found') {
       res.status(404).json({ error: 'CallAttempt not found' });
       return;
     }
 
-    // RUN VALIDATION
-    const result = await validateExtraction(prisma, payload, attempt.claim.claimNumber);
-
-    // STORE RESULT
-    await prisma.callAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        validationPassed: result.passed,
-        validationResult: JSON.parse(JSON.stringify(result)),
-      },
-    });
-
     await markValidatorWebhookProcessed(prisma, hash);
 
-    // IF FAILED: CREATE ESCALATION + NOTIFY
-    if (!result.passed) {
-      await createEscalation(prisma, {
-        practiceId: attempt.claim.practiceId,
-        claimId: attempt.claim.id,
-        claimRef: attempt.claim.claimNumber,
-        carrierId: attempt.claim.carrierId,
-        amountClaimedCents: Math.round(Number(attempt.claim.billedAmount) * 100),
-        reason: result.escalationReason || 'Validation failed',
-        callAttemptId: attempt.id,
-      });
-
-      // NOTIFY PRACTICE
-      try {
-        await sendPracticeNotification(prisma, {
-          practiceId: attempt.claim.practiceId,
-          type: 'VALIDATION_ESCALATION',
-          subject: `Claim ${attempt.claim.claimNumber}: Validation Issues`,
-          message: `Claim validation detected issues requiring manual review. Reason: ${result.escalationReason}`,
-          claimId: attempt.claim.id,
-          severity: result.carrierBlockRisk === 'HIGH' ? 'critical' : 'warning',
-        });
-      } catch (notifErr) {
-        console.error('[validator-webhook] Practice notification failed (non-fatal):', notifErr);
-      }
-
+    if (outcome.status === 'escalated') {
       res.status(200).json({
         status: 'escalated',
-        reason: result.escalationReason,
-        violations: result.violations,
+        reason: outcome.result.escalationReason,
+        violations: outcome.result.violations,
       });
     } else {
       res.status(200).json({
         status: 'passed',
-        outcome: result.outcome,
-        safetyScore: result.safetyScore,
+        outcome: outcome.result.outcome,
+        safetyScore: outcome.result.safetyScore,
       });
     }
   } catch (err) {

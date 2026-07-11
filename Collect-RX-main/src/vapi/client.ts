@@ -127,6 +127,8 @@ export interface VapiWebhookPayload {
     successEvaluation?: string;
     /** Same shape as `metadata.collectrx` — post-call tools may write here */
     collectrx?: CollectrxWebhookStructured;
+    /** analysisPlan.structuredDataPlan output — feeds the async claims validator */
+    structuredData?: Record<string, unknown>;
   };
 }
 
@@ -294,17 +296,21 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     customer: {
       number: carrierPhone,
     },
-    // Zero-retention: tell Vapi not to store the recording.
-    // Belt-and-suspenders — handlePostCallAudioDeletion() also deletes it.
-    recordingEnabled: false,
-    metadata,
-    // ── EPHEMERAL CALL VARIABLES ────────────────────────────────────────────
-    // These are injected into the squad system prompt at call time only.
-    // They are never written to any DB table, never written to logs
-    // (logger.js PHI_FIELD_NAMES scrubs them), and are not stored in the
-    // system prompt config. When the call ends they cease to exist.
-    // PHI boundary: PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY.
-    variables: {
+    // Vapi's CreateCallDTO has no top-level variables/metadata/recordingEnabled —
+    // those fields are silently dropped. Everything call-scoped must ride in
+    // assistantOverrides, which Vapi applies to every squad member.
+    assistantOverrides: {
+      // Zero-retention: tell Vapi not to store the recording.
+      // Belt-and-suspenders — handlePostCallAudioDeletion() also deletes it.
+      artifactPlan: { recordingEnabled: false },
+      metadata,
+      // ── EPHEMERAL CALL VARIABLES ──────────────────────────────────────────
+      // These are injected into the squad system prompt at call time only.
+      // They are never written to any DB table, never written to logs
+      // (logger.js PHI_FIELD_NAMES scrubs them), and are not stored in the
+      // system prompt config. When the call ends they cease to exist.
+      // PHI boundary: PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY.
+      variableValues: {
       // ── Patient identifiers — ephemeral, from piiVault.detokenize() ──────────
       patient_name:             patientName,
       patient_dob:              patientDob,
@@ -313,6 +319,9 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       subscriber_dob:           subscriberDob ?? '',
       relationship:             relationship ?? 'self',
       // ── Claim reference ───────────────────────────────────────────────────────
+      claim_id:                 claimId,
+      patient_token:            patientToken,
+      insurance_carrier:        carrierId,
       claim_number:             claimNumber,
       group_number:             groupNumber ?? '',
       treatment_date:           treatmentDate ?? '',
@@ -336,6 +345,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',
+      },
     },
   };
 
@@ -402,9 +412,10 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
     squadId: getPreVisitSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: { number: carrierPhone },
-    recordingEnabled: false,
-    metadata,
-    variables: {
+    assistantOverrides: {
+      artifactPlan: { recordingEnabled: false },
+      metadata,
+      variableValues: {
       patient_name: params.patientName,
       patient_dob: params.patientDob,
       policy_number: params.policyNumber,
@@ -423,6 +434,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
         `Hello, this is an automated calling system contacting you on behalf of ${params.practiceName}, a dental practice. ` +
         `You can reach us at ${params.practicePhone}. We are calling regarding ${purpose}. ` +
         `If you are a representative at the provider line, please stay on the line.`,
+      },
     },
   };
 
