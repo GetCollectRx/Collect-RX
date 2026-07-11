@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS "PracticeNotification" (
   "readAt" TIMESTAMP,
   "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  CONSTRAINT "PracticeNotification_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES "Practice"("id") ON DELETE CASCADE,
-  CONSTRAINT "PracticeNotification_claimId_fkey" FOREIGN KEY ("claimId") REFERENCES "InsuranceClaim"("id") ON DELETE SET NULL
+  CONSTRAINT "PracticeNotification_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES practice("id") ON DELETE CASCADE,
+  CONSTRAINT "PracticeNotification_claimId_fkey" FOREIGN KEY ("claimId") REFERENCES insurance_claims("id") ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS "PracticeNotification_practiceId_idx" ON "PracticeNotification"("practiceId");
