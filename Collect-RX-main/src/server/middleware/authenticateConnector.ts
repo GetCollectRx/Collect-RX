@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
 import { findActiveAgentByToken } from '../services/desktopConnectorService.js';
 

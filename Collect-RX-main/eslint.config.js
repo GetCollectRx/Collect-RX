@@ -14,6 +14,7 @@ export default tseslint.config(
       'electron/**',
       'e2e/**',
       'src/**/*.js',
+      'src/vite-env.d.ts',
       '*.config.js',
       '*.config.ts',
     ],
