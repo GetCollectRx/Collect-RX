@@ -137,10 +137,13 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
       count: vi.fn(async () => 0),
       findMany: vi.fn(async () => candidates),
       update: vi.fn(async () => ({})),
+      updateMany: vi.fn(async () => ({ count: 1 })),
     },
     callAttempt: {
+      findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
       create: vi.fn(async () => ({ id: 'attempt-1' })),
+      update: vi.fn(async () => ({})),
     },
     insuranceClaim: {
       update: vi.fn(async () => ({})),
@@ -358,6 +361,89 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     const first = queueEntry('1');
     const second = queueEntry('2');
     const prisma = tickPrisma([first, second]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-1' });
+  });
+});
+
+describe('runDeskQueueTick resilience', () => {
+  it('closes a stale call attempt whose webhook never arrived and releases its claim', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    prisma.callAttempt.findMany.mockResolvedValue([
+      {
+        id: 'attempt-stale',
+        claimId: 'claim-old',
+        vapiCallId: 'vapi-old',
+        initiatedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      },
+    ]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.callAttempt.update).toHaveBeenCalledWith({
+      where: { id: 'attempt-stale' },
+      data: expect.objectContaining({ liveState: 'expired_no_webhook' }),
+    });
+    expect(prisma.callQueue.updateMany).toHaveBeenCalledWith({
+      where: { claimId: 'claim-old', status: 'IN_PROGRESS' },
+      data: expect.objectContaining({ status: 'PENDING' }),
+    });
+    expect(prisma.insuranceClaim.updateMany).toHaveBeenCalledWith({
+      where: { id: 'claim-old', status: 'CALLING' },
+      data: { status: 'IN_QUEUE' },
+    });
+  });
+
+  it('still respects a fresh open call attempt (one call per practice)', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    prisma.callAttempt.findFirst.mockResolvedValue({
+      id: 'attempt-live',
+      initiatedAt: new Date(Date.now() - 10 * 60 * 1000),
+    });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).not.toHaveBeenCalled();
+    expect(prisma.callAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it('defers a claim whose Vapi dispatch throws and tries the next candidate', async () => {
+    const failing = queueEntry('1');
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([failing, eligible]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    initiateCallMock
+      .mockRejectedValueOnce(new Error('Vapi 500'))
+      .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    expect(initiateCallMock).toHaveBeenCalledTimes(2);
+    expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('continues to the next practice when one practice tick throws', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    prisma.practice.findMany.mockResolvedValue([{ id: 'p-bad' }, { id: 'p1' }]);
+    prisma.practiceDeskState.findUnique
+      .mockRejectedValueOnce(new Error('db hiccup for p-bad'))
+      .mockResolvedValueOnce(null);
 
     validateDispatchMock.mockResolvedValue({ allowed: true });
 

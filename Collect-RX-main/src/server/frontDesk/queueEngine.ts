@@ -75,6 +75,12 @@ const CANDIDATE_BATCH_SIZE = 10;
 const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is automatic
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
+const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+
+// A call attempt whose end-of-call webhook never arrived would hold the M-7
+// single-call lock forever, freezing the practice's entire queue. Anything
+// older than the worst plausible call (multi-hour carrier hold) is dead.
+const STALE_ATTEMPT_MS = 3 * 60 * 60 * 1000;
 
 async function deferQueueEntry(
   prisma: PrismaClient,
@@ -155,8 +161,48 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   );
 
   for (const { id: practiceId } of practices) {
+    // One practice's failure must never starve the practices after it in the
+    // loop — isolate each practice's tick.
+    try {
     await runWithPracticeRls(practiceId, async () => {
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
+
+    // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
+    // If Vapi's end-of-call webhook was lost, the open attempt holds the M-7
+    // lock forever and this practice never dials again. Close attempts older
+    // than any plausible call and release their claims back to the queue —
+    // the attempt was already counted at dispatch, so max-3 still holds.
+    const staleBefore = new Date(Date.now() - STALE_ATTEMPT_MS);
+    const staleAttempts = await prisma.callAttempt.findMany({
+      where: {
+        completedAt: null,
+        initiatedAt: { lt: staleBefore },
+        claim: { practiceId },
+      },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
+    });
+    for (const staleAttempt of staleAttempts) {
+      logger.error('[deskQueueEngine] stale call attempt — closing (end-of-call webhook never arrived)', {
+        callAttemptId: staleAttempt.id,
+        claimId: staleAttempt.claimId,
+        vapiCallId: staleAttempt.vapiCallId,
+        initiatedAt: staleAttempt.initiatedAt.toISOString(),
+      });
+      await prisma.$transaction([
+        prisma.callAttempt.update({
+          where: { id: staleAttempt.id },
+          data: { completedAt: new Date(), liveState: 'expired_no_webhook' },
+        }),
+        prisma.callQueue.updateMany({
+          where: { claimId: staleAttempt.claimId, status: 'IN_PROGRESS' },
+          data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+        }),
+        prisma.insuranceClaim.updateMany({
+          where: { id: staleAttempt.claimId, status: 'CALLING' },
+          data: { status: 'IN_QUEUE' },
+        }),
+      ]);
+    }
 
     const inProgress = await prisma.callQueue.count({
       where: { practiceId, status: 'IN_PROGRESS' },
@@ -368,7 +414,20 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately
     // cancel the live Vapi call rather than leaving an orphan call with no DB record.
-    const vapiResult = await initiateCall(callParams);
+    // A dispatch failure defers the entry: a payload-specific Vapi rejection must
+    // not hot-loop the same claim at the head of the queue every tick.
+    let vapiResult: Awaited<ReturnType<typeof initiateCall>>;
+    try {
+      vapiResult = await initiateCall(callParams);
+    } catch (dispatchErr) {
+      logger.error('[deskQueueEngine] Vapi dispatch failed — deferring claim', {
+        claimId: next.claimId,
+        carrierId: next.claim.carrierId,
+        error: dispatchErr,
+      });
+      await deferQueueEntry(prisma, next.id, DEFER_DISPATCH_FAILURE_MS);
+      continue;
+    }
 
     try {
       const attempt = await prisma.callAttempt.create({
@@ -422,5 +481,11 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
     } // candidate loop
     }); // runWithPracticeRls
+    } catch (practiceErr) {
+      logger.error('[deskQueueEngine] practice tick failed — continuing with next practice', {
+        practiceId,
+        error: practiceErr,
+      });
+    }
   }
 }

@@ -197,6 +197,11 @@ function getPhoneNumberId(): string {
   return id;
 }
 
+// A hung connection here would hang the queue-engine tick promise forever —
+// the isTickRunning latch never releases and dispatch dies for all practices
+// until restart. Every Vapi request must have a finite deadline.
+const VAPI_HTTP_TIMEOUT_MS = Math.max(5_000, Number(process.env.VAPI_HTTP_TIMEOUT_MS || 30_000));
+
 async function vapiRequest<T>(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
@@ -210,6 +215,7 @@ async function vapiRequest<T>(
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
   });
 
   if (!res.ok) {
