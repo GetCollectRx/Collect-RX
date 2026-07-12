@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { VapiWebhookPayload } from '../src/vapi/client';
 import { validateWebhookMetadata, formatValidationError } from '../src/server/webhooks/metadata-validator';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../src/server/index.js';
 
 /**
  * Webhook Metadata Tampering Validation Tests
@@ -15,12 +15,17 @@ import { PrismaClient } from '@prisma/client';
  * Expected: All tampering attempts are rejected (valid: false)
  */
 
-describe('Webhook Metadata Tampering Validation', () => {
-  let prisma: PrismaClient;
+let dbReady = false;
+try {
+  await prisma.$connect();
+  await prisma.$queryRaw`SELECT 1`;
+  dbReady = true;
+} catch (e) {
+  console.warn('[webhook-metadata-tampering] DATABASE_URL unreachable — tests skipped:', (e as Error).message);
+}
 
+describe.skipIf(!dbReady)('Webhook Metadata Tampering Validation', () => {
   beforeAll(async () => {
-    prisma = new PrismaClient();
-
     // Create test data
     await setupTestPracticesAndClaims();
   });
@@ -28,12 +33,26 @@ describe('Webhook Metadata Tampering Validation', () => {
   afterAll(async () => {
     // Cleanup test data (order matters for foreign keys)
     try {
-      await prisma.callAttempt.deleteMany({});
-      await prisma.insuranceClaim.deleteMany({});
+      await prisma.callQueue.deleteMany({
+        where: {
+          claimId: { in: ['claim-tampering-test-a', 'claim-tampering-test-b'] },
+        },
+      });
+      await prisma.callAttempt.deleteMany({
+        where: {
+          OR: [
+            { claimId: { in: ['claim-tampering-test-a', 'claim-tampering-test-b'] } },
+            { vapiCallId: { startsWith: 'vapi-call-tampering-test-' } },
+          ],
+        },
+      });
+      await prisma.insuranceClaim.deleteMany({
+        where: { id: { in: ['claim-tampering-test-a', 'claim-tampering-test-b'] } },
+      });
       // Note: Practice cannot be deleted due to foreign key constraints with Users
       // The test data uses specific IDs that won't interfere with other tests
-    } finally {
-      await prisma.$disconnect();
+    } catch {
+      // Best-effort cleanup — do not fail the suite on teardown errors.
     }
   });
 

@@ -69,20 +69,21 @@ describe('PHI / Vapi metadata boundary — initiateCall()', () => {
     expect(result.vapiCallId).toBe('call-123');
     expect(capturedBody).toBeDefined();
 
-    // metadata: UUID primary key only.
-    expect(capturedBody!.metadata).toEqual({
+    // metadata: UUID primary key only — lives under assistantOverrides per Vapi CreateCallDTO.
+    const overrides = capturedBody!.assistantOverrides as Record<string, unknown>;
+    expect(overrides.metadata).toEqual({
       claimId: 'claim-e2e-1',
       carrierId: 'sun_life',
       patientToken: 'a1b2c3d4-e5f6-uuid-token',
       practiceId: 'practice-e2e-1',
     });
-    const metadataStr = JSON.stringify(capturedBody!.metadata);
+    const metadataStr = JSON.stringify(overrides.metadata);
     expect(metadataStr).not.toMatch(/Jane/);
     expect(metadataStr).not.toMatch(/1985-06-12/);
     expect(metadataStr).not.toMatch(/POL-99999/);
 
     // variables: the ephemeral PHI carrier.
-    const variables = capturedBody!.variables as Record<string, string>;
+    const variables = overrides.variableValues as Record<string, string>;
     expect(variables.patient_name).toBe('Jane Q. Doe');
     expect(variables.patient_dob).toBe('1985-06-12');
     expect(variables.policy_number).toBe('POL-99999');

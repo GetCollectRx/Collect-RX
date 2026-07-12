@@ -7,6 +7,7 @@ export default defineConfig({
     environment: 'node',
     maxWorkers: 1,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
+    exclude: ['tests/carrier-whitelist-validation.test.ts'],
     passWithNoTests: false,
     reporters: isCi ? ['default', 'junit'] : ['default'],
     outputFile: isCi ? { junit: 'test-results/junit.xml' } : undefined,

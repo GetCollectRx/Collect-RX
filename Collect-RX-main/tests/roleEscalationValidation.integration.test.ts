@@ -131,8 +131,8 @@ describe('Role Escalation Validation (Integration)', () => {
     }
   });
 
-  it('should have created 11 users (1 owner + 10 staff)', () => {
-    expect(testUsers).toHaveLength(10);
+  it('should have created 9 users (1 owner + 8 staff)', () => {
+    expect(testUsers).toHaveLength(8);
   });
 
   it('office_manager cannot escalate to practice_owner (should fail with 403)', async () => {
@@ -179,7 +179,7 @@ describe('Role Escalation Validation (Integration)', () => {
 
     expect(loginRes.status).toBe(200);
     const cookie = loginRes.headers['set-cookie'];
-    const targetUser = testUsers[1]!;
+    const targetUser = testUsers[4]!; // front_desk — lower role than office_manager
 
     // Attempt to escalate to billing_coordinator (should succeed)
     const updateRes = await request(app)
@@ -393,7 +393,7 @@ describe('Role Escalation Validation (Integration)', () => {
       }
 
       const cookie = loginRes.headers['set-cookie'];
-      const targetUser = testUsers[1]!; // Use first staff user for testing
+      const targetUser = testUsers[4]!; // front_desk — subordinate to all matrix actors except front_desk itself
 
       // Try each target role
       for (const targetRole of PRACTICE_ROLES) {
