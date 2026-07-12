@@ -65,7 +65,89 @@ export async function setPracticeQueuePaused(
   await refreshDeskQueueBroadcast(prisma, practiceId);
 }
 
-async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
+// How many queue entries to consider per practice per tick. A blocked or
+// deferred head-of-queue claim must never starve dispatchable claims behind it.
+const CANDIDATE_BATCH_SIZE = 10;
+
+// Deferral windows for claims that cannot dispatch right now. Pushing
+// scheduledFor forward takes the claim out of the candidate window so the
+// rest of the queue keeps moving; it re-enters automatically when due.
+const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is automatic
+const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
+const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
+
+async function deferQueueEntry(
+  prisma: PrismaClient,
+  queueEntryId: string,
+  deferMs: number,
+): Promise<void> {
+  await prisma.callQueue.update({
+    where: { id: queueEntryId },
+    data: { scheduledFor: new Date(Date.now() + deferMs) },
+  });
+}
+
+type BlockedDisposition = 'skip' | 'stop';
+
+// Settle a queue entry the dispatch guard rejected so it cannot sit PENDING at
+// the head of the queue forever: terminal causes leave the PENDING pool,
+// retryable causes are deferred, practice-wide causes stop this practice's tick.
+async function settleBlockedCandidate(
+  prisma: PrismaClient,
+  entry: { id: string; claimId: string },
+  guardCode: string | undefined,
+): Promise<BlockedDisposition> {
+  switch (guardCode) {
+    case 'ESCALATE_OVER_90':
+    case 'MAX_ATTEMPTS':
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: entry.claimId },
+          data: { status: 'ESCALATED' },
+        }),
+        prisma.callQueue.update({
+          where: { id: entry.id },
+          data: { status: 'ESCALATED' },
+        }),
+      ]);
+      return 'skip';
+    case 'APPROVED_PENDING_PAYMENT':
+      // Payment follow-up happens in practice AR — this entry is done as a carrier call.
+      await prisma.callQueue.update({
+        where: { id: entry.id },
+        data: { status: 'COMPLETED' },
+      });
+      return 'skip';
+    case 'CARRIER_BLOCK':
+      // Mirrors carrierBlockService for entries queued after the block landed.
+      await prisma.$transaction([
+        prisma.callQueue.update({
+          where: { id: entry.id },
+          data: { status: 'BLOCKED' },
+        }),
+        prisma.insuranceClaim.updateMany({
+          where: { id: entry.claimId, status: { in: ['PENDING', 'IN_QUEUE', 'CALLING'] } },
+          data: { status: 'BLOCKED' },
+        }),
+      ]);
+      return 'skip';
+    case 'OUTSIDE_CALL_WINDOW':
+    case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
+    case 'VOICE_AGENT_DISABLED':
+      // Practice-wide (or global) condition — no candidate can dispatch this tick.
+      return 'stop';
+    case 'CLAIM_TOO_YOUNG':
+      await deferQueueEntry(prisma, entry.id, DEFER_CLAIM_AGE_MS);
+      return 'skip';
+    default:
+      // RECOVERY_GATE, CARRIER_NOT_AUTHORIZED, and any un-coded rejection:
+      // state must change (staff action, route change) before retry makes sense.
+      await deferQueueEntry(prisma, entry.id, DEFER_STAFF_ACTION_MS);
+      return 'skip';
+  }
+}
+
+export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
   const practices = await runWithRlsBypass(async () =>
@@ -94,19 +176,20 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     });
     if (activeAttempt) return;
 
-    const next = await prisma.callQueue.findFirst({
+    const candidates = await prisma.callQueue.findMany({
       where: {
         practiceId,
         status: 'PENDING',
         scheduledFor: { lte: new Date() },
       },
       orderBy: [{ priority: 'desc' }, { scheduledFor: 'asc' }],
+      take: CANDIDATE_BATCH_SIZE,
       include: {
         claim: true,
       },
     });
 
-    if (!next) return;
+    if (candidates.length === 0) return;
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
@@ -117,6 +200,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       return;
     }
 
+    for (const next of candidates) {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
       practiceId,
@@ -129,17 +213,14 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     });
 
     if (!guard.allowed) {
-      if (next.claim.daysOutstanding > 90) {
-        await prisma.insuranceClaim.update({
-          where: { id: next.claimId },
-          data: { status: 'ESCALATED' },
-        });
-        await prisma.callQueue.update({
-          where: { id: next.id },
-          data: { status: 'ESCALATED' },
-        });
-      }
-      return;
+      logger.warn('[deskQueueEngine] dispatch guard rejected claim — settling queue entry', {
+        claimId: next.claimId,
+        code: guard.code,
+        reason: guard.reason,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, guard.code);
+      if (disposition === 'stop') return;
+      continue;
     }
 
     // ── PRE-CALL TRIAGE ────────────────────────────────────────────────────────
@@ -168,7 +249,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           metadata: { detail: triage.detail },
         },
       });
-      return;
+      continue;
     }
 
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
@@ -185,7 +266,7 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // ── PHI RESOLUTION ─────────────────────────────────────────────────────────
     // Detokenize the UUID stored in DB to get the real patient PHI.
     // PHI lives in piiVault (in-memory, 4-hour TTL) only — never in the DB.
-    // If the token has expired (e.g. server restart) we skip this claim and
+    // If the token has expired (e.g. server restart) we defer this claim and
     // log the error so a re-tokenization pass can recover it.
     const phiResult = piiVault.detokenize(
       next.claim.patientToken,
@@ -193,12 +274,13 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       { practiceId },
     );
     if (!phiResult.success || !phiResult.phi) {
-      logger.warn('[deskQueueEngine] PHI token expired or missing — skipping claim', {
+      logger.warn('[deskQueueEngine] PHI token expired or missing — deferring claim', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
         error: phiResult.error,
       });
-      return;
+      await deferQueueEntry(prisma, next.id, DEFER_PHI_TOKEN_MS);
+      continue;
     }
     const phi = phiResult.phi;
     logger.audit('PHI_TOKEN_RESOLVED', {
@@ -211,15 +293,16 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // ── PHI COMPLETENESS GUARD ─────────────────────────────────────────────────
     // Carriers require patientName, dateOfBirth, and subscriberId at minimum.
     // Missing any of these causes the agent to fail authentication immediately.
-    // Skip the claim now; staff can correct the data and the next tick will retry.
+    // Defer the claim so staff can correct the data; it retries when due again.
     const completeness = checkPatientDataCompleteness(phi);
     if (!completeness.ok) {
-      logger.warn('[deskQueueEngine] patient PHI incomplete — skipping dispatch', {
+      logger.warn('[deskQueueEngine] patient PHI incomplete — deferring dispatch', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
         missing: completeness.missing,
       });
-      return;
+      await deferQueueEntry(prisma, next.id, DEFER_STAFF_ACTION_MS);
+      continue;
     }
     if (completeness.warnings.length > 0) {
       logger.warn('[deskQueueEngine] patient PHI has optional fields absent — proceeding with caution', {
@@ -324,6 +407,11 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         });
       }
     }
+
+    // One call per practice per tick — a call was dispatched (or attempted),
+    // so stop scanning candidates for this practice.
+    return;
+    } // candidate loop
     }); // runWithPracticeRls
   }
 }

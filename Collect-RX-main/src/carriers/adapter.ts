@@ -233,6 +233,7 @@ export async function checkCarrierBlock(
   if (activeBlock) {
     return {
       allowed: false,
+      code: 'CARRIER_BLOCK',
       reason: `CARRIER_BLOCK active for ${carrierId} since ${activeBlock.blockedAt.toISOString()}. ` +
               `Resume via POST /api/carriers/${carrierId}/unblock after investigation.`,
     };
@@ -260,6 +261,7 @@ export async function checkCarrierAuthorizationGate(
   if (!settings.voiceAgentEnabled) {
     return {
       allowed: false,
+      code: 'VOICE_AGENT_DISABLED',
       reason:
         'Voice agent is disabled for this practice. Enable it in Practice Settings before placing carrier calls.',
     };
@@ -269,6 +271,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason: `${displayName} is not configured for this practice. Add carrier settings before calling.`,
     };
   }
@@ -276,6 +279,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig.enabled) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason: `${displayName} is disabled in Practice Settings. Enable the carrier before calling.`,
     };
   }
@@ -283,6 +287,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig.authorizationSubmitted) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason:
         `Billing Agent Authorization Letter (BAAL) not on file for ${displayName}. ` +
         'Submit authorization in Practice Settings before calling this carrier.',
@@ -293,6 +298,7 @@ export async function checkCarrierAuthorizationGate(
   if (!providerNumber) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason:
         `Provider number not configured for ${displayName}. ` +
         'Add your carrier provider number in Practice Settings before calling.',
@@ -336,6 +342,7 @@ export async function validateDispatch(
   if (claimStatus === 'APPROVED_PENDING_PAYMENT') {
     return {
       allowed: false,
+      code: 'APPROVED_PENDING_PAYMENT',
       reason:
         'Claim is APPROVED_PENDING_PAYMENT — payment follow-up belongs in practice AR, not another carrier call.',
     };
@@ -344,7 +351,7 @@ export async function validateDispatch(
   const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
   const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
   if (!recoveryGate.allowed) {
-    return recoveryGate;
+    return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
@@ -355,22 +362,22 @@ export async function validateDispatch(
   // 4. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
-    return { allowed: false, reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
   // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
-    return { allowed: false, reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
   // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
-    return { allowed: false, reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
+    return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
   // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
-    return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
+    return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
   // 7. Subscription monthly claim limit
@@ -392,10 +399,10 @@ export async function validateDispatch(
   const easternHour = getEasternHour(callTime);
   const dayOfWeek = getEasternDayOfWeek(callTime);
   if (dayOfWeek === 0 || dayOfWeek === 6) {
-    return { allowed: false, reason: 'Calls only permitted Mon–Fri (Eastern time)' };
+    return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: 'Calls only permitted Mon–Fri (Eastern time)' };
   }
   if (easternHour < 8 || easternHour >= 17) {
-    return { allowed: false, reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
+    return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
   }
 
   return { allowed: true };
