@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../lib/prisma.js';
@@ -9,11 +9,20 @@ import { getPracticeSettings, updatePracticeSettings } from '../services/practic
 import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
-import { authPracticeId, authUserId, getUserRole } from '../accessControl/types.js';
+import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
   router.use(authenticate);
+  // This router shares the /api/admin mount with the practice-owner admin
+  // router. A hard 403 here would swallow every /api/admin/* request from
+  // practice owners before their router (mounted after this one) is reached —
+  // locking practices out of their own settings. Non-platform users skip this
+  // router entirely and fall through to the practice admin router.
+  router.use((req: Request, _res: Response, next: NextFunction) => {
+    if (!isPlatformAdmin(req.auth ?? req.practiceAuth)) return next('router');
+    next();
+  });
   router.use(requirePlatformAdmin);
 
   router.get('/practices', async (_req, res) => {
