@@ -5,6 +5,7 @@ import {
   getApprovedNavigationNotes,
 } from '../src/server/learning/carrierLessons.js';
 import { probeClaimStatus } from '../src/server/triage/claimStatusProbe.js';
+import { shouldProposeLessons } from '../src/webhooks/vapiNormalizer.js';
 
 function anthropicResponse(lessons: unknown) {
   return {
@@ -144,5 +145,44 @@ describe('probeClaimStatus (pre-call triage)', () => {
       insuranceClaim: { findUnique: vi.fn().mockRejectedValue(new Error('db down')) },
     } as unknown as PrismaClient;
     expect(await probeClaimStatus(prisma, ref)).toBeNull();
+  });
+});
+
+describe('shouldProposeLessons (webhook gate)', () => {
+  const endedCall = { id: 'call-1', status: 'ended' };
+
+  it('proposes lessons from a failed call that has a transcript but no structured analysis', () => {
+    expect(
+      shouldProposeLessons({
+        type: 'call.ended',
+        call: endedCall,
+        transcript: 'IVR: invalid option selected. Call terminated.',
+      }),
+    ).toBe(true);
+  });
+
+  it('proposes lessons from a successful call with full analysis', () => {
+    expect(
+      shouldProposeLessons({
+        type: 'call.ended',
+        call: endedCall,
+        transcript: 'Rep confirmed the claim is in process.',
+        analysis: { structuredData: { outcome: 'PROCESSING' } },
+      }),
+    ).toBe(true);
+  });
+
+  it('skips calls that produced no transcript', () => {
+    expect(shouldProposeLessons({ type: 'call.ended', call: endedCall })).toBe(false);
+  });
+
+  it('skips non-terminal events even when a partial transcript is attached', () => {
+    expect(
+      shouldProposeLessons({
+        type: 'status-update',
+        call: { id: 'call-1', status: 'in-progress' },
+        transcript: 'partial',
+      }),
+    ).toBe(false);
   });
 });

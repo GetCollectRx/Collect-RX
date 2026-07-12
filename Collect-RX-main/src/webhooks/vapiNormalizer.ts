@@ -125,3 +125,15 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
   // Message types the backend does not consume (speech-update, conversation-update, ...).
   return null;
 }
+
+/**
+ * Lesson extraction requires only a transcript — deliberately NOT
+ * analysis.structuredData. Calls that fail early (IVR misnavigation, hangups,
+ * refusals) usually produce no structured end-of-call report, and those
+ * failures are the transcripts the learning loop most needs to read.
+ * Every transcript-bearing Vapi message normalizes to 'call.ended'
+ * (end-of-call-report), so this covers failed calls too.
+ */
+export function shouldProposeLessons(payload: VapiWebhookPayload): boolean {
+  return payload.type === 'call.ended' && Boolean(payload.transcript);
+}

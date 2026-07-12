@@ -29,7 +29,7 @@ import {
   markWebhookProcessed,
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
-import { normalizeVapiWebhook } from './vapiNormalizer.js';
+import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 
 // H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
@@ -193,10 +193,12 @@ router.post('/', async (req: Request, res: Response) => {
           if (validation.status === 'escalated') {
             console.warn('[vapi-webhook] Validation escalated:', validation.result.escalationReason);
           }
+        }
 
-          // ── Learning loop: propose carrier lessons from this transcript ──
-          // Lessons land as PROPOSED for human review; nothing here changes
-          // live behavior without approval.
+        // ── Learning loop: propose carrier lessons from this transcript ──
+        // Lessons land as PROPOSED for human review; nothing here changes
+        // live behavior without approval.
+        if (shouldProposeLessons(payload)) {
           try {
             const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
             const stored = await extractLessonsFromCall(prisma, callAttempt.id);
