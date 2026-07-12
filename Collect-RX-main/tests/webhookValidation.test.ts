@@ -28,7 +28,8 @@ function postVapiWebhook(
   payload: Record<string, unknown>,
   options?: { secret?: string; signature?: string },
 ) {
-  const bodyBuffer = Buffer.from(JSON.stringify(payload));
+  const bodyString = JSON.stringify(payload);
+  const bodyBuffer = Buffer.from(bodyString, 'utf8');
   const secret = options?.secret ?? vapiWebhookSecret();
   const signature =
     options?.signature ?? signVapiWebhookBody(bodyBuffer, secret);
@@ -36,7 +37,7 @@ function postVapiWebhook(
     .post('/api/webhooks/vapi')
     .set('x-vapi-signature', signature)
     .set('Content-Type', 'application/json')
-    .send(bodyBuffer);
+    .send(bodyString);
 }
 
 const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_test_stripe_webhook_secret_key';
@@ -553,13 +554,14 @@ describe.skipIf(!dbReady)('Webhook cross-practice isolation', () => {
       analysis: { summary: 'Request metadata test' },
     };
 
+    const bodyString = JSON.stringify(payload);
     const res = await request(app)
       .post('/api/webhooks/vapi')
-      .set('x-vapi-signature', signVapiWebhookBody(Buffer.from(JSON.stringify(payload))))
+      .set('x-vapi-signature', signVapiWebhookBody(Buffer.from(bodyString, 'utf8')))
       .set('User-Agent', 'test-webhook-client/1.0')
       .set('X-Forwarded-For', '192.0.2.100')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(JSON.stringify(payload)));
+      .send(bodyString);
 
     expect(res.status).toBeLessThan(400);
   });
