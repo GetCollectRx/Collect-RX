@@ -17,6 +17,7 @@ import type { Request, Response } from 'express';
 import { createHash } from 'crypto';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 export interface ValidatorExtractedFacts {
   claimNumber: string;
@@ -478,20 +479,31 @@ export async function handleClaimsValidatorWebhook(
     const bodyStr = typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody);
     const hash = bodyHash(Buffer.from(bodyStr));
 
-    if (await isValidatorDuplicate(prisma, hash)) {
+    // Authenticated by a shared validator secret, not a practice session — no
+    // RLS context exists, so every tenant-table read/write below must run under
+    // an explicit bypass or it silently touches zero rows under enforced RLS.
+    const result = await runWithRlsBypass(async () => {
+      if (await isValidatorDuplicate(prisma, hash)) {
+        return { kind: 'duplicate' as const };
+      }
+      const payload: ValidatorWebhookPayload = rawBody;
+      const outcome = await runClaimsValidation(prisma, payload);
+      if (outcome.status === 'not_found') {
+        return { kind: 'not_found' as const };
+      }
+      await markValidatorWebhookProcessed(prisma, hash);
+      return { kind: 'processed' as const, outcome };
+    });
+
+    if (result.kind === 'duplicate') {
       res.status(200).json({ status: 'duplicate', message: 'Already processed' });
       return;
     }
-
-    const payload: ValidatorWebhookPayload = rawBody;
-    const outcome = await runClaimsValidation(prisma, payload);
-
-    if (outcome.status === 'not_found') {
+    if (result.kind === 'not_found') {
       res.status(404).json({ error: 'CallAttempt not found' });
       return;
     }
-
-    await markValidatorWebhookProcessed(prisma, hash);
+    const { outcome } = result;
 
     if (outcome.status === 'escalated') {
       res.status(200).json({

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
 import { findActiveAgentByToken } from '../services/desktopConnectorService.js';
+import { runWithRlsBypass, runWithRlsContext } from '../db/rlsContext.js';
 
 declare global {
   namespace Express {
@@ -23,13 +24,19 @@ export async function authenticateConnector(
       res.status(401).json({ success: false, error: 'Connector authentication required' });
       return;
     }
-    const agent = await findActiveAgentByToken(token);
+    // Token lookup must bypass RLS: there is no practice context yet (the token
+    // is how we learn which practice this is), and the agents table is tenant-
+    // scoped, so an unscoped read returns null and rejects every valid token.
+    const agent = await runWithRlsBypass(() => findActiveAgentByToken(token));
     if (!agent) {
       res.status(401).json({ success: false, error: 'Invalid or revoked connector token' });
       return;
     }
     req.connectorAuth = { practiceId: agent.practiceId, agentId: agent.id };
-    next();
+    // Establish the tenant RLS scope for the rest of the request, mirroring the
+    // session auth middleware — otherwise the import/heartbeat handlers read and
+    // write zero rows under enforced RLS.
+    runWithRlsContext({ practiceId: agent.practiceId }, () => next());
   } catch (err) {
     console.error('[authenticateConnector]', err);
     res.status(500).json({ success: false, error: 'Connector authentication failed' });

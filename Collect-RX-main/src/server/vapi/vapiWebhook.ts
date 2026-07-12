@@ -46,6 +46,24 @@ const PHI_TRANSCRIPT_PATTERNS: Array<[RegExp, string]> = [
   [/(?:patient[_ -]?name|member[_ -]?name)[:\s]+[A-Za-z ,.-]+/gi, 'patient_name: [REDACTED-PHI]'],
 ];
 
+/**
+ * PHI may be purged from the vault only when the recovery decision means this
+ * claim will not be dialed again. A retryable outcome requeues the claim for
+ * another attempt and must keep its token; a terminal outcome (resolved,
+ * denied, escalated, max attempts, or an explicit stop) releases it.
+ */
+export function shouldRevokePhiAfterCall(decision: {
+  route: string;
+  queueStatus: string;
+  stopCalling: boolean;
+}): boolean {
+  const willBeCalledAgain =
+    decision.route === 'CALL_CARRIER' &&
+    decision.queueStatus === 'PENDING' &&
+    !decision.stopCalling;
+  return !willBeCalledAgain;
+}
+
 export function scrubTranscriptPhi(transcript: string): string {
   let scrubbed = transcript;
   for (const [pattern, replacement] of PHI_TRANSCRIPT_PATTERNS) {
@@ -294,10 +312,10 @@ async function processCallEnded(
   await emitRecoveryTerminalEmrEvent(prisma, claim, decision.claimStatus, processed);
 
   // ── PHI TOKEN REVOCATION ────────────────────────────────────────────────
-  // The call is complete. Revoke the PHI token from piiVault immediately so
-  // the PHI is no longer accessible in memory. The patientToken UUID remains
-  // in the DB for record-keeping — but the PHI it pointed to is gone.
-  if (claim.patientToken) {
+  // Revoke the PHI token only when this claim will NOT be dialed again (see
+  // shouldRevokePhiAfterCall). Revoking after a retryable outcome would leave
+  // attempts 2/3 unable to detokenize, silently defeating the retry policy.
+  if (claim.patientToken && shouldRevokePhiAfterCall(decision)) {
     piiVault.expireToken(claim.patientToken, 'post-call-revocation');
   }
 

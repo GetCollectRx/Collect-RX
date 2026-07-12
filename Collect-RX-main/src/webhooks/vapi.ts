@@ -31,6 +31,7 @@ import {
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
+import { runWithRlsBypass } from '../server/db/rlsContext.js';
 
 // H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
 function isUniqueConstraintError(err: unknown): boolean {
@@ -109,7 +110,17 @@ router.post('/', async (req: Request, res: Response) => {
   // vapiCallId to reference a call from a different practice, or changes
   // the claimId to reference a claim from a different practice, this
   // validation will detect the mismatch and reject the request.
-  const metadataValidation = await validateWebhookMetadata(prisma, payload);
+  // Vapi authenticates by HMAC, not a practice session, so no RLS practice
+  // context is established for this request. Under enforced RLS every tenant
+  // table then reads back zero rows — which silently (a) defeats the
+  // cross-practice tampering check below (findUnique returns null, so the
+  // mismatch guard never fires) and (b) no-ops the entire post-call recovery
+  // pipeline. The webhook legitimately needs to read across practices to
+  // resolve which practice a call belongs to, so all its DB work runs under
+  // an explicit RLS bypass.
+  const metadataValidation = await runWithRlsBypass(() =>
+    validateWebhookMetadata(prisma, payload),
+  );
   if (!metadataValidation.valid) {
     console.warn(
       '[vapi-webhook] METADATA TAMPERING DETECTED:',
@@ -128,7 +139,7 @@ router.post('/', async (req: Request, res: Response) => {
   // is dropped. This prevents two Vapi retries from both running recovery logic.
   const bodyHash = hashWebhookBody(rawBody);
   try {
-    await markWebhookProcessed(prisma, bodyHash);
+    await runWithRlsBypass(() => markWebhookProcessed(prisma, bodyHash));
   } catch (claimErr) {
     if (isUniqueConstraintError(claimErr)) {
       return res.status(200).json({ received: true, duplicate: true });
@@ -141,11 +152,13 @@ router.post('/', async (req: Request, res: Response) => {
   res.status(200).json({ received: true });
 
   try {
-    const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
-    const handledAsProspect = await tryProcessProspectVapiWebhook(prisma, payload);
-    if (!handledAsProspect) {
-      await processVapiDeskWebhook(prisma, payload, { rawBody });
-    }
+    await runWithRlsBypass(async () => {
+      const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
+      const handledAsProspect = await tryProcessProspectVapiWebhook(prisma, payload);
+      if (!handledAsProspect) {
+        await processVapiDeskWebhook(prisma, payload, { rawBody });
+      }
+    });
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);
   }
@@ -154,6 +167,7 @@ router.post('/', async (req: Request, res: Response) => {
   const vapiCallId = payload.call?.id;
   if (vapiCallId) {
     try {
+      await runWithRlsBypass(async () => {
       const callAttempt = await prisma.callAttempt.findUnique({
         where: { vapiCallId },
         select: { id: true },
@@ -210,6 +224,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
       }
+      });
     } catch (guardrailsErr) {
       console.error('[vapi-webhook] Guardrails error (non-fatal):', guardrailsErr);
       // Continue processing — guardrails failures should not block the webhook
