@@ -362,6 +362,9 @@ enum RecoveryActionType {
   PRACTICE_DOCS
   CDCP_RECONSIDERATION
   HUMAN_ESCALATION
+  /// Claim is missing required patient data (name, DOB, subscriber ID) — carrier
+  /// calls are blocked until staff add the data and clear the gate.
+  MISSING_PATIENT_DATA
 
   @@map("recovery_action_type")
 }

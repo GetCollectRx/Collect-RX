@@ -6,6 +6,8 @@ const initiateCallMock = vi.fn();
 const detokenizeMock = vi.fn();
 const probeClaimStatusMock = vi.fn();
 const canMakeCallMock = vi.fn();
+const completenessMock = vi.fn();
+const raiseGateMock = vi.fn();
 
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
@@ -61,7 +63,8 @@ vi.mock('../../src/pii-vault.js', () => ({
 }));
 
 vi.mock('../../src/server/frontDesk/patientDataCompleteness.js', () => ({
-  checkPatientDataCompleteness: vi.fn(() => ({ ok: true, missing: [], warnings: [] })),
+  checkPatientDataCompleteness: (...args: unknown[]) => completenessMock(...args),
+  raiseMissingPatientDataGate: (...args: unknown[]) => raiseGateMock(...args),
 }));
 
 vi.mock('../../src/server/triage/claimStatusProbe.js', () => ({
@@ -169,6 +172,8 @@ beforeEach(() => {
   probeClaimStatusMock.mockResolvedValue(null);
   detokenizeMock.mockReturnValue(phiSuccess());
   initiateCallMock.mockResolvedValue({ vapiCallId: 'vapi-1' });
+  completenessMock.mockReturnValue({ ok: true, missing: [], warnings: [] });
+  raiseGateMock.mockResolvedValue({ raised: true });
 });
 
 describe('runDeskQueueTick head-of-queue settlement', () => {
@@ -316,6 +321,35 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
       where: { id: 'q-1' },
       data: { status: 'COMPLETED' },
     });
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('raises a practice-facing gate when patient data is incomplete, then defers and continues', async () => {
+    const incomplete = queueEntry('1');
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([incomplete, eligible]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    completenessMock
+      .mockReturnValueOnce({ ok: false, missing: ['subscriberId'], warnings: [] })
+      .mockReturnValueOnce({ ok: true, missing: [], warnings: [] });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(raiseGateMock).toHaveBeenCalledTimes(1);
+    expect(raiseGateMock.mock.calls[0][1]).toMatchObject({
+      practiceId: 'p1',
+      claimId: 'claim-1',
+      claimNumber: 'CN-1',
+      outstandingAmount: 250,
+      missing: ['subscriberId'],
+    });
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });

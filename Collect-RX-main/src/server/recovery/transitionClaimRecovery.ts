@@ -94,10 +94,15 @@ export async function transitionClaimRecovery(
     });
     if (!action) throw new Error('Recovery gate not found');
 
+    // MISSING_PATIENT_DATA recalls fast: the fix is a data entry, not a carrier
+    // process — the completeness check re-verifies at dispatch and re-raises
+    // the gate if the record is still incomplete.
     const recallAt =
       action.actionType === 'PRACTICE_RESUBMIT'
         ? new Date(Date.now() + 14 * 86_400_000)
-        : new Date(Date.now() + 24 * 3_600_000);
+        : action.actionType === 'MISSING_PATIENT_DATA'
+          ? new Date(Date.now() + 15 * 60_000)
+          : new Date(Date.now() + 24 * 3_600_000);
 
     await prisma.$transaction([
       prisma.claimRecoveryAction.update({

@@ -7,7 +7,7 @@ import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
-import { checkPatientDataCompleteness } from './patientDataCompleteness.js';
+import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
@@ -293,12 +293,21 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // ── PHI COMPLETENESS GUARD ─────────────────────────────────────────────────
     // Carriers require patientName, dateOfBirth, and subscriberId at minimum.
     // Missing any of these causes the agent to fail authentication immediately.
-    // Defer the claim so staff can correct the data; it retries when due again.
+    // Raise a practice-facing gate (dashboard action item with the blocked
+    // dollar amount) and defer the claim; staff add the data, clear the gate,
+    // and GATE_CLEARED requeues the claim.
     const completeness = checkPatientDataCompleteness(phi);
     if (!completeness.ok) {
-      logger.warn('[deskQueueEngine] patient PHI incomplete — deferring dispatch', {
+      logger.warn('[deskQueueEngine] patient PHI incomplete — raising gate and deferring dispatch', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
+        missing: completeness.missing,
+      });
+      await raiseMissingPatientDataGate(prisma, {
+        practiceId,
+        claimId: next.claimId,
+        claimNumber: next.claim.claimNumber,
+        outstandingAmount: Number(next.claim.outstandingAmount),
         missing: completeness.missing,
       });
       await deferQueueEntry(prisma, next.id, DEFER_STAFF_ACTION_MS);
