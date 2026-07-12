@@ -302,8 +302,15 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
 });
 
-app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
-  res.json(buildPublicHealthMetricsBody(req));
+app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response) => {
+  const body = buildPublicHealthMetricsBody(req);
+  try {
+    const { getQueueHealth } = await import('./observability/queueHealth.js');
+    res.json({ ...body, queue: await getQueueHealth(prisma) });
+  } catch (err) {
+    console.error('[health/metrics] queue health unavailable:', err);
+    res.json({ ...body, queue: { error: 'unavailable' } });
+  }
 });
 
 // Public download metadata — must not sit behind session auth (download page is unauthenticated).
@@ -465,7 +472,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
   });
 
-  // Periodic GC on main vault (AES-256-GCM, 4h TTL — holds full PatientPHI for call dispatch).
+  // Periodic GC on main vault (AES-256-GCM, claim-lifecycle TTL via PHI_VAULT_TTL_DAYS — holds full PatientPHI for call dispatch).
   // H-6: legacy vault (services/pii-vault.ts, 24h TTL, simple string tokens) GC removed —
   // the legacy tokenize/detokenize functions are no longer called and the legacy vault
   // accumulates no new entries, so purging it is a no-op and creates misleading log output.

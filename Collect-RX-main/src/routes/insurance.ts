@@ -527,7 +527,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // ── PHI RESOLUTION ────────────────────────────────────────────────────────
     // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
     // only — never stored in DB, never in logs. Token must still be live in
-    // piiVault (4-hour TTL from import time).
+    // piiVault (claim-lifecycle TTL — PHI_VAULT_TTL_DAYS — from import time).
     const phiResult = piiVault.detokenize(claim.patientToken, 'insurance-trigger', {
       practiceId: claim.practiceId,
     });

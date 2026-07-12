@@ -3,7 +3,7 @@
 //
 // ⚠️  DEPRECATED — do NOT import tokenize() or detokenize() from this file.
 //
-// The main PHI vault is src/pii-vault.ts (AES-256-GCM, 4h TTL, full PatientPHI
+// The main PHI vault is src/pii-vault.ts (AES-256-GCM, claim-lifecycle TTL, full PatientPHI
 // struct, encrypted DB persistence, rehydrate on restart). Use that instead.
 //
 // This file remains because:

@@ -122,8 +122,20 @@ export interface VaultStats {
   oldestActiveToken: Date | null;
 }
 
-const TOKEN_TTL_MS = 4 * 60 * 60 * 1000;
-const MAX_VAULT_SIZE = 10_000;
+// PHI must outlive the claim it belongs to, not a wall-clock guess: claims
+// legally wait 30+ days before their first call and automated recovery runs
+// to day 90. A short TTL silently strands every claim whose token expires
+// before its call — detokenize fails at dispatch forever. Entries are
+// AES-256-GCM encrypted at rest (PhiVaultEntry) and purged by GC at expiry,
+// so retention length does not change the storage security posture.
+const TOKEN_TTL_MS =
+  Math.max(1, Number(process.env.PHI_VAULT_TTL_DAYS || 120)) * 24 * 60 * 60 * 1000;
+// With claim-lifecycle retention nothing expires quickly, so the cap must fit
+// every active claim across all practices — at the cap, tokenize() throws.
+const MAX_VAULT_SIZE = Math.max(1_000, Number(process.env.PHI_VAULT_MAX_TOKENS || 100_000));
+// In-memory access log per token — the durable audit trail is logger.audit;
+// this is a debugging aid and must not grow unboundedly over a token's life.
+const MAX_ACCESS_LOG_ENTRIES = 50;
 
 export class PIIVault {
   private readonly vault = new Map<string, VaultEntry>();
@@ -189,6 +201,9 @@ export class PIIVault {
       callerContext,
       ipAddress: options.ipAddress,
     });
+    if (entry.accessLog.length > MAX_ACCESS_LOG_ENTRIES) {
+      entry.accessLog.splice(0, entry.accessLog.length - MAX_ACCESS_LOG_ENTRIES);
+    }
     return { success: true, phi: entry.phi };
   }
 

@@ -310,10 +310,10 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     );
 
     // ── PHI RESOLUTION ─────────────────────────────────────────────────────────
-    // Detokenize the UUID stored in DB to get the real patient PHI.
-    // PHI lives in piiVault (in-memory, 4-hour TTL) only — never in the DB.
-    // If the token has expired (e.g. server restart) we defer this claim and
-    // log the error so a re-tokenization pass can recover it.
+    // Detokenize the UUID stored in DB to get the real patient PHI. Plaintext
+    // PHI lives in piiVault only (claim-lifecycle TTL, encrypted at rest in
+    // PhiVaultEntry, rehydrated on boot). If the token expired we defer this
+    // claim; re-import or PMS re-sync re-tokenizes it.
     const phiResult = piiVault.detokenize(
       next.claim.patientToken,
       'queue-engine',
