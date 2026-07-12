@@ -192,12 +192,15 @@ export function normalizePmsClaimRow(
     carrierName:
       getCell(
         raw,
+        'Insurance Carrier',
         'Insurance Company',
         'Carrier',
         'Insurance',
         'carrier_name',
+        'insurance_carrier',
         'Primary Insurance',
         'Ins Carrier',
+        'Ins Company',
         'Plan Name',
       ) ?? '',
     procedureCode:
@@ -213,6 +216,10 @@ export function normalizePmsClaimRow(
     patientDob,
     subscriberId: getCell(
       raw,
+      'Subscriber ID',
+      'Subscriber Number',
+      'Subscriber No',
+      'SubscriberID',
       'Member ID',
       'Certificate Number',
       'Policy Number',

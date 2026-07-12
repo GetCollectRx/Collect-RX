@@ -111,6 +111,10 @@ async function upsertInsuranceClaim(
       daysOutstanding,
       billedAmount: row.billedAmount,
       carrierId,
+      // Refresh the PHI token on every re-import: staff fix missing patient
+      // data by re-importing, and the corrected PHI only reaches dispatch if
+      // the claim points at the newly tokenized entry.
+      patientToken,
       servicedAt: row.servicedAt ?? undefined,
       // Update submittedAt and treatmentCodes if the new import has them and current row doesn't
       ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
@@ -160,6 +164,16 @@ export async function importPmsClaimsToPrisma(
     try {
       const row = normalizePmsClaimRow(raw, importFamily);
       const carrierId = mapToCarrierId(row.carrierName);
+      if (!carrierId) {
+        result.failed += 1;
+        result.errors.push({
+          claimNumber: row.claimNumber,
+          error:
+            `Unrecognized insurance carrier ${row.carrierName ? `"${row.carrierName}"` : '(blank)'} — ` +
+            'claim not imported. Supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare.',
+        });
+        continue;
+      }
       const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId);
       if (outcome.outcome === 'skipped') {
         result.skipped += 1;
