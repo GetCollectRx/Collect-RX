@@ -191,6 +191,7 @@ describe('Role Escalation Validation (Integration)', () => {
 
     const dbUser = await prisma.user.findUnique({ where: { id: targetUser.id } });
     expect(dbUser?.role).toBe('billing_coordinator');
+    targetUser.role = 'billing_coordinator';
 
     console.log(`✓ PASS | office_manager → billing_coordinator (allowed) | HTTP ${updateRes.status}`);
   });
@@ -366,6 +367,12 @@ describe('Role Escalation Validation (Integration)', () => {
 
   it('run comprehensive matrix: all 36 creator x target combinations', async () => {
     console.log('\n\n=== COMPREHENSIVE 36-COMBINATION MATRIX TEST ===\n');
+
+    // Earlier tests may have changed roles — reload from DB before the matrix.
+    for (const user of testUsers) {
+      const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+      if (fresh) user.role = fresh.role;
+    }
 
     const allResults: EscalationTestResult[] = [];
     let attemptCounter = 0;

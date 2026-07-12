@@ -15,11 +15,13 @@ import { createHmac } from 'crypto';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
-const TEST_VAPI_WEBHOOK_SECRET = 'test_vapi_secret_12345678';
-const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_test_stripe_webhook_secret_key';
+function vapiWebhookSecret(): string {
+  return process.env.VAPI_WEBHOOK_SECRET ?? 'test_vapi_secret_12345678';
+}
 
-function signVapiWebhookBody(body: Buffer, secret: string): string {
-  return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+function signVapiWebhookBody(body: Buffer, secret?: string): string {
+  const key = secret ?? vapiWebhookSecret();
+  return `sha256=${createHmac('sha256', key).update(body).digest('hex')}`;
 }
 
 function postVapiWebhook(
@@ -27,7 +29,7 @@ function postVapiWebhook(
   options?: { secret?: string; signature?: string },
 ) {
   const bodyBuffer = Buffer.from(JSON.stringify(payload));
-  const secret = options?.secret ?? TEST_VAPI_WEBHOOK_SECRET;
+  const secret = options?.secret ?? vapiWebhookSecret();
   const signature =
     options?.signature ?? signVapiWebhookBody(bodyBuffer, secret);
   return request(app)
@@ -36,6 +38,8 @@ function postVapiWebhook(
     .set('Content-Type', 'application/json')
     .send(bodyBuffer);
 }
+
+const TEST_STRIPE_WEBHOOK_SECRET = 'whsec_test_stripe_webhook_secret_key';
 
 function testClaimData(
   overrides: Record<string, unknown> = {},
@@ -69,7 +73,6 @@ try {
 beforeAll(async () => {
   if (!dbReady) return;
 
-  vi.stubEnv('VAPI_WEBHOOK_SECRET', TEST_VAPI_WEBHOOK_SECRET);
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', TEST_STRIPE_WEBHOOK_SECRET);
 
   const practiceASetup = await createPracticeWithOwnerForTests(prisma);
@@ -455,7 +458,7 @@ describe.skipIf(!dbReady)('Claims Validator webhook validation', () => {
   it('returns 404 for unknown callAttemptId with valid auth', async () => {
     const res = await request(app)
       .post('/api/webhooks/claims/validate')
-      .set('X-Vapi-Secret', TEST_VAPI_WEBHOOK_SECRET)
+      .set('X-Vapi-Secret', vapiWebhookSecret())
       .set('Content-Type', 'application/json')
       .send({
         callAttemptId: `missing-attempt-${Date.now()}`,
@@ -488,7 +491,7 @@ describe.skipIf(!dbReady)('Claims Validator webhook validation', () => {
 
     const res = await request(app)
       .post('/api/webhooks/claims/validate')
-      .set('X-Vapi-Secret', TEST_VAPI_WEBHOOK_SECRET)
+      .set('X-Vapi-Secret', vapiWebhookSecret())
       .set('Content-Type', 'application/json')
       .send({
         callAttemptId: attempt.id,
@@ -552,7 +555,7 @@ describe.skipIf(!dbReady)('Webhook cross-practice isolation', () => {
 
     const res = await request(app)
       .post('/api/webhooks/vapi')
-      .set('x-vapi-signature', signVapiWebhookBody(Buffer.from(JSON.stringify(payload)), TEST_VAPI_WEBHOOK_SECRET))
+      .set('x-vapi-signature', signVapiWebhookBody(Buffer.from(JSON.stringify(payload))))
       .set('User-Agent', 'test-webhook-client/1.0')
       .set('X-Forwarded-For', '192.0.2.100')
       .set('Content-Type', 'application/json')
