@@ -291,7 +291,27 @@
       "Bash(jq -r 'select\\(.type==\"agent_complete\"\\) | \"✅ \\\\\\(.label\\): phase=\\\\\\(.phase\\), tests=\\\\\\(.result.test_count // 0\\)\"' --unbuffered)",
       "Bash(chmod +x /tmp/monitor_workflow.sh)",
       "Bash(timeout 1800 /tmp/monitor_workflow.sh)",
-      "Bash(jq -r 'select\\(.type==\"result\"\\) | \"\\\\n✅ AGENT \\\\\\(.agentId | .[0:8]\\): \\\\\\(.result | split\\(\"\\\\n\"\\)[0] | .[0:60]\\)\"' --unbuffered)"
+      "Bash(jq -r 'select\\(.type==\"result\"\\) | \"\\\\n✅ AGENT \\\\\\(.agentId | .[0:8]\\): \\\\\\(.result | split\\(\"\\\\n\"\\)[0] | .[0:60]\\)\"' --unbuffered)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__read_page",
+      "WebFetch(domain:docs.vapi.ai)",
+      "Bash(curl -s https://api.vapi.ai/api-json -o /private/tmp/claude-501/-Users-khalidegeh-Desktop-Dentist-collectrx-platform/ead41864-07c6-4fc9-b169-21d0b1c66df8/scratchpad/vapi-openapi.json)",
+      "Bash(python3 -)",
+      "mcp__claude-in-chrome__computer",
+      "Bash(python3 -c \"import json; s=json.load\\(open\\('package.json'\\)\\)['scripts']; print\\([k for k in s if 'build' in k or 'test' in k or 'lint' in k]\\)\")",
+      "Bash(git stash *)",
+      "Bash(fly apps *)",
+      "Bash(/Users/khalidegeh/.fly/bin/flyctl proxy *)",
+      "Bash(/Users/khalidegeh/.fly/bin/flyctl status *)",
+      "Bash(/Users/khalidegeh/.fly/bin/flyctl logs *)",
+      "Bash(/Users/khalidegeh/.fly/bin/flyctl machine *)",
+      "Bash(git diff *)",
+      "Bash(/Users/khalidegeh/.fly/bin/flyctl deploy *)",
+      "Bash(curl -s https://collect-rx.fly.dev/health)",
+      "Bash(curl -s https://collect-rx.fly.dev/api/health)",
+      "Bash(python3 /private/tmp/claude-501/-Users-khalidegeh-Desktop-Dentist-collectrx-platform/ead41864-07c6-4fc9-b169-21d0b1c66df8/scratchpad/score-round.py)",
+      "Bash(python3 -u /private/tmp/claude-501/-Users-khalidegeh-Desktop-Dentist-collectrx-platform/ead41864-07c6-4fc9-b169-21d0b1c66df8/scratchpad/batch-run.py 10)"
     ]
   }
 }
