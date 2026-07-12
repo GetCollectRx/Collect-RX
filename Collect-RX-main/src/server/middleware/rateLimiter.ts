@@ -184,6 +184,7 @@ export const publicLimiter: RateLimitRequestHandler = makeLimiter('public', {
 export const healthLimiter: RateLimitRequestHandler = makeLimiter('health', {
   windowMs: 60 * 1000,
   max: 120,
+  skip: () => process.env.CI === 'true' || process.env.VITEST === 'true',
   handler: makeHandler(
     'Too many health or metrics requests. Please slow down and try again shortly.',
   ),
