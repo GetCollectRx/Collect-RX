@@ -396,12 +396,12 @@ export async function validateDispatch(
 
   // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
-  const easternHour = getEasternHour(callTime);
-  const dayOfWeek = getEasternDayOfWeek(callTime);
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
-    return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: 'Calls only permitted Mon–Fri (Eastern time)' };
-  }
-  if (easternHour < 8 || easternHour >= 17) {
+  if (!isWithinCallWindow(callTime)) {
+    const easternHour = getEasternHour(callTime);
+    const dayOfWeek = getEasternDayOfWeek(callTime);
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: 'Calls only permitted Mon–Fri (Eastern time)' };
+    }
     return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
   }
 
@@ -447,7 +447,19 @@ function getEasternDayOfWeek(date: Date): number {
   return days[dayStr] ?? date.getDay();
 }
 
+/**
+ * Test/staging escape hatch ONLY — refuses to activate in production, where
+ * the Mon–Fri 08:00–17:00 Eastern window is a hard compliance rule.
+ */
+export function callWindowForced(): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.COLLECTRX_FORCE_CALL_WINDOW === '1'
+  );
+}
+
 export function isWithinCallWindow(date = new Date()): boolean {
+  if (callWindowForced()) return true;
   const hour = getEasternHour(date);
   const day = getEasternDayOfWeek(date);
   return day >= 1 && day <= 5 && hour >= 8 && hour < 17;

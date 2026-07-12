@@ -173,7 +173,9 @@ export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
 // Vapi HTTP client
 // ---------------------------------------------------------------------------
 
-const VAPI_BASE_URL = 'https://api.vapi.ai';
+// Overridable so test harnesses can point dispatch at a local mock instead of
+// live Vapi. Production deployments leave this unset.
+const VAPI_BASE_URL = (process.env.VAPI_BASE_URL || 'https://api.vapi.ai').replace(/\/$/, '');
 
 function getApiKey(): string {
   const key = process.env.VAPI_API_KEY;
