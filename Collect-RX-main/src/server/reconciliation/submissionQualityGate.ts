@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 
 export type SubmissionClearance = 'GREEN' | 'YELLOW' | 'RED';
 
@@ -103,7 +103,7 @@ export async function evaluateSubmissionQuality(
         route: 'PRACTICE_GATE',
         title: 'Submission readiness defects',
         detail: findings.map((f) => f.message).join(' '),
-        metadata: { findings, clearance },
+        metadata: { findings, clearance } as unknown as Prisma.InputJsonValue,
       },
     });
   } else if (clearance === 'GREEN' && blockingGate) {
