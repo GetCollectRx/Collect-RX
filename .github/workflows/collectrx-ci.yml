@@ -252,6 +252,7 @@ jobs:
         env:
           CI: "true"
           COLLECTRX_RLS_TEST_STRICT: "1"
+          RLS_SETUP_DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
           DATABASE_URL: postgresql://collectrx_rls_tester:rls_test_ci@127.0.0.1:5432/prisma?schema=public
         run: npm exec --workspace=dental-ar-system -- vitest run tests/rls.strict.test.ts
 
