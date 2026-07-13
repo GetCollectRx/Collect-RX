@@ -538,6 +538,7 @@ export default function Analytics() {
     topDenialReasons: { reason: string; count: number }[]
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [tierPrice, setTierPrice] = useState<number | null>(null)
 
   useEffect(() => {
     if (!practiceId) return
@@ -551,6 +552,7 @@ export default function Analytics() {
       `/api/analytics/payment-trends?practiceId=${practiceId}`,
       `/api/analytics/carrier-performance?practiceId=${practiceId}`,
       `/api/analytics/practice-performance?practiceId=${practiceId}`,
+      `/api/billing/plan`,
     ] as const
     Promise.all(endpoints.map((url) => apiFetch(url)))
       .then(async (rs) => {
@@ -566,7 +568,7 @@ export default function Analytics() {
             (failed[0]?.data as { error?: string })?.error || 'Analytics unavailable',
           )
         }
-        const [col, fun, pri, eff, trends, car, perf] = parsed.map((p) =>
+        const [col, fun, pri, eff, trends, car, perf, billingPlan] = parsed.map((p) =>
           p.ok ? p.data : {},
         ) as [
           CollectionRate,
@@ -576,6 +578,7 @@ export default function Analytics() {
           { trends?: PaymentTrendRow[] },
           { performance?: CarrierPerfRow[] },
           { success?: boolean; data?: typeof practicePerf },
+          { plan?: { tierPrice?: number } },
         ]
         setCollectionRate(col)
         setFunnel(fun.funnel ?? [])
@@ -584,7 +587,9 @@ export default function Analytics() {
         setPaymentTrends(trends.trends ?? [])
         setCarrierPerf(car.performance ?? [])
         setPracticePerf(perf.data ?? null)
-        if (failed.length > 0) {
+        setTierPrice(typeof billingPlan.plan?.tierPrice === 'number' ? billingPlan.plan.tierPrice : null)
+        const legacyFailures = parsed.slice(0, 7).filter((p) => !p.ok)
+        if (legacyFailures.length > 0) {
           setError('Some legacy analytics sections are unavailable; insurance metrics below are still shown.')
         }
       })
@@ -595,8 +600,8 @@ export default function Analytics() {
   const dataBusy = practiceLoading || loading
   const callsPlaced = collectionRate?.totalCount ?? 0
   const hrsSaved    = hrsFromCalls(callsPlaced)
-  const roi         = collectionRate
-    ? `${(((collectionRate.totalCollected - 500) / 500) * 100).toFixed(0)}%`
+  const roi         = collectionRate && tierPrice
+    ? `${(((collectionRate.totalCollected - tierPrice) / tierPrice) * 100).toFixed(0)}%`
     : 'N/A'
 
   const lineData = paymentTrends.map((t) => ({

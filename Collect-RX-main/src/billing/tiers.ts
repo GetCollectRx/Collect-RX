@@ -93,6 +93,15 @@ export const TIERS: Record<BillingTier, TierConfig> = {
   },
 };
 
+/** Resolve which paid tier a Stripe price ID belongs to, for syncing `practice.billingTier` from a webhook. */
+export function billingTierForStripePrice(priceId: string | null | undefined): BillingTier | null {
+  if (!priceId) return null;
+  for (const [tier, config] of Object.entries(TIERS) as [BillingTier, TierConfig][]) {
+    if (config.stripePriceId && config.stripePriceId === priceId) return tier;
+  }
+  return null;
+}
+
 // Warning thresholds — both fire, whichever comes first.
 export const WARNINGS = {
   usagePercentThreshold: 0.80, // Warn at 80% of monthly minutes

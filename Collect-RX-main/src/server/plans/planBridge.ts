@@ -35,6 +35,7 @@ export type PlanSummary = {
   practiceId: string;
   tier: string;
   tierName: string;
+  tierPrice: number;
   status: string;
   callsPaused: boolean;
   callsPausedReason: string | null;
@@ -117,6 +118,7 @@ export async function getPlanSummary(practiceId: string, cycleEndsAt?: Date | nu
     practiceId,
     tier: practice.billingTier,
     tierName: tier.name,
+    tierPrice: tier.price,
     status: practice.subscriptionStatus ?? (trialActive ? 'trial' : 'active'),
     callsPaused: practice.callsPaused,
     callsPausedReason: practice.callsPausedReason,

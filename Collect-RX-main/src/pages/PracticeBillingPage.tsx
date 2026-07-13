@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { parseApiJson } from '../lib/parseApiJson'
-import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import { apiFetchJson } from '../lib/apiFetch'
 
 type UsageAlert = {
@@ -246,8 +245,6 @@ export default function PracticeBillingPage() {
         {error && (
           <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>
         )}
-
-        <SubscriptionUsageCard alwaysShow />
 
         {!gateOnly && planLoading && (
           <p className="text-sm text-gray-500">Loading plan usage…</p>

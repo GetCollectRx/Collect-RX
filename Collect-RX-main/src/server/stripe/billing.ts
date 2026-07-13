@@ -16,6 +16,7 @@ import {
   type SubscriptionPlanSnapshot,
   type SubscriptionUsageState,
 } from './subscriptionPlans.js';
+import { billingTierForStripePrice } from '../../billing/tiers.js';
 import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
 
 export function getStripe(): Stripe {
@@ -278,6 +279,7 @@ export async function handlePlatformBillingWebhook(
       const sub = await stripe.subscriptions.retrieve(subId, { expand: ['items.data'] });
       const priceId = subscriptionPrimaryPriceId(sub);
       const plan = subscriptionPlanSnapshot(sub);
+      const billingTier = billingTierForStripePrice(priceId);
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -290,6 +292,7 @@ export async function handlePlatformBillingWebhook(
             subscriptionPlanId: plan?.id ?? null,
             subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+            ...(billingTier ? { billingTier } : {}),
           },
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
@@ -330,6 +333,7 @@ export async function handlePlatformBillingWebhook(
       }
       const priceId = subscriptionPrimaryPriceId(sub);
       const plan = subscriptionPlanSnapshot(sub);
+      const billingTier = billingTierForStripePrice(priceId);
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -342,6 +346,7 @@ export async function handlePlatformBillingWebhook(
             subscriptionPlanId: plan?.id ?? null,
             subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+            ...(billingTier ? { billingTier } : {}),
           },
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
