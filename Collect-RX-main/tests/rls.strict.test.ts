@@ -30,7 +30,9 @@ async function createPractice(name: string): Promise<string> {
   return practice.id;
 }
 
-describe.skipIf(!dbReady)('strict PostgreSQL RLS', () => {
+const strictRls = process.env.COLLECTRX_RLS_TEST_STRICT === '1';
+
+describe.skipIf(!dbReady || !strictRls)('strict PostgreSQL RLS', () => {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   it('allows only the current practice to read and mutate claims', async () => {

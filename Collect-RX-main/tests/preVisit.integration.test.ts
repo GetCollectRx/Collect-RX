@@ -10,6 +10,7 @@ import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { processPreVisitCallEnded } from '../src/server/preVisit/preVisitWebhook.js';
 import { buildPreVisitDeniedPayload } from './fixtures/preVisitWebhooks.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { runWithPracticeRls } from '../src/server/db/rlsContext.js';
 
 let dbReady = false;
 try {
@@ -97,20 +98,26 @@ describe.skipIf(!dbReady)('Pre-visit integration — CDCP predet CSV import', ()
 describe.skipIf(!dbReady)('Pre-visit integration — synthetic webhook pipeline', () => {
   it('processPreVisitCallEnded updates verification and writes adjudication event', async () => {
     const practice = await createPracticeForTests(prisma);
-    const patientToken = crypto.randomUUID();
-    const verification = await prisma.appointmentVerification.create({
-      data: {
-        practiceId: practice.id,
-        patientToken,
-        carrierId: 'sun_life',
-        procedureCodes: ['D2750'],
-        appointmentAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-        status: 'YELLOW',
-        reason: 'cdcp_predet_pending',
-        missingArtifacts: ['periapical_xray'],
-        attemptCount: 1,
-      },
+    await prisma.practice.update({
+      where: { id: practice.id },
+      data: { recoveryMode: 'PMS_WRITEBACK' },
     });
+    const patientToken = crypto.randomUUID();
+    const verification = await runWithPracticeRls(practice.id, () =>
+      prisma.appointmentVerification.create({
+        data: {
+          practiceId: practice.id,
+          patientToken,
+          carrierId: 'sun_life',
+          procedureCodes: ['D2750'],
+          appointmentAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          status: 'YELLOW',
+          reason: 'cdcp_predet_pending',
+          missingArtifacts: ['periapical_xray'],
+          attemptCount: 1,
+        },
+      }),
+    );
 
     const payload = buildPreVisitDeniedPayload({
       call: { id: `vapi-previsit-int-${Date.now()}` },
@@ -127,20 +134,26 @@ describe.skipIf(!dbReady)('Pre-visit integration — synthetic webhook pipeline'
     const handled = await processPreVisitCallEnded(payload, prisma);
     expect(handled).toBe(true);
 
-    const updated = await prisma.appointmentVerification.findUnique({
-      where: { id: verification.id },
-    });
+    const updated = await runWithPracticeRls(practice.id, () =>
+      prisma.appointmentVerification.findUnique({
+        where: { id: verification.id },
+      }),
+    );
     expect(updated?.status).toBe('RED');
     expect(updated?.reason).toBe('cdcp_predet_denied');
 
-    const events = await prisma.adjudicationEvent.findMany({
-      where: { appointmentVerificationId: verification.id },
-    });
+    const events = await runWithPracticeRls(practice.id, () =>
+      prisma.adjudicationEvent.findMany({
+        where: { appointmentVerificationId: verification.id },
+      }),
+    );
     expect(events.length).toBeGreaterThanOrEqual(1);
 
-    const outbox = await prisma.emrSyncOutbox.findMany({
-      where: { practiceId: practice.id, claimId: `pre-visit:${verification.id}` },
-    });
+    const outbox = await runWithPracticeRls(practice.id, () =>
+      prisma.emrSyncOutbox.findMany({
+        where: { practiceId: practice.id, claimId: `pre-visit:${verification.id}` },
+      }),
+    );
     expect(outbox.length).toBeGreaterThanOrEqual(1);
 
     await cleanupPreVisitFixture(prisma, practice.id);

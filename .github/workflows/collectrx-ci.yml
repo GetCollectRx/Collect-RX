@@ -231,19 +231,28 @@ jobs:
         run: npm ci
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
-      - name: Use non-superuser DB role so PostgreSQL RLS is enforced
+      - name: Create non-superuser DB role for RLS enforcement
         run: |
           psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
-          ALTER ROLE prisma NOSUPERUSER NOBYPASSRLS;
-          GRANT USAGE ON SCHEMA public TO prisma;
-          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO prisma;
-          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO prisma;
-          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO prisma;
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'collectrx_rls_tester') THEN
+              CREATE ROLE collectrx_rls_tester LOGIN PASSWORD 'rls_test_ci' NOSUPERUSER NOBYPASSRLS;
+            END IF;
+          END
+          $$;
+          GRANT USAGE ON SCHEMA public TO collectrx_rls_tester;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO collectrx_rls_tester;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO collectrx_rls_tester;
+          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO collectrx_rls_tester;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO collectrx_rls_tester;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO collectrx_rls_tester;
           SQL
       - name: Enforce tenant RLS isolation
         env:
           CI: "true"
           COLLECTRX_RLS_TEST_STRICT: "1"
+          DATABASE_URL: postgresql://collectrx_rls_tester:rls_test_ci@127.0.0.1:5432/prisma?schema=public
         run: npm exec --workspace=dental-ar-system -- vitest run tests/rls.strict.test.ts
 
   carrier-whitelist:
