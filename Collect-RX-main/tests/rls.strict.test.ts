@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { PrismaClient } from '@prisma/client';
-import { extendPrismaWithRls } from '../src/lib/prismaRls.js';
-import { runWithPracticeRls, runWithRlsBypass } from '../src/server/db/rlsContext.js';
+import type { PrismaClient } from '@prisma/client';
+import { PrismaClient as PrismaClientCtor } from '@prisma/client';
 
 /** Superuser / migration role — seeds data; bypasses RLS as PG superuser. */
 const setupUrl =
@@ -12,9 +11,8 @@ const setupUrl =
 /** Restricted app role under test — must respect FORCE RLS policies. */
 const strictUrl = process.env.DATABASE_URL ?? setupUrl;
 
-const adminPrisma = new PrismaClient({ datasources: { db: { url: setupUrl } } });
-const strictBase = new PrismaClient({ datasources: { db: { url: strictUrl } } });
-const strictPrisma = extendPrismaWithRls(strictBase);
+const adminPrisma = new PrismaClientCtor({ datasources: { db: { url: setupUrl } } });
+const strictPrisma = new PrismaClientCtor({ datasources: { db: { url: strictUrl } } });
 
 let dbReady = false;
 let practiceAId = '';
@@ -24,7 +22,7 @@ let claimBId = '';
 
 try {
   await adminPrisma.$connect();
-  await strictBase.$connect();
+  await strictPrisma.$connect();
   await adminPrisma.$queryRaw`SELECT 1`;
   dbReady = true;
 } catch {
@@ -40,6 +38,17 @@ async function createPractice(name: string): Promise<string> {
     },
   });
   return practice.id;
+}
+
+/** Mirror production RLS session vars inside one DB transaction. */
+async function withPracticeRlsSession<T>(
+  practiceId: string,
+  fn: (tx: PrismaClient) => Promise<T>,
+): Promise<T> {
+  return strictPrisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.practice_id', ${practiceId}, true)`;
+    return fn(tx as PrismaClient);
+  });
 }
 
 const strictRls = process.env.COLLECTRX_RLS_TEST_STRICT === '1';
@@ -78,22 +87,22 @@ describe.skipIf(!dbReady || !strictRls)('strict PostgreSQL RLS', () => {
     claimAId = claimA.id;
     claimBId = claimB.id;
 
-    const visibleToA = await runWithPracticeRls(practiceAId, () =>
-      strictPrisma.insuranceClaim.findMany({ select: { id: true } }),
+    const visibleToA = await withPracticeRlsSession(practiceAId, (tx) =>
+      tx.insuranceClaim.findMany({ select: { id: true } }),
     );
     expect(visibleToA.map((claim) => claim.id)).toContain(claimAId);
     expect(visibleToA.map((claim) => claim.id)).not.toContain(claimBId);
 
-    const crossTenantUpdate = await runWithPracticeRls(practiceAId, () =>
-      strictPrisma.insuranceClaim.updateMany({
+    const crossTenantUpdate = await withPracticeRlsSession(practiceAId, (tx) =>
+      tx.insuranceClaim.updateMany({
         where: { id: claimBId },
         data: { status: 'RESOLVED' },
       }),
     );
     expect(crossTenantUpdate.count).toBe(0);
 
-    const ownClaim = await runWithPracticeRls(practiceAId, () =>
-      strictPrisma.insuranceClaim.update({
+    const ownClaim = await withPracticeRlsSession(practiceAId, (tx) =>
+      tx.insuranceClaim.update({
         where: { id: claimAId },
         data: { status: 'RESOLVED' },
       }),
@@ -105,19 +114,17 @@ describe.skipIf(!dbReady || !strictRls)('strict PostgreSQL RLS', () => {
 afterAll(async () => {
   if (!dbReady) {
     await adminPrisma.$disconnect().catch(() => undefined);
-    await strictBase.$disconnect().catch(() => undefined);
+    await strictPrisma.$disconnect().catch(() => undefined);
     return;
   }
-  await runWithRlsBypass(async () => {
-    if (practiceAId || practiceBId) {
-      await adminPrisma.insuranceClaim.deleteMany({
-        where: { practiceId: { in: [practiceAId, practiceBId].filter(Boolean) } },
-      });
-      await adminPrisma.practice.deleteMany({
-        where: { id: { in: [practiceAId, practiceBId].filter(Boolean) } },
-      });
-    }
-  });
+  if (practiceAId || practiceBId) {
+    await adminPrisma.insuranceClaim.deleteMany({
+      where: { practiceId: { in: [practiceAId, practiceBId].filter(Boolean) } },
+    });
+    await adminPrisma.practice.deleteMany({
+      where: { id: { in: [practiceAId, practiceBId].filter(Boolean) } },
+    });
+  }
   await adminPrisma.$disconnect();
-  await strictBase.$disconnect();
+  await strictPrisma.$disconnect();
 });
