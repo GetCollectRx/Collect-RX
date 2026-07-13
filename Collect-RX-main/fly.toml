@@ -44,7 +44,7 @@ interval = '15s'
 timeout = '10s'
 grace_period = '30s'
 method = 'GET'
-path = '/api/health'
+path = '/api/health/ready'
 
 [[vm]]
 processes = ['app']

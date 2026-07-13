@@ -528,13 +528,14 @@ async function initializePersistentPhiVault(): Promise<void> {
 }
 
 async function boot() {
-  try {
-    await initializePersistentPhiVault();
-  } catch (err) {
-    console.error('[server] PHI vault initialization failed; refusing to start:', err);
-    process.exit(1);
-  }
-
+  // Bind the port before any DB/PHI-vault work. Fly's proxy checks for an open
+  // listening socket on machine start, separately from and before it starts
+  // polling the HTTP health check — if DB connect + PHI rehydration (which can
+  // take several seconds) runs before .listen(), that window shows up as
+  // "app is not listening on the expected address" on every restart. /api/health
+  // (fly.toml's check) doesn't touch the DB, so it's safe to serve immediately;
+  // /api/health/ready does check the DB and gates whether Fly should route real
+  // traffic here — see fly.toml, which points the actual health check at it.
   const tlsKey = process.env.TLS_KEY_PATH?.trim();
   const tlsCert = process.env.TLS_CERT_PATH?.trim();
   const onListen = () => {
@@ -556,14 +557,6 @@ async function boot() {
     process.exit(1);
   }
 
-  // Start guardrail audit worker (non-blocking, runs every 60s)
-  if (process.env.SIDECAR_URL) {
-    setInterval(drainGuardrailAuditOutbox, 60_000);
-    console.log('[server] Guardrail audit worker started');
-  } else {
-    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled');
-  }
-
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(
@@ -575,6 +568,21 @@ async function boot() {
     }
     throw err;
   });
+
+  // Start guardrail audit worker (non-blocking, runs every 60s)
+  if (process.env.SIDECAR_URL) {
+    setInterval(drainGuardrailAuditOutbox, 60_000);
+    console.log('[server] Guardrail audit worker started');
+  } else {
+    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled');
+  }
+
+  try {
+    await initializePersistentPhiVault();
+  } catch (err) {
+    console.error('[server] PHI vault initialization failed; refusing to start:', err);
+    process.exit(1);
+  }
 
   void afterListen(server).catch((err) => {
     console.error('[server] Post-listen startup failed:', err);
