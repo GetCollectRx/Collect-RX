@@ -1,15 +1,19 @@
-// Baseline phrases — validated, tested, hardcoded. Never remove from here.
+// Baseline phrases require a carrier action or detection statement. Generic
+// IVR language such as "automated system" or "bot menu" is not a block signal.
 // The self-tuner may add new phrases to the learned-rules/block-phrases.json
 // overlay; those are merged in at startup via getActiveBlockPhrases().
 const CARRIER_BLOCK_PHRASES_BASELINE = [
-  'automated',
-  'bot',
-  'system detected',
+  'automated calling is not permitted',
+  'cannot process automated calls',
+  'this sounds like a bot call',
+  'bot activity detected',
+  'system detected automation',
   'not a live agent',
-  'cannot process automated',
   'fraud detection',
   'call flagged',
 ] as const;
+
+const GENERIC_IVR_TERMS = new Set(['automated', 'bot', 'ivr', 'menu', 'system']);
 
 // Runtime-merged phrase list (baseline + self-tuner learned phrases)
 let _activeBlockPhrases: readonly string[] = CARRIER_BLOCK_PHRASES_BASELINE;
@@ -19,10 +23,14 @@ let _activeBlockPhrases: readonly string[] = CARRIER_BLOCK_PHRASES_BASELINE;
  * Called once at server startup. Safe to call multiple times (idempotent after first load).
  */
 export function loadLearnedBlockPhrasesIntoRuntime(learnedPhrases: string[]): void {
-  const merged = Array.from(new Set([...CARRIER_BLOCK_PHRASES_BASELINE, ...learnedPhrases]));
+  const safeLearnedPhrases = learnedPhrases.filter((phrase) => {
+    const normalized = phrase.trim().toLowerCase();
+    return normalized.length > 5 && !GENERIC_IVR_TERMS.has(normalized);
+  });
+  const merged = Array.from(new Set([...CARRIER_BLOCK_PHRASES_BASELINE, ...safeLearnedPhrases]));
   _activeBlockPhrases = merged;
-  if (learnedPhrases.length > 0) {
-    console.log(`[carrierBlockPhrases] Loaded ${learnedPhrases.length} learned phrase(s) from self-tuner`);
+  if (safeLearnedPhrases.length > 0) {
+    console.log(`[carrierBlockPhrases] Loaded ${safeLearnedPhrases.length} learned phrase(s) from self-tuner`);
   }
 }
 

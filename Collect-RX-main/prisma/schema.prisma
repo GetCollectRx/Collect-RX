@@ -70,6 +70,8 @@ model Practice {
   deletionRequests               PHIPADeletionRequest[]
   breachNotifications            PHIPABreachNotification[]
   phiVaultEntries                PhiVaultEntry[]
+  triageCredential               TriageCredential?
+  triageAudits                   TriageAudit[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -233,11 +235,19 @@ model EligibilityReconcileLog {
   @@index([createdAt])
 }
 
-/// P4-05: Vapi may retry the same server POST; dedupe by body hash to avoid double-processing.
+/// Vapi delivery ledger. Stores only a SHA-256 body hash and processing state,
+/// never the webhook payload, so failed deliveries can be safely retried.
 model ProcessedVapiWebhook {
-  id        String   @id @default(cuid())
-  bodyHash  String   @unique
-  createdAt DateTime @default(now())
+  id                  String    @id @default(cuid())
+  bodyHash            String    @unique
+  status              String    @default("received")
+  attemptCount        Int       @default(0)
+  createdAt           DateTime  @default(now())
+  processingStartedAt DateTime?
+  processedAt         DateTime?
+  failedAt            DateTime?
+
+  @@index([status, createdAt])
 }
 
 /// Async claims validator webhook — idempotent processing via body hash
@@ -298,6 +308,44 @@ model AuditLog {
   @@index([practiceId, createdAt])
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+/// One encrypted credential payload for the practice's pre-call triage channel.
+/// The plaintext is never persisted; use triageCredentialService to access it.
+model TriageCredential {
+  id         String   @id @default(uuid())
+  practiceId String   @unique @map("practice_id")
+  ciphertext String
+  iv         String
+  authTag    String   @map("auth_tag")
+  lastHealthCheckAt DateTime? @map("last_health_check_at")
+  lastHealthCheckStatus String? @map("last_health_check_status")
+  lastHealthCheckErrorCode String? @map("last_health_check_error_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  practice Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  audits   TriageAudit[]
+
+  @@map("triage_credentials")
+}
+
+/// Append-only security audit for triage credential access. Never stores credential values.
+model TriageAudit {
+  id            String   @id @default(uuid())
+  practiceId    String   @map("practice_id")
+  credentialId  String?  @map("credential_id")
+  action        String
+  actor         String?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  practice   Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  credential TriageCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([credentialId, createdAt(sort: Desc)])
+  @@map("triage_audits")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -433,6 +481,9 @@ model InsuranceClaim {
   recoveryRoute     RecoveryRoute? @map("recovery_route")
   /// When carrier confirmed payment but PMS sync has not yet verified balance drop.
   paymentExpectedBy DateTime?      @map("payment_expected_by")
+  /// Soft deletion preserves the claim's immutable recovery and call history.
+  /// Application reads and dispatch paths must always exclude deleted claims.
+  deletedAt         DateTime?      @map("deleted_at")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
@@ -445,6 +496,7 @@ model InsuranceClaim {
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
   @@index([practiceId, status])
+  @@index([practiceId, deletedAt])
   @@index([carrierId, daysOutstanding])
   @@index([practiceId, status, updatedAt])
   @@map("insurance_claims")
@@ -531,6 +583,9 @@ model CallAttempt {
   evalScores           String?      @map("eval_scores")
   /// True if this call triggered the CARRIER_BLOCK protocol.
   carrierBlockDetected Boolean      @default(false) @map("carrier_block_detected")
+  /// True when the carrier kept the agent waiting past the hold threshold and
+  /// still ended the call with no engagement (no rep, no reference number).
+  heldThenDumped       Boolean      @default(false) @map("held_then_dumped")
   /// Live console state while call is in progress (cleared on completion).
   liveState            String?      @map("live_state")
   activeAgent          String?      @map("active_agent")
@@ -606,6 +661,11 @@ model CallQueue {
   /// Number of attempts made so far. Hard cap: 3 (enforced before dispatch).
   attempts      Int           @default(0)
   lastAttemptAt DateTime?     @map("last_attempt_at")
+  /// Safe, structured reason for the latest dispatch deferral. Never stores PHI or vendor errors.
+  dispatchDeferralCode String? @map("dispatch_deferral_code")
+  /// Staff-facing next step for the latest dispatch deferral. Never stores PHI.
+  dispatchDeferralNextAction String? @map("dispatch_deferral_next_action")
+  dispatchDeferredAt DateTime? @map("dispatch_deferred_at")
   status        QueueStatus   @default(PENDING)
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
@@ -1523,4 +1583,100 @@ model CarrierLesson {
   @@index([carrierId, status])
   @@index([status, createdAt(sort: Desc)])
   @@map("carrier_lessons")
+}
+
+/// Discovery requests are operator work items only. They never dispatch a call.
+enum CarrierDiscoveryTrigger {
+  MONTHLY
+  CARRIER_ISSUE
+  MANUAL
+
+  @@map("carrier_discovery_trigger")
+}
+
+enum CarrierDiscoveryRunStatus {
+  PENDING
+  READY_FOR_OPERATOR
+  COMPLETED
+  CANCELLED
+
+  @@map("carrier_discovery_run_status")
+}
+
+enum CarrierNavigationProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+
+  @@map("carrier_navigation_proposal_status")
+}
+
+/// A monthly or incident-driven request for an authorized operator to validate
+/// a carrier's IVR. This table intentionally has no call ID or dispatch state.
+model CarrierDiscoveryRun {
+  id          String                    @id @default(uuid())
+  carrierId   CarrierId                 @map("carrier_id")
+  trigger     CarrierDiscoveryTrigger
+  status      CarrierDiscoveryRunStatus @default(PENDING)
+  dueAt       DateTime                  @map("due_at")
+  issueDetail String?                   @map("issue_detail")
+  requestedBy String?                   @map("requested_by")
+  completedAt DateTime?                 @map("completed_at")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  proposals CarrierNavigationProposal[]
+
+  @@index([carrierId, status, dueAt])
+  @@index([trigger, createdAt(sort: Desc)])
+  @@map("carrier_discovery_runs")
+}
+
+/// Immutable, platform-wide IVR/navigation knowledge. Only a reviewed snapshot
+/// may be used as a call instruction source.
+model CarrierNavigationSnapshot {
+  id          String    @id @default(uuid())
+  carrierId   CarrierId @map("carrier_id")
+  version     Int
+  navigation  Json
+  summary     String
+  publishedAt DateTime? @map("published_at")
+  publishedBy String?   @map("published_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  proposalsBase     CarrierNavigationProposal[] @relation("ProposalBaseSnapshot")
+  proposalsPublished CarrierNavigationProposal[] @relation("ProposalPublishedSnapshot")
+
+  @@unique([carrierId, version])
+  @@index([carrierId, publishedAt(sort: Desc)])
+  @@map("carrier_navigation_snapshots")
+}
+
+/// An untrusted, transcript-derived recommendation. Approval creates a new
+/// immutable snapshot; it can never alter an existing published version.
+model CarrierNavigationProposal {
+  id                  String                          @id @default(uuid())
+  carrierId           CarrierId                       @map("carrier_id")
+  discoveryRunId      String?                         @map("discovery_run_id")
+  baseSnapshotId      String?                         @map("base_snapshot_id")
+  proposedNavigation  Json                            @map("proposed_navigation")
+  proposedSummary     String                          @map("proposed_summary")
+  diff                Json
+  evidence            String?                         @map("evidence")
+  confidence          Float                           @default(0)
+  status              CarrierNavigationProposalStatus @default(PROPOSED)
+  reviewedAt          DateTime?                       @map("reviewed_at")
+  reviewedBy          String?                         @map("reviewed_by")
+  reviewNotes         String?                         @map("review_notes")
+  publishedSnapshotId String?                         @unique @map("published_snapshot_id")
+  createdAt           DateTime                        @default(now()) @map("created_at")
+  updatedAt           DateTime                        @updatedAt @map("updated_at")
+
+  discoveryRun      CarrierDiscoveryRun?      @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  baseSnapshot      CarrierNavigationSnapshot? @relation("ProposalBaseSnapshot", fields: [baseSnapshotId], references: [id], onDelete: SetNull)
+  publishedSnapshot CarrierNavigationSnapshot? @relation("ProposalPublishedSnapshot", fields: [publishedSnapshotId], references: [id], onDelete: SetNull)
+
+  @@index([carrierId, status, createdAt(sort: Desc)])
+  @@index([discoveryRunId])
+  @@map("carrier_navigation_proposals")
 }

@@ -68,7 +68,10 @@ import { prisma } from '../lib/prisma';
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPostgresTlsInProduction } from './databaseTls';
-import { assertPhiEncryptionAtRestConfigured } from './crypto/phiEncryptionKey.js';
+import {
+  assertPersistentPhiVaultConfigured,
+  assertPhiEncryptionAtRestConfigured,
+} from './crypto/phiEncryptionKey.js';
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
 import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
@@ -135,6 +138,8 @@ import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
+import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
+import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -207,6 +212,7 @@ try {
 
 assertPostgresTlsInProduction();
 assertPhiEncryptionAtRestConfigured();
+assertPersistentPhiVaultConfigured();
 assertEmrSyncWebhookUrlConfiguredAtBoot();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -337,6 +343,7 @@ app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
 app.use('/api/desk',       createFrontDeskRouter());
 app.use('/api/practices',  createPracticeReportsRouter());
+app.use('/api/practices',  createTriageCredentialRouter());
 app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
@@ -360,6 +367,8 @@ app.use('/api/pre-visit',  preVisitRouter);
 app.use('/api',            createCanadianExpansionRouter(prisma));
 // Compliance audit — platform_admin / auditor only
 app.use('/api/compliance', complianceRouter);
+// Operator-only discovery records; no scheduler or dispatch worker is mounted.
+app.use('/api/admin/carrier-discovery', createCarrierDiscoveryRouter());
 
 // Autonomous agent runtime — structured outputs + escalation
 import agentRunsRouter from './routes/agentRunsRouter.js';
@@ -443,19 +452,17 @@ function isMainModule(): boolean {
   });
 }
 
-async function connectDatabaseOrExit(): Promise<void> {
+async function connectDatabase(): Promise<void> {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log('[server] Database connected');
   } catch (err) {
     console.error('[server] Database connection failed:', err);
-    process.exit(1);
+    throw err;
   }
 }
 
 async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
-  await connectDatabaseOrExit();
-
   try {
     const closed = await prisma.workItem.updateMany({
       where: { status: 'open', itemType: { not: 'insurance' } },
@@ -499,20 +506,6 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
   attachDeskWebSocket(server);
 
-  // ── PHI Vault: attach persistent store + rehydrate before queue engine ─────
-  // On server restart, all in-memory PHI tokens are lost. claimsPiiVault.rehydrate()
-  // decrypts all non-expired PhiVaultEntry rows back into memory so the queue
-  // engine can dispatch existing claims without requiring a re-import.
-  // PHI_ENCRYPTION_KEY must be set (asserted above by assertPhiEncryptionAtRestConfigured).
-  claimsPiiVault.useStore(prisma);
-  try {
-    const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
-    console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
-  } catch (err) {
-    // Non-fatal — calls will fail detokenize checks until re-import, but server still runs
-    console.error('[piiVault] Rehydration failed:', err);
-  }
-
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);
   void runStartupScanOnBoot(prisma, PORT);
@@ -525,7 +518,21 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startScheduledAgents(prisma);
 }
 
+async function initializePersistentPhiVault(): Promise<void> {
+  await connectDatabase();
+  claimsPiiVault.useStore(prisma);
+  const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
+  console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
+}
+
 async function boot() {
+  try {
+    await initializePersistentPhiVault();
+  } catch (err) {
+    console.error('[server] PHI vault initialization failed; refusing to start:', err);
+    process.exit(1);
+  }
+
   const tlsKey = process.env.TLS_KEY_PATH?.trim();
   const tlsCert = process.env.TLS_CERT_PATH?.trim();
   const onListen = () => {

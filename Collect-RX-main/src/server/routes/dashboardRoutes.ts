@@ -68,7 +68,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     ]);
 
     const claims = await prisma.insuranceClaim.findMany({
-      where: { practiceId, status: { in: OPEN_STATUSES } },
+      where: { practiceId, deletedAt: null, status: { in: OPEN_STATUSES } },
       select: {
         outstandingAmount: true,
         daysOutstanding: true,
@@ -121,6 +121,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     const claimsResolvedToday = await prisma.insuranceClaim.count({
       where: {
         practiceId,
+        deletedAt: null,
         status: 'RESOLVED',
         updatedAt: { gte: startOfUtcDay },
       },

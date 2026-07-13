@@ -26,12 +26,6 @@ const prisma = new PrismaClient();
 const DEMO_PRACTICE_NAME = 'CollectRx Demo Practice';
 const DEMO_EMAIL = 'demo@collectrx-test.local';
 const DEMO_OWNER_NAME = 'Demo Admin';
-/** Prior demo identities — cleaned up by --reset so old seeds don't linger. */
-const LEGACY_DEMO_PRACTICE_NAMES = [
-  'Hasan Family Dental',
-  'Maple Grove Dental',
-  'Tenth Line Family Dentistry',
-] as const;
 
 /** Delete a demo practice and every row the seed creates for it, children first. */
 async function deleteDemoPractice(practiceId: string): Promise<void> {
@@ -228,7 +222,7 @@ async function main() {
   // ── 1. Practice ──────────────────────────────────────────────────────────
   const reset = process.argv.includes('--reset');
   const existing = await prisma.practice.findMany({
-    where: { name: { in: [practiceName, DEMO_PRACTICE_NAME, ...LEGACY_DEMO_PRACTICE_NAMES] } },
+    where: { name: { in: [practiceName, DEMO_PRACTICE_NAME] } },
   });
   if (existing.length > 0 && !reset) {
     console.log('⚠️  Demo practice already exists. Re-run with:\n   npm run demo:seed -- --reset\n');

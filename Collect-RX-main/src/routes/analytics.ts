@@ -195,7 +195,9 @@ router.get('/practice-performance/export', async (req: Request, res: Response) =
         where: { practiceId, closeDate: { gte: since90 } },
         orderBy: { closeDate: 'asc' },
       }),
-      prisma.insuranceClaim.count({ where: { practiceId, status: { not: 'RESOLVED' } } }),
+      prisma.insuranceClaim.count({
+        where: { practiceId, deletedAt: null, status: { not: 'RESOLVED' } },
+      }),
     ]);
     const lines: string[] = [
       'section,metric,value',
@@ -241,7 +243,7 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
         _count: true,
       }),
       prisma.insuranceClaim.findMany({
-        where: { practiceId },
+        where: { practiceId, deletedAt: null },
         select: { status: true, outstandingAmount: true, billedAmount: true, daysOutstanding: true, updatedAt: true },
       }),
       prisma.arCloseRun.findMany({

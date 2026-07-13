@@ -9,8 +9,11 @@ import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
+import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
+import { createEscalation } from '../services/escalationService.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -82,14 +85,32 @@ const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after 
 // older than the worst plausible call (multi-hour carrier hold) is dead.
 const STALE_ATTEMPT_MS = 3 * 60 * 60 * 1000;
 
+// Fleet-wide concurrency: the Vapi plan allows a fixed number of simultaneous
+// calls. Long carrier holds occupy a slot for their full duration, so a few
+// slots are always held back for staff-initiated and pre-visit calls — the
+// queue must never consume the entire allowance.
+function vapiSlotBudget(): number {
+  const limit = parseInt(process.env.VAPI_MAX_CONCURRENT_CALLS ?? '10', 10);
+  const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
+  if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
+  return Math.max(0, limit - Math.max(0, reserve));
+}
+
 async function deferQueueEntry(
   prisma: PrismaClient,
   queueEntryId: string,
   deferMs: number,
+  dispatchDeferralCode: string,
+  dispatchDeferralNextAction: string,
 ): Promise<void> {
   await prisma.callQueue.update({
     where: { id: queueEntryId },
-    data: { scheduledFor: new Date(Date.now() + deferMs) },
+    data: {
+      scheduledFor: new Date(Date.now() + deferMs),
+      dispatchDeferralCode,
+      dispatchDeferralNextAction,
+      dispatchDeferredAt: new Date(),
+    },
   });
 }
 
@@ -100,7 +121,16 @@ type BlockedDisposition = 'skip' | 'stop';
 // retryable causes are deferred, practice-wide causes stop this practice's tick.
 async function settleBlockedCandidate(
   prisma: PrismaClient,
-  entry: { id: string; claimId: string },
+  entry: {
+    id: string;
+    practiceId: string;
+    claimId: string;
+    claim: {
+      claimNumber: string;
+      carrierId: keyof typeof CARRIER_CONFIGS;
+      outstandingAmount: unknown;
+    };
+  },
   guardCode: string | undefined,
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
@@ -116,6 +146,28 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
+      if (guardCode === 'MAX_ATTEMPTS') {
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: {
+            practiceId: entry.practiceId,
+            claimId: entry.claimId,
+            status: 'open',
+            reason: 'Maximum automated call attempts reached',
+          },
+          select: { id: true },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId: entry.practiceId,
+            claimId: entry.claimId,
+            claimRef: entry.claim.claimNumber,
+            carrierId: entry.claim.carrierId,
+            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+            reason: 'Maximum automated call attempts reached',
+            attemptNumber: 3,
+          });
+        }
+      }
       return 'skip';
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
@@ -129,7 +181,12 @@ async function settleBlockedCandidate(
       await prisma.$transaction([
         prisma.callQueue.update({
           where: { id: entry.id },
-          data: { status: 'BLOCKED' },
+          data: {
+            status: 'BLOCKED',
+            dispatchDeferralCode: 'CARRIER_BLOCK',
+            dispatchDeferralNextAction: 'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
+            dispatchDeferredAt: new Date(),
+          },
         }),
         prisma.insuranceClaim.updateMany({
           where: { id: entry.claimId, status: { in: ['PENDING', 'IN_QUEUE', 'CALLING'] } },
@@ -143,12 +200,24 @@ async function settleBlockedCandidate(
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
       return 'stop';
     case 'CLAIM_TOO_YOUNG':
-      await deferQueueEntry(prisma, entry.id, DEFER_CLAIM_AGE_MS);
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_CLAIM_AGE_MS,
+        'CLAIM_TOO_YOUNG',
+        'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
       return 'skip';
     default:
       // RECOVERY_GATE, CARRIER_NOT_AUTHORIZED, and any un-coded rejection:
       // state must change (staff action, route change) before retry makes sense.
-      await deferQueueEntry(prisma, entry.id, DEFER_STAFF_ACTION_MS);
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        guardCode ?? 'DISPATCH_GUARD_REJECTED',
+        'Resolve the required claim or carrier configuration action before retrying.',
+      );
       return 'skip';
   }
 }
@@ -156,11 +225,24 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
-  const practices = await runWithRlsBypass(async () =>
-    prisma.practice.findMany({ select: { id: true } }),
+  const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
+    Promise.all([
+      prisma.practice.findMany({ select: { id: true } }),
+      prisma.callAttempt.count({ where: { completedAt: null } }),
+    ]),
   );
 
+  let slotsRemaining = vapiSlotBudget() - activeCallsGlobal;
+  if (slotsRemaining <= 0) {
+    logger.warn('[deskQueueEngine] Vapi concurrency budget exhausted — skipping dispatch this tick', {
+      activeCallsGlobal,
+      slotBudget: vapiSlotBudget(),
+    });
+    return;
+  }
+
   for (const { id: practiceId } of practices) {
+    if (slotsRemaining <= 0) return;
     // One practice's failure must never starve the practices after it in the
     // loop — isolate each practice's tick.
     try {
@@ -177,7 +259,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       where: {
         completedAt: null,
         initiatedAt: { lt: staleBefore },
-        claim: { practiceId },
+        claim: { practiceId, deletedAt: null },
       },
       select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
@@ -217,7 +299,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     const activeAttempt = await prisma.callAttempt.findFirst({
       where: {
         completedAt: null,
-        claim: { practiceId },
+        claim: { practiceId, deletedAt: null },
       },
     });
     if (activeAttempt) return;
@@ -227,6 +309,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         practiceId,
         status: 'PENDING',
         scheduledFor: { lte: new Date() },
+        claim: { deletedAt: null },
       },
       orderBy: [{ priority: 'desc' }, { scheduledFor: 'asc' }],
       take: CANDIDATE_BATCH_SIZE,
@@ -246,7 +329,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       return;
     }
 
-    for (const next of candidates) {
+    // COGS breaker throttle: spend the remaining budget on the claims worth
+    // the most, not on whatever is next in line.
+    const dispatchable = planGate.essentialOnly
+      ? candidates.filter((c) => c.priority === 'HIGH' || c.priority === 'URGENT')
+      : candidates;
+    if (planGate.essentialOnly && dispatchable.length < candidates.length) {
+      logger.warn('[deskQueueEngine] COGS throttle active — dispatching high-priority claims only', {
+        practiceId,
+        skipped: candidates.length - dispatchable.length,
+      });
+    }
+
+    for (const next of dispatchable) {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
       practiceId,
@@ -283,17 +378,12 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         channel: triage.channel,
         detail: triage.detail,
       });
-      await prisma.callQueue.update({
-        where: { id: next.id },
-        data: { status: 'COMPLETED' },
-      });
-      await prisma.claimRecoveryEvent.create({
-        data: {
-          practiceId,
-          claimId: next.claimId,
-          eventType: `triage_closed_${triage.channel}`,
-          metadata: { detail: triage.detail },
-        },
+      await transitionClaimRecovery(prisma, {
+        practiceId,
+        claimId: next.claimId,
+        kind: 'TRIAGE_RESOLVED',
+        triageChannel: triage.channel,
+        triageDetail: triage.detail,
       });
       continue;
     }
@@ -325,7 +415,13 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         patientToken: next.claim.patientToken,
         error: phiResult.error,
       });
-      await deferQueueEntry(prisma, next.id, DEFER_PHI_TOKEN_MS);
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_PHI_TOKEN_MS,
+        'CLAIM_DATA_UNAVAILABLE',
+        'Re-import or synchronize the claim data before retrying.',
+      );
       continue;
     }
     const phi = phiResult.phi;
@@ -356,7 +452,13 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         outstandingAmount: Number(next.claim.outstandingAmount),
         missing: completeness.missing,
       });
-      await deferQueueEntry(prisma, next.id, DEFER_STAFF_ACTION_MS);
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_STAFF_ACTION_MS,
+        'MISSING_REQUIRED_CLAIM_DATA',
+        'Complete the required claim data in the PMS, then clear the recovery gate.',
+      );
       continue;
     }
     if (completeness.warnings.length > 0) {
@@ -373,10 +475,15 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
-    // Build IVR instructions from carrier adapter knowledge base, plus any
-    // human-APPROVED lessons the learning loop has produced for this carrier.
+    // Only published, human-approved snapshots may augment the static adapter
+    // hints. Proposed discovery output is never exposed to a live call.
     const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
-    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ') + learnedNotes;
+    const publishedNavigation = await getPublishedNavigationSteps(prisma, next.claim.carrierId);
+    const carrierIvrInstructions = [
+      ...carrierConfig.ivrHints,
+      ...publishedNavigation,
+      ...(learnedNotes ? [learnedNotes] : []),
+    ].join(' | ');
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
@@ -425,9 +532,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         carrierId: next.claim.carrierId,
         error: dispatchErr,
       });
-      await deferQueueEntry(prisma, next.id, DEFER_DISPATCH_FAILURE_MS);
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_DISPATCH_FAILURE_MS,
+        'TRANSIENT_DISPATCH_FAILURE',
+        'The system will retry during the next scheduled dispatch window.',
+      );
       continue;
     }
+    slotsRemaining -= 1;
 
     try {
       const attempt = await prisma.callAttempt.create({
@@ -451,6 +565,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
             status: 'IN_PROGRESS',
             attempts: { increment: 1 },
             lastAttemptAt: new Date(),
+            dispatchDeferralCode: null,
+            dispatchDeferralNextAction: null,
+            dispatchDeferredAt: null,
           },
         }),
       ]);

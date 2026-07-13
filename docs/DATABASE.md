@@ -62,9 +62,15 @@ Use your **Postgres host’s** automated backups (e.g. Railway, RDS, Neon). **Te
   `npx prisma migrate dev --name describe_change`
 
 - Baseline: `20260422120000_init` (initial create).
+- `20260712020000_insurance_claim_soft_delete` adds `insurance_claims.deleted_at`.
+  Deploy it with `prisma migrate deploy`; application reads and call dispatch
+  exclude deleted claims, while call and recovery history remains retained.
 
 ## Staging / production
 
 - Use a **hosted Postgres** (RDS, Cloud SQL, Neon, Supabase, Railway Postgres, etc.).
 - Set `DATABASE_URL` in the host’s secret store (not committed).
 - Staging should use **synthetic or anonymized** data only; see [ENVIRONMENT-MATRIX.md](./ENVIRONMENT-MATRIX.md).
+- After deploying RLS migrations, confirm the application database role does
+  not have PostgreSQL `BYPASSRLS`. The CI `rls-strict` job verifies tenant
+  isolation without that privilege.

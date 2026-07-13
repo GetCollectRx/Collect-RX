@@ -35,7 +35,7 @@ After this date:
 | Abeldent Sync Connector | CDAnet v3 (if applicable) | CDAnet v4 / ITRANS 2.0 | Needs verification |
 | CDAnet Claim Submission | v3 transaction format | v4 transaction format | Phase 5 update |
 | Transaction 09 (Attachments) | Not supported in v3 | New in v4 — required for Phase 5 | Implemented in Phase 5 |
-| Status Polling | Batch (v3) | Real-time ACK (v4) | Phase 5 update |
+| Status Polling | Batch (v3) | Real-time ACK (v4) | Transport capability only; not a CollectRx pre-call triage signal |
 | Denial Code Parsing | Legacy codes | Structured ITRANS 2.0 codes | Phase 5 evidenceMapper.ts |
 
 ### 2.2 Phase 5 Implementation Status
@@ -45,6 +45,20 @@ The Phase 5 `cdanetSubmission.ts` module is built to **CDAnet Version 4 / ITRANS
 - `ITRANS_VERSION = '2.0'`
 - Transaction 09 payload builder implemented
 - Submission strategy selector enforces v4 requirement after June 30, 2026
+
+### 2.3 CDAnet no-signal limitation
+
+CollectRx currently does **not** register a CDAnet status transaction as a
+pre-call triage channel. The only active pre-call signal is the practice PMS
+sync: when it already shows a claim resolved or its outstanding amount at zero,
+CollectRx skips the phone call. A missing PMS signal means the normal carrier
+call fallback proceeds.
+
+CDAnet v4 / ITRANS 2.0 transport capability, an acknowledgment, or a
+successful electronic submission must not be represented as current claim
+status. Until a carrier-supported status query is implemented, authenticated,
+and registered in triage, it produces **no triage signal** and must not suppress
+or close a claim automatically.
 
 ---
 
@@ -61,7 +75,7 @@ The Phase 5 `cdanetSubmission.ts` module is built to **CDAnet Version 4 / ITRANS
 | Oral Health Office | v10+ | |
 | MacPractice | v11+ | |
 
-### 3.2 For Dr. Hasan's Practice (Abeldent Local Plus)
+### 3.2 For a Practice Using Abeldent Local Plus
 
 1. Contact ABELSoft (1-800-267-ABEL) to confirm current version
 2. If below v15.x: Schedule upgrade before June 15, 2026 (allow 2 weeks for testing)

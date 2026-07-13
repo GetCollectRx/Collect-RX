@@ -33,6 +33,8 @@ import { getPracticeSettings } from '../server/services/practiceSettingsService.
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { piiVault } from '../pii-vault.js';
 import logger from '../logger.cjs';
+import { appendAuditLog } from '../server/audit/auditLog.js';
+import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -62,7 +64,10 @@ router.get('/claims', async (req: Request, res: Response) => {
     }
 
     // Build where clause — always scoped to authenticated practice
-    const where: Record<string, unknown> = { practiceId: practiceIdFromSession(req) };
+    const where: Record<string, unknown> = {
+      practiceId: practiceIdFromSession(req),
+      deletedAt: null,
+    };
     if (carrier && Object.values(CarrierId).includes(carrier as CarrierId)) {
       where.carrierId = carrier as CarrierId;
     }
@@ -148,8 +153,10 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const body = req.body as { servicedAt?: string; practiceId?: string };
-    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
-    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id, practiceId: practiceIdFromSession(req), deletedAt: null },
+    });
+    if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
     if (body.practiceId && body.practiceId !== claim.practiceId) {
@@ -178,6 +185,56 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /api/insurance/claims/:id
+// Retains immutable claim/call history while removing the claim from all
+// operational claim and dispatch reads.
+// ---------------------------------------------------------------------------
+router.delete('/claims/:id', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id: req.params.id, practiceId, deletedAt: null },
+      select: { id: true, status: true, queueEntry: { select: { id: true } } },
+    });
+    if (!claim) {
+      return res.status(404).json({ success: false, error: 'Claim not found' });
+    }
+    if (claim.status === 'CALLING') {
+      return res.status(409).json({
+        success: false,
+        error: 'An active call must finish before its claim can be deleted',
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.insuranceClaim.update({
+        where: { id: claim.id },
+        data: { deletedAt: new Date() },
+      }),
+      ...(claim.queueEntry
+        ? [
+            prisma.callQueue.update({
+              where: { id: claim.queueEntry.id },
+              data: { status: 'COMPLETED' },
+            }),
+          ]
+        : []),
+    ]);
+    await appendAuditLog(prisma, {
+      practiceId,
+      action: 'INSURANCE_CLAIM_SOFT_DELETED',
+      subjectType: 'InsuranceClaim',
+      subjectId: claim.id,
+      req,
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /insurance/claims/:id]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/insurance/claims/:id/confirm-payment
 // Body: { practiceId?: string, paymentAmountCents?: number, notes?: string }
 // If paymentAmountCents omitted, treats as full payment (outstanding → 0). Emits EMR outbox on RESOLVED.
@@ -186,8 +243,10 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
   try {
     const { id } = req.params;
     const body = req.body as { practiceId?: string; paymentAmountCents?: number; notes?: string };
-    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
-    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id, practiceId: practiceIdFromSession(req), deletedAt: null },
+    });
+    if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
     if (body.practiceId && body.practiceId !== claim.practiceId) {
@@ -226,8 +285,10 @@ router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response
   try {
     const { id } = req.params;
     const body = req.body as { resolvedBy?: string; notes?: string };
-    const claim = await prisma.insuranceClaim.findUnique({ where: { id } });
-    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id, practiceId: practiceIdFromSession(req), deletedAt: null },
+    });
+    if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
@@ -256,8 +317,12 @@ router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response
 
 router.get('/claims/:id', async (req: Request, res: Response) => {
   try {
-    const claim = await prisma.insuranceClaim.findUnique({
-      where: { id: req.params.id },
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: {
+        id: req.params.id,
+        practiceId: practiceIdFromSession(req),
+        deletedAt: null,
+      },
       include: {
         callAttempts: {
           orderBy: { initiatedAt: 'desc' },
@@ -290,7 +355,7 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
       },
     });
 
-    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+    if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
@@ -393,15 +458,19 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
   try {
     const { claimId } = req.params;
 
-    const claim = await prisma.insuranceClaim.findUnique({
-      where: { id: claimId },
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: {
+        id: claimId,
+        practiceId: practiceIdFromSession(req),
+        deletedAt: null,
+      },
       include: {
         callAttempts: { select: { id: true } },
         queueEntry: { select: { attempts: true } },
       },
     });
 
-    if (!claim || claim.practiceId !== practiceIdFromSession(req)) {
+    if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
 
@@ -466,7 +535,14 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
       const lockedQueue = await tx.callQueue.findUnique({
         where: { claimId },
-        select: { attempts: true, status: true },
+        select: {
+          attempts: true,
+          status: true,
+          lastAttemptAt: true,
+          dispatchDeferralCode: true,
+          dispatchDeferralNextAction: true,
+          dispatchDeferredAt: true,
+        },
       });
       const lockedClaim = await tx.insuranceClaim.findUnique({
         where: { id: claimId },
@@ -504,7 +580,13 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         },
       });
 
-      return { ok: true as const };
+      return {
+        ok: true as const,
+        reservation: {
+          claimStatus: lockedClaim?.status ?? claim.status,
+          queue: lockedQueue,
+        },
+      };
     });
 
     if (!reserved.ok) {
@@ -623,16 +705,34 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       throw vapiErr;
     }
 
-    // NOTE: Only ONE callAttempt.create per dispatch — vapiCallId has @unique constraint.
-    await prisma.callAttempt.create({
-      data: {
-        claimId: claim.id,
+    // Only ONE callAttempt.create per dispatch — vapiCallId has @unique constraint.
+    // If persistence fails, cancel the external call and restore the exact
+    // reservation state atomically so the claim cannot remain falsely CALLING.
+    try {
+      await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+          liveState: 'dialing',
+          activeAgent: 'IVR_Navigator',
+        },
+      });
+    } catch (persistenceError) {
+      const { terminationError } = await compensateFailedManualDispatch(prisma, {
+        claimId,
         vapiCallId: vapiResult.vapiCallId,
-        initiatedAt: new Date(),
-        liveState: 'dialing',
-        activeAgent: 'IVR_Navigator',
-      },
-    });
+        reservation: reserved.reservation,
+        terminateCall: (callId) => vapiClient.endVapiCall(callId),
+      });
+      console.error('[POST /insurance/queue/trigger/:claimId] post-dispatch persistence failed', {
+        claimId,
+        vapiCallId: vapiResult.vapiCallId,
+        persistenceError,
+        terminationError,
+      });
+      throw persistenceError;
+    }
 
     return res.json({
       success: true,

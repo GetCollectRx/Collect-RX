@@ -16,6 +16,10 @@
 
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { LLM_RESIDENCY_HEADERS } from '../../services/pii-vault';
+import {
+  assertAllowedEvalModel,
+  assertAnthropicEvalAllowed,
+} from '../../services/analytics/anthropicEvalGuard.js';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 /** Extraction is a narrow structured task — the cheap model tier is deliberate. */
@@ -68,6 +72,8 @@ function normalize(s: string): string {
 }
 
 async function runExtraction(transcript: string, carrierId: string): Promise<ExtractedLesson[]> {
+  assertAnthropicEvalAllowed('carrierLessons');
+  assertAllowedEvalModel(LESSON_MODEL, 'carrierLessons');
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {

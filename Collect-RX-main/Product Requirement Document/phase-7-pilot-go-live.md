@@ -2,7 +2,7 @@
 
 **Status:** ⏳ Pending  
 **Owner:** Khalid  
-**Pilot Partner:** Dr. Hasan — Tenth Line Family Dentistry, Ottawa  
+**Pilot Partner:** Designated pilot dental practice
 **Duration:** 90 days  
 **Dependencies:** Phases 0–5 complete; schema discovery done; credentials rotated  
 
@@ -10,7 +10,7 @@
 
 ## Problem Statement
 
-CollectRx has three core assumptions that, if wrong, would fundamentally change the business model. Before investing in sales, expansion, or additional engineering, the pilot must validate or invalidate each assumption with real-world data. The 90-day pilot at Tenth Line Family Dentistry is the controlled test.
+CollectRx has three core assumptions that, if wrong, would fundamentally change the business model. Before investing in sales, expansion, or additional engineering, the pilot must validate or invalidate each assumption with real-world data. The 90-day pilot at a designated dental practice is the controlled test.
 
 ---
 
@@ -20,7 +20,7 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 |---|-----------|----------------|
 | 1 | Canadian insurance carriers will accept AI callers | Any carrier issues a practice-level block that cannot be resolved |
 | 2 | AI achieves sufficient resolution rates to justify the cost | Resolution rate < 60% sustained over 30 days |
-| 3 | Dental practices will pay the proposed pricing | Dr. Hasan declines to continue at the stated price after pilot |
+| 3 | Dental practices will pay the proposed pricing | Pilot practice declines to continue at the stated price after pilot |
 
 ---
 
@@ -28,7 +28,7 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 
 - Collect statistically meaningful data on all three assumptions
 - Operate without critical incidents (no permanent carrier blocks, no PHI breaches)
-- Deliver measurable ROI to Dr. Hasan's practice during the pilot period
+- Deliver measurable ROI to the pilot practice during the pilot period
 - Identify product gaps discovered only under real conditions
 
 ---
@@ -44,7 +44,7 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 | System uptime | ≥ 99% |
 | PHI incidents | 0 |
 | Carrier block events | 0 permanent blocks |
-| Dr. Hasan NPS at day 90 | ≥ 8/10 |
+| Pilot-practice NPS at day 90 | ≥ 8/10 |
 
 ---
 
@@ -76,11 +76,11 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 - Webhook failure alert → Khalid email within 5 minutes
 - Sync failure alert → Khalid email within 15 minutes
 - Carrier block event → Khalid SMS immediately
-- Weekly automated report to Dr. Hasan: calls placed, claims resolved, revenue recovered
+- Weekly automated report to the pilot practice: calls placed, claims resolved, revenue recovered
 
 ### Pilot Runbook
 - Go-live checklist for Khalid (on-call day 1)
-- Dr. Hasan FAQ: what to expect, who to call if something breaks
+- Pilot-practice FAQ: what to expect, who to call if something breaks
 - Rollback procedure if critical issue arises
 - Pricing conversation script for day-90 renewal discussion
 
@@ -106,7 +106,7 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 ## Acceptance Criteria
 
 **Week 1 (Go-Live)**
-- [ ] Sync runs successfully against Dr. Hasan's Abeldent
+- [ ] Sync runs successfully against the pilot practice's Abeldent installation
 - [ ] First batch of calls placed without error
 - [ ] Dashboard shows real claim data
 - [ ] Khalid on-call, monitoring for 8 hours
@@ -115,7 +115,7 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 - [ ] Assumption 1 assessment: carrier acceptance rate documented
 - [ ] Assumption 2 early read: resolution rate trend positive
 - [ ] No permanent carrier blocks
-- [ ] Dr. Hasan check-in: satisfaction ≥ 7/10
+- [ ] Pilot-practice check-in: satisfaction ≥ 7/10
 
 **Day 60 Checkpoint**
 - [ ] Resolution rate ≥ 60% sustained
@@ -124,6 +124,6 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 
 **Day 90 (Pilot Close)**
 - [ ] Final assumption validation report completed
-- [ ] Pricing conversation with Dr. Hasan conducted
+- [ ] Pricing conversation with the pilot practice conducted
 - [ ] Post-pilot learnings documented for expansion playbook
 - [ ] Decision: proceed to Abeldent market expansion (3,700 practices) or pivot

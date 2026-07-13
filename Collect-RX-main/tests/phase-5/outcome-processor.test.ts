@@ -37,6 +37,14 @@ describe('OutcomeProcessor.classifyOutcome', () => {
     expect(result.carrierBlockDetected).toBe(true);
   });
 
+  it('does not classify generic automated IVR wording as a carrier block', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'Welcome to our automated system. Press two for dental claims.',
+    }));
+    expect(result.carrierBlockDetected).toBe(false);
+    expect(result.outcome).not.toBe('BLOCK_DETECTED');
+  });
+
   it('detects RESOLVED on payment confirmation', () => {
     const result = classifyOutcome(makePayload({
       transcript: 'The claim has been processed and payment was issued on April 15th.',

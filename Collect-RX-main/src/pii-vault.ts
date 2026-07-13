@@ -250,8 +250,9 @@ export class PIIVault {
    * the in-memory vault. Returns the number of tokens loaded.
    *
    * Call this on server boot, before startDeskQueueEngine(). Must have called
-   * useStore(prisma) first. Any rows where decryption fails are skipped with
-   * a warning (key rotation scenario) and deleted from the store.
+   * useStore(prisma) first. A decryption failure aborts startup so production
+   * never serves claims with an incomplete vault; persisted ciphertext is left
+   * intact for operator-led recovery.
    */
   async rehydrate(): Promise<number> {
     if (!this.db) throw new Error('[PIIVault] rehydrate called without a store');
@@ -277,11 +278,12 @@ export class PIIVault {
         });
         loaded++;
       } catch (err) {
-        console.error(
-          `[PIIVault] rehydrate: failed to decrypt token ${row.token} — skipping + deleting.`,
-          err,
+        throw new Error(
+          `[PIIVault] rehydrate failed for persisted token ${row.token}; ` +
+            `refusing to continue with a partially restored vault: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
         );
-        await this.deleteFromStore(row.token).catch(() => {});
       }
     }
     return loaded;

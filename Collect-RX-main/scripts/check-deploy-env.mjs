@@ -153,6 +153,13 @@ ok(
   !phiAtRestEnabled || phiEncryptionKeyValid(),
   phiAtRestEnabled ? 'required when PHI_ENCRYPTION_AT_REST is on' : 'optional unless PHI_ENCRYPTION_AT_REST',
 );
+ok(
+  'TRIAGE_ENROLLMENT_ENCRYPTION',
+  phiEncryptionKeyValid(),
+  phiEncryptionKeyValid()
+    ? 'ready for encrypted triage credential enrollment'
+    : 'set a valid PHI_ENCRYPTION_KEY before enabling triage credential enrollment',
+);
 
 ok(
   'HEALTH_METRICS_TOKEN',

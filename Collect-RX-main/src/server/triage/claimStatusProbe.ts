@@ -14,6 +14,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import { enrolledCdanetClaimStatusAdapter } from './cdanetClaimStatusAdapter.js';
 
 export interface TriageResolution {
   action: 'CLOSE_RESOLVED';
@@ -64,16 +65,25 @@ const pmsSyncChannel: TriageChannel = {
 };
 
 /**
- * Ordered cheapest-first. Carrier portal and CDAnet status channels register
- * here when built — no queue-engine changes required.
+ * Ordered cheapest-first. CDAnet is currently an enrolled, explicitly
+ * no-signal contract adapter; it cannot issue Tx23 or any network request.
  */
-const CHANNELS: TriageChannel[] = [pmsSyncChannel];
+const enrolledCdanetChannel: TriageChannel = {
+  id: enrolledCdanetClaimStatusAdapter.id,
+  probe: (prisma, claim) =>
+    enrolledCdanetClaimStatusAdapter.probe(prisma, {
+      practiceId: claim.practiceId,
+      claimId: claim.id,
+    }),
+};
+
+export const TRIAGE_CHANNELS: readonly TriageChannel[] = [pmsSyncChannel, enrolledCdanetChannel];
 
 export async function probeClaimStatus(
   prisma: PrismaClient,
   claim: TriageClaimRef,
 ): Promise<TriageResolution | null> {
-  for (const channel of CHANNELS) {
+  for (const channel of TRIAGE_CHANNELS) {
     try {
       const resolution = await channel.probe(prisma, claim);
       if (resolution) return resolution;

@@ -28,6 +28,7 @@ import { requireFrontDeskOnly, blockAuditorWrites } from '../middleware/requireU
 import { assertPlatformAdminClaimGrant } from '../middleware/grantChecks.js';
 import { listEscalations, resolveEscalation } from '../services/escalationService.js';
 import type { EscalationResolution } from '../../types/practiceSettings.js';
+import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
 
 const router = Router();
 router.use(authenticate);
@@ -121,6 +122,19 @@ router.get('/:practiceId/queue', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[desk/queue]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/queue/reviews', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+
+    const data = await listMaxAttemptFailureReviews(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[desk/queue/reviews]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

@@ -122,3 +122,62 @@ describe('routeClaimRecovery', () => {
     expect(CLAIM_ROUTER_DECISION_TABLE.some((r) => r.route === 'OPEN_CDCP')).toBe(true);
   });
 });
+
+describe('retry ladder', () => {
+  it('escalates to human instead of a third call when no attempt ever engaged', () => {
+    const d = routeClaimRecovery({
+      ...base,
+      attemptCount: 2,
+      hasEngagementEvidence: false,
+      callOutcome: 'FAILED',
+    });
+    expect(d.route).toBe('PRACTICE_GATE');
+    expect(d.recoveryActionType).toBe('HUMAN_ESCALATION');
+    expect(d.stopCalling).toBe(true);
+  });
+
+  it('still retries a third time when a prior attempt captured a reference', () => {
+    const d = routeClaimRecovery({
+      ...base,
+      attemptCount: 2,
+      hasEngagementEvidence: true,
+      callOutcome: 'FAILED',
+    });
+    expect(d.route).toBe('CALL_CARRIER');
+    expect(d.queueStatus).toBe('PENDING');
+    expect(d.stopCalling).toBe(false);
+  });
+
+  it('retries a second time by default after one fruitless attempt', () => {
+    const d = routeClaimRecovery({
+      ...base,
+      attemptCount: 1,
+      hasEngagementEvidence: false,
+      callOutcome: 'HUNG_UP',
+    });
+    expect(d.route).toBe('CALL_CARRIER');
+  });
+
+  it('escalates after one fruitless attempt on a hold-dumping carrier', () => {
+    const d = routeClaimRecovery({
+      ...base,
+      attemptCount: 1,
+      hasEngagementEvidence: false,
+      carrierHoldDumpRate: 0.5,
+      callOutcome: 'HUNG_UP',
+    });
+    expect(d.route).toBe('PRACTICE_GATE');
+    expect(d.recoveryActionType).toBe('HUMAN_ESCALATION');
+  });
+
+  it('ignores the dump rate when the carrier has engaged before', () => {
+    const d = routeClaimRecovery({
+      ...base,
+      attemptCount: 2,
+      hasEngagementEvidence: true,
+      carrierHoldDumpRate: 0.5,
+      callOutcome: 'NO_ANSWER',
+    });
+    expect(d.route).toBe('CALL_CARRIER');
+  });
+});

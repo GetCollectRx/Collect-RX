@@ -13,6 +13,7 @@ import type {
   RecoveryDecision,
 } from './types.js';
 import { extractLegacyOutcomeCode, isCdcpCarrierContext } from './legacyOutcomeCode.js';
+import { HOLD_DUMP_ESCALATE_RATE } from './holdLedger.js';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -132,6 +133,15 @@ export const CLAIM_ROUTER_DECISION_TABLE: ClaimRouterDecisionRow[] = [
     notes: 'Retry when scheduledFor elapses.',
   },
   {
+    when: '2 attempts with zero engagement evidence (1 on hold-dumping carrier)',
+    route: 'PRACTICE_GATE',
+    claimStatus: 'ESCALATED',
+    queueStatus: 'ESCALATED',
+    recall: 'manual',
+    gate: 'HUMAN_ESCALATION',
+    notes: 'Retry ladder — a third identical call after two fruitless ones is the lowest-yield spend; a human owns the next step.',
+  },
+  {
     when: 'Financial outcome held (gate → ESCALATED)',
     route: 'PRACTICE_GATE',
     claimStatus: 'ESCALATED',
@@ -157,6 +167,39 @@ function addHours(from: Date, hours: number): Date {
 
 function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * DAY_MS);
+}
+
+/**
+ * Retry ladder: another identical carrier call is only worth paying for while
+ * there is evidence the carrier ever engaged (reference number or rep name).
+ * With zero engagement across two attempts — or one attempt on a carrier whose
+ * hold-dump rate crossed the ledger threshold — the next call goes to a human.
+ */
+function retriesExhaustedWithoutEngagement(input: ClaimRouterInput): boolean {
+  if (input.hasEngagementEvidence) return false;
+  if (input.attemptCount >= 2) return true;
+  return (
+    input.attemptCount >= 1 &&
+    (input.carrierHoldDumpRate ?? 0) >= HOLD_DUMP_ESCALATE_RATE
+  );
+}
+
+function escalateForFruitlessRetries(input: ClaimRouterInput): RecoveryDecision {
+  return {
+    route: 'PRACTICE_GATE',
+    claimStatus: 'ESCALATED',
+    queueStatus: 'ESCALATED',
+    scheduledRecallAt: null,
+    recoveryActionType: 'HUMAN_ESCALATION',
+    actionTitle: 'Carrier not engaging — human follow-up needed',
+    actionDetail:
+      `${input.attemptCount} automated call(s) reached no representative and captured no reference number. ` +
+      'Another identical call is unlikely to help — contact the carrier directly or check the provider portal.',
+    paymentExpectedBy: null,
+    openCdcpCase: false,
+    stopCalling: true,
+    reason: 'Retry ladder — repeated attempts produced zero engagement evidence.',
+  };
 }
 
 function shouldOpenCdcp(
@@ -423,6 +466,9 @@ export function routeClaimRecovery(input: ClaimRouterInput): RecoveryDecision {
     input.callOutcome === 'NO_ANSWER' ||
     input.callOutcome === 'HUNG_UP'
   ) {
+    if (retriesExhaustedWithoutEngagement(input)) {
+      return escalateForFruitlessRetries(input);
+    }
     const hours =
       input.callOutcome === 'NO_ANSWER' ? RECALL_HOURS.no_answer : RECALL_HOURS.failed;
     return {
@@ -457,6 +503,9 @@ export function routeClaimRecovery(input: ClaimRouterInput): RecoveryDecision {
   }
 
   // Default: return to queue with modest retry
+  if (retriesExhaustedWithoutEngagement(input)) {
+    return escalateForFruitlessRetries(input);
+  }
   return {
     route: 'CALL_CARRIER',
     claimStatus: input.gatedClaimStatus === 'CALLING' ? 'IN_QUEUE' : input.gatedClaimStatus,

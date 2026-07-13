@@ -116,6 +116,16 @@ export const CARRIER_TIMEOUTS: Record<string, number> = {
   default: 30,
 };
 
+// Per-practice COGS circuit breaker. Delivery cost is metered minutes ×
+// UNIT_ECONOMICS.costPerMinute; crossing these fractions of the subscription
+// price throttles, then pauses, so losing money on a practice is structurally
+// impossible rather than statistically unlikely. Paid tiers only — trial has
+// its own hard stop.
+export const COGS_BREAKER = {
+  throttleAtPctOfPrice: 0.40, // dispatch only HIGH/URGENT priority claims
+  pauseAtPctOfPrice: 0.60, // pause all calls and alert
+};
+
 // Soft stop behavior on limit reached.
 export const OVERAGE = {
   pauseOnSoftStop: true,

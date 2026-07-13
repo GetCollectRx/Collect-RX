@@ -66,6 +66,7 @@ export async function buildPriorityQueue(
   const claims = await prisma.insuranceClaim.findMany({
     where: {
       practiceId,
+      deletedAt: null,
       status: { not: 'RESOLVED' },
     },
     include: {
@@ -139,7 +140,7 @@ export async function syncCallQueueSchedulingFromPriority(
       ? [String(practiceId).trim()]
       : (
           await prisma.callQueue.findMany({
-            where: { status: 'PENDING' },
+            where: { status: 'PENDING', claim: { deletedAt: null } },
             distinct: ['practiceId'],
             select: { practiceId: true },
           })
@@ -153,7 +154,7 @@ export async function syncCallQueueSchedulingFromPriority(
     const scoreByClaimId = new Map(ranked.map((r) => [r.claimId, r.scores.total]));
 
     const pending = await prisma.callQueue.findMany({
-      where: { practiceId: pid, status: 'PENDING' },
+      where: { practiceId: pid, status: 'PENDING', claim: { deletedAt: null } },
       select: { id: true, claimId: true, scheduledFor: true },
     });
     if (pending.length === 0) continue;
@@ -161,7 +162,7 @@ export async function syncCallQueueSchedulingFromPriority(
     const claimIds = pending.map((p) => p.claimId);
     const [claims, blockingActions] = await Promise.all([
       prisma.insuranceClaim.findMany({
-        where: { id: { in: claimIds } },
+        where: { id: { in: claimIds }, deletedAt: null },
         select: { id: true, recoveryRoute: true },
       }),
       prisma.claimRecoveryAction.findMany({

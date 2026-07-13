@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'crypto';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
@@ -19,6 +19,7 @@ import {
   linkRecoveryActionToCdcpCase,
   tryCdcpFromVapiPayload,
 } from '../recovery/cdcpRecoveryBridge.js';
+import { isHeldThenDumped } from '../recovery/holdLedger.js';
 import { piiVault } from '../../pii-vault.js';
 import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
 import {
@@ -89,7 +90,84 @@ export async function isWebhookDuplicate(
 }
 
 export async function markWebhookProcessed(prisma: PrismaClient, bodyHash: string): Promise<void> {
-  await prisma.processedVapiWebhook.create({ data: { bodyHash } });
+  await prisma.processedVapiWebhook.upsert({
+    where: { bodyHash },
+    create: {
+      bodyHash,
+      status: 'processed',
+      attemptCount: 1,
+      processedAt: new Date(),
+    },
+    update: {
+      status: 'processed',
+      processedAt: new Date(),
+      failedAt: null,
+    },
+  });
+}
+
+const VAPI_WEBHOOK_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
+export type VapiWebhookProcessingClaim =
+  | { state: 'claimed' }
+  | { state: 'processed' }
+  | { state: 'processing' };
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
+
+/**
+ * Atomically claims a hashed delivery for synchronous processing. A stale lease
+ * is reclaimable after a process crash; the payload itself is never persisted.
+ */
+export async function claimVapiWebhookForProcessing(
+  prisma: PrismaClient,
+  bodyHash: string,
+  now = new Date(),
+): Promise<VapiWebhookProcessingClaim> {
+  try {
+    await prisma.processedVapiWebhook.create({
+      data: { bodyHash, status: 'received' },
+    });
+  } catch (err) {
+    if (!isUniqueConstraintError(err)) throw err;
+  }
+
+  const staleBefore = new Date(now.getTime() - VAPI_WEBHOOK_PROCESSING_LEASE_MS);
+  const claimed = await prisma.processedVapiWebhook.updateMany({
+    where: {
+      bodyHash,
+      OR: [
+        { status: { in: ['received', 'failed'] } },
+        { status: 'processing', processingStartedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      status: 'processing',
+      attemptCount: { increment: 1 },
+      processingStartedAt: now,
+      failedAt: null,
+    },
+  });
+
+  if (claimed.count === 1) return { state: 'claimed' };
+
+  const existing = await prisma.processedVapiWebhook.findUnique({
+    where: { bodyHash },
+    select: { status: true },
+  });
+  return existing?.status === 'processed' ? { state: 'processed' } : { state: 'processing' };
+}
+
+export async function markVapiWebhookFailed(
+  prisma: PrismaClient,
+  bodyHash: string,
+): Promise<void> {
+  await prisma.processedVapiWebhook.update({
+    where: { bodyHash },
+    data: { status: 'failed', failedAt: new Date() },
+  });
 }
 
 function verifyVapiAuth(req: Request): boolean {
@@ -285,6 +363,12 @@ async function processCallEnded(
         referenceNumber: processed.referenceNumber,
         transcriptUrl: processed.transcriptUrl,
         carrierBlockDetected: processed.carrierBlockDetected,
+        heldThenDumped: isHeldThenDumped({
+          outcome: processed.outcome,
+          durationSeconds: processed.durationSeconds,
+          repName: processed.repName,
+          referenceNumber: processed.referenceNumber,
+        }),
       },
     });
   }

@@ -37,15 +37,15 @@ export interface ProcessedOutcome {
 // ---------------------------------------------------------------------------
 
 const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
-  /automated\s+(call|system|bot)/i,
-  /we('re|\sare)\s+unable\s+to\s+process\s+automated/i,
+  /(?:automated|bot|robocall)\s+(?:calls?\s+)?(?:are\s+)?not\s+(?:allowed|permitted|accepted)/i,
+  /we('re|\sare)\s+unable\s+to\s+process\s+automated\s+calls?/i,
   /robocall\s+detected/i,
   /third.party\s+(calling|system)\s+not\s+(allowed|permitted)/i,
   /cannot\s+assist\s+with\s+automated\s+calls/i,
   /this\s+number\s+has\s+been\s+flagged/i,
   /call\s+appears\s+to\s+be\s+automated/i,
   /provider\s+(access|calling)\s+(blocked|suspended|restricted)/i,
-  /system.generated\s+call/i,
+  /system.generated\s+call\s+(?:detected|blocked|rejected)/i,
   /bot\s+activity(\s+detected)?/i,
   /detected\s+bot\s+activity/i,
 ];

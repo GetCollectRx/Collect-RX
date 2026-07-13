@@ -12,12 +12,15 @@ import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './fac
 
 let dbReady = false;
 let softDeleteSchemaReady = false;
+let userSoftDeleteSchemaReady = false;
 try {
   await prisma.$connect();
   await prisma.$queryRaw`SELECT 1`;
   dbReady = true;
   const claimModel = Prisma.dmmf.datamodel.models.find((m) => m.name === 'InsuranceClaim');
   softDeleteSchemaReady = claimModel?.fields.some((f) => f.name === 'deletedAt') ?? false;
+  const userModel = Prisma.dmmf.datamodel.models.find((m) => m.name === 'User');
+  userSoftDeleteSchemaReady = userModel?.fields.some((f) => f.name === 'deletedAt') ?? false;
 } catch (e) {
   console.warn('[softDeleteIsolation] DATABASE_URL unreachable — tests will be skipped:', (e as Error).message);
 }
@@ -99,7 +102,7 @@ async function createHardDeleteAudit(
 // Test Suite
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () => {
+describe.skipIf(!dbReady || !softDeleteSchemaReady || !userSoftDeleteSchemaReady)('Soft Delete Isolation', () => {
   describe('1. Deleted claims not returned by findUnique', () => {
     it('should skip deleted claim in findUnique', async () => {
       if (!dbReady) {

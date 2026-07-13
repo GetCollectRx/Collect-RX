@@ -33,8 +33,10 @@ export async function enqueuePreVisitJob(
   type: PreVisitJobType,
   payload: PreVisitJobPayload,
   delayMs?: number,
+  scheduleKey?: string,
 ): Promise<string> {
-  const jobId = `pre-visit:${type}:${payload.practiceId}:${payload.patientToken}:${payload.carrierId}`;
+  const baseJobId = `pre-visit:${type}:${payload.practiceId}:${payload.patientToken}:${payload.carrierId}`;
+  const jobId = scheduleKey ? `${baseJobId}:${scheduleKey}` : baseJobId;
   const queue = getArQueue();
   const job = await queue.add(type, payload, {
     jobId,

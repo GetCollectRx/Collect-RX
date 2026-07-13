@@ -9,7 +9,7 @@
  *     until the practice confirms overage charges via confirmOverage().
  */
 import type { Practice, PrismaClient, UsagePeriod } from '@prisma/client';
-import { TIERS, WARNINGS, type TierConfig } from '../../billing/tiers.js';
+import { COGS_BREAKER, TIERS, UNIT_ECONOMICS, WARNINGS, type TierConfig } from '../../billing/tiers.js';
 
 export type PlanGateReason =
   | 'OK'
@@ -17,12 +17,15 @@ export type PlanGateReason =
   | 'OVERAGE_PENDING'
   | 'DAILY_CAP_REACHED'
   | 'SUBSCRIPTION_PAST_DUE'
-  | 'SUBSCRIPTION_CANCELED';
+  | 'SUBSCRIPTION_CANCELED'
+  | 'COGS_BREAKER_PAUSED';
 
 export type PlanGateResult = {
   allowed: boolean;
   reason: PlanGateReason;
   overageRatePerMinute?: number | null;
+  /** COGS breaker throttle — dispatch only HIGH/URGENT priority claims. */
+  essentialOnly?: boolean;
 };
 
 type PeriodWindow = { periodStart: Date; periodEnd: Date };
@@ -124,6 +127,8 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
         return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
       case 'subscription_cancelled':
         return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+      case 'cogs_breaker':
+        return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
       default:
         return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
     }
@@ -145,7 +150,49 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
   }
 
+  const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
+  if (cogs === 'pause') {
+    await pauseCalls(prisma, practice.id, 'cogs_breaker');
+    console.error(
+      `[cogsBreaker] delivery cost crossed ${Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100)}% ` +
+        `of subscription price — pausing calls for practice=${practice.id} ` +
+        `(${usage.minutesConsumed} min consumed on ${practice.billingTier})`,
+    );
+    try {
+      const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
+      await dispatchOpsAlert({
+        alertId: 'cogs_breaker',
+        source: practice.id,
+        detail: `${usage.minutesConsumed} min consumed on ${practice.billingTier} tier`,
+      });
+    } catch (alertErr) {
+      console.error('[cogsBreaker] ops alert dispatch failed (non-fatal):', alertErr);
+    }
+    return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+  }
+  if (cogs === 'throttle') {
+    return { allowed: true, reason: 'OK', essentialOnly: true };
+  }
+
   return { allowed: true, reason: 'OK' };
+}
+
+/**
+ * Month-to-date delivery cost as a fraction of the subscription price.
+ * Structural guarantee that no practice can become unprofitable: at the
+ * throttle threshold only high-value calls dispatch; at the pause threshold
+ * calling stops until the billing cycle resets (startNewBillingCycle clears
+ * the pause) or an operator intervenes.
+ */
+export function evaluateCogsBreaker(
+  tier: TierConfig,
+  minutesConsumed: number,
+): 'ok' | 'throttle' | 'pause' {
+  if (tier.price <= 0) return 'ok';
+  const deliveryCost = minutesConsumed * UNIT_ECONOMICS.costPerMinute;
+  if (deliveryCost >= tier.price * COGS_BREAKER.pauseAtPctOfPrice) return 'pause';
+  if (deliveryCost >= tier.price * COGS_BREAKER.throttleAtPctOfPrice) return 'throttle';
+  return 'ok';
 }
 
 /**

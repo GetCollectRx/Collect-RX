@@ -30,10 +30,28 @@ For fields you choose to encrypt before persistence:
 - **Audited API:** `src/server/crypto/phiAtRest.ts` — `encryptPhiAtRest` / `decryptPhiAtRest` (and `*PayloadV1` helpers) call **`logPhiCryptoAccess`** so every encrypt/decrypt emits a structured **`PHI_CRYPTO_ACCESS`** line (operation, record id, optional `fieldKey` / `practiceId` / `actor`, outcome). **Never** logs plaintext, ciphertext, IV, or auth tag.
 - **Key material:** `PHI_ENCRYPTION_KEY` — **exactly 32 bytes** as **64 hex characters** or **standard base64** encoding 32 raw bytes. In production, load from **AWS KMS / Azure Key Vault / GCP KMS** (or inject the raw 32-byte secret from your host secret manager). Do not commit keys to git.
 - **Feature flag:** `PHI_ENCRYPTION_AT_REST=1` — when set with `NODE_ENV=production`, the server **refuses to start** unless `PHI_ENCRYPTION_KEY` is valid (`assertPhiEncryptionAtRestConfigured`).
+- **Persisted PHI vault:** the production server attaches the encrypted
+  `PhiVaultEntry` backing store before listening. It always requires a valid
+  `PHI_ENCRYPTION_KEY`; a missing/invalid key or any vault rehydration failure
+  aborts startup without deleting the persisted ciphertext.
 
 Persist ciphertext as JSON using `EncryptedPhiPayloadV1` (`v: 1`, `iv`, `encryptedText`, `authTag` — hex strings) in a `String` / `Json` column you add for that field.
 
 CollectRx also uses **AES-256-GCM** for specific **CDCP** payloads (`src/server/services/cdcp/cdanetSubmission.ts`) and **tokenization** for the voice boundary (`src/services/pii-vault.ts`).
+
+### Encrypted triage credential enrollment
+
+`TriageCredential` stores one practice-scoped pre-call triage credential as
+AES-256-GCM ciphertext, IV, and authentication tag. The plaintext is not
+persisted and is not exposed through an HTTP API. Saving or reading it requires
+the matching practice RLS context and emits an append-only `TriageAudit` record
+without credential material.
+
+Before enabling an enrollment flow, set a valid `PHI_ENCRYPTION_KEY` in the
+deployment secret manager and verify it with the preflight command below.
+`PHI_ENCRYPTION_AT_REST=1` remains the server-startup enforcement for the
+broader application-layer PHI feature; triage enrollment itself always needs
+the key because encryption is not optional for that credential.
 
 ## 3. Rows that are still plaintext at the ORM layer
 
@@ -42,7 +60,9 @@ Unless you route a column through `phiAtRest`, Prisma stores values as **normal 
 ## 4. Verification checklist
 
 1. **Production `DATABASE_URL`**: `sslmode=require` (or stricter) or `ssl=true`.
-2. **`node scripts/check-deploy-env.mjs`** with `NODE_ENV=production`: required vars + Postgres TLS + `PHI_ENCRYPTION_KEY` when `PHI_ENCRYPTION_AT_REST` is enabled.
+2. **`node scripts/check-deploy-env.mjs`** with `NODE_ENV=production`: required vars + Postgres TLS + a valid `PHI_ENCRYPTION_KEY` for the persisted PHI vault.
+   The command also reports whether encryption-key material is ready before
+   enabling triage credential enrollment.
 3. **Cookies / sessions**: `Secure` cookies when needed (`AUTH_COOKIE_CROSS_SITE` per `.env.example`).
 4. **Helmet / HSTS**: enabled on the main API (`src/server/index.ts`).
 5. **Optional in-process HTTPS**: PEM paths + strict TLS options in `nodeHttpsSettings.ts`.

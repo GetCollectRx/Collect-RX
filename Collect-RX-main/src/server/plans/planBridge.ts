@@ -86,6 +86,8 @@ export function gateBlockMessage(reason: PlanGateReason, overageRatePerMinute?: 
       return 'Your subscription payment is past due. Update billing to resume calling.';
     case 'SUBSCRIPTION_CANCELED':
       return 'Your subscription is canceled. Resubscribe to resume calling.';
+    case 'COGS_BREAKER_PAUSED':
+      return 'Calling is paused for this billing period — usage far exceeded your plan. Contact support to review or upgrade.';
     default:
       return '';
   }
@@ -155,6 +157,16 @@ export function computeUsageAlerts(summary: PlanSummary): UsageAlert[] {
       level: 'critical',
       code: 'subscription_cancelled',
       message: 'Subscription canceled — calls are paused. Subscribe again to resume.',
+    });
+    return alerts;
+  }
+
+  if (summary.callsPausedReason === 'cogs_breaker') {
+    alerts.push({
+      level: 'critical',
+      code: 'cogs_breaker',
+      message:
+        'Calls are paused — usage this period far exceeded your plan. Contact support to review or upgrade.',
     });
     return alerts;
   }

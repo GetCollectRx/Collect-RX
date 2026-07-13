@@ -13,4 +13,10 @@ describe('carrier block phrase detection', () => {
   it('ignores normal carrier speech', () => {
     expect(transcriptSignalsCarrierBlock('Your claim is pending adjudication')).toBe(false);
   });
+
+  it('does not treat generic IVR wording as a carrier block', () => {
+    expect(transcriptSignalsCarrierBlock(
+      'Welcome to the automated IVR system. Say claims to continue through the menu.',
+    )).toBe(false);
+  });
 });

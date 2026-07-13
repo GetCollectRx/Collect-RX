@@ -8,6 +8,7 @@ const probeClaimStatusMock = vi.fn();
 const canMakeCallMock = vi.fn();
 const completenessMock = vi.fn();
 const raiseGateMock = vi.fn();
+const transitionClaimRecoveryMock = vi.fn();
 
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
@@ -71,8 +72,16 @@ vi.mock('../../src/server/triage/claimStatusProbe.js', () => ({
   probeClaimStatus: (...args: unknown[]) => probeClaimStatusMock(...args),
 }));
 
+vi.mock('../../src/server/recovery/transitionClaimRecovery.js', () => ({
+  transitionClaimRecovery: (...args: unknown[]) => transitionClaimRecoveryMock(...args),
+}));
+
 vi.mock('../../src/server/learning/carrierLessons.js', () => ({
   getApprovedNavigationNotes: vi.fn(async () => ''),
+}));
+
+vi.mock('../../src/server/discovery/carrierDiscoveryService.js', () => ({
+  getPublishedNavigationSteps: vi.fn(async () => []),
 }));
 
 vi.mock('../../src/server/db/rlsContext.js', () => ({
@@ -140,6 +149,7 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
     callAttempt: {
+      count: vi.fn(async () => 0),
       findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
       create: vi.fn(async () => ({ id: 'attempt-1' })),
@@ -148,6 +158,26 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
     insuranceClaim: {
       update: vi.fn(async () => ({})),
       updateMany: vi.fn(async () => ({ count: 1 })),
+    },
+    callEscalation: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({
+        id: 'escalation-1',
+        practiceId: 'p1',
+        claimId: 'claim-1',
+        claimRef: 'CN-1',
+        carrierId: 'sun_life',
+        amountClaimedCents: 25000,
+        reason: 'Maximum automated call attempts reached',
+        callAttemptId: null,
+        attemptNumber: 3,
+        status: 'open',
+        resolution: null,
+        resolvedByStaffId: null,
+        resolvedAt: null,
+        resolutionNotes: null,
+        createdAt: new Date(),
+      })),
     },
     claimRecoveryEvent: { create: vi.fn(async () => ({})) },
     $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
@@ -191,10 +221,13 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
-    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+    expect(prisma.callQueue.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'q-1' },
-      data: { status: 'BLOCKED' },
-    });
+      data: expect.objectContaining({
+        status: 'BLOCKED',
+        dispatchDeferralCode: 'CARRIER_BLOCK',
+      }),
+    }));
     expect(prisma.insuranceClaim.updateMany).toHaveBeenCalledWith({
       where: { id: 'claim-1', status: { in: ['PENDING', 'IN_QUEUE', 'CALLING'] } },
       data: { status: 'BLOCKED' },
@@ -222,6 +255,13 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     expect(prisma.callQueue.update).toHaveBeenCalledWith({
       where: { id: 'q-1' },
       data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        reason: 'Maximum automated call attempts reached',
+        attemptNumber: 3,
+      }),
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
@@ -320,10 +360,15 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
-    expect(prisma.callQueue.update).toHaveBeenCalledWith({
-      where: { id: 'q-1' },
-      data: { status: 'COMPLETED' },
-    });
+    expect(transitionClaimRecoveryMock).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        practiceId: 'p1',
+        claimId: 'claim-1',
+        kind: 'TRIAGE_RESOLVED',
+        triageChannel: 'pms_sync',
+      }),
+    );
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });

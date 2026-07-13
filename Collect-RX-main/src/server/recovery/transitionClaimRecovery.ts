@@ -6,7 +6,8 @@ export type RecoveryTransitionKind =
   | 'GATE_CLEARED'
   | 'MANUAL_PAYMENT_CONFIRMED'
   | 'MANUAL_ESCALATION_RESOLVED'
-  | 'PAYMENT_VERIFIED_SYNC';
+  | 'PAYMENT_VERIFIED_SYNC'
+  | 'TRIAGE_RESOLVED';
 
 export interface TransitionClaimRecoveryInput {
   practiceId: string;
@@ -21,6 +22,8 @@ export interface TransitionClaimRecoveryInput {
   previousOutstanding?: number;
   newOutstanding?: number;
   amountRecoveredCents?: number;
+  triageChannel?: string;
+  triageDetail?: string;
 }
 
 export interface TransitionClaimRecoveryResult {
@@ -311,6 +314,39 @@ export async function transitionClaimRecovery(
       outstandingAmount: newOutstanding,
       scheduledRecallAt: null,
       eventType: 'PAYMENT_VERIFIED_SYNC',
+    };
+  }
+
+  if (input.kind === 'TRIAGE_RESOLVED') {
+    if (!input.triageChannel) throw new Error('triageChannel required');
+
+    await prisma.$transaction([
+      prisma.insuranceClaim.update({
+        where: { id: input.claimId },
+        data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0 },
+      }),
+      prisma.callQueue.updateMany({
+        where: { claimId: input.claimId },
+        data: { status: 'COMPLETED' },
+      }),
+      prisma.claimRecoveryAction.updateMany({
+        where: { claimId: input.claimId, status: { in: ['OPEN', 'BLOCKING'] }, clearedAt: null },
+        data: { status: 'CLEARED', clearedAt: now },
+      }),
+    ]);
+    await emitRecoveryEvent(prisma, {
+      practiceId: input.practiceId,
+      claimId: input.claimId,
+      eventType: 'TRIAGE_RESOLVED',
+      metadata: { channel: input.triageChannel, detail: input.triageDetail ?? null },
+    });
+    return {
+      claimId: input.claimId,
+      claimStatus: 'RESOLVED',
+      recoveryRoute: 'STOP',
+      outstandingAmount: 0,
+      scheduledRecallAt: null,
+      eventType: 'TRIAGE_RESOLVED',
     };
   }
 

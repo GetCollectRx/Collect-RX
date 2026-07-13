@@ -49,7 +49,12 @@ export async function syncWorkItemsForPractice(
   const openClaimStatuses = ['PENDING', 'IN_QUEUE', 'CALLING', 'DENIED', 'ESCALATED', 'ON_HOLD', 'APPROVED_PENDING_PAYMENT'] as const;
 
   const claims = await prisma.insuranceClaim.findMany({
-    where: { practiceId, status: { in: [...openClaimStatuses] }, outstandingAmount: { gt: 0 } },
+    where: {
+      practiceId,
+      deletedAt: null,
+      status: { in: [...openClaimStatuses] },
+      outstandingAmount: { gt: 0 },
+    },
     include: {
       queueEntry: { select: { attempts: true } },
       callAttempts: {
@@ -141,7 +146,7 @@ async function enrichWorkItemsWithRecovery(
 
   const [claims, gates, traces] = await Promise.all([
     prisma.insuranceClaim.findMany({
-      where: { id: { in: claimIds } },
+      where: { id: { in: claimIds }, deletedAt: null },
       select: { id: true, recoveryRoute: true },
     }),
     prisma.claimRecoveryAction.findMany({

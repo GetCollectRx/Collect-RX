@@ -259,6 +259,36 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'Re-mint connector token if auth returns 401',
     ],
   },
+  migration_drift: {
+    id: 'migration_drift',
+    title: 'Database schema behind deployed code',
+    severity: 'critical',
+    affectedSystems: ['database', 'API', 'call queue', 'webhooks'],
+    impact: [
+      'The running code ships migrations the database has not applied',
+      'Queries against missing tables/columns fail — often silently (empty reads, dropped writes)',
+    ],
+    suggestedFixes: [
+      'Run: npx prisma migrate deploy against the production DATABASE_URL (fly ssh console -a collect-rx -C "npx prisma migrate deploy")',
+      'Confirm the deploy pipeline ran the release_command (fly.toml [deploy]) — a skipped or failed release step causes this',
+      'If migrations were created locally but never deployed, commit and deploy them',
+    ],
+  },
+  cogs_breaker: {
+    id: 'cogs_breaker',
+    title: 'Practice delivery cost breaker tripped — calls paused',
+    severity: 'high',
+    affectedSystems: ['call queue', 'billing'],
+    impact: [
+      'Month-to-date call delivery cost crossed the pause threshold for this practice',
+      'All automated carrier calls for the practice are paused until the billing cycle resets or an operator resumes them',
+    ],
+    suggestedFixes: [
+      'Review the practice usage: long carrier holds or a claim backlog may be burning minutes',
+      'If the spend is legitimate, discuss a tier upgrade with the practice',
+      'To resume immediately: clear callsPaused/callsPausedReason on the practice record',
+    ],
+  },
 };
 
 export function getAlertDefinition(alertId: string): AlertDefinition {

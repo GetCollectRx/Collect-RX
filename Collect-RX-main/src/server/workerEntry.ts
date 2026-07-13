@@ -17,9 +17,10 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
-import type { PreVisitJobPayload } from './preVisit/preVisitJobs.js';
+import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisitJobs.js';
 import { dispatchPreVisitCall } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
 
 assertPostgresTlsInProduction();
 
@@ -40,6 +41,16 @@ async function handlePreVisitEligibility(db: PrismaClient, payload: PreVisitJobP
   const result = await runWithPracticeRls(payload.practiceId, async () =>
     dispatchPreVisitCall(db, 'PRE_VISIT_ELIGIBILITY', payload),
   );
+  if ('deferred' in result) {
+    await enqueuePreVisitJob(
+      'PRE_VISIT_ELIGIBILITY',
+      payload,
+      Math.max(0, result.retryAt.getTime() - Date.now()),
+      `window:${result.retryAt.toISOString()}`,
+    );
+    console.warn('[worker] PRE_VISIT_ELIGIBILITY deferred:', result.reason);
+    return;
+  }
   if ('skipped' in result) {
     console.log('[worker] PRE_VISIT_ELIGIBILITY skipped:', result.reason);
   } else {
@@ -51,6 +62,16 @@ async function handlePreVisitCdcpPredet(db: PrismaClient, payload: PreVisitJobPa
   const result = await runWithPracticeRls(payload.practiceId, async () =>
     dispatchPreVisitCall(db, 'PRE_VISIT_CDCP_PREDET', payload),
   );
+  if ('deferred' in result) {
+    await enqueuePreVisitJob(
+      'PRE_VISIT_CDCP_PREDET',
+      payload,
+      Math.max(0, result.retryAt.getTime() - Date.now()),
+      `window:${result.retryAt.toISOString()}`,
+    );
+    console.warn('[worker] PRE_VISIT_CDCP_PREDET deferred:', result.reason);
+    return;
+  }
   if ('skipped' in result) {
     console.log('[worker] PRE_VISIT_CDCP_PREDET skipped:', result.reason);
   } else {
@@ -64,6 +85,9 @@ const worker = new Worker(
     await runWithRlsBypass(async () => {
       if (job.name === 'RULES_TICK') {
         await runRulesEngineTick(prisma);
+      } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
+        const checked = await runTriageCredentialHealthJob(prisma);
+        console.log(`[worker] TRIAGE_CREDENTIAL_HEALTH checked ${checked} credential(s)`);
       } else if (job.name === 'REMINDER_CYCLE') {
         console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
       } else if (job.name === 'LEARNING_CYCLE') {

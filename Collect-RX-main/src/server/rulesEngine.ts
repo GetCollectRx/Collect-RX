@@ -7,6 +7,10 @@ import { escalateOverdueRecoveryActions } from './recovery/overdueActionEscalati
 import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import {
+  ensureMonthlyDiscoveryRoster,
+  isCarrierDiscoveryEnabled,
+} from './discovery/carrierDiscoveryService.js';
 import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
 
 /**
@@ -77,6 +81,21 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
       await runDailyArCloseAllPractices(prisma);
     } catch (err) {
       console.error('[rulesEngine] daily AR close failed:', (err as Error).message);
+    }
+  }
+
+  // Monthly IVR discovery roster: one silent listener call per carrier per
+  // month keeps navigation maps current before live calls fail on a changed
+  // menu. ensureMonthlyDiscoveryRoster is idempotent per calendar month, so an
+  // hourly check just guarantees the roster exists even after restarts.
+  if (now.getUTCMinutes() === 10 && isCarrierDiscoveryEnabled()) {
+    try {
+      const created = await ensureMonthlyDiscoveryRoster(prisma);
+      if (created > 0) {
+        console.log(`[rulesEngine] monthly IVR discovery roster: ${created} carrier run(s) scheduled`);
+      }
+    } catch (err) {
+      console.error('[rulesEngine] monthly discovery roster failed:', (err as Error).message);
     }
   }
 

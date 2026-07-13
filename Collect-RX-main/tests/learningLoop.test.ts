@@ -41,6 +41,7 @@ describe('extractLessonsFromCall', () => {
 
   it('stores well-formed lessons as PROPOSED-shaped rows', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.stubEnv('COLLECTRX_ANTHROPIC_EVAL', '1');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(anthropicResponse([
       {
         category: 'IVR_NAVIGATION',
@@ -58,6 +59,7 @@ describe('extractLessonsFromCall', () => {
 
   it('rejects lessons containing identifier-like content despite instructions', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.stubEnv('COLLECTRX_ANTHROPIC_EVAL', '1');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(anthropicResponse([
       {
         category: 'REP_INTERACTION',
@@ -73,6 +75,7 @@ describe('extractLessonsFromCall', () => {
 
   it('dedupes against existing lessons and drops invalid categories', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.stubEnv('COLLECTRX_ANTHROPIC_EVAL', '1');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(anthropicResponse([
       { category: 'IVR_NAVIGATION', observation: 'Known thing', recommendation: 'Do it', confidence: 0.7 },
       { category: 'MADE_UP', observation: 'New thing', recommendation: 'Do other', confidence: 0.7 },

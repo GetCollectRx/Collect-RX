@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { afterAll, describe, expect, it } from 'vitest';
+import type { PrismaClient } from '@prisma/client';
 import { startupAlertEmailTo } from '../src/server/observability/startupAlerts.js';
 import {
+  checkMigrationDrift,
   failedStartupChecks,
   formatStartupDigest,
 } from '../src/server/observability/startupHealthScan.js';
@@ -24,6 +29,56 @@ describe('startupHealthScan', () => {
     ]);
     expect(failed).toHaveLength(1);
     expect(failed[0].id).toBe('readiness');
+  });
+});
+
+describe('checkMigrationDrift', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'collectrx-migrations-'));
+  mkdirSync(join(dir, '20260101000000_first'));
+  mkdirSync(join(dir, '20260102000000_second'));
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function prismaWithApplied(applied: string[]): PrismaClient {
+    return {
+      $queryRaw: async () => applied.map((migration_name) => ({ migration_name })),
+    } as unknown as PrismaClient;
+  }
+
+  it('passes when every bundled migration is applied', async () => {
+    const result = await checkMigrationDrift(
+      prismaWithApplied(['20260101000000_first', '20260102000000_second']),
+      dir,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.id).toBe('migration_drift');
+  });
+
+  it('fails and names the missing migrations when the DB is behind', async () => {
+    const result = await checkMigrationDrift(prismaWithApplied(['20260101000000_first']), dir);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('20260102000000_second');
+  });
+
+  it('fails when the migrations table cannot be read', async () => {
+    const prisma = {
+      $queryRaw: async () => {
+        throw new Error('relation "_prisma_migrations" does not exist');
+      },
+    } as unknown as PrismaClient;
+    const result = await checkMigrationDrift(prisma, dir);
+    expect(result.ok).toBe(false);
+  });
+
+  it('skips when no migrations directory is bundled', async () => {
+    const result = await checkMigrationDrift(
+      prismaWithApplied([]),
+      join(dir, 'does-not-exist'),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBe(true);
   });
 });
 

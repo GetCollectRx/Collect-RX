@@ -465,6 +465,26 @@ export function isWithinCallWindow(date = new Date()): boolean {
   return day >= 1 && day <= 5 && hour >= 8 && hour < 17;
 }
 
+/**
+ * Returns the first top-of-hour instant inside the shared carrier call window.
+ * The scan uses isWithinCallWindow so its DST and test-mode behavior cannot
+ * drift from the dispatch gate.
+ */
+export function nextCallWindowStart(date = new Date()): Date {
+  if (isWithinCallWindow(date)) return date;
+
+  const candidate = new Date(date);
+  candidate.setMinutes(0, 0, 0);
+  candidate.setHours(candidate.getHours() + 1);
+
+  for (let hoursAhead = 0; hoursAhead <= 8 * 24; hoursAhead += 1) {
+    if (isWithinCallWindow(candidate)) return candidate;
+    candidate.setHours(candidate.getHours() + 1);
+  }
+
+  throw new Error('Unable to determine the next carrier call window');
+}
+
 export const carrierAdapter = {
   CARRIER_CONFIGS,
   TELUS_TPA_CONFIGS,
@@ -475,6 +495,7 @@ export const carrierAdapter = {
   getTpaDisplayName,
   tpaSupportsTransaction23,
   isWithinCallWindow,
+  nextCallWindowStart,
 } as const;
 
 export default carrierAdapter;

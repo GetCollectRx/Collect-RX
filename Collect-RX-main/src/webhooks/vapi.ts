@@ -19,26 +19,70 @@
 
 import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import {
+  claimVapiWebhookForProcessing,
   hashWebhookBody,
   markWebhookProcessed,
+  markVapiWebhookFailed,
+  type VapiWebhookProcessingClaim,
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
-
-// H-4: detect Prisma unique constraint violations (P2002) for atomic webhook claiming.
-function isUniqueConstraintError(err: unknown): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
-}
+import { appendAuditLog } from '../server/audit/auditLog.js';
+import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
+import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
 
 const router = Router();
+
+type VapiWebhookAuditAction =
+  | 'VAPI_WEBHOOK_RECEIVED'
+  | 'VAPI_WEBHOOK_REJECTED'
+  | 'VAPI_WEBHOOK_DUPLICATE'
+  | 'VAPI_WEBHOOK_PROCESSED';
+
+/**
+ * Resolves the tenant only from an existing claim/call record. Webhook metadata
+ * is not trusted enough to choose an audit-log tenant on its own.
+ */
+export async function appendVapiWebhookAudit(
+  action: VapiWebhookAuditAction,
+  payload: VapiWebhookPayload,
+): Promise<void> {
+  const vapiCallId = payload.call?.id;
+  const subject = await runWithRlsBypass(async () => {
+    if (vapiCallId) {
+      const attempt = await prisma.callAttempt.findUnique({
+        where: { vapiCallId },
+        select: { id: true, claim: { select: { practiceId: true } } },
+      });
+      if (attempt) {
+        return {
+          practiceId: attempt.claim.practiceId,
+          subjectType: 'CallAttempt',
+          subjectId: attempt.id,
+        };
+      }
+    }
+    return null;
+  });
+  if (!subject) return;
+
+  await runWithRlsBypass(() =>
+    appendAuditLog(prisma, {
+      ...subject,
+      action,
+      // Event type is operational metadata. Never store the webhook body,
+      // transcript, metadata, signature, or identifiers.
+      details: { eventType: payload.type },
+    }),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // HMAC signature validation
@@ -125,31 +169,37 @@ router.post('/', async (req: Request, res: Response) => {
     console.warn(
       '[vapi-webhook] METADATA TAMPERING DETECTED:',
       formatValidationError(metadataValidation),
-      { vapiCallId: payload.call?.id, metadata: payload.metadata }
+      { vapiCallId: payload.call?.id }
     );
+    await appendVapiWebhookAudit('VAPI_WEBHOOK_REJECTED', payload);
     return res.status(403).json({
       error: 'Metadata validation failed',
       details: metadataValidation.details,
     });
   }
+  await appendVapiWebhookAudit('VAPI_WEBHOOK_RECEIVED', payload);
 
-  // H-4: atomically claim this webhook delivery before processing.
-  // markWebhookProcessed inserts a row with a unique bodyHash constraint.
-  // The first concurrent request to INSERT wins; the second gets P2002 and
-  // is dropped. This prevents two Vapi retries from both running recovery logic.
+  // Create a payload-free delivery ledger entry before processing. The entry is
+  // marked processed only after the recovery path succeeds, so a 5xx delivery
+  // can be retried instead of being permanently suppressed as a duplicate.
   const bodyHash = hashWebhookBody(rawBody);
+  let claim: VapiWebhookProcessingClaim;
   try {
-    await runWithRlsBypass(() => markWebhookProcessed(prisma, bodyHash));
+    claim = await runWithRlsBypass(() => claimVapiWebhookForProcessing(prisma, bodyHash));
   } catch (claimErr) {
-    if (isUniqueConstraintError(claimErr)) {
-      return res.status(200).json({ received: true, duplicate: true });
-    }
     console.error('[vapi-webhook] Failed to claim webhook delivery:', claimErr);
     return res.status(500).json({ error: 'Internal error' });
   }
 
-  // Acknowledge immediately — Vapi expects a fast 200
-  res.status(200).json({ received: true });
+  if (claim.state === 'processed') {
+    await appendVapiWebhookAudit('VAPI_WEBHOOK_DUPLICATE', payload);
+    return res.status(200).json({ received: true, duplicate: true });
+  }
+  if (claim.state === 'processing') {
+    // A concurrent delivery owns the lease. Ask Vapi to retry rather than
+    // acknowledging an event whose outcome is still unknown.
+    return res.status(503).json({ error: 'Webhook processing in progress' });
+  }
 
   try {
     await runWithRlsBypass(async () => {
@@ -161,6 +211,15 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[vapi-webhook] Processing error:', err);
+    try {
+      await runWithRlsBypass(() => markVapiWebhookFailed(prisma, bodyHash));
+    } catch (markFailedErr) {
+      console.error('[vapi-webhook] Failed to record webhook processing failure:', markFailedErr);
+    }
+    await appendVapiWebhookAudit('VAPI_WEBHOOK_REJECTED', payload).catch((auditErr: unknown) => {
+      console.error('[vapi-webhook] Failed to write rejection audit event:', auditErr);
+    });
+    return res.status(500).json({ error: 'Webhook processing failed' });
   }
 
   // ── Guardrails: scan metadata/payload for PHI, persist transcript, enqueue audit ──
@@ -170,7 +229,7 @@ router.post('/', async (req: Request, res: Response) => {
       await runWithRlsBypass(async () => {
       const callAttempt = await prisma.callAttempt.findUnique({
         where: { vapiCallId },
-        select: { id: true },
+        select: { id: true, claim: { select: { carrierId: true } } },
       });
       if (callAttempt) {
         const metadataResult = await webhookGuardScanMetadata(payload);
@@ -223,6 +282,23 @@ router.post('/', async (req: Request, res: Response) => {
             console.error('[vapi-webhook] lesson extraction failed (non-fatal):', lessonErr);
           }
         }
+
+        // A deterministic IVR failure can contribute only PHI-safe menu steps.
+        // Carrier blocks are deliberately excluded and remain under the existing
+        // suspension-and-human-review protocol.
+        if (payload.type === 'call.ended' && payload.transcript) {
+          try {
+            const outcome = resolveOutcomeFromWebhookPayload(payload);
+            await recordIvrFailureRelearningObservation(
+              prisma,
+              callAttempt.claim.carrierId,
+              payload.transcript,
+              outcome.carrierBlockDetected,
+            );
+          } catch (relearningErr) {
+            console.error('[vapi-webhook] IVR failure relearning failed (non-fatal):', relearningErr);
+          }
+        }
       }
       });
     } catch (guardrailsErr) {
@@ -230,6 +306,22 @@ router.post('/', async (req: Request, res: Response) => {
       // Continue processing — guardrails failures should not block the webhook
     }
   }
+
+  try {
+    await runWithRlsBypass(() => markWebhookProcessed(prisma, bodyHash));
+  } catch (markProcessedErr) {
+    console.error('[vapi-webhook] Failed to mark webhook processed:', markProcessedErr);
+    try {
+      await runWithRlsBypass(() => markVapiWebhookFailed(prisma, bodyHash));
+    } catch (markFailedErr) {
+      console.error('[vapi-webhook] Failed to record webhook processing failure:', markFailedErr);
+    }
+    return res.status(500).json({ error: 'Webhook processing failed' });
+  }
+  await appendVapiWebhookAudit('VAPI_WEBHOOK_PROCESSED', payload).catch((auditErr: unknown) => {
+    console.error('[vapi-webhook] Failed to write processed audit event:', auditErr);
+  });
+  return res.status(200).json({ received: true });
 });
 
 export default router;

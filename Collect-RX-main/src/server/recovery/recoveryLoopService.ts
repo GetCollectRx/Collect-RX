@@ -14,6 +14,7 @@ import {
   routeForPaymentTraceRecall,
 } from './claimRouter.js';
 import { shouldSupersedeBlockingGate, shouldSupersedeOpenAction, isPracticeGateHoldDecision } from './gateSupersession.js';
+import { getCarrierHoldStats } from './holdLedger.js';
 import type { RecoveryDecision } from './types.js';
 
 export interface ApplyRecoveryAfterCallParams {
@@ -170,7 +171,7 @@ export async function applyRecoveryAfterCall(
 
   const procedureCode = primaryProcedureFromTreatmentCodes(claim.treatmentCodes);
 
-  const [blockingGate, cdcpOpen] = await Promise.all([
+  const [blockingGate, cdcpOpen, priorEngagedAttempts, carrierHoldStats] = await Promise.all([
     hasBlockingPracticeGate(prisma, claim.id),
     hasOpenCdcpCaseForClaim(prisma, {
       practiceId: claim.practiceId,
@@ -178,7 +179,19 @@ export async function applyRecoveryAfterCall(
       claimRef: claim.claimNumber,
       procedureCode,
     }),
+    prisma.callAttempt.count({
+      where: {
+        claimId: claim.id,
+        OR: [{ referenceNumber: { not: null } }, { repName: { not: null } }],
+      },
+    }),
+    getCarrierHoldStats(prisma, claim.carrierId),
   ]);
+
+  const hasEngagementEvidence =
+    Boolean(processed.referenceNumber) ||
+    Boolean(processed.repName) ||
+    priorEngagedAttempts > 0;
 
   const decision = routeClaimRecovery({
     callOutcome: processed.outcome,
@@ -192,6 +205,8 @@ export async function applyRecoveryAfterCall(
     hasBlockingPracticeGate: blockingGate,
     hasOpenCdcpCase: cdcpOpen,
     paymentCorroborated: params.paymentCorroborated,
+    hasEngagementEvidence,
+    carrierHoldDumpRate: carrierHoldStats.dumpRate,
   });
 
   let cdcpCaseId: string | undefined;
