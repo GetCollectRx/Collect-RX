@@ -177,7 +177,6 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'Account',
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-      { to: '/download', exact: true, label: 'Desktop app', icon: 'download' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
     ],
   },
@@ -225,7 +224,6 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     label: 'Account',
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-      { to: '/download', exact: true, label: 'Desktop app', icon: 'download' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
     ],
   },

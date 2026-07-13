@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "start"],
       "port": 3000,
       "env": { "PORT": "3000" }
+    },
+    {
+      "name": "collectrx-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:frontend"],
+      "port": 5173
     }
   ]
 }

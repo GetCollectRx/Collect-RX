@@ -1749,7 +1749,6 @@ export default function LandingPage() {
                 <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
               ))}
               <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
-              <Link to={MARKETING_PATHS.download} className="lp-nav-link">Desktop app</Link>
             </div>
             <div className="lp-nav-right">
               <button
@@ -1765,10 +1764,10 @@ export default function LandingPage() {
                   <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
                 )}
               </button>
-              <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
-              <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
-                Request Access
-              </button>
+              <Link to="/login" className="lp-nav-signin">Sign in</Link>
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+                Create account
+              </Link>
             </div>
           </div>
         </nav>
@@ -1780,15 +1779,14 @@ export default function LandingPage() {
             </Link>
           ))}
           <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
-          <Link to={MARKETING_PATHS.download} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Desktop app</Link>
-          <button
-            type="button"
+          <Link
+            to={MARKETING_PATHS.signup}
             className="lp-btn-primary"
             style={{ marginTop: 8, justifyContent: 'center' }}
-            onClick={() => { setMenuOpen(false); openAccess('access') }}
+            onClick={() => setMenuOpen(false)}
           >
-            Request Early Access
-          </button>
+            Create account
+          </Link>
         </div>
 
         {/* ── HERO (home only) ── */}
@@ -1807,22 +1805,22 @@ export default function LandingPage() {
               </h1>
               <p className="lp-hero-body">
                 Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
-                that never lands. CollectRx syncs outstanding claims from your PMS automatically,
-                runs follow-up to six major Canadian insurers, and handles denials — no daily CSV exports.
+                that never lands. CollectRx works with any PMS — import a CSV export, or connect an
+                optional sync agent — then runs follow-up to six major Canadian insurers and handles denials.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
-                  <button className="lp-btn-primary" onClick={() => openAccess('access')}>
-                    Request Early Access
+                  <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+                    Create account
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                  </button>
+                  </Link>
                   <Link to="/demo" className="lp-btn-ghost">
                     See how it works
                   </Link>
                 </div>
               </div>
               <div className="lp-trust-row">
-                {['PHIPA compliant by design', 'Automatic PMS sync', '6 major Canadian carriers'].map(t => (
+                {['PHIPA compliant by design', 'Any PMS via CSV', '6 major Canadian carriers'].map(t => (
                   <div className="lp-trust-item" key={t}>
                     <svg className="lp-trust-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                       <path d="M5 13l4 4L19 7" />
@@ -2088,7 +2086,7 @@ export default function LandingPage() {
         {page === 'home' && (
         <div className="lp-cta-section">
           <div className="lp-cta-inner lp-reveal">
-            <div className="lp-cta-tag">Early Access</div>
+            <div className="lp-cta-tag">Get Started</div>
             <h2 className="lp-cta-h">
               The AR work is already getting done<span className="lp-dot">.</span>
             </h2>
@@ -2097,10 +2095,10 @@ export default function LandingPage() {
               Collections metrics show what we recovered on your outstanding insurance AR.
             </p>
             <div className="lp-cta-actions">
-              <button className="lp-btn-primary" onClick={() => openAccess('access')}>
-                Request Early Access
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+                Create account
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-              </button>
+              </Link>
               <Link to="/demo" className="lp-btn-ghost">See the product demo</Link>
             </div>
           </div>
@@ -2128,11 +2126,11 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.features}>Features</Link>
                   <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
-                  <Link to="/download">Desktop app</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
+                  <Link to={MARKETING_PATHS.signup}>Create account</Link>
                   <Link to="/login">Practice sign in</Link>
                   <button type="button" onClick={() => openAccess('access')}>Request access</button>
                   <Link to="/demo">Watch demo</Link>

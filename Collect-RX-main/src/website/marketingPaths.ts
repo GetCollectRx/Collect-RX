@@ -12,6 +12,7 @@ export const MARKETING_PATHS = {
   download: '/download',
   resources: '/resources/',
   login: '/login',
+  signup: '/signup',
 } as const
 
 export type MarketingPageId =
