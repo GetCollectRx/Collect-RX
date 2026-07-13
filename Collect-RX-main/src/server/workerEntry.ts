@@ -35,6 +35,50 @@ if (!process.env.REDIS_URL) {
   process.exit(1);
 }
 
+// Bind the health port before touching Redis/BullMQ — constructing the Worker
+// below opens a real connection, and on a slow/cold Redis this can take
+// several seconds. Binding first means Fly sees an open socket on machine
+// start instead of a window where nothing is listening (same fix as index.ts).
+/** API uses PORT (3000) in dev; worker health must not collide. The Fly worker process uses PORT. */
+function resolveWorkerHealthPort(): number {
+  if (process.env.WORKER_HEALTH_PORT) {
+    return parseInt(process.env.WORKER_HEALTH_PORT, 10);
+  }
+  const apiPort = parseInt(process.env.PORT ?? '3000', 10);
+  if (process.env.NODE_ENV !== 'production') {
+    return apiPort + 1;
+  }
+  return apiPort;
+}
+
+const healthPort = resolveWorkerHealthPort();
+
+const healthApp = express();
+healthApp.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });
+});
+healthApp.get('/api/health/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ready', service: 'collectrx-worker' });
+  } catch (err) {
+    res.status(503).json({ status: 'not_ready', error: (err as Error).message });
+  }
+});
+const healthServer = healthApp.listen(healthPort, () => {
+  console.log(`[worker] health endpoint listening on port ${healthPort}`);
+});
+healthServer.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `[worker] port ${healthPort} already in use (API may be on ${parseInt(process.env.PORT ?? '3000', 10)}). ` +
+        'Stop the other process or set WORKER_HEALTH_PORT.',
+    );
+    process.exit(1);
+  }
+  throw err;
+});
+
 const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 
 async function handlePreVisitEligibility(db: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
@@ -116,46 +160,6 @@ worker.on('failed', (job, err) => {
 });
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
-
-/** API uses PORT (3000) in dev; worker health must not collide. The Fly worker process uses PORT. */
-function resolveWorkerHealthPort(): number {
-  if (process.env.WORKER_HEALTH_PORT) {
-    return parseInt(process.env.WORKER_HEALTH_PORT, 10);
-  }
-  const apiPort = parseInt(process.env.PORT ?? '3000', 10);
-  if (process.env.NODE_ENV !== 'production') {
-    return apiPort + 1;
-  }
-  return apiPort;
-}
-
-const healthPort = resolveWorkerHealthPort();
-
-const healthApp = express();
-healthApp.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'collectrx-worker', queue: AR_QUEUE_NAME });
-});
-healthApp.get('/api/health/ready', async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ready', service: 'collectrx-worker' });
-  } catch (err) {
-    res.status(503).json({ status: 'not_ready', error: (err as Error).message });
-  }
-});
-const healthServer = healthApp.listen(healthPort, () => {
-  console.log(`[worker] health endpoint listening on port ${healthPort}`);
-});
-healthServer.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(
-      `[worker] port ${healthPort} already in use (API may be on ${parseInt(process.env.PORT ?? '3000', 10)}). ` +
-        'Stop the other process or set WORKER_HEALTH_PORT.',
-    );
-    process.exit(1);
-  }
-  throw err;
-});
 
 async function shutdown() {
   console.log('[worker] shutting down...');
