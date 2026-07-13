@@ -3,19 +3,19 @@ import { Card, CardHeader } from './ui'
 
 const STEPS = [
   {
-    id: 'agent',
-    title: 'Install desktop agent',
-    body: 'Set PMS to AbelDent under Practice Settings. Mint a connector token in Admin → Sync ops, install the CollectRx desktop app on the practice PC, and paste the token into %ProgramData%\\CollectRx\\agent-config.json (created by the installer).',
+    id: 'import',
+    title: 'Import outstanding claims',
+    body: 'Go to Import CSV and upload an export from your PMS — any system works. Claims land in Insurance → Queue right away, no agent required.',
   },
   {
-    id: 'sync',
-    title: 'Confirm automatic sync',
-    body: 'In Sync ops, the connector should show Online with a recent import run. Claims appear in Insurance → Queue without CSV uploads. CSV upload remains available as an emergency fallback only.',
+    id: 'agent',
+    title: 'Optional: connect a sync agent',
+    body: 'For AbelDent practices that would rather not export manually: mint a connector token in Admin → Sync ops and install the CollectRx desktop agent to push aging/AR on a schedule. Every other PMS uses CSV import as the ongoing path, not a fallback.',
   },
   {
     id: 'verify',
     title: 'Verify insurance queue',
-    body: 'Open Insurance → Queue: confirm outstanding claims imported from your PMS. Adjust Admin carrier blocks if needed.',
+    body: 'Open Insurance → Queue: confirm outstanding claims imported correctly. Adjust Admin carrier blocks if needed.',
   },
   {
     id: 'integrations',
@@ -25,7 +25,7 @@ const STEPS = [
   {
     id: 'live',
     title: 'Go live',
-    body: 'Enable carrier calls when integrations are green. Monitor Sync ops connector status for the first week — you should not need daily CSV exports.',
+    body: 'Enable carrier calls when integrations are green. Re-import CSV (or let the sync agent push) on whatever cadence fits your practice.',
   },
 ] as const
 
@@ -67,7 +67,7 @@ export function AdminOnboardingChecklist({ practiceId }: { practiceId: string | 
     <Card>
       <CardHeader
         title="Onboarding checklist"
-        subtitle="Agent-first path: install desktop connector → verify sync → go live. Checked state is stored in this browser only."
+        subtitle="CSV-first path: import claims → verify queue → go live. A sync agent is optional, for AbelDent practices only. Checked state is stored in this browser only."
       />
       <div className="mb-3 text-2xs text-gray-500 dark:text-gray-400">
         {n} / {total} complete
