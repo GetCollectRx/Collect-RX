@@ -454,7 +454,15 @@ export default function InsuranceClaims() {
                   </Thead>
                   <Tbody>
                     {claims.length === 0 ? (
-                      <TableEmpty colSpan={10} message={tab === 'human' ? 'No escalated claims right now.' : 'No claims match these filters.'} />
+                      <TableEmpty
+                        colSpan={10}
+                        message={tab === 'human' ? 'No escalated claims right now.' : 'No claims match these filters.'}
+                        action={
+                          tab === 'all' ? (
+                            <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+                          ) : undefined
+                        }
+                      />
                     ) : (
                       claims.map((c) => (
                         <Tr key={c.id} highlight={c.daysOutstanding > 90}>
@@ -554,7 +562,13 @@ export default function InsuranceClaims() {
                   </Thead>
                   <Tbody>
                     {queueItems.length === 0 ? (
-                      <TableEmpty colSpan={8} message="Queue is empty — run Refresh from sources after a PMS import." />
+                      <TableEmpty
+                        colSpan={8}
+                        message="Queue is empty — import claims to start carrier follow-up."
+                        action={
+                          <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+                        }
+                      />
                     ) : (
                       queueItems.map((row) => {
                         const { label, color } = workQueuePriorityLabel(row.rankScore)

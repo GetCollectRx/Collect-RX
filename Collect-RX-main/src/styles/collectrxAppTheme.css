@@ -2008,3 +2008,168 @@
     animation: none;
   }
 }
+
+/* ── CSV import wizard ── */
+.crx-stepper {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.crx-stepper-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--crx-bdr, #e5e7eb);
+  font-size: 0.8125rem;
+  color: var(--crx-muted, #6b7280);
+  background: var(--crx-surface, #fff);
+}
+.crx-stepper-item.active {
+  border-color: var(--crx-green, #12C96D);
+  color: var(--crx-text, #111);
+  font-weight: 600;
+}
+.crx-stepper-item.done .crx-stepper-num {
+  background: var(--crx-green, #12C96D);
+  color: #fff;
+}
+.crx-stepper-num {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--crx-bg2, #f3f4f6);
+}
+.crx-upload-zone {
+  border: 1px dashed var(--crx-bdr, #d1d5db);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: var(--crx-bg1, #fafafa);
+}
+.crx-upload-label {
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+}
+.crx-drop-target {
+  min-height: 5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.crx-drop-target.drag-over {
+  border-color: var(--crx-green, #12C96D);
+  background: color-mix(in srgb, var(--crx-green, #12C96D) 8%, transparent);
+}
+
+/* ── Onboarding progress ── */
+.crx-progress-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--crx-bg2, #e5e7eb);
+  overflow: hidden;
+}
+.crx-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--crx-green, #12C96D), #0ea5e9);
+  transition: width 0.4s ease;
+}
+.crx-setup-check {
+  width: 1.25rem;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--crx-muted, #9ca3af);
+}
+.crx-setup-check.done {
+  color: var(--crx-green, #12C96D);
+}
+
+/* ── Global toast host ── */
+.crx-toast-host {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 9999;
+  max-width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+.crx-toast-host .toast {
+  pointer-events: auto;
+}
+
+/* ── Command palette ── */
+.crx-cmd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.crx-cmd-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border: none;
+  cursor: pointer;
+}
+.crx-cmd-panel {
+  position: relative;
+  width: min(32rem, calc(100vw - 2rem));
+  background: var(--crx-surface, #fff);
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  border: 1px solid var(--crx-bdr, #e5e7eb);
+}
+.crx-cmd-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--crx-bdr, #e5e7eb);
+  font-size: 0.9375rem;
+  outline: none;
+  background: transparent;
+  color: inherit;
+}
+.crx-cmd-list {
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+}
+.crx-cmd-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: inherit;
+}
+.crx-cmd-item:hover,
+.crx-cmd-item:focus-visible {
+  background: var(--crx-bg2, #f3f4f6);
+  outline: none;
+}
+
+/* ── Claim status strip ── */
+.crx-claim-status-strip {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}

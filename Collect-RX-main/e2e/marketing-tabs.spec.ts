@@ -47,4 +47,13 @@ test.describe('marketing site tab navigation', () => {
     await expect(page.getByTestId('marketing-home-hero')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Carriers', exact: true }).first()).toHaveClass(/active/);
   });
+
+  test('homepage stat counters reach final values', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('marketing-home-stats').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('marketing-stat-carriers')).toContainText('6', { timeout: 5000 });
+    await expect(page.getByTestId('marketing-stat-market')).toContainText('78', { timeout: 5000 });
+    await expect(page.getByTestId('marketing-stat-focus')).toContainText('100', { timeout: 5000 });
+    await expect(page.getByTestId('marketing-stat-attempts')).toContainText('3', { timeout: 5000 });
+  });
 });

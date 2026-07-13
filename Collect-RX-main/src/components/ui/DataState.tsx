@@ -8,6 +8,8 @@ type DataStateProps = {
   isEmpty?: boolean;
   emptyTitle?: string;
   emptyDetail?: string;
+  /** Optional CTA below empty message (e.g. Link to /import) */
+  emptyAction?: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -20,6 +22,7 @@ export function DataState({
   isEmpty = false,
   emptyTitle = 'No data',
   emptyDetail = 'Try adjusting filters or refresh after new data is available.',
+  emptyAction,
   children,
 }: DataStateProps) {
   if (loading) {
@@ -41,6 +44,7 @@ export function DataState({
         <Card className="text-center max-w-md w-full">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{emptyTitle}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{emptyDetail}</p>
+          {emptyAction && <div className="mt-4">{emptyAction}</div>}
         </Card>
       </div>
     );

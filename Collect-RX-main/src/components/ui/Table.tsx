@@ -116,11 +116,20 @@ export function Td({ children, align = 'left', muted, bold, className = '', ...p
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────
-export function TableEmpty({ message = 'No data found.', colSpan = 6 }: { message?: string; colSpan?: number }) {
+export function TableEmpty({
+  message = 'No data found.',
+  colSpan = 6,
+  action,
+}: {
+  message?: string
+  colSpan?: number
+  action?: React.ReactNode
+}) {
   return (
     <tr>
       <td colSpan={colSpan} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
-        {message}
+        <p>{message}</p>
+        {action && <div className="mt-4">{action}</div>}
       </td>
     </tr>
   )

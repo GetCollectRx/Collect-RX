@@ -231,6 +231,15 @@ jobs:
         run: npm ci
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+      - name: Use non-superuser DB role so PostgreSQL RLS is enforced
+        run: |
+          psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER ROLE prisma NOSUPERUSER NOBYPASSRLS;
+          GRANT USAGE ON SCHEMA public TO prisma;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO prisma;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO prisma;
+          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO prisma;
+          SQL
       - name: Enforce tenant RLS isolation
         env:
           CI: "true"

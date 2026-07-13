@@ -54,6 +54,9 @@ import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
 import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
 import MarketingSite from './website/MarketingSite'
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
+import CsvImportPage from './pages/CsvImportPage'
+import { ToastProvider } from './context/ToastContext'
+import { CommandPalette } from './components/CommandPalette'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
@@ -158,6 +161,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
       { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
     ],
@@ -208,6 +212,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
       { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
     ],
@@ -435,6 +440,7 @@ function AppShell() {
   const { sessionHealth, userRole } = usePractice()
   return (
     <div className="crx-app flex min-h-screen">
+      <CommandPalette />
       <Sidebar />
       <div className="crx-app-main">
         <AppTopBar />
@@ -471,6 +477,7 @@ function AppShell() {
           <Route path="/insurance/gates" element={<Navigate to="/insurance?tab=blocked" replace />} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
           <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
+          <Route path="/import" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CsvImportPage /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/balances" element={<Navigate to="/insurance" replace />} />
           <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
@@ -596,6 +603,7 @@ function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
+        <ToastProvider>
         <CookieBanner />
         <PracticeProvider>
           <AnalyticsSessionBridge>
@@ -622,6 +630,7 @@ function App() {
           </Routes>
           </AnalyticsSessionBridge>
         </PracticeProvider>
+        </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   )

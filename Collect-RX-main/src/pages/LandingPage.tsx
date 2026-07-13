@@ -1106,23 +1106,57 @@ function useReveal(page: MarketingPageId) {
 function useCounter(target: number) {
   const [val, setVal] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  const ran = useRef(false)
+
   useEffect(() => {
-    const el = ref.current; if (!el) return
-    const obs = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return
-      obs.disconnect()
+    const el = ref.current
+    if (!el) return
+
+    const animate = () => {
+      if (ran.current) return
+      ran.current = true
       const start = performance.now()
       const dur = 1400
       const tick = (now: number) => {
         const p = Math.min((now - start) / dur, 1)
         setVal(Math.round(p * p * target))
         if (p < 1) requestAnimationFrame(tick)
+        else setVal(target)
       }
       requestAnimationFrame(tick)
-    }, { threshold: 0.5 })
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVal(target)
+      ran.current = true
+      return
+    }
+
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        obs.disconnect()
+        animate()
+      },
+      { threshold: 0, rootMargin: '0px 0px -5% 0px' },
+    )
     obs.observe(el)
+
+    // IntersectionObserver can miss first paint when the band is already on screen.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect()
+        const vh = window.innerHeight || document.documentElement.clientHeight
+        if (rect.top < vh && rect.bottom > 0) {
+          obs.disconnect()
+          animate()
+        }
+      })
+    })
+
     return () => obs.disconnect()
   }, [target])
+
   return { val, ref }
 }
 
@@ -1372,10 +1406,20 @@ function OpsPanel({ active, onSelect }: { active: number; onSelect: (i: number) 
   )
 }
 
-function StatNum({ target, suffix, label }: { target: number; suffix: string; label: string }) {
+function StatNum({
+  target,
+  suffix,
+  label,
+  testId,
+}: {
+  target: number
+  suffix: string
+  label: string
+  testId?: string
+}) {
   const { val, ref } = useCounter(target)
   return (
-    <div className="lp-stat" ref={ref}>
+    <div className="lp-stat" ref={ref} data-testid={testId}>
       <div className="lp-stat-num">{val.toLocaleString()}<span>{suffix}</span></div>
       <div className="lp-stat-lbl">{label}</div>
     </div>
@@ -1797,12 +1841,12 @@ export default function LandingPage() {
 
         {/* ── STATS BAND (home only) ── */}
         {page === 'home' && (
-        <div className="lp-stats lp-reveal">
+        <div className="lp-stats" data-testid="marketing-home-stats">
           <div className="lp-stats-inner">
-            <StatNum target={6}  suffix=" carriers" label="Major Canadian insurers integrated" />
-            <StatNum target={78} suffix="%"          label="Private dental market covered" />
-            <StatNum target={100} suffix="%"         label="Insurance AR focus (not patient balances)" />
-            <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
+            <StatNum testId="marketing-stat-carriers" target={6} suffix=" carriers" label="Major Canadian insurers integrated" />
+            <StatNum testId="marketing-stat-market" target={78} suffix="%" label="Private dental market covered" />
+            <StatNum testId="marketing-stat-focus" target={100} suffix="%" label="Insurance AR focus (not patient balances)" />
+            <StatNum testId="marketing-stat-attempts" target={3} suffix=" attempts" label="Maximum per claim before escalation" />
           </div>
         </div>
         )}

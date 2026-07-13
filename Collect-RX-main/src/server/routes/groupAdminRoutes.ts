@@ -91,7 +91,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
       const ok = await reviewLesson(prisma, req.params.id, action, userId);
       if (!ok) return res.status(404).json({ error: 'Lesson not found or already reviewed' });
       return res.json({ success: true });
-    } catch (e) {
+    } catch {
       return res.status(500).json({ error: 'Review failed' });
     }
   });
@@ -125,7 +125,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
         }),
       );
       return res.json({ practices: summaries });
-    } catch (e) {
+    } catch {
       return res.status(500).json({ error: 'Compliance export failed' });
     }
   });

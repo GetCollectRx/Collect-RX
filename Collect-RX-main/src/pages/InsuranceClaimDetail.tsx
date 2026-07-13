@@ -13,7 +13,9 @@ import {
   claimStatusLabel,
   isDemoVapiCall,
 } from '../lib/recoveryDisplay'
+import { ClaimStatusStrip } from '../components/claims/ClaimStatusStrip'
 import { SimulatedCallBadge } from '../components/claims/SimulatedCallBadge'
+import { useAppToast } from '../context/ToastContext'
 import { useRoleAccess } from '../lib/useRoleAccess'
 
 interface CallAttempt {
@@ -113,6 +115,7 @@ const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
 export default function InsuranceClaimDetail() {
   const { id } = useParams()
   const { isReadOnly, canInitiateCalls, canClearGates, canResolveEscalations } = useRoleAccess()
+  const { showToast } = useAppToast()
   const [claim, setClaim] = useState<ClaimDetail | null>(null)
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null)
   const [recoveryLoadError, setRecoveryLoadError] = useState<string | null>(null)
@@ -210,6 +213,7 @@ export default function InsuranceClaimDetail() {
       body: JSON.stringify({ assignedRep: assignedRep || null, notes: noteText || null }),
     })
     setActionMsg('Assignment saved')
+    showToast('ok', 'Assignment saved')
     load()
   }
 
@@ -224,9 +228,12 @@ export default function InsuranceClaimDetail() {
         throw new Error(mapTriggerCallError(j.error ?? ''))
       }
       setActionMsg('Call queued')
+      showToast('ok', 'Call queued')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setTriggering(false)
     }
@@ -245,10 +252,13 @@ export default function InsuranceClaimDetail() {
       const j = await r.json().catch(() => ({})) as { error?: string; success?: boolean }
       if (!r.ok) throw new Error(j.error ?? 'Could not resolve claim')
       setActionMsg('Claim marked resolved')
+      showToast('ok', 'Claim marked resolved')
       setResolveNotes('')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setResolving(false)
     }
@@ -282,9 +292,12 @@ export default function InsuranceClaimDetail() {
           ? `Gate cleared, follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
           : 'Gate cleared',
       )
+      showToast('ok', 'Gate cleared')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setClearingGateId(null)
     }
@@ -312,6 +325,18 @@ export default function InsuranceClaimDetail() {
               </span>
             )}
           </div>
+
+          <ClaimStatusStrip
+            claimNumber={claim.claimNumber}
+            carrierId={claim.carrierId}
+            status={claim.status}
+            daysOutstanding={claim.daysOutstanding}
+            outstandingAmount={claim.outstandingAmount}
+            recoveryRoute={recovery?.recoveryRoute ?? claim.recoveryRoute}
+            dollarsRecoveredSyncVerified={recovery?.dollarsRecoveredSyncVerified}
+            hasOpenBlockingGate={recovery?.openActions?.some((a) => a.blocking) ?? false}
+            paymentExpectedBy={recovery?.paymentExpectedBy ?? claim.paymentExpectedBy}
+          />
 
           {/* ── Escalation banner ── */}
           {isEscalated && (

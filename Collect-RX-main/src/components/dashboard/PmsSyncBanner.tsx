@@ -35,7 +35,7 @@ function syncAgeHours(iso: string): number {
 
 export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerProps) {
   const settingsLink = '/settings'
-  const syncLink = '/admin/sync'
+  const syncLink = '/import'
 
   if (!lastImport) {
     return (
@@ -55,7 +55,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
               Practice settings
             </Link>
             <Link to={syncLink} className="underline text-amber-900 dark:text-amber-100">
-              Upload export
+              Import claims CSV
             </Link>
           </p>
         )}
@@ -97,7 +97,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
               </Link>
             )}
             <Link to={syncLink} className="underline text-amber-900 dark:text-amber-100">
-              Sync ops
+              Import claims CSV
             </Link>
           </p>
         )}
@@ -127,7 +127,7 @@ export function PmsSyncBanner({ pms, lastImport, canManageSync }: PmsSyncBannerP
           <>
             {' '}
             <Link to={syncLink} className="underline" style={{ color: 'var(--crx-green)' }}>
-              Sync ops
+              Import claims
             </Link>
           </>
         )}

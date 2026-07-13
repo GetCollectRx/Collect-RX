@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetchJson } from '../lib/apiFetch'
 import { Badge, Button, Card, CardHeader, DataState, Table, Tbody, Td, Th, Thead, Tr } from '../components/ui'
-import { CARRIER_LABELS, recoveryRouteBadgeColor } from '../lib/recoveryDisplay'
+import { NeedsYouInbox } from '../components/NeedsYouInbox'
+import { recoveryRouteBadgeColor } from '../lib/recoveryDisplay'
 
 interface InboxItem {
   id: string
@@ -56,59 +57,24 @@ export default function ArCommandCenter() {
 
   return (
     <DataState loading={pageBusy(loading)} error={pageError(error)}>
-      <div className="page-enter p-6 space-y-6 max-w-[1200px]">
-        <div>
-          <h1 className="text-xl font-bold">AR command center</h1>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="page-enter max-w-[1200px]">
+        <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60">
+          <h1 className="page-title">AR command center</h1>
+          <p className="page-subtitle mt-0.5">
             Unified next actions across denials, underpayments, managed carrier follow-up, and carrier blocks.
           </p>
         </div>
 
-        <Card>
-          <CardHeader title="Next-action inbox" />
-          <DataState
+        <div className="p-6 space-y-6">
+          <NeedsYouInbox
+            items={inbox}
             loading={loading}
-            error={null}
-            isEmpty={!loading && inbox.length === 0}
-            emptyTitle="No open AR actions."
-          >
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Kind</Th>
-                  <Th>Title</Th>
-                  <Th>Claim</Th>
-                  <Th>Carrier</Th>
-                  <Th>At risk</Th>
-                  <Th>Due</Th>
-                  <Th />
-                </Tr>
-              </Thead>
-              <Tbody>
-                {inbox.map((item) => (
-                  <Tr key={item.id}>
-                    <Td><Badge>{item.kind.replace(/_/g, ' ')}</Badge></Td>
-                    <Td>
-                      <div className="font-medium">{item.title}</div>
-                      {item.detail && <div className="text-xs text-gray-500 truncate max-w-xs">{item.detail}</div>}
-                    </Td>
-                    <Td>{item.claimNumber ?? '—'}</Td>
-                    <Td>{item.carrierId ? (CARRIER_LABELS[item.carrierId] ?? item.carrierId) : '—'}</Td>
-                    <Td>${item.dollarsAtRisk.toFixed(2)}</Td>
-                    <Td>{item.dueAt ? new Date(item.dueAt).toLocaleDateString() : '—'}</Td>
-                    <Td>
-                      {item.claimId && (
-                        <Link to={`/insurance/claims/${item.claimId}`}>
-                          <Button size="sm" variant="secondary">Open</Button>
-                        </Link>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </DataState>
-        </Card>
+            emptyAction={
+              <Link to="/import" className="crx-btn-primary inline-flex text-sm">
+                Import claims CSV
+              </Link>
+            }
+          />
 
         <Card>
           <CardHeader title="Managed recovery queue" subtitle="Vapi carrier follow-up awaiting recall or CSV confirmation" />
@@ -117,6 +83,7 @@ export default function ArCommandCenter() {
             error={null}
             isEmpty={!loading && managed.length === 0}
             emptyTitle="No managed recovery items."
+            emptyDetail="CollectRx schedules carrier follow-up automatically when claims need recall or payment trace."
           >
             <Table>
               <Thead>
@@ -142,7 +109,7 @@ export default function ArCommandCenter() {
                     </Td>
                     <Td>{row.scheduledRecallAt ? new Date(row.scheduledRecallAt).toLocaleString() : '—'}</Td>
                     <Td>
-                      <Link to={`/insurance/claims/${row.claim.id}`}>
+                      <Link to={`/insurance/${row.claim.id}`}>
                         <Button size="sm" variant="secondary">View</Button>
                       </Link>
                     </Td>
@@ -152,6 +119,7 @@ export default function ArCommandCenter() {
             </Table>
           </DataState>
         </Card>
+        </div>
       </div>
     </DataState>
   )

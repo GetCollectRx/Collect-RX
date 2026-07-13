@@ -15,6 +15,8 @@ import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
 import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import { PlanUsageBanner } from '../components/PlanUsageBanner'
 import { PmsSyncBanner, type DashboardLastPmsImport } from '../components/dashboard/PmsSyncBanner'
+import { NeedsYouInbox } from '../components/NeedsYouInbox'
+import { OnboardingProgress, type SetupStatus } from '../components/OnboardingProgress'
 import type { PracticePmsInfo } from '../types/pms'
 
 interface RecoveryMetricsSnapshot {
@@ -171,6 +173,20 @@ type DashboardBodyProps = {
   isPracticeOwner: boolean
   canManageSync: boolean
   recoveryNotifications: RecoveryNotificationItem[]
+  needsYou: Array<{
+    id: string
+    kind: string
+    title: string
+    detail: string | null
+    claimId: string | null
+    claimNumber: string | null
+    carrierId: string | null
+    dollarsAtRisk: number
+    dueAt: string | null
+    route: string | null
+  }>
+  setupStatus: SetupStatus | null
+  inboxLoading: boolean
 }
 
 function DashboardBody({
@@ -179,6 +195,9 @@ function DashboardBody({
   isPracticeOwner,
   canManageSync,
   recoveryNotifications,
+  needsYou,
+  setupStatus,
+  inboxLoading,
 }: DashboardBodyProps) {
   const [arCloseMsg, setArCloseMsg] = useState<string | null>(null)
 
@@ -250,6 +269,19 @@ function DashboardBody({
       )}
 
       <LiveActivityStrip />
+
+      {canManageSync && setupStatus && <OnboardingProgress status={setupStatus} />}
+
+      <NeedsYouInbox
+        items={needsYou}
+        loading={inboxLoading && needsYou.length === 0}
+        compact
+        emptyAction={
+          canManageSync ? (
+            <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+          ) : undefined
+        }
+      />
 
       <TopMoneyAtRisk />
 
@@ -463,6 +495,19 @@ export default function Dashboard() {
   )
   const [platform, setPlatform] = useState<OwnerPlatformData | null>(null)
   const [recoveryNotifications, setRecoveryNotifications] = useState<RecoveryNotificationItem[]>([])
+  const [needsYou, setNeedsYou] = useState<Array<{
+    id: string
+    kind: string
+    title: string
+    detail: string | null
+    claimId: string | null
+    claimNumber: string | null
+    carrierId: string | null
+    dollarsAtRisk: number
+    dueAt: string | null
+    route: string | null
+  }>>([])
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null)
   const [loading, setLoading] = useState(() => Boolean(practiceId && !readCachedStats(practiceId)))
   const [error, setError] = useState<string | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -474,7 +519,7 @@ export default function Dashboard() {
       setError(null)
     }
     try {
-      const [dash, notifRes, plat] = await Promise.all([
+      const [dash, notifRes, plat, inboxRes, setupRes] = await Promise.all([
         apiFetchJson<DashboardStats>(`/api/dashboard/stats?practiceId=${practiceId}`),
         apiFetchJson<{ success: boolean; data: RecoveryNotificationItem[] }>(
           `/api/insurance/recovery/notifications?practiceId=${practiceId}`,
@@ -486,10 +531,20 @@ export default function Dashboard() {
               .then((r) => r.data)
               .catch(() => null)
           : Promise.resolve(null),
+        apiFetchJson<{ success: boolean; data: typeof needsYou }>(`/api/desk/${practiceId}/ar-inbox`).catch(() => ({
+          success: true,
+          data: [],
+        })),
+        apiFetchJson<{ success: boolean; data: SetupStatus | null }>('/api/dashboard/setup-status').catch(() => ({
+          success: false,
+          data: null as SetupStatus | null,
+        })),
       ])
       setStats(dash)
       writeCachedStats(practiceId, dash)
       setRecoveryNotifications(notifRes.data ?? [])
+      setNeedsYou(inboxRes.data ?? [])
+      setSetupStatus(setupRes.data ?? null)
       setPlatform(plat)
       setError(null)
     } catch (e) {
@@ -572,6 +627,9 @@ export default function Dashboard() {
           isPracticeOwner={isPracticeOwner}
           canManageSync={canManageSync}
           recoveryNotifications={recoveryNotifications}
+          needsYou={needsYou}
+          setupStatus={setupStatus}
+          inboxLoading={loading}
         />
       )}
     </div>
