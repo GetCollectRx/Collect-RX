@@ -271,4 +271,37 @@
 
 ---
 
+## CSV-first AR expansion (Phases 1–5) — Implemented
+
+Migration `20260712213000_csv_ar_expansion`, rollout runbook [`Collect-RX-main/docs/csv-ar-rollout.md`](Collect-RX-main/docs/csv-ar-rollout.md).
+
+| Capability | Status |
+|------------|--------|
+| `CSV_FIRST` recovery mode + EMR outbox skip | Done |
+| Organization-scoped DSO APIs + PHI access events | Done |
+| Denial hub (CSV import gates, evidence attestations, submissions, evidence-pack export) | Done |
+| EOB CSV import + underpayment detection + submission-quality gate | Done |
+| Pre-visit appointment CSV ingest | Done |
+| Carrier intelligence practice feed + group lesson review | Done |
+| AR command center inbox + managed recovery queue APIs/UI | Done |
+| Compliance workspace (PHI access query + export bundle) | Done |
+| Feature flags + unit tests (`tests/csv-ar-expansion.test.ts`) | Done |
+
+**Operator:** Run migration on staging; verify RLS tests with Postgres before production enable.
+
+---
+
+## Deferred post-v1 — Optional encrypted evidence vault
+
+The Denial & Documentation Recovery Hub initially uses staff attestations, carrier reference numbers, and PMS-held documents. It does **not** store clinical attachments in CollectRx.
+
+**Post-v1 enhancement:** Add an opt-in, tenant-isolated evidence vault for clinical attachments and insurer submission packages.
+
+- Store files in a Canadian-region private object store using short-lived upload/download URLs; never store files in PostgreSQL.
+- Encrypt files at rest, retain only tenant-scoped metadata/checksums in CollectRx, and audit every upload, view, export, and deletion.
+- Never send attachments or their contents to Vapi or cross-practice carrier learning.
+- Require documented retention/deletion controls, vendor agreement review, and PHI threat modeling before enabling the feature for any practice.
+
+---
+
 *Last updated: Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*

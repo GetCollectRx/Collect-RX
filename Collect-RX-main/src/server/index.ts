@@ -138,6 +138,7 @@ import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
+import { complianceWorkspaceRouter } from './routes/complianceWorkspaceRoutes.js';
 import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
 import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
 const app = express();
@@ -367,6 +368,7 @@ app.use('/api/pre-visit',  preVisitRouter);
 app.use('/api',            createCanadianExpansionRouter(prisma));
 // Compliance audit — platform_admin / auditor only
 app.use('/api/compliance', complianceRouter);
+app.use('/api/compliance/workspace', complianceWorkspaceRouter);
 // Operator-only discovery records; no scheduler or dispatch worker is mounted.
 app.use('/api/admin/carrier-discovery', createCarrierDiscoveryRouter());
 

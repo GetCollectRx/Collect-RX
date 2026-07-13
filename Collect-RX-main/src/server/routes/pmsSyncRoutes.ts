@@ -124,4 +124,25 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
   }
 });
 
+router.post('/import/eob', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, error: 'CSV file required' });
+    }
+    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 12 * 1024 * 1024 });
+    if (!uploadCheck.ok) {
+      return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
+    }
+    const text = req.file.buffer.toString('utf8');
+    const rows = parseSimpleCsv(text) as Record<string, unknown>[];
+    const { importEobRowsToPrisma } = await import('../reconciliation/eobImport.js');
+    const result = await importEobRowsToPrisma(prisma, practiceId, rows);
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[POST /admin/sync/import/eob]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 export default router;

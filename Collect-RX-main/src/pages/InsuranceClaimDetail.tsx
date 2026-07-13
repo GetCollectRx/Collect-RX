@@ -93,6 +93,21 @@ interface WorkItemLite {
   followUpAt: string | null
 }
 
+interface EvidenceItem {
+  id: string
+  evidenceType: string
+  status: string
+  attestedAt: string | null
+  note: string | null
+}
+
+interface ClaimSubmission {
+  id: string
+  method: string
+  referenceNumber: string | null
+  submittedAt: string
+}
+
 const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
 
 export default function InsuranceClaimDetail() {
@@ -117,6 +132,11 @@ export default function InsuranceClaimDetail() {
     notes: string
     legacyOutcome: string | null
   } | null>(null)
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([])
+  const [submissions, setSubmissions] = useState<ClaimSubmission[]>([])
+  const [submissionMethod, setSubmissionMethod] = useState('')
+  const [submissionRef, setSubmissionRef] = useState('')
+  const [exportingPack, setExportingPack] = useState(false)
 
   const load = () => {
     if (!id) {
@@ -139,12 +159,17 @@ export default function InsuranceClaimDetail() {
       apiFetchJson<{ success: boolean; data: { matchedRule: string; notes: string; legacyOutcome: string | null } }>(
         `/api/insurance/claims/${id}/route-explanation`,
       ).catch(() => null),
+      apiFetchJson<{ success: boolean; data: { items: EvidenceItem[]; submissions: ClaimSubmission[] } }>(
+        `/api/insurance/claims/${id}/evidence`,
+      ).catch(() => null),
     ])
-      .then(([claimRes, recoveryRes, wiRes, routeRes]) => {
+      .then(([claimRes, recoveryRes, wiRes, routeRes, evidenceRes]) => {
         setClaim(claimRes.data)
         setRecovery(recoveryRes?.data ?? null)
         if (recoveryRes?.success) setRecoveryLoadError(null)
         setRouteExplanation(routeRes?.data ?? null)
+        setEvidenceItems(evidenceRes?.data?.items ?? [])
+        setSubmissions(evidenceRes?.data?.submissions ?? [])
         const wi = wiRes.data
         setWorkItem(wi)
         setAssignedRep(wi?.assignedRep ?? '')
@@ -450,6 +475,98 @@ export default function InsuranceClaimDetail() {
               </div>
             </Card>
           )}
+
+          <Card>
+            <CardHeader
+              title="Denial & documentation"
+              subtitle="Staff attestations and carrier submission references — clinical files stay in your PMS"
+            />
+            <div className="px-4 pb-4 space-y-4">
+              {evidenceItems.length === 0 ? (
+                <p className="text-sm text-gray-500">No evidence checklist items yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {evidenceItems.map((item) => (
+                    <li key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium">{item.evidenceType.replace(/_/g, ' ')}</p>
+                        {item.note && <p className="text-xs text-gray-500">{item.note}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{item.status}</Badge>
+                        {!isReadOnly && item.status !== 'ATTESTED' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={async () => {
+                              await apiFetch(`/api/insurance/claims/${id}/evidence/${encodeURIComponent(item.evidenceType)}/attest`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ note: 'Attested in PMS' }),
+                              })
+                              load()
+                            }}
+                          >
+                            Attest
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {!isReadOnly && (
+                <div className="grid sm:grid-cols-3 gap-2 items-end">
+                  <Input label="Submission method" value={submissionMethod} onChange={(e) => setSubmissionMethod(e.target.value)} placeholder="Portal / fax / mail" />
+                  <Input label="Reference #" value={submissionRef} onChange={(e) => setSubmissionRef(e.target.value)} placeholder="Carrier reference" />
+                  <Button
+                    disabled={!submissionMethod.trim()}
+                    onClick={async () => {
+                      await apiFetch(`/api/insurance/claims/${id}/submissions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ method: submissionMethod, referenceNumber: submissionRef || undefined }),
+                      })
+                      setSubmissionMethod('')
+                      setSubmissionRef('')
+                      load()
+                    }}
+                  >
+                    Log submission
+                  </Button>
+                </div>
+              )}
+
+              {submissions.length > 0 && (
+                <div className="text-xs text-gray-600 space-y-1">
+                  {submissions.map((s) => (
+                    <p key={s.id}>
+                      {s.method} · {s.referenceNumber ?? 'no ref'} · {new Date(s.submittedAt).toLocaleString()}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                variant="secondary"
+                disabled={exportingPack}
+                onClick={async () => {
+                  setExportingPack(true)
+                  try {
+                    const res = await apiFetchJson<{ success: boolean; checksum: string }>(
+                      `/api/insurance/claims/${id}/evidence-pack`,
+                    )
+                    setActionMsg(`Evidence pack exported (checksum ${res.checksum.slice(0, 12)}…)`)
+                  } finally {
+                    setExportingPack(false)
+                  }
+                }}
+              >
+                {exportingPack ? 'Exporting…' : 'Export evidence pack (JSON)'}
+              </Button>
+            </div>
+          </Card>
 
           <Card>
             <CardHeader title="Amounts" />

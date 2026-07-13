@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { PrismaClient } from '@prisma/client';
 import {
   HELD_THEN_DUMPED_MIN_SECONDS,
+  getPracticeHoldLedger,
   isHeldThenDumped,
 } from '../../src/server/recovery/holdLedger.js';
 
@@ -63,5 +65,26 @@ describe('isHeldThenDumped', () => {
         referenceNumber: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe('getPracticeHoldLedger', () => {
+  it('returns practice-scoped aggregate data without call or patient details', async () => {
+    const findMany = vi.fn(async () => [
+      { heldThenDumped: true, claim: { carrierId: 'sun_life' } },
+      { heldThenDumped: false, claim: { carrierId: 'sun_life' } },
+      { heldThenDumped: true, claim: { carrierId: 'rbc' } },
+    ]);
+    const prisma = {
+      callAttempt: { findMany },
+    } as unknown as PrismaClient;
+
+    await expect(getPracticeHoldLedger(prisma, 'practice-a')).resolves.toEqual([
+      { carrierId: 'sun_life', completedCalls: 2, dumpedHolds: 1, dumpRate: null },
+      { carrierId: 'rbc', completedCalls: 1, dumpedHolds: 1, dumpRate: null },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ claim: { practiceId: 'practice-a' } }),
+    }));
   });
 });

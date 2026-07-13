@@ -51,6 +51,13 @@ type FailureReview = {
   approvedCarrierLessons: string[]
 }
 
+type CarrierHoldLedgerEntry = {
+  carrierId: string
+  completedCalls: number
+  dumpedHolds: number
+  dumpRate: number | null
+}
+
 function formatMoney(cents: number): string {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100)
 }
@@ -153,12 +160,46 @@ function FailureReviewPanel({ reviews }: { reviews: FailureReview[] }) {
   )
 }
 
+function HoldLedgerPanel({ entries }: { entries: CarrierHoldLedgerEntry[] }) {
+  if (entries.length === 0) return null
+
+  return (
+    <section className="p-4 border-b border-gray-100 dark:border-gray-800/60">
+      <h2 className="text-2xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-600">
+        Carrier hold reliability
+      </h2>
+      <p className="mt-1 text-2xs leading-relaxed text-gray-500 dark:text-gray-500">
+        Last 30 days. A dumped hold is a 10+ minute call with no representative engagement.
+      </p>
+      <div className="mt-2 space-y-1.5">
+        {entries.map((entry) => {
+          const elevated = entry.dumpRate != null && entry.dumpRate >= 0.3
+          const rateLabel = entry.dumpRate == null
+            ? `${entry.dumpedHolds}/${entry.completedCalls} · building sample`
+            : `${Math.round(entry.dumpRate * 100)}% · ${entry.dumpedHolds}/${entry.completedCalls}`
+          return (
+            <div key={entry.carrierId} className="flex items-center justify-between gap-2 text-2xs">
+              <span className="truncate text-gray-600 dark:text-gray-300">
+                {CARRIER_LABELS[entry.carrierId] ?? entry.carrierId}
+              </span>
+              <span className={elevated ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}>
+                {rateLabel}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 export default function LiveConsole() {
   const { practiceId, isFrontDesk } = usePractice()
   const [carriers, setCarriers] = useState<CarrierRow[]>([])
   const [queue, setQueue] = useState<DeskQueueEntry[]>([])
   const [failureReviews, setFailureReviews] = useState<FailureReview[]>([])
+  const [holdLedger, setHoldLedger] = useState<CarrierHoldLedgerEntry[]>([])
   const [queuePaused, setQueuePaused] = useState(false)
   const [activeCall, setActiveCall] = useState<DeskActiveCall | null>(null)
   const [transcript, setTranscript] = useState<DeskTranscriptLine[]>([])
@@ -175,22 +216,25 @@ export default function LiveConsole() {
 
   const loadSnapshot = useCallback(async () => {
     if (!practiceId) return
-    const [activeRes, queueRes, carriersRes, reviewsRes] = await Promise.all([
+    const [activeRes, queueRes, carriersRes, reviewsRes, holdLedgerRes] = await Promise.all([
       fetch(resolveApiUrl(`${deskBase}/active`), { credentials: 'include' }),
       fetch(resolveApiUrl(`${deskBase}/queue`), { credentials: 'include' }),
       fetch(resolveApiUrl(`${deskBase}/carriers/status`), { credentials: 'include' }),
       fetch(resolveApiUrl(`${deskBase}/queue/reviews`), { credentials: 'include' }),
+      fetch(resolveApiUrl(`${deskBase}/hold-ledger`), { credentials: 'include' }),
     ])
     const activeJson = await parseApiJson<{ data: { call: DeskActiveCall | null; transcript: DeskTranscriptLine[] } }>(activeRes)
     const queueJson = await parseApiJson<{ data: { queue: DeskQueueEntry[]; paused: boolean } }>(queueRes)
     const carriersJson = await parseApiJson<{ data: CarrierRow[] }>(carriersRes)
     const reviewsJson = await parseApiJson<{ data: FailureReview[] }>(reviewsRes)
+    const holdLedgerJson = await parseApiJson<{ data: CarrierHoldLedgerEntry[] }>(holdLedgerRes)
     setActiveCall(activeJson.data.call)
     setTranscript(activeJson.data.transcript)
     setQueue(queueJson.data.queue)
     setQueuePaused(queueJson.data.paused)
     setCarriers(carriersJson.data)
     setFailureReviews(reviewsJson.data)
+    setHoldLedger(holdLedgerJson.data)
     const blocked = carriersJson.data.find((c) => c.status === 'blocked')
     if (blocked?.block) {
       setBlockAlert({
@@ -416,6 +460,7 @@ export default function LiveConsole() {
               ))}
             </ul>
           </div>
+          <HoldLedgerPanel entries={holdLedger} />
 
           {/* Queue */}
           <div className="flex-1 min-h-0 flex flex-col p-4">

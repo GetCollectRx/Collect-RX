@@ -14,6 +14,7 @@ import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
+import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -430,6 +431,14 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       patientToken: next.claim.patientToken,
       callerContext: 'queue-engine',
       phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
+    });
+    await appendPhiAccessEvent(prisma, {
+      practiceId,
+      operation: 'detokenize_for_carrier_call',
+      recordType: 'InsuranceClaim',
+      recordId: next.claimId,
+      purpose: 'queued_carrier_dispatch',
+      correlationId: next.id,
     });
 
     // ── PHI COMPLETENESS GUARD ─────────────────────────────────────────────────

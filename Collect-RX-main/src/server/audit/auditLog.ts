@@ -56,3 +56,26 @@ export async function appendAuditLog(
     console.error('[audit] append failed (non-fatal)', { action: input.action, err: (e as Error).message });
   }
 }
+
+/** Persist a PHI access event without storing the accessed value itself. */
+export async function appendPhiAccessEvent(
+  prisma: PrismaClient,
+  input: {
+    practiceId: string;
+    operation: string;
+    recordType: string;
+    recordId: string;
+    purpose?: string;
+    correlationId?: string;
+    actorId?: string;
+  },
+): Promise<void> {
+  try {
+    await prisma.phiAccessEvent.create({ data: input });
+  } catch (e) {
+    console.error('[audit] PHI access event append failed (non-fatal)', {
+      operation: input.operation,
+      err: (e as Error).message,
+    });
+  }
+}

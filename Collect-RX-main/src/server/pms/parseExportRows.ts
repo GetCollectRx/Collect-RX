@@ -41,6 +41,8 @@ export interface NormalizedPmsClaimRow {
   outstandingAmount: number;
   /// What the practice expected the carrier to pay (distinct from outstandingAmount).
   expectedAmount: number | null;
+  /// Insurance portion already paid per carrier remittance (when present in export).
+  insurancePaidAmount: number | null;
   daysOutstanding: number;
   // ─── PHI fields — never stored in DB; passed to PIIVault only ────────────
   /// Patient date of birth — ISO YYYY-MM-DD. Stored in PIIVault only.
@@ -173,6 +175,17 @@ export function normalizePmsClaimRow(
   );
   const expectedAmount = expectedRaw ? parseMoney(expectedRaw) : null;
 
+  const paidRaw = getCell(
+    raw,
+    'Amount Paid',
+    'Insurance Paid',
+    'Ins Paid',
+    'Paid Amount',
+    'paid_amount',
+    'Payment Received',
+  );
+  const insurancePaidAmount = paidRaw ? parseMoney(paidRaw) : null;
+
   const treatmentCodesRaw = getCell(
     raw,
     'Procedure Codes',
@@ -211,6 +224,7 @@ export function normalizePmsClaimRow(
     billedAmount: billed,
     outstandingAmount: outstanding,
     expectedAmount,
+    insurancePaidAmount,
     daysOutstanding,
     // ─── PHI fields — not stored in DB, passed to PIIVault only ─────────────
     patientDob,

@@ -253,4 +253,26 @@ router.get('/adjudication-graph', requirePermission('manage_claims'), async (req
   }
 });
 
+router.post(
+  '/appointments/import-csv',
+  csvImportBody,
+  requirePermission('manage_claims'),
+  async (req: Request, res: Response) => {
+    try {
+      const practiceId = practiceIdFromSession(req);
+      const text = typeof req.body === 'string' ? req.body : '';
+      if (!text.trim()) {
+        return res.status(400).json({ error: 'CSV body required' });
+      }
+      const records = parseSimpleCsv(text) as Record<string, unknown>[];
+      const { importAppointmentCsvRows } = await import('../preVisit/csvAppointmentImport.js');
+      const result = await importAppointmentCsvRows(prisma, practiceId, records);
+      res.json(result);
+    } catch (err) {
+      console.error('[pre-visit] /appointments/import-csv error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 export default router;

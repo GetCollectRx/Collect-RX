@@ -1,5 +1,10 @@
 import type { PrismaClient, RecoveryRoute } from '@prisma/client';
 import { checkRecoveryDispatchGate } from './dispatchGate.js';
+import {
+  getPracticeRecoveryMode,
+  paymentConfirmationHint,
+  paymentConfirmationLabel,
+} from './recoveryMode.js';
 
 const ROUTE_LABELS: Record<RecoveryRoute, string> = {
   CALL_CARRIER: 'Call carrier',
@@ -85,6 +90,7 @@ export async function getClaimRecoverySummary(
   });
   if (!claim) return null;
 
+  const recoveryMode = await getPracticeRecoveryMode(prisma, practiceId);
   const dispatch = await checkRecoveryDispatchGate(prisma, claimId);
 
   const route = claim.recoveryRoute;
@@ -125,8 +131,18 @@ export async function getClaimRecoverySummary(
     claimNumber: claim.claimNumber,
     claimStatus: claim.status,
     recoveryRoute: route,
-    routeLabel: route ? ROUTE_LABELS[route] : 'Not routed yet',
-    routeDescription: route ? ROUTE_DESCRIPTIONS[route] : ROUTE_DESCRIPTIONS.CALL_CARRIER,
+    routeLabel:
+      route === 'WAIT_SYNC'
+        ? paymentConfirmationLabel(recoveryMode)
+        : route
+          ? ROUTE_LABELS[route]
+          : 'Not routed yet',
+    routeDescription:
+      route === 'WAIT_SYNC'
+        ? paymentConfirmationHint(recoveryMode)
+        : route
+          ? ROUTE_DESCRIPTIONS[route]
+          : ROUTE_DESCRIPTIONS.CALL_CARRIER,
     outstandingAmount: Number(claim.outstandingAmount),
     paymentExpectedBy: claim.paymentExpectedBy?.toISOString() ?? null,
     scheduledRecallAt: scheduledRecallAt?.toISOString() ?? null,

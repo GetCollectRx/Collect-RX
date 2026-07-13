@@ -46,23 +46,61 @@ export type CarrierHoldStats = {
   dumpRate: number | null;
 };
 
+export type CarrierHoldLedgerEntry = CarrierHoldStats & {
+  carrierId: string;
+};
+
+function toHoldStats(completedCalls: number, dumpedHolds: number): CarrierHoldStats {
+  return {
+    completedCalls,
+    dumpedHolds,
+    dumpRate: completedCalls >= HOLD_LEDGER_MIN_SAMPLE ? dumpedHolds / completedCalls : null,
+  };
+}
+
 export async function getCarrierHoldStats(
   prisma: PrismaClient,
+  practiceId: string,
   carrierId: string,
   now = new Date(),
 ): Promise<CarrierHoldStats> {
   const since = new Date(now.getTime() - HOLD_LEDGER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const where = {
     completedAt: { gte: since },
-    claim: { carrierId: carrierId as import('@prisma/client').CarrierId },
+    claim: { practiceId, carrierId: carrierId as import('@prisma/client').CarrierId },
   };
   const [completedCalls, dumpedHolds] = await Promise.all([
     prisma.callAttempt.count({ where }),
     prisma.callAttempt.count({ where: { ...where, heldThenDumped: true } }),
   ]);
-  return {
-    completedCalls,
-    dumpedHolds,
-    dumpRate: completedCalls >= HOLD_LEDGER_MIN_SAMPLE ? dumpedHolds / completedCalls : null,
-  };
+  return toHoldStats(completedCalls, dumpedHolds);
+}
+
+/**
+ * Practice-scoped 30-day hold ledger for the front desk. It intentionally
+ * reports aggregate carrier reliability only—never transcript or patient data.
+ */
+export async function getPracticeHoldLedger(
+  prisma: PrismaClient,
+  practiceId: string,
+  now = new Date(),
+): Promise<CarrierHoldLedgerEntry[]> {
+  const since = new Date(now.getTime() - HOLD_LEDGER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const attempts = await prisma.callAttempt.findMany({
+    where: { completedAt: { gte: since }, claim: { practiceId } },
+    select: { heldThenDumped: true, claim: { select: { carrierId: true } } },
+  });
+
+  const counts = new Map<string, { completedCalls: number; dumpedHolds: number }>();
+  for (const attempt of attempts) {
+    const carrierId = attempt.claim.carrierId;
+    const current = counts.get(carrierId) ?? { completedCalls: 0, dumpedHolds: 0 };
+    current.completedCalls += 1;
+    if (attempt.heldThenDumped) current.dumpedHolds += 1;
+    counts.set(carrierId, current);
+  }
+
+  return [...counts.entries()]
+    .map(([carrierId, stats]) => ({ carrierId, ...toHoldStats(stats.completedCalls, stats.dumpedHolds) }))
+    .sort((a, b) => (b.dumpRate ?? -1) - (a.dumpRate ?? -1));
 }

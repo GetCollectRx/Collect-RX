@@ -19,14 +19,15 @@ import {
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty, Badge,
 } from '../components/ui'
 
-type ClaimsTab = 'all' | 'queue' | 'blocked' | 'human'
+type ClaimsTab = 'all' | 'queue' | 'blocked' | 'human' | 'denials'
 
-const VALID_TABS = new Set<ClaimsTab>(['all', 'queue', 'blocked', 'human'])
+const VALID_TABS = new Set<ClaimsTab>(['all', 'queue', 'blocked', 'human', 'denials'])
 
 const TAB_ITEMS: { id: ClaimsTab; label: string }[] = [
   { id: 'all', label: 'All claims' },
   { id: 'queue', label: 'Priority queue' },
   { id: 'blocked', label: 'Blocked gates' },
+  { id: 'denials', label: 'Denials & docs' },
   { id: 'human', label: 'Needs human' },
 ]
 
@@ -79,6 +80,20 @@ interface GateRow {
   recoveryRoute: string | null
 }
 
+interface DenialInboxRow {
+  id: string
+  title: string
+  detail: string | null
+  claimId: string
+  claim: {
+    claimNumber: string
+    carrierId: string
+    outstandingAmount: string | number
+    denialReasonCode: string | null
+    appealDeadline: string | null
+  }
+}
+
 function fmtMoney(v: string | number) {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(v))
 }
@@ -118,6 +133,7 @@ export default function InsuranceClaims() {
   const [claims, setClaims] = useState<InsuranceClaimRow[]>([])
   const [queueItems, setQueueItems] = useState<WorkItemRow[]>([])
   const [gates, setGates] = useState<GateRow[]>([])
+  const [denialInbox, setDenialInbox] = useState<DenialInboxRow[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -206,12 +222,23 @@ export default function InsuranceClaims() {
       .finally(() => setLoading(false))
   }, [practiceId])
 
+  const loadDenials = useCallback(() => {
+    if (!practiceId) return
+    setLoading(true)
+    setError(null)
+    apiFetchJson<{ success: boolean; data: DenialInboxRow[] }>('/api/insurance/denials')
+      .then((res) => setDenialInbox(res.data ?? []))
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false))
+  }, [practiceId])
+
   useEffect(() => {
     if (!canFetch) return
     if (tab === 'queue') loadQueue()
     else if (tab === 'blocked') loadGates()
+    else if (tab === 'denials') loadDenials()
     else loadClaims()
-  }, [canFetch, tab, loadClaims, loadQueue, loadGates])
+  }, [canFetch, tab, loadClaims, loadQueue, loadGates, loadDenials])
 
   const syncQueue = async () => {
     setSyncing(true)
@@ -296,9 +323,11 @@ export default function InsuranceClaims() {
       ? 'Open claims ranked by dollars at risk, aging, and carrier denial risk.'
       : tab === 'blocked'
         ? 'Practice gates blocking carrier calls — complete in PMS, then mark ready.'
-        : tab === 'human'
-          ? 'Claims escalated for staff review before the next carrier call.'
-          : 'Open carrier claims, recovery routes, and call outcomes — ranked by priority.'
+        : tab === 'denials'
+          ? 'CSV-imported denials and documentation recovery — attest evidence and log carrier submissions.'
+          : tab === 'human'
+            ? 'Claims escalated for staff review before the next carrier call.'
+            : 'Open carrier claims, recovery routes, and call outcomes — ranked by priority.'
 
   return (
     <DataState loading={pageBusy(loading)} error={pageError(error)}>
@@ -669,6 +698,56 @@ export default function InsuranceClaims() {
                 </Table>
               </TableContainer>
             </>
+          )}
+
+          {tab === 'denials' && (
+            <TableContainer>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Claim</Th>
+                    <Th>Carrier</Th>
+                    <Th>Denial</Th>
+                    <Th align="right">Outstanding</Th>
+                    <Th>Appeal deadline</Th>
+                    <Th />
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {denialInbox.length === 0 ? (
+                    <TableEmpty colSpan={6} message="No open denial or documentation recovery items." />
+                  ) : (
+                    denialInbox.map((row) => (
+                      <Tr key={row.id}>
+                        <Td bold>
+                          <Link to={`/insurance/${row.claimId}`} className="text-crx-600 underline font-mono text-xs">
+                            {row.claim.claimNumber}
+                          </Link>
+                        </Td>
+                        <Td>{CARRIER_LABELS[row.claim.carrierId] ?? row.claim.carrierId}</Td>
+                        <Td>
+                          <p className="text-sm font-medium">{row.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {row.claim.denialReasonCode ?? row.detail ?? 'Review required'}
+                          </p>
+                        </Td>
+                        <Td align="right" bold>{fmtMoney(row.claim.outstandingAmount)}</Td>
+                        <Td muted className="text-xs">
+                          {row.claim.appealDeadline
+                            ? new Date(row.claim.appealDeadline).toLocaleDateString()
+                            : '—'}
+                        </Td>
+                        <Td>
+                          <Link to={`/insurance/${row.claimId}`}>
+                            <Button variant="ghost" size="sm">Open</Button>
+                          </Link>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </TableContainer>
           )}
           </div>
         </div>

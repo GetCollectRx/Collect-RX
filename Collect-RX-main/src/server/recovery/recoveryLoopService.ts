@@ -185,7 +185,7 @@ export async function applyRecoveryAfterCall(
         OR: [{ referenceNumber: { not: null } }, { repName: { not: null } }],
       },
     }),
-    getCarrierHoldStats(prisma, claim.carrierId),
+    getCarrierHoldStats(prisma, claim.practiceId, claim.carrierId),
   ]);
 
   const hasEngagementEvidence =

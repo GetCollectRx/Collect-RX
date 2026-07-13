@@ -33,7 +33,7 @@ import { getPracticeSettings } from '../server/services/practiceSettingsService.
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { piiVault } from '../pii-vault.js';
 import logger from '../logger.cjs';
-import { appendAuditLog } from '../server/audit/auditLog.js';
+import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 
 const router = Router();
@@ -641,6 +641,13 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       callerContext: 'insurance-trigger',
       phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
     });
+    await appendPhiAccessEvent(prisma, {
+      practiceId,
+      operation: 'detokenize_for_carrier_call',
+      recordType: 'InsuranceClaim',
+      recordId: claimId,
+      purpose: 'manual_carrier_dispatch',
+    });
 
     // billingPhone is the CRTC disclosure / carrier callback number.
     // escalationPhoneNumber is for staff takeover — do not conflate.
@@ -902,6 +909,188 @@ router.patch('/practice-notifications/:id/read', async (req: Request, res: Respo
     return res.json({ success: true, modified: notification.count });
   } catch (err) {
     console.error('[PATCH /insurance/practice-notifications/:id/read]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CSV-first denial, evidence, and underpayment operations. These records are
+// practice-scoped operational metadata; clinical attachments remain in the PMS.
+// ---------------------------------------------------------------------------
+router.get('/denials', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const data = await prisma.claimRecoveryAction.findMany({
+      where: {
+        practiceId,
+        status: { in: ['OPEN', 'BLOCKING'] },
+        actionType: { in: ['DENIAL_REVIEW', 'PRACTICE_DOCS', 'PRACTICE_RESUBMIT', 'HUMAN_ESCALATION'] },
+      },
+      include: {
+        claim: {
+          select: {
+            claimNumber: true, carrierId: true, outstandingAmount: true,
+            denialReasonCode: true, denialReasonText: true, appealDeadline: true,
+          },
+        },
+      },
+      orderBy: [{ deadline: 'asc' }, { createdAt: 'asc' }],
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/claims/:id/evidence', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id: req.params.id, practiceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const [items, submissions, exports] = await Promise.all([
+      prisma.claimEvidenceItem.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { createdAt: 'asc' } }),
+      prisma.claimSubmission.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { submittedAt: 'desc' } }),
+      prisma.evidencePackExport.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    return res.json({ success: true, data: { items, submissions, exports } });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/claims/:id/evidence/:evidenceType/attest', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const evidenceType = req.params.evidenceType.trim().slice(0, 80);
+    if (!evidenceType) return res.status(400).json({ success: false, error: 'evidence type required' });
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : null;
+    const existing = await prisma.claimEvidenceItem.findFirst({
+      where: { practiceId, claimId: claim.id, recoveryActionId: null, evidenceType },
+      select: { id: true },
+    });
+    const item = existing
+      ? await prisma.claimEvidenceItem.update({
+          where: { id: existing.id },
+          data: { status: 'ATTESTED', attestedAt: new Date(), note },
+        })
+      : await prisma.claimEvidenceItem.create({
+          data: { practiceId, claimId: claim.id, evidenceType, status: 'ATTESTED', attestedAt: new Date(), note },
+        });
+    await appendAuditLog(prisma, { practiceId, action: 'claim.evidence.attest', subjectType: 'InsuranceClaim', subjectId: claim.id, req });
+    return res.json({ success: true, data: item });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/claims/:id/submissions', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const method = typeof req.body?.method === 'string' ? req.body.method.trim().slice(0, 80) : '';
+    if (!method) return res.status(400).json({ success: false, error: 'submission method required' });
+    const submission = await prisma.claimSubmission.create({
+      data: {
+        practiceId, claimId: claim.id, method,
+        referenceNumber: typeof req.body?.referenceNumber === 'string' ? req.body.referenceNumber.trim().slice(0, 120) : null,
+        submittedBy: typeof req.body?.submittedBy === 'string' ? req.body.submittedBy.trim().slice(0, 120) : null,
+        note: typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : null,
+      },
+    });
+    await prisma.claimRecoveryEvent.create({
+      data: { practiceId, claimId: claim.id, eventType: 'CARRIER_SUBMISSION_RECORDED', metadata: { method, referenceNumber: submission.referenceNumber } },
+    });
+    return res.json({ success: true, data: submission });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/claims/:id/evidence-pack', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({
+      where: { id: req.params.id, practiceId, deletedAt: null },
+      select: {
+        id: true, claimNumber: true, carrierId: true, outstandingAmount: true, expectedAmount: true,
+        denialReasonCode: true, denialReasonText: true, appealDeadline: true, recoveryActions: { select: { actionType: true, status: true, title: true, deadline: true } },
+      },
+    });
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const [evidence, submissions, events] = await Promise.all([
+      prisma.claimEvidenceItem.findMany({ where: { claimId: claim.id, practiceId }, select: { evidenceType: true, status: true, attestedAt: true } }),
+      prisma.claimSubmission.findMany({ where: { claimId: claim.id, practiceId }, select: { method: true, referenceNumber: true, submittedAt: true } }),
+      prisma.claimRecoveryEvent.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { createdAt: 'asc' }, select: { eventType: true, createdAt: true } }),
+    ]);
+    const pack = { generatedAt: new Date().toISOString(), claim, evidence, submissions, events };
+    const { createHash } = await import('node:crypto');
+    const checksum = createHash('sha256').update(JSON.stringify(pack)).digest('hex');
+    await prisma.evidencePackExport.create({ data: { practiceId, claimId: claim.id, checksum, format: 'JSON' } });
+    return res.json({ success: true, data: pack, checksum });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/claims/:id/underpayments', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
+    if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const paidCents = Number(req.body?.paidCents);
+    const expectedCents = Number(req.body?.expectedCents ?? Math.round(Number(claim.expectedAmount ?? 0) * 100));
+    if (!Number.isInteger(paidCents) || !Number.isInteger(expectedCents) || paidCents < 0 || expectedCents <= paidCents) {
+      return res.status(400).json({ success: false, error: 'paidCents must be below expectedCents' });
+    }
+    const data = await prisma.underpaymentCase.upsert({
+      where: { claimId_expectedCents_paidCents: { claimId: claim.id, expectedCents, paidCents } },
+      create: { practiceId, claimId: claim.id, expectedCents, paidCents, varianceCents: expectedCents - paidCents, reasonCode: typeof req.body?.reasonCode === 'string' ? req.body.reasonCode.slice(0, 80) : null },
+      update: { status: 'OPEN' },
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/underpayments', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const data = await prisma.underpaymentCase.findMany({
+      where: { practiceId, status: 'OPEN' },
+      include: { claim: { select: { claimNumber: true, carrierId: true, outstandingAmount: true } } },
+      orderBy: { varianceCents: 'desc' },
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/carrier-intelligence/feed', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { getPracticeCarrierIntelligenceFeed } = await import('../server/learning/practiceCarrierFeed.js');
+    const data = await getPracticeCarrierIntelligenceFeed(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/claims/:id/submission-quality', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const { evaluateSubmissionQuality } = await import('../server/reconciliation/submissionQualityGate.js');
+    const data = await evaluateSubmissionQuality(prisma, practiceId, req.params.id);
+    return res.json({ success: true, data });
+  } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

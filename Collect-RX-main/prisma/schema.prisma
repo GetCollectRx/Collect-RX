@@ -59,6 +59,9 @@ model Practice {
   callsPausedAt                  DateTime?
   overageConfirmed               Boolean                   @default(false)
   overageConfirmedAt             DateTime?
+  /// CSV-first practices reconcile recovery from imports and never receive PMS writeback events.
+  recoveryMode                   String                    @default("CSV_FIRST") @map("recovery_mode")
+  organizationMemberships        OrganizationPractice[]
   partnershipProspect            Prospect?
   ruleSets                       RuleSet[]
   eligibilitySnapshots           EligibilitySnapshot[]
@@ -90,9 +93,49 @@ model User {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   practice       Practice     @relation(fields: [practiceId], references: [id])
+  organizationMemberships OrganizationMember[]
 
   @@index([practiceId])
   @@index([email])
+}
+
+/// Customer-owned DSO / multi-location boundary. Platform staff are not members.
+model Organization {
+  id          String                 @id @default(uuid())
+  name        String
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  practices   OrganizationPractice[]
+  members     OrganizationMember[]
+
+  @@map("organizations")
+}
+
+model OrganizationPractice {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  practiceId     String       @map("practice_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  practice       Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, practiceId])
+  @@index([practiceId])
+  @@map("organization_practices")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String       @default("org_admin")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
 }
 
 model RuleSet {
@@ -310,6 +353,25 @@ model AuditLog {
   @@index([createdAt])
 }
 
+/// Queryable PHI access trail. Contains identifiers and field categories only,
+/// never PHI values, transcript text, or credential material.
+model PhiAccessEvent {
+  id            String   @id @default(uuid())
+  practiceId    String   @map("practice_id")
+  actorId       String?  @map("actor_id")
+  operation     String
+  recordType    String   @map("record_type")
+  recordId      String   @map("record_id")
+  purpose       String?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([practiceId, createdAt])
+  @@index([recordType, recordId])
+  @@index([actorId, createdAt])
+  @@map("phi_access_events")
+}
+
 /// One encrypted credential payload for the practice's pre-call triage channel.
 /// The plaintext is never persisted; use triageCredentialService to access it.
 model TriageCredential {
@@ -410,6 +472,9 @@ enum RecoveryActionType {
   PRACTICE_DOCS
   CDCP_RECONSIDERATION
   HUMAN_ESCALATION
+  DENIAL_REVIEW
+  UNDERPAYMENT_REVIEW
+  SUBMISSION_QUALITY
   /// Claim is missing required patient data (name, DOB, subscriber ID) — carrier
   /// calls are blocked until staff add the data and clear the gate.
   MISSING_PATIENT_DATA
@@ -466,6 +531,10 @@ model InsuranceClaim {
   /// What the practice expected the carrier to pay. When set, the voice agent
   /// uses this when discussing the discrepancy — distinct from outstandingAmount.
   expectedAmount    Decimal?       @map("expected_amount") @db.Decimal(10, 2)
+  denialReasonCode String?        @map("denial_reason_code")
+  denialReasonText String?        @map("denial_reason_text")
+  denialDate       DateTime?      @map("denial_date")
+  appealDeadline   DateTime?      @map("appeal_deadline")
   daysOutstanding   Int            @map("days_outstanding")
   /// Date of service — canonical anchor for carrier appeal deadlines. Prefer PMS backfill over inferred dates.
   servicedAt        DateTime?      @map("serviced_at")
@@ -491,6 +560,10 @@ model InsuranceClaim {
   queueEntry      CallQueue?
   recoveryActions ClaimRecoveryAction[]
   recoveryEvents  ClaimRecoveryEvent[]
+  evidenceItems   ClaimEvidenceItem[]
+  submissions     ClaimSubmission[]
+  evidencePacks   EvidencePackExport[]
+  underpaymentCases UnderpaymentCase[]
   notifications   PracticeNotification[]
 
   @@unique([practiceId, claimNumber])
@@ -554,6 +627,79 @@ model ClaimRecoveryEvent {
   @@index([practiceId, createdAt(sort: Desc)])
   @@index([claimId, createdAt(sort: Desc)])
   @@map("claim_recovery_events")
+}
+
+/// Staff-held evidence status. Clinical files remain in the PMS for v1.
+model ClaimEvidenceItem {
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  claimId          String   @map("claim_id")
+  recoveryActionId String?  @map("recovery_action_id")
+  evidenceType     String   @map("evidence_type")
+  status           String   @default("REQUIRED")
+  attestedAt       DateTime? @map("attested_at")
+  attestedBy       String?  @map("attested_by")
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, recoveryActionId, evidenceType])
+  @@index([practiceId, status])
+  @@map("claim_evidence_items")
+}
+
+/// Practice-entered carrier submission proof; no PMS write is implied.
+model ClaimSubmission {
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  claimId          String   @map("claim_id")
+  recoveryActionId String?  @map("recovery_action_id")
+  method           String
+  referenceNumber  String?  @map("reference_number")
+  submittedAt      DateTime @default(now()) @map("submitted_at")
+  submittedBy      String?  @map("submitted_by")
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, submittedAt])
+  @@index([claimId])
+  @@map("claim_submissions")
+}
+
+/// Immutable metadata-only evidence pack export record.
+model EvidencePackExport {
+  id          String   @id @default(uuid())
+  practiceId  String   @map("practice_id")
+  claimId     String   @map("claim_id")
+  exportedBy  String?  @map("exported_by")
+  checksum    String
+  format      String   @default("JSON")
+  createdAt   DateTime @default(now()) @map("created_at")
+  claim       InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, createdAt])
+  @@index([claimId])
+  @@map("evidence_pack_exports")
+}
+
+model UnderpaymentCase {
+  id              String   @id @default(uuid())
+  practiceId      String   @map("practice_id")
+  claimId         String   @map("claim_id")
+  expectedCents   Int      @map("expected_cents")
+  paidCents       Int      @map("paid_cents")
+  varianceCents   Int      @map("variance_cents")
+  reasonCode      String?  @map("reason_code")
+  status          String   @default("OPEN")
+  createdAt       DateTime @default(now()) @map("created_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  claim           InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, expectedCents, paidCents])
+  @@index([practiceId, status])
+  @@map("underpayment_cases")
 }
 
 /// One row per Vapi call attempt. vapiCallId is unique — used for idempotency.

@@ -146,6 +146,12 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     if (tier.hardStopAtLimit) {
       return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
     }
+    // Confirmed overage: every further minute bills at the overage rate,
+    // which exceeds delivery cost on all paid tiers — profitable, so neither
+    // the soft stop nor the COGS breaker applies. Daily caps still do.
+    if (practice.overageConfirmed) {
+      return { allowed: true, reason: 'OK', overageRatePerMinute: tier.overageRatePerMinute };
+    }
     await triggerSoftStop(prisma, practice);
     return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
   }
@@ -233,7 +239,7 @@ export async function recordCallUsage(
   const tier = tierFor(practice);
 
   if (updated && updated.minutesConsumed >= tier.includedMinutes) {
-    if (!tier.hardStopAtLimit) {
+    if (!tier.hardStopAtLimit && !practice.overageConfirmed) {
       await triggerSoftStop(prisma, practice);
     }
   } else if (updated && !updated.warning80Sent) {

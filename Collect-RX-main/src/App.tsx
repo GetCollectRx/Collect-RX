@@ -18,6 +18,7 @@ import PracticeBillingPage   from './pages/PracticeBillingPage'
 import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
 import CanadianExpansion     from './pages/CanadianExpansion'
 import GroupDashboard        from './pages/GroupDashboard'
+import ArCommandCenter       from './pages/ArCommandCenter'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
 import WorkQueue             from './pages/WorkQueue'
@@ -157,6 +158,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
     ],
   },
@@ -206,6 +208,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
     ],
   },
@@ -467,6 +470,7 @@ function AppShell() {
           <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
           <Route path="/insurance/gates" element={<Navigate to="/insurance?tab=blocked" replace />} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
+          <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/balances" element={<Navigate to="/insurance" replace />} />
           <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
