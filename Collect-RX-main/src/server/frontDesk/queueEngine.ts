@@ -5,6 +5,7 @@ import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
+import { CALL_TIMEOUTS } from '../../billing/tiers.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
@@ -264,6 +265,38 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       },
       select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
+    // ── OVER-CEILING LIVE CALL TERMINATOR ─────────────────────────────────────
+    // Vapi is told maxDurationSeconds at dispatch, but squad calls have been
+    // observed to outlive it. Any attempt still open past the absolute ceiling
+    // (plus grace for webhook latency) gets its live call ended server-side —
+    // the practice must never be billed for minutes the plan ceiling forbids.
+    const ceilingBefore = new Date(Date.now() - (CALL_TIMEOUTS.absoluteMaxMinutes + 2) * 60 * 1000);
+    const overCeiling = await prisma.callAttempt.findMany({
+      where: {
+        completedAt: null,
+        initiatedAt: { lt: ceilingBefore },
+        claim: { practiceId, deletedAt: null },
+      },
+      select: { id: true, vapiCallId: true, initiatedAt: true },
+    });
+    for (const attempt of overCeiling) {
+      if (!attempt.vapiCallId) continue;
+      logger.error('[deskQueueEngine] call exceeded absolute duration ceiling — ending Vapi call', {
+        callAttemptId: attempt.id,
+        vapiCallId: attempt.vapiCallId,
+        initiatedAt: attempt.initiatedAt.toISOString(),
+        ceilingMinutes: CALL_TIMEOUTS.absoluteMaxMinutes,
+      });
+      try {
+        await endVapiCall(attempt.vapiCallId);
+      } catch (endErr) {
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+          vapiCallId: attempt.vapiCallId,
+          error: endErr,
+        });
+      }
+    }
+
     for (const staleAttempt of staleAttempts) {
       logger.error('[deskQueueEngine] stale call attempt — closing (end-of-call webhook never arrived)', {
         callAttemptId: staleAttempt.id,

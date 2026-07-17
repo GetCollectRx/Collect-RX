@@ -33,6 +33,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CarrierId } from '@prisma/client';
+import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
+
+/**
+ * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
+ * — Vapi's default is 600s, so it must be set explicitly). Carrier hold-time
+ * overrides apply below the absolute 45-min ceiling, never above it.
+ */
+export function maxCallDurationSeconds(carrierId: string): number {
+  const carrierMinutes = CARRIER_TIMEOUTS[carrierId] ?? CARRIER_TIMEOUTS.default;
+  return Math.min(carrierMinutes, CALL_TIMEOUTS.absoluteMaxMinutes) * 60;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -311,6 +322,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       // Zero-retention: tell Vapi not to store the recording.
       // Belt-and-suspenders — handlePostCallAudioDeletion() also deletes it.
       artifactPlan: { recordingEnabled: false },
+      maxDurationSeconds: maxCallDurationSeconds(carrierId),
       metadata,
       // ── EPHEMERAL CALL VARIABLES ──────────────────────────────────────────
       // These are injected into the squad system prompt at call time only.
@@ -422,6 +434,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
     customer: { number: carrierPhone },
     assistantOverrides: {
       artifactPlan: { recordingEnabled: false },
+      maxDurationSeconds: maxCallDurationSeconds(params.carrierId),
       metadata,
       variableValues: {
       patient_name: params.patientName,

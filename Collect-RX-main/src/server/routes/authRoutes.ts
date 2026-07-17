@@ -11,6 +11,7 @@ import {
   ROLE_LEVEL,
   authPracticeId,
   type UserAuthPayload,
+  type PracticeRole,
 } from '../accessControl/types.js';
 import type { UserRole } from '../../types/userRole.js';
 import {
@@ -18,11 +19,14 @@ import {
   setPlatformDevAuthCookie,
   setBriefAuthCookie,
   clearAuthCookie,
+  signUserToken,
+  signBriefSessionToken,
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
 import { authLimiter } from '../middleware/rateLimiter';
 import { getSubscriptionGateState } from '../stripe/billing';
+import { trialEndDate } from '../../billing/tiers.js';
 import {
   formatZodError,
   loginBodySchema,
@@ -95,9 +99,145 @@ function canManageRole(
 export function createAuthRouter(prisma: PrismaClient): Router {
   const r = Router();
 
+  function wantsDesktopSession(req: Request): boolean {
+    return req.get('X-CRX-Desktop') === '1';
+  }
+
+  async function respondPracticeLogin(
+    req: Request,
+    res: Response,
+    user: {
+      id: string;
+      practiceId: string;
+      role: string;
+      providerId: string | null;
+      displayName: string;
+      email: string;
+    },
+  ) {
+    setUserAuthCookie(res, {
+      userId: user.id,
+      practiceId: user.practiceId,
+      role: user.role as UserAuthPayload['role'],
+      ...(user.providerId ? { providerId: user.providerId } : {}),
+    });
+
+    const practice = await prisma.practice.findUnique({
+      where: { id: user.practiceId },
+      select: { id: true, name: true, timezone: true },
+    });
+    const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+    const health = await buildSessionHealth(prisma);
+
+    return res.json({
+      role: user.role,
+      userRole: practiceRoleToBrief(user.role as PracticeRole | 'platform_dev'),
+      deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
+      phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
+      practice,
+      subscription,
+      user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
+      health,
+      ...(wantsDesktopSession(req)
+        ? {
+            sessionToken: signUserToken({
+              userId: user.id,
+              practiceId: user.practiceId,
+              role: user.role as UserAuthPayload['role'],
+              ...(user.providerId ? { providerId: user.providerId } : {}),
+            }),
+          }
+        : {}),
+    });
+  }
+
+  async function respondPlatformUserLogin(
+    req: Request,
+    res: Response,
+    user: {
+      id: string;
+      userRole: string;
+      practiceId: string | null;
+      passwordHash: string;
+    },
+  ) {
+    const userRole = user.userRole as UserRole;
+    setBriefAuthCookie(res, {
+      userRole,
+      userId: user.id,
+      practiceId: user.practiceId,
+      phiAccess: userRole === 'auditor',
+    });
+
+    let practice = null;
+    if (user.practiceId) {
+      practice = await prisma.practice.findUnique({
+        where: { id: user.practiceId },
+        select: { id: true, name: true, timezone: true },
+      });
+    }
+    const sessionAuth = {
+      role: userRole === 'auditor' ? 'accountant' as const : 'group_admin' as const,
+      userRole,
+      userId: user.id,
+      practiceId: user.practiceId ?? '',
+      phiAccess: userRole === 'auditor',
+    };
+    const practices = isCrossPracticeReader(sessionAuth)
+      ? await prisma.practice.findMany({
+          select: { id: true, name: true, timezone: true },
+          orderBy: { name: 'asc' },
+        })
+      : practice
+        ? [practice]
+        : [];
+
+    return res.json({
+      userRole,
+      role: userRole === 'auditor' ? 'accountant' : userRole === 'billing_ops_manager' ? 'group_admin' : 'platform_dev',
+      phiAccess: userRole === 'auditor',
+      practice: practice ?? practices[0] ?? null,
+      practices,
+      subscription: {
+        enforce: false, active: true, status: null, plan: null, usage: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
+      },
+      health: await buildSessionHealth(prisma),
+      ...(wantsDesktopSession(req)
+        ? {
+            sessionToken: signBriefSessionToken({
+              userRole,
+              userId: user.id,
+              practiceId: user.practiceId,
+              phiAccess: userRole === 'auditor',
+            }),
+          }
+        : {}),
+    });
+  }
+
   // ── Login ────────────────────────────────────────────────────────────────────
 
-  /** POST /api/auth/login — email + password */
+  /** POST /api/auth/dev/demo — one-click local demo sign-in (non-production only) */
+  r.post('/dev/demo', async (req: Request, res: Response) => {
+    try {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      const email = (process.env.SEED_PRACTICE_EMAIL || 'demo@collectrx-test.local').trim().toLowerCase();
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user?.isActive) {
+        return res.status(503).json({
+          error: 'Demo practice is not set up. Run: npm run demo:seed',
+        });
+      }
+      return respondPracticeLogin(req, res, user);
+    } catch (e) {
+      console.error('Dev demo login error:', e);
+      return res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  /** POST /api/auth/login — email + password (practice staff or platform roles) */
   r.post('/login', authLimiter, async (req: Request, res: Response) => {
     try {
       const parsed = loginBodySchema.safeParse(req.body);
@@ -106,45 +246,28 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
       const { email, password } = parsed.data;
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user || !user.isActive) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+      const practiceUser = await prisma.user.findUnique({ where: { email } });
+      if (practiceUser?.isActive) {
+        if (practiceUser.role === 'accountant' && practiceUser.tokenExpiresAt && practiceUser.tokenExpiresAt < new Date()) {
+          return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
+        }
+        const ok = await bcrypt.compare(password, practiceUser.passwordHash);
+        if (!ok) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        return respondPracticeLogin(req, res, practiceUser);
       }
 
-      // Accountant token expiry check
-      if (user.role === 'accountant' && user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
-        return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
+      const platformUser = await prisma.platformUser.findUnique({ where: { email } });
+      if (platformUser?.active) {
+        const ok = await bcrypt.compare(password, platformUser.passwordHash);
+        if (!ok) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        return respondPlatformUserLogin(req, res, platformUser);
       }
 
-      const ok = await bcrypt.compare(password, user.passwordHash);
-      if (!ok) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      setUserAuthCookie(res, {
-        userId: user.id,
-        practiceId: user.practiceId,
-        role: user.role as UserAuthPayload['role'],
-        ...(user.providerId ? { providerId: user.providerId } : {}),
-      });
-
-      const practice = await prisma.practice.findUnique({
-        where: { id: user.practiceId },
-        select: { id: true, name: true, timezone: true },
-      });
-      const subscription = await getSubscriptionGateState(prisma, user.practiceId);
-      const health = await buildSessionHealth(prisma);
-
-      return res.json({
-        role: user.role,
-        userRole: practiceRoleToBrief(user.role),
-        deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
-        phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
-        practice,
-        subscription,
-        user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
-        health,
-      });
+      return res.status(401).json({ error: 'Invalid credentials' });
     } catch (e) {
       console.error('Login error:', e);
       return res.status(500).json({ error: 'Login failed' });
@@ -196,7 +319,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     }
   });
 
-  /** POST /api/auth/login/platform-user — auditor / billing ops (PlatformUser table) */
+  /** POST /api/auth/login/platform-user — legacy alias; main /login accepts platform emails too */
   r.post('/login/platform-user', authLimiter, async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
@@ -211,49 +334,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-
-      const userRole = user.userRole as UserRole;
-      setBriefAuthCookie(res, {
-        userRole,
-        userId: user.id,
-        practiceId: user.practiceId,
-        phiAccess: userRole === 'auditor',
-      });
-
-      let practice = null;
-      if (user.practiceId) {
-        practice = await prisma.practice.findUnique({
-          where: { id: user.practiceId },
-          select: { id: true, name: true, timezone: true },
-        });
-      }
-      const sessionAuth = {
-        role: userRole === 'auditor' ? 'accountant' as const : 'group_admin' as const,
-        userRole,
-        userId: user.id,
-        practiceId: user.practiceId ?? '',
-        phiAccess: userRole === 'auditor',
-      };
-      const practices = isCrossPracticeReader(sessionAuth)
-        ? await prisma.practice.findMany({
-            select: { id: true, name: true, timezone: true },
-            orderBy: { name: 'asc' },
-          })
-        : practice
-          ? [practice]
-          : [];
-
-      return res.json({
-        userRole,
-        role: userRole === 'auditor' ? 'accountant' : userRole === 'billing_ops_manager' ? 'group_admin' : 'platform_dev',
-        phiAccess: userRole === 'auditor',
-        practice: practice ?? practices[0] ?? null,
-        practices,
-        subscription: {
-          enforce: false, active: true, status: null, plan: null, usage: null, currentPeriodEnd: null, priceConfigured: false, skipped: true,
-        },
-        health: await buildSessionHealth(prisma),
-      });
+      return respondPlatformUserLogin(req, res, user);
     } catch (e) {
       console.error('Platform user login error:', e);
       return res.status(500).json({ error: 'Login failed' });
@@ -738,6 +819,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
             name: practiceName,
             passwordHash,
             timezone: 'America/Toronto',
+            billingTier: 'trial',
+            trialEndsAt: trialEndDate(),
           },
         });
         const user = await tx.user.create({

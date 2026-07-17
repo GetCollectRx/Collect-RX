@@ -9,7 +9,20 @@
  *     until the practice confirms overage charges via confirmOverage().
  */
 import type { Practice, PrismaClient, UsagePeriod } from '@prisma/client';
-import { COGS_BREAKER, TIERS, UNIT_ECONOMICS, WARNINGS, type TierConfig } from '../../billing/tiers.js';
+import {
+  billingTierForStripePrice,
+  CALL_TIMEOUTS,
+  COGS_BREAKER,
+  OVERAGE,
+  TIERS,
+  UNIT_ECONOMICS,
+  WARNINGS,
+  type TierConfig,
+} from '../../billing/tiers.js';
+import {
+  billingSkipPracticeIds,
+  subscriptionEnforceEnabled,
+} from '../stripe/subscriptionPlans.js';
 
 export type PlanGateReason =
   | 'OK'
@@ -18,7 +31,8 @@ export type PlanGateReason =
   | 'DAILY_CAP_REACHED'
   | 'SUBSCRIPTION_PAST_DUE'
   | 'SUBSCRIPTION_CANCELED'
-  | 'COGS_BREAKER_PAUSED';
+  | 'COGS_BREAKER_PAUSED'
+  | 'BILLING_MISCONFIGURED';
 
 export type PlanGateResult = {
   allowed: boolean;
@@ -119,6 +133,32 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
 
   if (practice.billingTier === 'trial' && practice.trialEndsAt && practice.trialEndsAt < now) {
     return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
+  }
+
+  // Fail closed: under SUBSCRIPTION_ENFORCE a paid tier is only callable when
+  // Stripe is actually configured and the subscription is live. A practice
+  // whose tier has no price env, whose stored price ID maps to a different
+  // tier, or whose subscription never activated must not get a minute pool.
+  if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
+    if (!tier.stripePriceId) {
+      console.error(
+        `[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured for tier=${practice.billingTier} — blocking practice=${practice.id}`,
+      );
+      return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+    }
+    if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
+      return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+    }
+    if (practice.subscriptionPriceId) {
+      const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
+      if (tierForPrice !== practice.billingTier) {
+        console.error(
+          `[planGate] subscription price ${practice.subscriptionPriceId} maps to tier=${tierForPrice ?? 'none'} ` +
+            `but practice=${practice.id} is on tier=${practice.billingTier} — blocking until reconciled`,
+        );
+        return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+      }
+    }
   }
 
   if (practice.callsPaused) {
@@ -238,6 +278,8 @@ export async function recordCallUsage(
   const updated = await prisma.usagePeriod.findUnique({ where: { id: usage.id } });
   const tier = tierFor(practice);
 
+  await maybeDispatchDailySpendAlert(prisma, practice, tier, minutesBilled);
+
   if (updated && updated.minutesConsumed >= tier.includedMinutes) {
     if (!tier.hardStopAtLimit && !practice.overageConfirmed) {
       await triggerSoftStop(prisma, practice);
@@ -253,13 +295,57 @@ export async function recordCallUsage(
 }
 
 /**
- * Practice confirms overage charges from the Usage tab — resumes calling.
- * No-op if the practice isn't in an overage_pending soft stop.
+ * Alert ops when one day's usage crosses CALL_TIMEOUTS.dailySpendAlertPct of
+ * the monthly allowance. Crossing detection (before < threshold <= after)
+ * keeps the alert to at most once per crossing without a dedup table.
  */
-export async function confirmOverage(prisma: PrismaClient, practiceId: string): Promise<{ status: 'resumed' | 'not_paused' }> {
+async function maybeDispatchDailySpendAlert(
+  prisma: PrismaClient,
+  practice: Practice,
+  tier: TierConfig,
+  minutesJustBilled: number,
+): Promise<void> {
+  if (tier.includedMinutes <= 0) return;
+  const thresholdMinutes = tier.includedMinutes * CALL_TIMEOUTS.dailySpendAlertPct;
+  const todayAfter = await getTodayMinutes(prisma, practice.id);
+  const todayBefore = todayAfter - minutesJustBilled;
+  if (todayBefore >= thresholdMinutes || todayAfter < thresholdMinutes) return;
+
+  console.error(
+    `[dailySpendAlert] practice=${practice.id} burned ${todayAfter} min today — ` +
+      `over ${Math.round(CALL_TIMEOUTS.dailySpendAlertPct * 100)}% of the ${tier.includedMinutes}-min monthly allowance in one day`,
+  );
+  try {
+    const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
+    await dispatchOpsAlert({
+      alertId: 'daily_spend',
+      source: practice.id,
+      detail: `${todayAfter} min in one day on ${practice.billingTier} (monthly allowance ${tier.includedMinutes} min)`,
+    });
+  } catch (alertErr) {
+    console.error('[dailySpendAlert] ops alert dispatch failed (non-fatal):', alertErr);
+  }
+}
+
+/**
+ * Practice confirms overage charges from the Usage tab — resumes calling.
+ * No-op if the practice isn't in an overage_pending soft stop. The offer
+ * auto-declines after OVERAGE.confirmationExpiryHours — late confirmations
+ * are rejected and calling stays paused until upgrade or cycle reset.
+ */
+export async function confirmOverage(
+  prisma: PrismaClient,
+  practiceId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
   const practice = await prisma.practice.findUnique({ where: { id: practiceId } });
   if (!practice?.callsPaused || practice.callsPausedReason !== 'overage_pending') {
     return { status: 'not_paused' };
+  }
+  if (practice.callsPausedAt) {
+    const expiresAt = practice.callsPausedAt.getTime() + OVERAGE.confirmationExpiryHours * 60 * 60 * 1000;
+    if (Date.now() > expiresAt) {
+      return { status: 'expired' };
+    }
   }
   await prisma.practice.update({
     where: { id: practiceId },

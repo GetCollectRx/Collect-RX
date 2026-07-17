@@ -89,6 +89,8 @@ export function gateBlockMessage(reason: PlanGateReason, overageRatePerMinute?: 
       return 'Your subscription is canceled. Resubscribe to resume calling.';
     case 'COGS_BREAKER_PAUSED':
       return 'Calling is paused for this billing period — usage far exceeded your plan. Contact support to review or upgrade.';
+    case 'BILLING_MISCONFIGURED':
+      return 'Calling is paused — your billing setup needs attention. Contact support@collectrx.ca.';
     default:
       return '';
   }
@@ -243,7 +245,9 @@ export async function recordCallUsage(opts: {
 }
 
 /** Practice confirms overage charges from the Usage tab — resumes calling. */
-export async function confirmOverage(practiceId: string): Promise<{ status: 'resumed' | 'not_paused' }> {
+export async function confirmOverage(
+  practiceId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
   return confirmOverageUsage(prisma, practiceId);
 }
 
