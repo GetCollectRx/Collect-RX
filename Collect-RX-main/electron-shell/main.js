@@ -3,8 +3,8 @@
 /**
  * CollectRx — Electron main process
  *
- * Dev mode:  loads http://localhost:5173/login (Vite)
- * Prod mode: COLLECTRX_DASHBOARD_URL (or dashboard-url.txt), defaulting path / → /dashboard
+ * Dev mode:  loads http://localhost:5173/login (Vite) or hosted Fly when COLLECTRX_USE_HOSTED
+ * Prod mode: bundled UI on 127.0.0.1 + local proxy to Fly API (complete desktop app)
  */
 
 const {
@@ -19,8 +19,12 @@ const {
 const path  = require('path');
 const fs    = require('fs');
 const { spawn } = require('child_process');
-const { autoUpdater } = require('electron-updater');
 const { loadAgentConfig, applyAgentConfigToEnv } = require('./loadAgentConfig.cjs');
+const { startDesktopServer } = require('./desktopServer.cjs');
+const {
+  COLLECTRX_PROD_API_ORIGIN,
+  COLLECTRX_PROD_APP_ORIGIN,
+} = require('./origins.cjs');
 
 // Load repo-root .env in development so COLLECTRX_* applies when launching `electron .` from the repo.
 if (!app.isPackaged) {
@@ -50,11 +54,24 @@ function readApiOriginFromUserData() {
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); process.exit(0); }
 
+/** Windows login startup registers CollectRx.exe --hidden (see installer.nsh). */
+const startHidden = process.argv.includes('--hidden');
+
 // ── Config ───────────────────────────────────────────────────────────────────
 const isDev = !app.isPackaged;
 
 /** Public dashboard when COLLECTRX_DASHBOARD_URL / dashboard-url.txt are unset. */
-const DEFAULT_PROD_DASHBOARD = 'https://www.collectrx.ca';
+const DEFAULT_PROD_DASHBOARD = COLLECTRX_PROD_APP_ORIGIN;
+
+function useHostedApp() {
+  if (!isDev) return true;
+  const local = String(process.env.COLLECTRX_DEV_LOCAL || '').toLowerCase();
+  if (local === '1' || local === 'true' || local === 'yes') return false;
+  const hosted = String(process.env.COLLECTRX_USE_HOSTED || '').toLowerCase();
+  if (hosted === '1' || hosted === 'true' || hosted === 'yes') return true;
+  // Default unpackaged Electron to hosted Fly — no local npm stack required.
+  return true;
+}
 
 function readDashboardUrlFromUserData() {
   if (isDev) return null;
@@ -73,7 +90,8 @@ function readDashboardUrlFromUserData() {
 }
 
 function resolveDashboardUrl() {
-  if (isDev) return { url: 'http://localhost:5173', source: 'dev' };
+  if (isDev && !useHostedApp()) return { url: 'http://localhost:5173', source: 'dev-local' };
+  if (isDev) return { url: COLLECTRX_PROD_APP_ORIGIN, source: 'dev-hosted' };
   const envUrl = process.env.COLLECTRX_DASHBOARD_URL?.trim();
   if (envUrl) return { url: envUrl, source: 'env' };
   const fromFile = readDashboardUrlFromUserData();
@@ -81,8 +99,10 @@ function resolveDashboardUrl() {
   return { url: DEFAULT_PROD_DASHBOARD, source: 'default' };
 }
 
-const _dash = resolveDashboardUrl();
-const DASHBOARD_URL = _dash.url;
+let DASHBOARD_URL = '';
+let WINDOW_ENTRY_URL = '';
+let bundledAppUrl = null;
+let desktopServerHandle = null;
 
 function dashboardIsRemoteHttps() {
   try {
@@ -116,21 +136,32 @@ function sanitizeApiOriginForDashboard(apiOrigin) {
 
 // Renderer resolves /api against this origin when set (overrides Vite-inlined VITE_API_ORIGIN).
 ipcMain.on('crx-get-api-origin', (event) => {
+  if (bundledAppUrl) {
+    event.returnValue = '';
+    return;
+  }
   const fromEnv = sanitizeApiOriginForDashboard(process.env.COLLECTRX_API_ORIGIN || '');
   const fromFile = sanitizeApiOriginForDashboard(readApiOriginFromUserData());
-  event.returnValue = fromEnv || fromFile || '';
+  const fallback =
+    isDev && useHostedApp() ? COLLECTRX_PROD_API_ORIGIN : '';
+  event.returnValue = fromEnv || fromFile || fallback || '';
 });
 
 /**
  * Practice home lives at /dashboard. Signed-in sessions land there; logged-out users
  * are redirected to /login by the app router.
  */
-function electronWindowEntryUrl(baseUrl) {
+function electronWindowEntryUrl(baseUrl, opts = {}) {
+  const { preferLogin = false } = opts;
   const override = process.env.COLLECTRX_DASHBOARD_START_PATH?.trim();
   try {
     const u = new URL(baseUrl);
     if (override) {
       u.pathname = override.startsWith('/') ? override : `/${override}`;
+      return u.toString();
+    }
+    if (preferLogin) {
+      u.pathname = '/login';
       return u.toString();
     }
     const pathOnly = (u.pathname || '/').replace(/\/+$/, '') || '/';
@@ -143,22 +174,53 @@ function electronWindowEntryUrl(baseUrl) {
   }
 }
 
-const WINDOW_ENTRY_URL = electronWindowEntryUrl(DASHBOARD_URL);
-
-if (!isDev && _dash.source === 'default') {
-  const hintPath = path.join(app.getPath('userData'), 'dashboard-url.txt');
-  console.warn(
-    `[CollectRx] Dashboard URL not configured — using default ${DEFAULT_PROD_DASHBOARD}.\n` +
-      `  Set env COLLECTRX_DASHBOARD_URL when launching, or create this file with one line (your public app URL):\n` +
-      `  ${hintPath}`
-  );
+function resolveDistDir() {
+  return path.join(__dirname, '..', 'dist');
 }
 
-// Dev: resolve directly to desktop/services/abeldent-sync.js
+async function startBundledDesktopServer() {
+  const distDir = resolveDistDir();
+  const apiOrigin =
+    process.env.COLLECTRX_API_ORIGIN?.trim() ||
+    readApiOriginFromUserData() ||
+    COLLECTRX_PROD_API_ORIGIN;
+  const handle = await startDesktopServer({ distDir, apiOrigin });
+  desktopServerHandle = handle;
+  bundledAppUrl = `http://127.0.0.1:${handle.port}`;
+  DASHBOARD_URL = bundledAppUrl;
+  WINDOW_ENTRY_URL = electronWindowEntryUrl(bundledAppUrl, { preferLogin: true });
+  console.log(`[CollectRx] Bundled UI at ${bundledAppUrl} → API ${apiOrigin}`);
+  return bundledAppUrl;
+}
+
+async function initDashboardTarget() {
+  if (!isDev) {
+    try {
+      await startBundledDesktopServer();
+      return;
+    } catch (err) {
+      console.error('[CollectRx] Bundled UI unavailable — falling back to hosted dashboard', err.message);
+      bundledAppUrl = null;
+    }
+  }
+  const dash = resolveDashboardUrl();
+  DASHBOARD_URL = dash.url;
+  WINDOW_ENTRY_URL = electronWindowEntryUrl(DASHBOARD_URL);
+  if (!isDev && dash.source === 'default') {
+    const hintPath = path.join(app.getPath('userData'), 'dashboard-url.txt');
+    console.warn(
+      `[CollectRx] Dashboard URL not configured — using default ${DEFAULT_PROD_DASHBOARD}.\n` +
+        `  Set env COLLECTRX_DASHBOARD_URL when launching, or create this file with one line (your public app URL):\n` +
+        `  ${hintPath}`,
+    );
+  }
+}
+
+// WINDOW_ENTRY_URL set in initDashboardTarget() before createWindow()
+
+// Dev: resolve directly to desktop/services/abeldent-sync.cjs
 // Packaged: electron-builder copies desktop/ into resources/app/desktop/
-const SYNC_SERVICE_PATH = app.isPackaged
-  ? path.join(process.resourcesPath, 'app', 'desktop', 'services', 'abeldent-sync.js')
-  : path.join(__dirname, '..', 'desktop', 'services', 'abeldent-sync.js');
+const SYNC_SERVICE_PATH = path.join(__dirname, '..', 'desktop', 'services', 'abeldent-sync.cjs');
 
 // ── State ────────────────────────────────────────────────────────────────────
 let mainWindow  = null;
@@ -249,7 +311,9 @@ function createWindow() {
   });
 
   loadDashboardUrl();
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', () => {
+    if (!startHidden) mainWindow.show();
+  });
 
   // Minimise to tray on close
   mainWindow.on('close', (e) => {
@@ -279,6 +343,11 @@ function createWindow() {
 
 // ── Sync service ──────────────────────────────────────────────────────────────
 function spawnSyncService() {
+  if (!process.env.ABELDENT_SCHEMA_MAP?.trim()) {
+    console.log('[Sync] ABELDENT_SCHEMA_MAP not set — PMS connector idle (CSV / cloud mode)');
+    setStatus('healthy', 'Cloud mode — no local PMS sync');
+    return;
+  }
   if (!fs.existsSync(SYNC_SERVICE_PATH)) {
     console.log('[Sync] Service not found at', SYNC_SERVICE_PATH, '— skipping');
     setStatus('starting', 'Sync service not yet configured');
@@ -300,11 +369,9 @@ function spawnSyncService() {
       ABELDENT_MIN_DAYS_BALANCE   : process.env.ABELDENT_MIN_DAYS_BALANCE,
       ABELDENT_PATIENT_LEDGER_TABLE: process.env.ABELDENT_PATIENT_LEDGER_TABLE,
       SCHEMA_MAP_PATH             : process.env.SCHEMA_MAP_PATH,
-      COLLECTRX_API_URL           : process.env.COLLECTRX_API_URL || process.env.RAILWAY_API_URL,
-      COLLECTRX_API_TOKEN         : process.env.COLLECTRX_API_TOKEN || process.env.COLLECTRX_CONNECTOR_TOKEN || process.env.RAILWAY_API_TOKEN,
+      COLLECTRX_API_URL           : process.env.COLLECTRX_API_URL || COLLECTRX_PROD_API_ORIGIN,
+      COLLECTRX_API_TOKEN         : process.env.COLLECTRX_API_TOKEN || process.env.COLLECTRX_CONNECTOR_TOKEN,
       COLLECTRX_CONNECTOR_TOKEN   : process.env.COLLECTRX_CONNECTOR_TOKEN,
-      RAILWAY_API_URL             : process.env.RAILWAY_API_URL,
-      RAILWAY_API_TOKEN           : process.env.RAILWAY_API_TOKEN,
       SYNC_INTERVAL_MINUTES       : process.env.SYNC_INTERVAL_MINUTES,
     },
     stdio      : ['pipe', 'pipe', 'pipe'],
@@ -345,7 +412,10 @@ ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; }
 ipcMain.handle('get-app-version',    () => app.getVersion());
 ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
 ipcMain.handle('restart-to-update',  () => {
-  if (!isDev) autoUpdater.quitAndInstall(false, true);
+  if (!isDev) {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.quitAndInstall(false, true);
+  }
   return true;
 });
 
@@ -354,7 +424,7 @@ function setupAutoUpdater() {
   // Only run in packaged app — electron-updater crashes in dev mode
   if (isDev) return;
 
-  autoUpdater.autoDownload = true;
+  const { autoUpdater } = require('electron-updater');
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
@@ -382,8 +452,9 @@ function resolveApiOriginForScan() {
   if (fromUserData) return fromUserData;
   const env = process.env.COLLECTRX_API_ORIGIN?.trim();
   if (env && /^https?:\/\//i.test(env)) return env.replace(/\/$/, '');
+  if (isDev && useHostedApp()) return COLLECTRX_PROD_API_ORIGIN;
   if (isDev) return 'http://127.0.0.1:3000';
-  return DEFAULT_PROD_DASHBOARD.replace(/\/$/, '');
+  return COLLECTRX_PROD_API_ORIGIN;
 }
 
 function runStartupHealthScan() {
@@ -413,11 +484,10 @@ function runStartupHealthScan() {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
-  const appRoot = app.isPackaged
-    ? path.join(process.resourcesPath, 'app')
-    : path.join(__dirname, '..');
+app.whenReady().then(async () => {
+  const appRoot = path.join(__dirname, '..');
   applyAgentConfigToEnv(loadAgentConfig(appRoot));
+  await initDashboardTarget();
   createTray();
   createWindow();
   spawnSyncService();
@@ -434,4 +504,8 @@ app.on('window-all-closed', (e) => e.preventDefault()); // stay in tray on Windo
 app.on('before-quit', () => {
   app.isQuitting = true;
   syncProcess?.kill('SIGTERM');
+  if (desktopServerHandle) {
+    void desktopServerHandle.close().catch(() => {});
+    desktopServerHandle = null;
+  }
 });

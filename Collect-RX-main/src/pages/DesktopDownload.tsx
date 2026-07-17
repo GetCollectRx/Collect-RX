@@ -73,7 +73,8 @@ export default function DesktopDownload() {
         {!downloadsConfigured && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Installers are listed below, but direct download requires server configuration. If a link fails,
-            sign in and use <Link to="/admin/sync" className="underline font-medium">Admin → Sync ops</Link>, or email{' '}
+            sign in and use <Link to="/import" className="underline font-medium">Import CSV</Link> or{' '}
+            <Link to="/admin/sync" className="underline font-medium">Admin → Sync ops</Link>, or email{' '}
             <a href="mailto:support@collectrx.ca" className="underline font-medium">support@collectrx.ca</a> for the
             Windows installer.
           </div>

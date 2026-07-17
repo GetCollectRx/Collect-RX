@@ -19,6 +19,7 @@ declare global {
 interface ImportMetaEnv {
   /** Optional absolute origin for /api (no trailing slash); dev desktop → remote API */
   readonly VITE_API_ORIGIN?: string
+  readonly VITE_APP_SURFACE?: 'full' | 'marketing' | 'app' | 'desktop'
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string
 }

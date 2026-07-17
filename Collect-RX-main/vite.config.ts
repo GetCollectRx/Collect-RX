@@ -8,6 +8,8 @@ const repoRoot = path.resolve(workspaceDir, '..')
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const appSurface = (env.VITE_APP_SURFACE || '').trim()
+  const isDesktopBuild = appSurface === 'desktop'
   const remoteProxy = (env.VITE_API_PROXY_TARGET || '').trim().replace(/\/$/, '')
   const rawApi = env.API_PORT || env.PORT || '3000'
   const apiPort = /^\d{1,5}$/.test(String(rawApi)) ? rawApi : '3000'
@@ -19,6 +21,7 @@ export default defineConfig(({ mode }) => {
   const vitePort = /^\d{1,5}$/.test(String(rawVite)) ? Number(rawVite) : 5173
 
   return {
+    base: isDesktopBuild ? './' : '/',
     build: {
       target: 'es2022',
     },
@@ -34,6 +37,7 @@ export default defineConfig(({ mode }) => {
       {
         name: 'crx-inject-api-origin-meta',
         transformIndexHtml(html) {
+          if (isDesktopBuild) return html
           const o = (env.VITE_API_ORIGIN || '').trim().replace(/\/$/, '')
           if (!o) return html
           const meta = `<meta name="crx-public-api-origin" content="${o.replace(/"/g, '&quot;')}" />`

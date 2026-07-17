@@ -11,7 +11,7 @@ export default tseslint.config(
       'prisma/migrations/**',
       'storybook-static/**',
       '.storybook/**',
-      'electron/**',
+      'electron-shell/**',
       'e2e/**',
       'src/**/*.js',
       'src/vite-env.d.ts',

@@ -11,7 +11,7 @@
     "node": ">=20.10.0"
   },
   "type": "module",
-  "main": "electron/main.js",
+  "main": "electron-shell/main.js",
   "scripts": {
     "postinstall": "node scripts/ensure-electron-symlink.cjs",
     "dev": "node scripts/dev.mjs",
@@ -19,14 +19,16 @@
     "dev:backend": "tsx watch src/server/index.ts",
     "dev:frontend": "vite",
     "electron": "npm run dev:electron",
-    "dev:electron": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:electron": "concurrently \"COLLECTRX_DEV_LOCAL=1 npm run dev:backend\" \"COLLECTRX_DEV_LOCAL=1 npm run dev:frontend\" \"wait-on http://localhost:5173 && env -u ELECTRON_RUN_AS_NODE COLLECTRX_DEV_LOCAL=1 electron .\"",
     "check:api": "node scripts/check-api-coverage.mjs",
     "build": "npm run db:generate && tsc && npm run check:api && vite build",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
-    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
-    "build:linux": "npm run build && electron-builder --linux",
-    "build:desktop": "npm run build && electron-builder --mac --win --linux",
+    "build:renderer:desktop": "VITE_APP_SURFACE=desktop vite build",
+    "build:win": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --win",
+    "build:mac:swift": "bash scripts/build-macos-swift.sh",
+    "install:mac:swift": "bash scripts/install-macos-swift.sh",
+    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
+    "build:linux": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --linux",
+    "build:desktop": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --mac --win --linux",
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
@@ -50,6 +52,8 @@
     "diagnose:alert": "node scripts/diagnose-breakage.mjs -- --alert",
     "alert:diagnosis": "tsx scripts/send-ops-alerts.ts",
     "smoke:live": "node scripts/smoke-live.mjs",
+    "smoke:staging": "bash scripts/staging-smoke.sh",
+    "smoke:staging:product": "node scripts/staging-browser-smoke.mjs",
     "go-live:verify": "node scripts/go-live-verify.mjs",
     "startup-scan": "node scripts/startup-scan.mjs",
     "test:smoke-map": "vitest run tests/smoke/breakage-map.smoke.test.ts",
@@ -67,6 +71,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx src/server/seed.ts",
     "demo:seed": "tsx scripts/seed-demo.ts",
+    "validate:logins": "node scripts/validate-logins.mjs",
     "personas:reset-passwords": "node scripts/set-persona-test-passwords.mjs",
     "db:reset": "prisma migrate reset",
     "check:env": "node scripts/check-deploy-env.mjs",
@@ -161,14 +166,14 @@
   "build": {
     "appId": "com.collectrx.app",
     "productName": "CollectRx",
-    "icon": "electron/icon.png",
-    "afterPack": "./electron/afterPack.cjs",
-    "afterAllArtifactBuild": "./electron/afterAllArtifactBuild.cjs",
+    "icon": "electron-shell/icon.png",
+    "afterPack": "./electron-shell/afterPack.cjs",
+    "afterAllArtifactBuild": "./electron-shell/afterAllArtifactBuild.cjs",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
-      "electron/**/*",
+      "electron-shell/**/*",
       "desktop/**/*",
       "dist/**/*",
       "package.json"
@@ -221,7 +226,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CollectRx",
-      "include": "electron/installer.nsh"
+      "include": "electron-shell/installer.nsh"
     },
     "linux": {
       "target": [
