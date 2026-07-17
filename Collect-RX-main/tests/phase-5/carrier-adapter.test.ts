@@ -241,7 +241,7 @@ describe('CarrierAdapter', () => {
       } as unknown as PrismaClient;
     }
 
-    it('rejects a new claim when the monthly subscription claim limit is reached', async () => {
+    it('claim-count limits are retired — dispatch is not blocked by claim volume (minutes are the meter)', async () => {
       process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
       process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
       const prismaAtLimit = makePrismaAtSubscriptionLimit(async () => null);
@@ -256,9 +256,7 @@ describe('CarrierAdapter', () => {
         claimStatus: 'PENDING',
       });
 
-      expect(r.allowed).toBe(false);
-      expect(r.code).toBe('SUBSCRIPTION_CLAIM_LIMIT_REACHED');
-      expect(r.reason).toMatch(/monthly claim limit reached/i);
+      expect(r.allowed).toBe(true);
     });
 
     it('allows a retry for a claim already counted in the current claim period', async () => {
