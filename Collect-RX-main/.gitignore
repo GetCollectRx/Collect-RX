@@ -52,3 +52,5 @@ dist-electron/
 *.zip
 *.blockmap
 *.asar
+.staging-seed-credentials
+dist-macos/

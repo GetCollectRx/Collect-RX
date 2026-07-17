@@ -32,3 +32,4 @@ graphify-out/
 # macOS Finder clippings
 *.textClipping
 .platform-dev-password.local
+test-results/
