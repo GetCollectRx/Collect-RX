@@ -7,6 +7,7 @@ import Changelog from './pages/Changelog'
 import PilotDemo  from './pages/PilotDemo'
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
+import { PlanUsageBanner } from './components/PlanUsageBanner'
 import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
@@ -52,6 +53,7 @@ import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridg
 import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
 import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
+import { isCommandCenterSurface } from './lib/appSurface'
 import MarketingSite from './website/MarketingSite'
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
 import CsvImportPage from './pages/CsvImportPage'
@@ -123,12 +125,9 @@ type NavSection = { label: string; items: NavItem[] }
 
 /** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
 const PLATFORM_DEV_BLOCKED_PREFIXES = [
-  '/balances',
-  '/patient-ar',
-  '/estimate',
-  '/outbox',
   '/cdcp',
-  '/pay',
+  '/pre-visit',
+  '/canadian-2026',
 ]
 
 const PLATFORM_DEV_NAV_PATHS = new Set([
@@ -253,11 +252,7 @@ const FRONT_DESK_BLOCKED_PREFIXES = [
   '/guide',
   '/work-queue',
   '/insurance',
-  '/balances',
-  '/patient-ar',
-  '/estimate',
   '/analytics',
-  '/outbox',
   '/cdcp',
   '/admin',
   '/portfolio',
@@ -289,7 +284,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Tools',
     items: [
-      { to: '/estimate', exact: false, label: 'Estimate', icon: 'estimate' },
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
       { to: '/cdcp', exact: false, label: 'CDCP (legacy)', icon: 'cdcp' },
     ],
@@ -447,6 +441,7 @@ function AppShell() {
           isPlatformAdmin={userRole === 'platform_admin'}
         />
         <DesktopConnectorBanner />
+        <PlanUsageBanner />
         <main className="crx-app-content" id="main-content">
         <PlatformDevRouteGuard>
         <Routes>
@@ -477,13 +472,7 @@ function AppShell() {
           <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
           <Route path="/import" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CsvImportPage /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
-          <Route path="/balances" element={<Navigate to="/insurance" replace />} />
-          <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
-          <Route path="/patient-ar" element={<Navigate to="/insurance" replace />} />
-          <Route path="/outbox" element={<Navigate to="/insurance" replace />} />
-          <Route path="/pay/:balanceId" element={<Navigate to="/insurance" replace />} />
           <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/estimate"      element={<Navigate to="/insurance" replace />} />
           <Route path="/analytics"     element={<Analytics />} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
@@ -598,38 +587,52 @@ function AuthGate() {
 }
 
 function App() {
-  return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <ToastProvider>
-        <CookieBanner />
+  const shell = (
+    <ThemeProvider>
+      <ToastProvider>
         <PracticeProvider>
           <AnalyticsSessionBridge>
-          <Routes>
-            <Route path="/pay/p/:publicToken" element={<Navigate to="/" replace />} />
-            <Route path="/payment/thank-you" element={<Navigate to="/" replace />} />
-            <Route path="/legal/terms" element={<LegalTerms />} />
-            <Route path="/legal/privacy" element={<LegalPrivacy />} />
-            <Route path="/product" element={<ProductOnePager />} />
-            <Route path="/changelog" element={<Changelog />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/accept-invite" element={<AcceptInvitePage />} />
-            <Route path="/demo" element={<PublicDemoRoute />} />
-            <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
-            <Route path="/how-it-works" element={<MarketingSite />} />
-            <Route path="/roi" element={<MarketingSite />} />
-            <Route path="/features" element={<MarketingSite />} />
-            <Route path="/carriers" element={<MarketingSite />} />
-            <Route path="/compliance" element={<MarketingSite />} />
-            <Route path="/about" element={<MarketingSite />} />
-            <Route path="/landing" element={<MarketingSite />} />
-            <Route path="*" element={<AuthGate />} />
-          </Routes>
+            {isCommandCenterSurface ? (
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<AuthGate />} />
+              </Routes>
+            ) : (
+              <Routes>
+                <Route path="/legal/terms" element={<LegalTerms />} />
+                <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/product" element={<ProductOnePager />} />
+                <Route path="/changelog" element={<Changelog />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/demo" element={<PublicDemoRoute />} />
+                <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
+                <Route path="/how-it-works" element={<MarketingSite />} />
+                <Route path="/roi" element={<MarketingSite />} />
+                <Route path="/pricing" element={<MarketingSite />} />
+                <Route path="/features" element={<MarketingSite />} />
+                <Route path="/carriers" element={<MarketingSite />} />
+                <Route path="/compliance" element={<MarketingSite />} />
+                <Route path="/about" element={<MarketingSite />} />
+                <Route path="/landing" element={<MarketingSite />} />
+                <Route path="*" element={<AuthGate />} />
+              </Routes>
+            )}
           </AnalyticsSessionBridge>
         </PracticeProvider>
-        </ToastProvider>
-      </ThemeProvider>
+      </ToastProvider>
+    </ThemeProvider>
+  )
+
+  return (
+    <BrowserRouter>
+      {!isCommandCenterSurface && <CookieBanner />}
+      {shell}
     </BrowserRouter>
   )
 }

@@ -13,7 +13,6 @@ import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
 import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
 import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
-import { PlanUsageBanner } from '../components/PlanUsageBanner'
 import { PmsSyncBanner, type DashboardLastPmsImport } from '../components/dashboard/PmsSyncBanner'
 import { NeedsYouInbox } from '../components/NeedsYouInbox'
 import { OnboardingProgress, type SetupStatus } from '../components/OnboardingProgress'
@@ -288,7 +287,6 @@ function DashboardBody({
       <SubscriptionUsageCard compact className="relative z-10" />
 
       <div className="relative z-10 space-y-3">
-        <PlanUsageBanner />
         {s.pms && (
           <PmsSyncBanner
             pms={s.pms}
@@ -373,6 +371,7 @@ function DashboardBody({
               formatCount={fmtCurrency}
               sub={`${fmtCurrency(s.totalOpenAR)} total open insurance A/R`}
               badge={s.aging['>60'] > 0 ? 'Focus here' : 'Healthy'}
+              recoveryVerification={s.aging['>60'] > 0 ? 'at_risk' : undefined}
               tone={s.aging['>60'] > s.totalOpenAR * 0.25 ? 'amber' : 'green'}
               delayMs={0}
             />
@@ -383,6 +382,9 @@ function DashboardBody({
               formatCount={fmtCurrency}
               sub={`${fmtCurrency(rm.dollarsRecoveredSyncVerified)} all-time · PMS confirmed`}
               badge="North star"
+              recoveryVerification={
+                rm.dollarsRecoveredSyncVerifiedLast30Days > 0 ? 'sync_verified' : 'in_progress'
+              }
               tone="green"
               delayMs={40}
             />
@@ -392,6 +394,7 @@ function DashboardBody({
               displayValue="0"
               sub="Resubmit, docs, or human verify"
               badge={rm.blockingGatesOpen > 0 ? 'Action needed' : 'Clear'}
+              recoveryVerification={rm.blockingGatesOpen > 0 ? 'at_risk' : undefined}
               tone={rm.blockingGatesOpen > 0 ? 'amber' : 'green'}
               delayMs={80}
             />
@@ -407,6 +410,9 @@ function DashboardBody({
                     : 'Carrier approved, balance pending'
               }
               badge="Checking PMS"
+              recoveryVerification={
+                rm.awaitingSyncVerification > 0 ? 'carrier_confirmed' : undefined
+              }
               tone="blue"
               delayMs={120}
             />
@@ -436,6 +442,7 @@ function DashboardBody({
           formatCount={fmtCurrency}
           sub={`${s.openWorkItemCount ?? s.openBalanceCount} claims in queue`}
           badge="Synced live"
+          recoveryVerification={s.totalOpenAR > 0 ? 'in_progress' : undefined}
           delayMs={0}
         />
         <LivingStatCard
@@ -445,6 +452,7 @@ function DashboardBody({
           formatCount={fmtCurrency}
           sub={pct31 > 0 ? `${pct31.toFixed(0)}% of open A/R` : 'Healthy mid-band'}
           badge={pct31 > 40 ? 'Watch closely' : 'On track'}
+          recoveryVerification={pct31 > 40 ? 'at_risk' : undefined}
           tone={pct31 > 40 ? 'amber' : 'green'}
           delayMs={60}
         />

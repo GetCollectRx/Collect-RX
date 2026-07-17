@@ -12,6 +12,14 @@ type AdminPractice = {
   voiceAgentEnabled: boolean
   openEscalations: number
   lastCallAt: string | null
+  billingTier: string
+  tierName: string
+  subscriptionStatus: string | null
+  callsPaused: boolean
+  callsPausedReason: string | null
+  minutesConsumed: number
+  minutesIncluded: number
+  minutesRemaining: number
 }
 
 export default function AdminPractices() {
@@ -48,6 +56,9 @@ export default function AdminPractices() {
                 <Tr>
                   <Th>Practice</Th>
                   <Th>Voice agent</Th>
+                  <Th>Plan</Th>
+                  <Th align="right">Minutes used</Th>
+                  <Th>Calling</Th>
                   <Th align="right">Open escalations</Th>
                   <Th>Last call</Th>
                   <Th>Actions</Th>
@@ -60,6 +71,21 @@ export default function AdminPractices() {
                     <Td>
                       <Badge color={p.voiceAgentEnabled ? 'green' : 'gray'}>
                         {p.voiceAgentEnabled ? 'Enabled' : 'Disabled'}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <span className="text-sm">{p.tierName}</span>
+                      {p.subscriptionStatus && p.subscriptionStatus !== 'active' && (
+                        <span className="block text-2xs text-gray-400">{p.subscriptionStatus}</span>
+                      )}
+                    </Td>
+                    <Td align="right">
+                      {p.minutesConsumed} / {p.minutesIncluded}
+                      <span className="block text-2xs text-gray-400">{p.minutesRemaining} left</span>
+                    </Td>
+                    <Td>
+                      <Badge color={p.callsPaused ? 'red' : 'green'}>
+                        {p.callsPaused ? `Paused${p.callsPausedReason ? ` — ${p.callsPausedReason}` : ''}` : 'Active'}
                       </Badge>
                     </Td>
                     <Td align="right">{p.openEscalations}</Td>

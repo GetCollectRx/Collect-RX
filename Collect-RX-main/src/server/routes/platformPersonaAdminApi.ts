@@ -10,6 +10,7 @@ import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
 import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
+import { TIERS } from '../../billing/tiers.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
@@ -27,7 +28,15 @@ export function createPlatformPersonaAdminRouter(): Router {
 
   router.get('/practices', async (_req, res) => {
     const rows = await prisma.practice.findMany({
-      select: { id: true, name: true, settings: true },
+      select: {
+        id: true,
+        name: true,
+        settings: true,
+        billingTier: true,
+        subscriptionStatus: true,
+        callsPaused: true,
+        callsPausedReason: true,
+      },
       orderBy: { name: 'asc' },
     });
     const data = await Promise.all(
@@ -41,12 +50,28 @@ export function createPlatformPersonaAdminRouter(): Router {
           orderBy: { initiatedAt: 'desc' },
           select: { initiatedAt: true },
         });
+        const tier = TIERS[p.billingTier];
+        const now = new Date();
+        const usage = await prisma.usagePeriod.findFirst({
+          where: { practiceId: p.id, periodStart: { lte: now }, periodEnd: { gte: now } },
+          orderBy: { periodStart: 'desc' },
+          select: { minutesConsumed: true },
+        });
+        const minutesConsumed = usage?.minutesConsumed ?? 0;
         return {
           id: p.id,
           name: p.name,
           voiceAgentEnabled: settings.voiceAgentEnabled,
           openEscalations: openEsc,
           lastCallAt: lastCall?.initiatedAt?.toISOString() ?? null,
+          billingTier: p.billingTier,
+          tierName: tier.name,
+          subscriptionStatus: p.subscriptionStatus ?? null,
+          callsPaused: p.callsPaused,
+          callsPausedReason: p.callsPausedReason,
+          minutesConsumed,
+          minutesIncluded: tier.includedMinutes,
+          minutesRemaining: Math.max(0, tier.includedMinutes - minutesConsumed),
         };
       }),
     );
