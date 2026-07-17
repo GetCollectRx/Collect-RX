@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { AnimatedNumber } from '../ui/AnimatedNumber'
+import { RecoveryBadge } from '../RecoveryBadge'
 import type { DashboardLastPmsImport } from './PmsSyncBanner'
 import type { PracticePmsInfo } from '../../types/pms'
 
@@ -152,7 +153,14 @@ export function PracticeHealthBrief({
 
       <section className="practice-health-answers" aria-label="Key metrics">
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">What did we recover this month?</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">What did we recover this month?</h2>
+            {!loading && (
+              <RecoveryBadge
+                verification={m.recovered30d > 0 ? 'sync_verified' : 'in_progress'}
+              />
+            )}
+          </div>
           <MetricValue loading={loading}>
             <AnimatedNumber value={m.recovered30d} format={fmtCurrency} />
           </MetricValue>
@@ -169,7 +177,10 @@ export function PracticeHealthBrief({
         </article>
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">How much is at risk over 60 days?</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">How much is at risk over 60 days?</h2>
+            {!loading && m.agingOver60 > 0 && <RecoveryBadge verification="at_risk" />}
+          </div>
           <MetricValue loading={loading}>
             <AnimatedNumber value={m.agingOver60} format={fmtCurrency} />
           </MetricValue>
@@ -186,7 +197,12 @@ export function PracticeHealthBrief({
         </article>
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">What&apos;s blocking the next calls?</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">What&apos;s blocking the next calls?</h2>
+            {!loading && m.blockingGatesOpen + m.openEscalations > 0 && (
+              <RecoveryBadge verification="at_risk" />
+            )}
+          </div>
           <MetricValue loading={loading}>
             <AnimatedNumber value={m.blockingGatesOpen + m.openEscalations} />
           </MetricValue>
@@ -217,7 +233,10 @@ export function PracticeHealthBrief({
         </article>
 
         <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">Is CollectRx calling now?</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">Is CollectRx calling now?</h2>
+            {!loading && m.awaitingSync > 0 && <RecoveryBadge verification="carrier_confirmed" />}
+          </div>
           <MetricValue loading={loading}>
             {m.activeCalls > 0 ? `${m.activeCalls} live call${m.activeCalls === 1 ? '' : 's'}` : 'No live calls'}
           </MetricValue>

@@ -20,7 +20,7 @@ const STEPS = [
   {
     id: 'integrations',
     title: 'Complete integrations',
-    body: 'In Admin → Integrations, work through SendGrid, Twilio, Stripe Connect, and Vapi until your go-live checklist is green.',
+    body: 'In Admin → Integrations, work through SendGrid, Twilio, Stripe Billing (practice plan), and Vapi until your go-live checklist is green.',
   },
   {
     id: 'live',

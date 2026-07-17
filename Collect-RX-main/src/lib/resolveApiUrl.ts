@@ -1,3 +1,15 @@
+import {
+  COLLECTRX_PROD_API_ORIGIN,
+} from './collectrxOrigins'
+import { isDesktopClient } from './desktopAuth'
+
+/** Packaged Electron serves UI from 127.0.0.1 and proxies /api locally. */
+function useBundledDesktopApiProxy(): boolean {
+  if (!isDesktopClient() || typeof window === 'undefined') return false
+  const h = window.location.hostname
+  return h === '127.0.0.1' || h === 'localhost'
+}
+
 /**
  * Optional absolute API origin (no trailing slash).
  * Precedence: Electron `collectrx.apiOrigin` (COLLECTRX_API_ORIGIN), unless it is loopback while the
@@ -15,10 +27,9 @@
  * protocols) keep absolute resolution from Electron / meta / `VITE_API_ORIGIN`.
  *
  * Public marketing host (www.collectrx.ca) often serves only static HTML; `/api` there is not JSON.
- * When no origin is configured, production builds on collectrx.ca default to the canonical app URL used
- * across this repo (override with VITE_API_ORIGIN or meta if your API lives elsewhere).
+ * When no origin is configured, production builds on collectrx.ca default to the Fly app
+ * (override with VITE_API_ORIGIN or meta if your API lives elsewhere).
  */
-const COLLECTRX_DEFAULT_API_ORIGIN = 'https://www.collectrx.ca'
 
 /** Use Vite `/api` proxy in dev so httpOnly cookies stay same-site (see module comment). */
 function useLocalViteApiProxy(): boolean {
@@ -71,11 +82,12 @@ function inferredCollectRxApiOrigin(): string {
   if (typeof window === 'undefined' || import.meta.env.DEV) return ''
   const host = window.location.hostname.replace(/^www\./i, '')
   if (host !== 'collectrx.ca') return ''
-  return COLLECTRX_DEFAULT_API_ORIGIN
+  return COLLECTRX_PROD_API_ORIGIN
 }
 
 export function resolveApiUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`
+  if (useBundledDesktopApiProxy()) return p
   if (useLocalViteApiProxy()) return p
   const origin =
     effectiveElectronApiOrigin() || metaApiOrigin() || viteOrigin || inferredCollectRxApiOrigin()

@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { TIERS } from '../billing/tiers'
+import { MARKETING_TIER_FEATURES } from '../website/pricingContent'
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 
@@ -416,41 +418,40 @@ export default function ProductOnePager() {
       <Section id="pricing" bg={G.cream}>
         <Label text="Pricing" />
         <H2>Simple, transparent pricing.</H2>
-        <Lead>Flat monthly fee. No per-call charges. No setup fees for pilot partners.</Lead>
+        <Lead>Minutes-based tiers. No setup fees for pilot partners.</Lead>
 
         <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          {[
-            { name: 'Starter',      price: 349, desc: 'Up to 50 active claims/month',     highlight: false, features: ['All 6 carriers','3 attempts per claim','Dashboard access','Email escalation alerts'] },
-            { name: 'Professional', price: 549, desc: 'Up to 150 active claims/month',    highlight: true,  features: ['All 6 carriers','3 attempts per claim','Dashboard access','SMS + email alerts','Priority queue management','Weekly AR report'] },
-            { name: 'Enterprise',   price: 799, desc: 'Unlimited claims, multi-provider', highlight: false, features: ['All 6 carriers','Unlimited claims','Full audit trail export','Custom carrier rules','Direct founder support','Custom reporting'] },
-          ].map((plan) => (
-            <div key={plan.name} style={{
-              background: plan.highlight ? G.green : G.white,
-              border: `1px solid ${plan.highlight ? 'transparent' : G.border}`,
+          {(['core', 'growth', 'scale'] as const).map((id) => {
+            const plan = TIERS[id]
+            const highlight = id === 'growth'
+            return (
+            <div key={id} style={{
+              background: highlight ? G.green : G.white,
+              border: `1px solid ${highlight ? 'transparent' : G.border}`,
               borderRadius: 16, padding: '24px 22px',
-              boxShadow: plan.highlight ? `0 8px 32px ${G.green}44` : 'none',
-              transform: plan.highlight ? 'scale(1.02)' : 'none',
+              boxShadow: highlight ? `0 8px 32px ${G.green}44` : 'none',
+              transform: highlight ? 'scale(1.02)' : 'none',
             }}>
-              {plan.highlight && (
+              {highlight && (
                 <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.2)', borderRadius: 8, padding: '3px 10px', marginBottom: 14 }}>
                   <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>Most popular</span>
                 </div>
               )}
-              <div style={{ color: plan.highlight ? 'rgba(255,255,255,0.7)' : G.textMuted, fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{plan.name}</div>
-              <div style={{ fontSize: 36, fontWeight: 900, color: plan.highlight ? '#fff' : G.text, fontFamily: G.mono, letterSpacing: '-1px', marginBottom: 4 }}>
-                ${plan.price}<span style={{ fontSize: 14, fontWeight: 500, color: plan.highlight ? 'rgba(255,255,255,0.6)' : G.textMuted }}>/mo</span>
+              <div style={{ color: highlight ? 'rgba(255,255,255,0.7)' : G.textMuted, fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{plan.name}</div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: highlight ? '#fff' : G.text, fontFamily: G.mono, letterSpacing: '-1px', marginBottom: 4 }}>
+                ${plan.price}<span style={{ fontSize: 14, fontWeight: 500, color: highlight ? 'rgba(255,255,255,0.6)' : G.textMuted }}>/mo</span>
               </div>
-              <p style={{ color: plan.highlight ? 'rgba(255,255,255,0.65)' : G.textMuted, fontSize: 13, marginBottom: 20 }}>{plan.desc}</p>
+              <p style={{ color: highlight ? 'rgba(255,255,255,0.65)' : G.textMuted, fontSize: 13, marginBottom: 20 }}>{plan.description}</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                {plan.features.map((f, fi) => (
+                {MARKETING_TIER_FEATURES[id].map((f, fi) => (
                   <div key={fi} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Check color={plan.highlight ? 'rgba(255,255,255,0.8)' : G.green} />
-                    <span style={{ color: plan.highlight ? 'rgba(255,255,255,0.85)' : G.textMd, fontSize: 13 }}>{f}</span>
+                    <Check color={highlight ? 'rgba(255,255,255,0.8)' : G.green} />
+                    <span style={{ color: highlight ? 'rgba(255,255,255,0.85)' : G.textMd, fontSize: 13 }}>{f}</span>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
+          )})}
         </div>
         <p style={{ color: G.textMuted, fontSize: 13, marginTop: 20, textAlign: 'center' }}>All prices in CAD. HST applied where applicable. Pilot partners start at no cost.</p>
       </Section>

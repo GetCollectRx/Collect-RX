@@ -86,8 +86,8 @@ router.get('/collection-rate', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    // Patient AR removed — CollectRx is Practice→Insurance only.
-    return res.json({ totalCount: 0, paidCount: 0, collectionRate: 0, avgDaysToPayment: 0, totalCollected: 0 });
+    // Patient AR billing removed — Practice→Insurance only.
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/collection-rate]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -100,7 +100,7 @@ router.get('/stage-funnel', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ funnel: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/stage-funnel]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -113,7 +113,7 @@ router.get('/priority-balances', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ priorityBalances: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/priority-balances]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -126,7 +126,7 @@ router.get('/message-effectiveness', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ effectiveness: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/message-effectiveness]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -139,7 +139,7 @@ router.get('/payment-trends', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ trends: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/payment-trends]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -152,7 +152,7 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ performance: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/carrier-performance]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -261,8 +261,6 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
           )
         : 0;
 
-    const grossCollectionRate = 0; // Patient AR removed — CollectRx is insurance-only
-
     const resolvedClaims = claims.filter((c) => c.status === 'RESOLVED');
     const insuranceRecovered = resolvedClaims.reduce(
       (s, c) => s + Math.max(0, Number(c.billedAmount) - Number(c.outstandingAmount)),
@@ -287,7 +285,6 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
         openArTotal: Number(workItems._sum.dollarsAtRisk ?? 0),
         openWorkItemCount: workItems._count,
         daysInAr,
-        grossCollectionRate,
         netCollectionRate,
         agingTrend,
         topDenialReasons: denials.topDenialReasons.slice(0, 5),

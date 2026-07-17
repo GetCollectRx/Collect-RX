@@ -8,10 +8,18 @@ import {
   marketingPageFromPathname,
   type MarketingPageId,
 } from '../website/marketingPaths'
+import {
+  fmtCad,
+  paidTierCards,
+  STAFF_BURDENED_HOURLY_CAD,
+  STAFF_EQUIV_MINUTES_PER_CALL,
+} from '../website/pricingContent'
+import { TIERS } from '../billing/tiers'
 
 const HASH_TO_PATH: Record<string, string> = {
   'how-it-works': MARKETING_PATHS.howItWorks,
   roi: MARKETING_PATHS.roi,
+  pricing: MARKETING_PATHS.pricing,
   features: MARKETING_PATHS.features,
   carriers: MARKETING_PATHS.carriers,
   compliance: MARKETING_PATHS.compliance,
@@ -491,6 +499,91 @@ const STYLES = `
   .lp-roi-output-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.5; }
   .lp-roi-note { font-family: var(--fn); font-size: 13px; color: var(--mist); text-align: center; margin-top: 24px; }
 
+  /* ─── PRICING ───────────────────────────────────── */
+  .lp-pricing { background: var(--cream); }
+  .lp-pricing-dual {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 40px;
+  }
+  .lp-pricing-dual-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 24px 28px;
+  }
+  .lp-pricing-dual-icon {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--green-lo);
+    display: grid; place-items: center; margin-bottom: 14px;
+  }
+  .lp-pricing-dual-icon svg { width: 20px; height: 20px; stroke: var(--green-dark); fill: none; stroke-width: 2; }
+  .lp-pricing-dual-h { font-family: var(--fs); font-size: 20px; font-weight: 500; color: var(--ink); margin-bottom: 8px; }
+  .lp-pricing-dual-p { font-family: var(--fn); font-size: 15px; color: var(--graphite); line-height: 1.6; }
+  .lp-pricing-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: stretch;
+  }
+  .lp-pricing-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 28px 24px; display: flex; flex-direction: column; position: relative;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .lp-pricing-card:hover { border-color: var(--bdr2); box-shadow: 0 8px 32px rgba(31,31,31,0.06); }
+  .lp-pricing-card.highlight {
+    background: var(--green-dark); border-color: transparent;
+    box-shadow: 0 12px 40px rgba(11,91,71,0.25); transform: scale(1.02);
+  }
+  .lp-pricing-badge {
+    display: inline-flex; align-self: flex-start;
+    background: rgba(255,255,255,0.15); border-radius: var(--radius-badge);
+    padding: 4px 10px; margin-bottom: 14px;
+    font-family: var(--fn); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: rgba(252,252,250,0.9);
+  }
+  .lp-pricing-tier {
+    font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--graphite);
+    margin-bottom: 6px; letter-spacing: 0.02em;
+  }
+  .lp-pricing-card.highlight .lp-pricing-tier { color: rgba(252,252,250,0.65); }
+  .lp-pricing-price {
+    font-family: var(--fm); font-size: 40px; font-weight: 500; color: var(--ink);
+    letter-spacing: -1px; line-height: 1; margin-bottom: 4px;
+  }
+  .lp-pricing-card.highlight .lp-pricing-price { color: #fcfcfa; }
+  .lp-pricing-price span {
+    font-family: var(--fn); font-size: 14px; font-weight: 400; color: var(--mist);
+  }
+  .lp-pricing-card.highlight .lp-pricing-price span { color: rgba(252,252,250,0.55); }
+  .lp-pricing-target {
+    font-family: var(--fn); font-size: 13px; color: var(--mist); margin-bottom: 16px;
+  }
+  .lp-pricing-card.highlight .lp-pricing-target { color: rgba(252,252,250,0.6); }
+  .lp-pricing-minutes {
+    font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-bottom: 20px;
+    padding-bottom: 20px; border-bottom: 1px solid var(--bdr);
+  }
+  .lp-pricing-card.highlight .lp-pricing-minutes {
+    color: rgba(252,252,250,0.75); border-bottom-color: rgba(255,255,255,0.15);
+  }
+  .lp-pricing-savings {
+    font-family: var(--fn); font-size: 13px; color: var(--green-dark); font-weight: 500;
+    margin-bottom: 20px; line-height: 1.5;
+  }
+  .lp-pricing-card.highlight .lp-pricing-savings { color: #6ee7b7; }
+  .lp-pricing-features { display: flex; flex-direction: column; gap: 10px; flex: 1; margin-bottom: 24px; }
+  .lp-pricing-feat {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.45;
+  }
+  .lp-pricing-card.highlight .lp-pricing-feat { color: rgba(252,252,250,0.85); }
+  .lp-pricing-feat svg {
+    width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px;
+    stroke: var(--green); fill: none; stroke-width: 2.5;
+  }
+  .lp-pricing-card.highlight .lp-pricing-feat svg { stroke: rgba(252,252,250,0.8); }
+  .lp-pricing-cta { margin-top: auto; }
+  .lp-pricing-trial {
+    background: var(--parchment); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 24px 28px; margin-top: 32px; text-align: center;
+  }
+  .lp-pricing-trial-h { font-family: var(--fs); font-size: 22px; font-weight: 500; color: var(--ink); margin-bottom: 8px; }
+  .lp-pricing-trial-p { font-family: var(--fn); font-size: 15px; color: var(--graphite); margin-bottom: 16px; }
+
   /* ─── CARRIERS (feature split) ───────────────────── */
   .lp-carriers { background: var(--cream); }
   .lp-carrier-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -821,6 +914,9 @@ const STYLES = `
     .lp-stats-inner { grid-template-columns: 1fr 1fr; }
     .lp-feat-grid { grid-template-columns: 1fr; }
     .lp-roi-card { grid-template-columns: 1fr; gap: 32px; padding: 32px; }
+    .lp-pricing-grid { grid-template-columns: 1fr; }
+    .lp-pricing-dual { grid-template-columns: 1fr; }
+    .lp-pricing-card.highlight { transform: none; }
     .lp-compliance-grid { grid-template-columns: 1fr 1fr; }
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
@@ -1486,6 +1582,102 @@ function RoiCalculator() {
   )
 }
 
+function PricingSection() {
+  const tiers = paidTierCards()
+  const trial = TIERS.trial
+
+  return (
+    <>
+      <div className="lp-pricing-dual lp-reveal">
+        <div className="lp-pricing-dual-card">
+          <div className="lp-pricing-dual-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M12 22a10 10 0 100-20 10 10 0 000 20z" /></svg>
+          </div>
+          <div className="lp-pricing-dual-h">People savings</div>
+          <p className="lp-pricing-dual-p">
+            Each carrier follow-up your team would handle manually costs roughly{' '}
+            {STAFF_EQUIV_MINUTES_PER_CALL} staff-equivalent minutes on hold, IVR navigation,
+            and note-taking. CollectRx runs those calls concurrently — at a burdened{' '}
+            {fmtCad(STAFF_BURDENED_HOURLY_CAD)}/hr, that time adds up fast.
+          </p>
+        </div>
+        <div className="lp-pricing-dual-card">
+          <div className="lp-pricing-dual-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+          </div>
+          <div className="lp-pricing-dual-h">Money recovered</div>
+          <p className="lp-pricing-dual-p">
+            When a claim balance drops on re-import or connector sync, CollectRx marks it as
+            verified recovery in your dashboard. You see dollars collected — not just calls
+            completed. Both savings streams justify the subscription.
+          </p>
+        </div>
+      </div>
+
+      <div className="lp-pricing-grid lp-reveal">
+        {tiers.map((tier) => (
+          <div
+            key={tier.id}
+            className={`lp-pricing-card${tier.highlight ? ' highlight' : ''}`}
+          >
+            {tier.highlight && <span className="lp-pricing-badge">Most popular</span>}
+            <div className="lp-pricing-tier">{tier.name}</div>
+            <div className="lp-pricing-price">
+              {fmtCad(tier.price)}<span>/mo</span>
+            </div>
+            <div className="lp-pricing-target">{tier.targetCustomer}</div>
+            <div className="lp-pricing-minutes">
+              {tier.includedMinutes.toLocaleString('en-CA')} minutes included
+              {tier.dailyCapMinutes
+                ? ` · ${tier.dailyCapMinutes} min/day cap`
+                : ' · no daily cap'}
+              {tier.overageRate ? ` · ${fmtCad(tier.overageRate)}/min overage` : ''}
+            </div>
+            <div className="lp-pricing-savings">
+              Illustrative staff time freed: ~{fmtCad(tier.illustrativeStaffSavings)}/mo
+              {' '}({tier.illustrativeCalls} calls × {STAFF_EQUIV_MINUTES_PER_CALL} min)
+              — plus verified recovery tracked in your dashboard.
+            </div>
+            <div className="lp-pricing-features">
+              {tier.features.map((feature) => (
+                <div className="lp-pricing-feat" key={feature}>
+                  <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                  {feature}
+                </div>
+              ))}
+            </div>
+            <div className="lp-pricing-cta">
+              <Link
+                to={MARKETING_PATHS.signup}
+                className={tier.highlight ? 'lp-btn-primary' : 'lp-btn-ghost'}
+                style={tier.highlight ? { width: '100%', justifyContent: 'center' } : { width: '100%', justifyContent: 'center' }}
+              >
+                Start free trial
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="lp-pricing-trial lp-reveal">
+        <div className="lp-pricing-trial-h">{trial.name}: {trial.includedMinutes} minutes, {trial.trialDays} days</div>
+        <p className="lp-pricing-trial-p">
+          {trial.description}. No credit card required. Upgrade when you see results on your own claims.
+        </p>
+        <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+          Create account
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </Link>
+      </div>
+      <p className="lp-roi-note" style={{ marginTop: 24 }}>
+        All prices in CAD. HST applied where applicable. Illustrative savings are estimates — actual
+        recovery depends on your claim mix, carriers, and re-import cadence.{' '}
+        <Link to={MARKETING_PATHS.roi}>Run your numbers →</Link>
+      </p>
+    </>
+  )
+}
+
 // ─── New home-page components ─────────────────────────────────────────────────
 
 function AnnouncementBar({ onClose }: { onClose: () => void }) {
@@ -1883,6 +2075,25 @@ export default function LandingPage() {
         </section>
         )}
 
+        {/* ── PRICING ── */}
+        {page === 'pricing' && (
+        <section className="lp-pricing" style={{ paddingTop: 88 }} data-testid="marketing-pricing">
+          <div className="lp-section-inner">
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Pricing</div>
+              <h2 className="lp-section-h2">
+                Priced on what you save — staff time and recovered dollars<span className="lp-dot">.</span>
+              </h2>
+              <p className="lp-section-sub">
+                Flat monthly tiers with included call minutes. You pay for automation that frees
+                your team from carrier hold time and drives verified insurance collections.
+              </p>
+            </div>
+            <PricingSection />
+          </div>
+        </section>
+        )}
+
         {/* ── HOW IT WORKS ── */}
         {page === 'how-it-works' && (
         <section className="lp-pipeline" style={{ paddingTop: 88 }} data-testid="marketing-how-it-works">
@@ -2126,6 +2337,7 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.features}>Features</Link>
                   <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
+                  <Link to={MARKETING_PATHS.pricing}>Pricing</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
                 </div>
                 <div className="lp-footer-col">

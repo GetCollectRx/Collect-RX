@@ -4,6 +4,7 @@ import { usePractice } from '../../context/PracticeContext'
 import { apiFetchJson } from '../../lib/apiFetch'
 import { workQueuePriorityLabel } from '../../lib/workQueuePriority'
 import { carrierLabel } from '../../lib/recoveryDisplay'
+import { RecoveryBadge, recoveryVerificationFromClaim } from '../RecoveryBadge'
 
 interface WorkItemRow {
   id: string
@@ -13,6 +14,8 @@ interface WorkItemRow {
   daysOutstanding: number
   carrierId: string | null
   rankScore: number
+  recoveryRoute?: string | null
+  blockingGateTitle?: string | null
 }
 
 function fmtMoney(v: string | number) {
@@ -58,6 +61,10 @@ export function TopMoneyAtRisk({ limit = 5 }: { limit?: number }) {
         {rows.map((row) => {
           const { label, color } = workQueuePriorityLabel(row.rankScore)
           const claimRef = row.title?.replace(/^Claim\s+/i, '') ?? row.sourceId.slice(0, 8)
+          const verification = recoveryVerificationFromClaim({
+            hasOpenBlockingGate: Boolean(row.blockingGateTitle),
+            status: row.blockingGateTitle ? 'BLOCKED' : undefined,
+          })
           return (
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
               <div className="min-w-0">
@@ -72,7 +79,10 @@ export function TopMoneyAtRisk({ limit = 5 }: { limit?: number }) {
                   {fmtMoney(row.dollarsAtRisk)}
                 </p>
               </div>
-              <span className={`text-xs font-semibold shrink-0 ${color}`}>{label}</span>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <RecoveryBadge verification={verification} />
+                <span className={`text-xs font-semibold ${color}`}>{label}</span>
+              </div>
             </li>
           )
         })}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { resolveWsUrl } from '../lib/resolveWsUrl'
+import { getDesktopSessionToken } from '../lib/desktopAuth'
 import { parseApiJson } from '../lib/parseApiJson'
 import type { DeskActiveCall, DeskCarrierBlock, DeskQueueEntry, DeskTranscriptLine } from '../types/frontDesk'
 import type { WsEvent } from '../types/ws'
@@ -268,7 +269,10 @@ export default function LiveConsole() {
     let closed = false
 
     function connect() {
-      ws = new WebSocket(resolveWsUrl('/ws/desk'))
+      const token = getDesktopSessionToken()
+      ws = token
+        ? new WebSocket(resolveWsUrl('/ws/desk'), token)
+        : new WebSocket(resolveWsUrl('/ws/desk'))
       ws.onopen = () => { wsBackoff.current = 500 }
       ws.onmessage = (ev) => {
         const msg = JSON.parse(ev.data as string) as WsEvent | { type: 'connected' }

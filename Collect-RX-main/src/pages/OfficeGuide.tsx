@@ -115,7 +115,7 @@ export default function OfficeGuide() {
       <Card>
         <CardHeader
           title="Demo walkthrough (CollectRx Demo Practice)"
-          subtitle="Run npm run demo:seed — login demo@collectrx-test.local / CollectRx2026!"
+          subtitle="Local dev: demo@collectrx-test.local / collectrx-demo-local-only (see .env SEED_PRACTICE_PASSWORD)"
         />
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Four story claims teach the call-to-resolution loop. Calls prefixed with <code className="text-xs">demo-</code>{' '}
@@ -184,6 +184,10 @@ export default function OfficeGuide() {
             </p>
             <p className="mb-2">
               <strong>What to do:</strong> Open{' '}
+              <Link to="/import" className="text-crx-600 dark:text-crx-400 underline">
+                Import CSV
+              </Link>{' '}
+              to upload a fresh export, or{' '}
               <Link to="/admin/sync" className="text-crx-600 dark:text-crx-400 underline">
                 Admin → Sync ops
               </Link>{' '}

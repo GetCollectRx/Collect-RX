@@ -10,6 +10,7 @@ const PUBLIC_APP_PREFIXES = [
   '/landing',
   '/how-it-works',
   '/roi',
+  '/pricing',
   '/features',
   '/carriers',
   '/compliance',
