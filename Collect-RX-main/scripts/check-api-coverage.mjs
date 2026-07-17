@@ -31,6 +31,7 @@ const EXTRA_CLIENT_PATHS = [
 const SERVER_PREFIXES = [
   '/api/auth/',
   '/api/billing/',
+  '/api/gocardless/',
   '/api/stripe/',
   '/api/insurance/',
   '/api/calls/',

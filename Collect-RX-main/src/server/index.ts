@@ -19,12 +19,12 @@
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
 //   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (prospect engagement only)
 //
-// Removed (Practice→Insurance product — no patient-facing layer):
+// Removed (Practice→Insurance product — no patient billing / patient pay):
 //   /api/patients/*        patientArApi.ts
 //   /api/balances/*        balancesOutreachRoutes.ts
 //   /api/public/*          publicPatientPayRoutes.ts
-//   /api/twilio/sms        twilio/inboundSms.ts
-//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding)
+//   /api/twilio/sms        twilio/inboundSms.ts (patient pay replies)
+//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding — permanently retired)
 //
 // Safety:
 //   - Webhook route uses raw body parser (HMAC validation requires raw bytes)
@@ -38,7 +38,7 @@
 //   - Insurance, calls, analytics, carriers, queue, eligibility: require practice JWT (cookie or Bearer)
 //   - VAPI_WEBHOOK_SECRET required in production — server refuses to start without it
 //   - SendGrid: SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY required in production (401 otherwise)
-//   - Stripe Connect onboard refresh/complete: ?v= HMAC (or same-practice JWT); see STRIPE_ONBOARD_RETURN_SECRET
+//   - Stripe Billing (practice SaaS subscription) via /api/billing + /api/webhooks/stripe
 //   - PostgreSQL: in production DATABASE_URL must require TLS (sslmode=require or stricter); see databaseTls.ts
 //   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
 //   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
@@ -115,8 +115,11 @@ import preVisitRouter from './routes/preVisitRoutes.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
 import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
+import gocardlessRouter from './routes/gocardlessRoutes';
+import { gocardlessWebhookHandler } from './webhooks/gocardless.js';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
 import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
+import { startPadReconciliationScheduler } from './jobs/padReconciliationScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
@@ -149,13 +152,19 @@ const PORT = parseInt(process.env.PORT ?? '3000', 10);
 // Per Node's own guidance, the process is in an unknown state after either event, so we
 // log full detail for visibility in fly logs and then exit so the platform restarts
 // the container cleanly, instead of leaving a half-broken process running.
+// Playwright sets COLLECTRX_E2E=1: log but do not exit — a single background rejection
+// must not take down the suite mid-run (remaining tests would see ERR_CONNECTION_REFUSED).
+const e2eMode = (() => {
+  const v = (process.env.COLLECTRX_E2E || '').trim();
+  return v === '1' || v.toLowerCase() === 'true';
+})();
 process.on('uncaughtException', (err) => {
   console.error('[server] FATAL: uncaughtException —', err);
-  process.exit(1);
+  if (!e2eMode) process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[server] FATAL: unhandledRejection —', reason);
-  process.exit(1);
+  if (!e2eMode) process.exit(1);
 });
 
 // Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
@@ -225,13 +234,25 @@ app.use(cors({
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stripe — webhook requires raw body (same signing secret as Connect + Billing)
+// Stripe — webhook requires raw body (practice SaaS Billing)
 // ─────────────────────────────────────────────────────────────────────────────
 app.post(
   '/api/stripe/webhook',
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   stripeWebhookHandler(prisma),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GoCardless PAD — real-time webhook (HMAC-verified, see webhooks/gocardless.ts).
+// The reconciliation poller (POST /api/gocardless/reconcile, or the cron job in
+// jobs/padReconciliationScheduler.ts) is a safety net for missed deliveries.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post(
+  '/api/webhooks/gocardless',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  gocardlessWebhookHandler(prisma),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,6 +360,7 @@ app.use('/api', anonStandardLimiter);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
+app.use('/api/gocardless', gocardlessRouter);
 app.use('/api/insurance',  insuranceRouter);
 app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
@@ -505,6 +527,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   }
 
   startConnectorMonitorScheduler(prisma);
+  startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
 

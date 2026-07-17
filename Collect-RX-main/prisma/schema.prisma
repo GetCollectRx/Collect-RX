@@ -75,6 +75,8 @@ model Practice {
   phiVaultEntries                PhiVaultEntry[]
   triageCredential               TriageCredential?
   triageAudits                   TriageAudit[]
+  padMandate                     PadMandate?
+  padTransactions                PadTransaction[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -182,6 +184,91 @@ model CarrierOrder {
 model ProcessedStripeEvent {
   id        String   @id
   createdAt DateTime @default(now())
+}
+
+// ─── GoCardless PAD (Pre-Authorized Debit) Billing ───────────────────────────
+// Replaces percentage-based Stripe billing with flat-fee-capped ACSS debit
+// pulls. GoCardless holds the actual bank account/transit numbers (entered
+// on their hosted Billing Request Flow); we only store their billing
+// request/customer/mandate/subscription/payment reference IDs.
+
+model ProcessedGoCardlessEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+enum PadMandateStatus {
+  pending_authorization
+  active
+  suspended
+  canceled
+}
+
+/// Our own internal PAD transaction lifecycle — decoupled from any one processor's
+/// exact vocabulary so the vendor can change without touching call sites. See
+/// gocardless/padService.ts for the GoCardless status mapping.
+enum PadTransactionStatus {
+  future
+  sent_to_bank
+  processed
+  approved
+  declined
+  chargeback
+}
+
+/// One PAD mandate per practice. `gocardless*Id` fields are opaque references into
+/// GoCardless's system — no raw banking credentials live in our database.
+model PadMandate {
+  id                         String           @id @default(uuid())
+  practiceId                 String           @unique @map("practice_id")
+  gocardlessBillingRequestId String           @unique @map("gocardless_billing_request_id")
+  gocardlessCustomerId       String?          @unique @map("gocardless_customer_id")
+  gocardlessMandateId        String?          @unique @map("gocardless_mandate_id")
+  gocardlessSubscriptionId   String?          @unique @map("gocardless_subscription_id")
+  status                     PadMandateStatus @default(pending_authorization)
+  bankAccountLast4           String?          @map("bank_account_last4")
+  /// Monthly SaaS fee this mandate pulls once authorized — the subscription isn't created
+  /// until the practice completes their hosted bank authorization and the mandate is active.
+  monthlyAmountCents         Int              @map("monthly_amount_cents")
+  /// Payments Canada Rule H1 pre-notification window. 10 is the Rule H1 default absent a negotiated
+  /// reduction, but GoCardless's own hosted PAD agreement text (confirmed against their sandbox) already
+  /// discloses a reduced 3-day period as their platform default for the "pad" scheme — 3 is used here to
+  /// match what the payor actually agrees to on GoCardless's page, not our own unconfirmed assumption.
+  preNotificationDays        Int              @default(3) @map("pre_notification_days")
+  authorizedAt               DateTime?        @map("authorized_at")
+  canceledAt                 DateTime?        @map("canceled_at")
+  createdAt                  DateTime         @default(now()) @map("created_at")
+  updatedAt                  DateTime         @updatedAt @map("updated_at")
+
+  practice     Practice         @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  transactions PadTransaction[]
+
+  @@index([status])
+  @@map("pad_mandates")
+}
+
+model PadTransaction {
+  id                    String               @id @default(uuid())
+  mandateId             String               @map("mandate_id")
+  practiceId            String               @map("practice_id")
+  gocardlessPaymentId   String?              @unique @map("gocardless_payment_id")
+  amountCents           Int                  @map("amount_cents")
+  status                PadTransactionStatus @default(future)
+  billingPeriodStart    DateTime             @map("billing_period_start")
+  billingPeriodEnd      DateTime             @map("billing_period_end")
+  preNotificationSentAt DateTime?            @map("pre_notification_sent_at")
+  submittedAt           DateTime?            @map("submitted_at")
+  settledAt             DateTime?            @map("settled_at")
+  failureReason         String?              @map("failure_reason")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  mandate  PadMandate @relation(fields: [mandateId], references: [id], onDelete: Cascade)
+  practice Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([status])
+  @@map("pad_transactions")
 }
 
 // ─── Benefits & Eligibility Models ───────────────────────────────────────────
@@ -306,7 +393,7 @@ model ProcessedValidatorWebhook {
 model PracticeNotification {
   id         String    @id @default(cuid())
   practiceId String    @map("practice_id")
-  type       String // VALIDATION_ESCALATION, CARRIER_BLOCK, PAYMENT_RECEIVED, CLAIM_DENIED
+  type       String // VALIDATION_ESCALATION, CARRIER_BLOCK, PAYMENT_RECEIVED, PAYMENT_FAILED, CLAIM_DENIED
   subject    String
   message    String
   claimId    String?   @map("claim_id")
