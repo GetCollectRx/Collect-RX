@@ -7,6 +7,7 @@ describe('marketingPageFromPathname', () => {
     expect(marketingPageFromPathname('/landing')).toBe('home');
     expect(marketingPageFromPathname('/how-it-works')).toBe('how-it-works');
     expect(marketingPageFromPathname('/roi/')).toBe('roi');
+    expect(marketingPageFromPathname('/pricing')).toBe('pricing');
     expect(marketingPageFromPathname('/features')).toBe('features');
     expect(marketingPageFromPathname('/carriers')).toBe('carriers');
     expect(marketingPageFromPathname('/compliance')).toBe('compliance');

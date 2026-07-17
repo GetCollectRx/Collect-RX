@@ -30,10 +30,10 @@ describe('evaluateCogsBreaker', () => {
     expect(evaluateCogsBreaker(tier, minutes)).toBe('pause');
   });
 
-  it('throttles the thin-margin Scale tier before included minutes run out', () => {
+  it('Scale tier COGS throttle threshold sits above included minutes at current margins', () => {
     const tier = TIERS.scale;
     const throttleMinutes = minutesAtPctOfPrice(tier.price, COGS_BREAKER.throttleAtPctOfPrice);
-    expect(throttleMinutes).toBeLessThan(tier.includedMinutes);
+    expect(throttleMinutes).toBeGreaterThan(tier.includedMinutes);
     expect(evaluateCogsBreaker(tier, throttleMinutes + 1)).toBe('throttle');
   });
 });

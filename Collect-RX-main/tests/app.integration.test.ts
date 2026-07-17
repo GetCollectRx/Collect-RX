@@ -113,13 +113,28 @@ describe('Webhooks — SendGrid (raw JSON, no DB)', () => {
   });
 });
 
-describe('Stripe webhook (HTTP) — P7-02', () => {
+describe('Stripe webhook (HTTP) — P7-02 practice SaaS Billing', () => {
   it('returns 400 when stripe-signature is missing', async () => {
     const res = await request(app)
       .post('/api/stripe/webhook')
       .set('Content-Type', 'application/json')
       .send(Buffer.from('{}'));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('Retired patient/client payment routes (Practice → Insurance)', () => {
+  it('GET /api/public/pay/:token does not expose a public pay flow', async () => {
+    const res = await request(app).get('/api/public/pay/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    // No public pay handler: 404/410, or auth gate (401) if hit under protected /api.
+    expect([401, 404, 405, 410]).toContain(res.status);
+    expect(res.body?.checkoutUrl ?? res.body?.paymentUrl).toBeUndefined();
+  });
+
+  it('GET /api/stripe/connect/* does not expose Connect onboarding', async () => {
+    const res = await request(app).get('/api/stripe/connect/status');
+    expect([401, 404, 405, 410]).toContain(res.status);
+    expect(res.body?.url ?? res.body?.onboardingUrl).toBeUndefined();
   });
 });
 
