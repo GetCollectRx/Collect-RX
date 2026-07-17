@@ -171,9 +171,10 @@ async function main() {
   await upsertPlatformUsers(practice.id, passwordHash);
 
   console.log('\n── Login cheat sheet ──');
-  console.log('Main form (email + password): all *@collectrx.ca practice emails above');
-  console.log('Platform roles form: auditor@, billingops@, platformadmin@collectrx.ca');
-  console.log('Platform developer: PLATFORM_DEV_PASSWORD (login page footer — not this script)');
+  console.log(`Password for every account below: ${TEST_PASSWORD}`);
+  console.log('Main sign-in form (@collectrx-test.local): demo@, om@, billing@, desk@, associate@, accountant@, group@');
+  console.log('Platform roles form (@collectrx.ca): auditor@, billingops@, platformadmin@');
+  console.log(`Platform developer (footer form, no email): ${process.env.PLATFORM_DEV_PASSWORD || '(set PLATFORM_DEV_PASSWORD in .env)'}`);
 }
 
 main()

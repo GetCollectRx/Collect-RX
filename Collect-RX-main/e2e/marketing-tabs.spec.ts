@@ -5,6 +5,7 @@ const SECTION_IDS: Record<string, string> = {
   home: 'marketing-home-hero',
   'how-it-works': 'marketing-how-it-works',
   roi: 'marketing-roi',
+  pricing: 'marketing-pricing',
   features: 'marketing-features',
   carriers: 'marketing-carriers',
   compliance: 'marketing-compliance',
