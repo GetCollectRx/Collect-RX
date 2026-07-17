@@ -19,7 +19,7 @@ Set `OPS_ALERTS_ENABLED=1`, `OPS_ALERT_EMAIL_TO`, and `CONNECTOR_MONITOR_ENABLED
 
 ---
 
-## 2. Stripe live keys + Connect (#14)
+## 2. Stripe live keys — practice SaaS Billing (#14)
 
 ```bash
 fly secrets set -a collect-rx \
@@ -27,7 +27,7 @@ fly secrets set -a collect-rx \
   STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-In CollectRx Admin → Integrations: complete Stripe Connect onboarding for the practice. Confirm **charges enabled**.
+Confirm Admin → Integrations shows the Stripe secret set (live mode). Verify `/billing` Checkout + Customer Portal against the live webhook endpoint. **No** Stripe Connect / patient Payment Links.
 
 ---
 

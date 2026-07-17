@@ -6,16 +6,16 @@
 
 ## Context
 
-Four billing tiers (from `src/billing/tiers.ts`):
+Four billing tiers — **source of truth:** `src/billing/tiers.ts` (do not hardcode elsewhere):
 
 | Tier | Price | Minutes | Daily Cap | Overage | Hard Stop |
 |---|---|---|---|---|---|
 | Trial | $0 | 500/mo | 50/day | None | Yes |
-| Core | $599/mo | 800/mo | 100/day | $0.25/min | No |
-| Growth | $1,299/mo | 2,000/mo | 300/day | $0.25/min | No |
-| Scale | $1,499/mo | 7,000/mo | None | $0.20/min | No |
+| Core | $799/mo | 1,200/mo | 100/day | $0.25/min | No (soft stop → overage confirm) |
+| Growth | $1,999/mo | 2,800/mo | 300/day | $0.25/min | No (soft stop → overage confirm) |
+| Scale | $2,499/mo | 4,000/mo | None | $0.20/min | No (soft stop → overage confirm) |
 
-Infrastructure cost: $0.115/min. Scale tier's 43% gross margin has no buffer for system issues.
+Infrastructure cost: $0.115/min. Paid tiers target ~78–80% gross margin at included minutes.
 
 Warning thresholds (from `WARNINGS` in `tiers.ts`):
 - 80% of monthly minutes consumed
@@ -53,7 +53,7 @@ For Core and Growth tier practices:
 
 For Scale tier:
 - [ ] Scale has no daily cap — monitor for runaway queue behavior (>1,000 minutes in a single day is unusual for one dental practice)
-- [ ] At 43% gross margin, Scale is the most margin-constrained tier. Any technical issue burning extra Vapi minutes hits harder here.
+- [ ] Scale overage is $0.20/min (vs $0.25 on Core/Growth); still above $0.115 cost — watch runaway usage more than margin panic.
 
 ### Overage Confirmation (from `OVERAGE` settings)
 
@@ -79,7 +79,7 @@ gross_margin = (tier_price + overage_revenue - (minutes_used × $0.115)) / (tier
 
 - [ ] `STRIPE_PRICE_CORE`, `STRIPE_PRICE_GROWTH`, `STRIPE_PRICE_SCALE` env vars are set and match actual Stripe product IDs
 - [ ] Overage price IDs (`STRIPE_OVERAGE_PRICE_*`) are set for Core, Growth, Scale
-- [ ] Stripe Connect is configured for practice payment processing (if applicable)
+- [ ] Stripe Billing (practice SaaS) Checkout / Portal works; Connect / patient pay is out of scope
 - [ ] Webhook endpoint `POST /api/webhooks/stripe` is registered in Stripe dashboard and the signing secret matches `STRIPE_WEBHOOK_SECRET`
 
 ---

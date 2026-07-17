@@ -7,8 +7,8 @@ Compiled 2026-07-04 from the repo's own planning docs (`OUTSTANDING-FIXES-PRODUC
 - Multi-tenant queue engine + static `X-Api-Key` auth on all admin/data routes (PR #24), merged and confirmed live in production on Fly.
 - DNS and TLS fully cut over to Fly (`collect-rx.fly.dev` and `www.collectrx.ca`); Railway fully decommissioned.
 - CI runs typecheck, lint, tests, build, and Semgrep SAST on every PR.
-- Stripe test-mode payment flow, idempotent webhook handling, tokenized public pay links, CSV import with idempotency, and an append-only audit log are implemented in code (Appendix C of `OUTSTANDING-FIXES-PRODUCT-READY.md` marks 19/19 Phase 3 items done).
-- README's Dentrix-as-default-PMS wording fixed today.
+- Practice SaaS Billing (Stripe Billing) + idempotent Billing webhooks, CSV import with idempotency, and an append-only audit log are implemented in code. Patient/client pay (Connect / Payment Links) is **retired**.
+- Canonical launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md).
 
 The engineering backlog in the repo's own tracker is mostly marked complete. The real gate to being client-ready is the **operator and legal work that was never executed**, plus a few things that changed underneath the docs when hosting moved from Railway to Fly.
 
@@ -16,13 +16,13 @@ The engineering backlog in the repo's own tracker is mostly marked complete. The
 
 ## Tier 1 — Blocking before a real client with real PHI goes live
 
-1. **[Engineering] Reconfirm every third-party webhook/callback URL points at the new Fly host, not Railway.** SendGrid Event Webhook, Twilio inbound SMS URL, Stripe webhook endpoint, Vapi webhook — these were configured against the old Railway URL and have not been explicitly re-verified since the cutover. This is a direct, easy-to-miss consequence of the migration you just finished.
-2. **[Engineering] Switch Stripe from test to live keys.** Complete Connect onboarding for the practice and confirm "charges enabled" in Admin (P4-04). Disclosing platform fees in the practice onboarding flow is a business/legal call, not covered here.
-3. **[Engineering] Verify SPF/DKIM/DMARC** on the sending domain and wire the SendGrid bounce/complaint Event Webhook with the verification key (P4-01) — otherwise reminder emails risk landing in spam or bouncing silently.
+1. **[Engineering] Reconfirm every third-party webhook/callback URL points at the new Fly host, not Railway.** SendGrid Event Webhook, Twilio inbound SMS URL, Stripe **Billing** webhook endpoint, Vapi webhook — these were configured against the old Railway URL and have not been explicitly re-verified since the cutover. This is a direct, easy-to-miss consequence of the migration you just finished.
+2. **[Engineering] Switch Stripe from test to live keys for practice SaaS Billing (P4-04).** Confirm `/billing` Checkout + Customer Portal and live webhook. **No** Stripe Connect / patient Payment Links. Disclosing platform subscription fees in onboarding is a business/legal call.
+3. **[Engineering] Verify SPF/DKIM/DMARC** on the sending domain and wire the SendGrid bounce/complaint Event Webhook with the verification key (P4-01) — otherwise operational emails risk landing in spam or bouncing silently.
 4. **[Engineering spike / Business decision] PMS integration scope for this specific client.** Only a plan document exists (`PMS-INTEGRATION-PLAN.md`); there is no working AbelDent or Dentrix connector. The engineering piece — a time-boxed spike to prove a read path or file-drop connector — can be done independently. Whether CSV import is contractually acceptable for v1 vs. a live connector being required is Khalid's call, not an engineering one.
 5. **[Legal/Business — Khalid handling separately] Get BAAs/DPAs actually signed** with every vendor touching PHI: hosting (Fly), SendGrid, Twilio, Stripe, Vapi, and your backup vendor (P5-05).
 6. **[Legal/Business — Khalid handling separately] Run an actual HIPAA gap review** (P5-06), and if serving Canadian patients, the PIPEDA/provincial review (P5-07).
-7. **[Legal/Business — Khalid handling separately] Counsel sign-off on collections message content** — frequency, hours, disclosures, unsubscribe (P5-08).
+7. **[Legal/Business — Khalid handling separately] Counsel sign-off on any patient-facing messaging** if re-enabled later (P5-08). Patient balance outreach is currently out of product scope; still review staff/ops email templates as needed.
 8. **[Legal/Business — Khalid handling separately] Schedule and complete a pen test** before handling real PHI at any real volume (P5-11).
 9. **[Engineering] Confirm encryption at rest on the production Postgres instance on Fly** and document it for audit purposes (P5-02) — this is a different hosting provider than when this was last checked, so it needs re-confirming, not assuming.
 10. **[Engineering] Rotate and audit all production secrets** to confirm none are stale from the Railway era — `ADMIN_API_KEY`, `JWT_SECRET`, and the SendGrid/Twilio/Stripe/Vapi keys and webhook secrets, per `SECRETS-GO-LIVE.md`.

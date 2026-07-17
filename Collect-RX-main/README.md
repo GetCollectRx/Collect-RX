@@ -42,6 +42,35 @@ npm run db:seed
 npm run dev
 ```
 
+### Desktop app (Electron)
+
+The desktop app is a **thin shell** around the same React UI — plus a system tray icon and AbelDent sync on Windows. It is **not** a separate codebase.
+
+```bash
+# From Collect-RX-main/ (or repo root: npm run dev:electron)
+npm run dev:electron
+```
+
+This starts the API, Vite, and opens a **CollectRx** window with the green desktop connector banner. Minimize closes to tray; double-click the tray icon to reopen.
+
+If `electron` fails to open with `app is undefined`, your shell may have **`ELECTRON_RUN_AS_NODE=1`** set (Cursor/CI sometimes does). The `dev:electron` script unsets it automatically; or run:
+
+```bash
+env -u ELECTRON_RUN_AS_NODE npm run dev:electron
+```
+
+**Package installers** (output in `dist-electron/`):
+
+```bash
+npm run build:mac:arm64   # Apple Silicon .app + zip
+npm run build:mac         # Intel + Apple Silicon
+npm run build:win         # Windows NSIS .exe (best on Windows)
+```
+
+Packaged builds load `https://www.collectrx.ca` by default. For local testing of a built `.app`, create `~/Library/Application Support/dental-ar-system/dashboard-url.txt` with one line: `http://localhost:5173` (and run `npm run dev` separately).
+
+Download page: `/download` in the web app. CI: [`.github/workflows/collectrx-electron-installers.yml`](../.github/workflows/collectrx-electron-installers.yml).
+
 Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACTICE_PASSWORD` / `src/server/seed.ts` for dev defaults). For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
 
 **CollectRx demo practice (`npm run demo:seed`):** Creates the generic demo practice with realistic AR and pre-visit data that walks through the call-to-resolution loop — one live call, a practice gate, a recall-due claim, and a high-value aging Manulife claim. Login: `demo@collectrx-test.local` / `CollectRx2026!`. Re-run with `npm run demo:seed -- --reset` to wipe and reseed. See [docs/architecture/call-to-resolution.md](docs/architecture/call-to-resolution.md).
@@ -52,7 +81,9 @@ Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACT
 
 **AbelDent / Windows (Phase 4):** On the practice PC, `npm install mssql`, run **`npm run abeldent:discover -- --server "HOST\\INSTANCE" --database AbelDent --out schema-discovery.json`**, copy **`schema-map.example.json`** → **`schema-map.json`**, edit mismatches, then **`npm run abeldent:validate-queries`**. Set **`ABELDENT_SCHEMA_MAP`** for the packaged sync service (see `.env.example`). Windows `.exe` builds in CI: [../.github/workflows/collectrx-electron-installers.yml](../.github/workflows/collectrx-electron-installers.yml).
 
-### Stripe test mode (P3-20, webhooks)
+### Stripe test mode (practice SaaS Billing)
+
+CollectRx uses Stripe Billing for the **practice subscription** only (Practice → Insurance product — no patient/client payment collection).
 
 1. Set **`STRIPE_SECRET_KEY`** to a [test](https://docs.stripe.com/keys#test-live-modes) key (`sk_test_...`) and **`STRIPE_WEBHOOK_SECRET`** to a signing secret (`whsec_...`).
 
@@ -64,21 +95,16 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 
 Use the `whsec_` value the CLI prints as **`STRIPE_WEBHOOK_SECRET`** while that process is running (or create a [fixed endpoint](https://docs.stripe.com/webhooks#test-webhook) in the Dashboard for a public tunnel URL in staging/prod).
 
-3. Complete [Stripe Connect](https://docs.stripe.com/connect) onboarding for the practice in the app so Payment Links are created on a **connected** account.
+3. Open **`/billing`** in the app, start Checkout for a plan, and complete with a [test card](https://docs.stripe.com/testing) (e.g. `4242 4242 4242 4242`).
 
-4. From **Patient A/R**, generate a **Payment Link** for a row, open the link, and pay with a [test card](https://docs.stripe.com/testing) (e.g. `4242 4242 4242 4242`).
+4. Confirm the webhook updates subscription state and that replaying the same event does **not** double-apply (idempotency via processed Stripe events).
 
-5. The server records the payment on **`checkout.session.completed`** (updates `PatientBalance`; receipt email if SendGrid is configured). The handler **ignores** `payment_intent.succeeded` for this flow so the same charge is not posted twice, and it skips duplicate `event.id` values via `ProcessedStripeEvent` (**P3-21**).
-
-**P3-20 — operator e2e (test mode) checklist:** run this once on each environment before go-live; check every box for that environment.
+**Operator e2e (test mode) checklist:**
 
 - [ ] `STRIPE_SECRET_KEY` is `sk_test_...` and `STRIPE_WEBHOOK_SECRET` matches the active listener (CLI `whsec_` or Dashboard endpoint).
 - [ ] `stripe listen --forward-to <host>:3000/api/stripe/webhook` (or equivalent) is running or the Dashboard endpoint is reachable.
-- [ ] Connect onboarding is **complete** for the practice in the app.
-- [ ] From **Patient A/R**, a **Payment Link** opens; pay with `4242 4242 4242 4242`.
-- [ ] The balance / payment state updates as expected; replaying the same `checkout.session.completed` (or Stripe test resend) does **not** double-post (**P3-21** idempotency).
-
-> **Note:** The legacy in-app `POST /api/pay/:balanceId` (staff session) simulates a payment on the older `Balance` model. Real card flow for patient A/R is **Connect Payment Links** + the webhook path above on **`PatientBalance`**.
+- [ ] Practice Checkout / Customer Portal from **`/billing`** works with a test card.
+- [ ] Replaying the same Billing webhook does not corrupt subscription state.
 
 The application will be available at:
 - **Frontend**: http://localhost:5173

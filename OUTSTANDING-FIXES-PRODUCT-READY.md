@@ -2,6 +2,8 @@
 
 **Product intent:** The target is a **complete, deployable** CollectRx—something you can run in **staging and production** with a supported database, CI, secrets, monitoring, and compliance work appropriate to handling healthcare-adjacent data. This backlog is **not** “how to stay a demo”; it is the ordered work to get from the current codebase to that bar. (Some copy in older READMEs may still say “POC”; treat this document as the north star.)
 
+**Launch order (A→G):** [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md) — Practice → Insurance only; no patient/client payment collection.
+
 **Purpose:** Backlog of **ticket-sized** tasks, grouped by **phase**. Phases are sequential in priority: finish Phase 1 decisions before large Phase 2–3 build-outs; Phase 4+ can overlap once the core path is defined.
 
 **Ticket format:** Each item is sized for a single issue/PR (roughly **0.5–3 days** unless marked **[L]** for larger epics to split further).
@@ -55,7 +57,7 @@
 
 *Goal: Login → see real data → take primary actions without mocks blocking.*
 
-**Status (2026-04-24) — Phase 3 (P3) is** **COMPLETE** for in-scope work: engineering deliverables, or items **deferred/closed in docs** (see [Appendix C](#appendix-c--phase-3-p3-01-to-p3-42-completion-review) for P3-01 through P3-42). **Follow-ups (non-blockers):** one real **Stripe test-mode e2e** on your host (P3-20) — covered in operator checklists; automated E2E + mock webhook is **P7** (see Phase 7 below). Optional **DataState** on `PreTreatmentEstimate` (P3-14).
+**Status (2026-04-24) — Phase 3 (P3) is** **COMPLETE** for in-scope work: engineering deliverables, or items **deferred/closed in docs** (see [Appendix C](#appendix-c--phase-3-p3-01-to-p3-42-completion-review) for P3-01 through P3-42). **Follow-ups (non-blockers):** practice SaaS Billing test-mode e2e on your host (see Collect-RX-main README Stripe section); automated Billing webhook coverage is **P7**. Patient pay / Connect (P3-20–P3-23) are **retired**.
 
 ### 3A — Auth & tenant
 
@@ -72,19 +74,21 @@
 | ID | Task | Definition of done |
 |----|------|-------------------|
 | P3-10 | **Audit: implement or remove `/api/benefits` calls** | All `PreTreatmentEstimate` fetches hit existing, secured routes; or feature-flag page off. |
-| P3-11 | **Audit: implement or remove `/api/patients/balances` calls** | Same for `PatientAR` page. |
+| P3-11 | ~~**Audit: `/api/patients/balances` / PatientAR**~~ | **RETIRED** with patient-pay scope — insurance claims / CSV AR only. |
 | P3-12 | **Replace “mocked” analytics widgets** | `Analytics.tsx` / `Dashboard.tsx` use real data or show “not configured” with no fake numbers. |
 | P3-13 | **Wire admin settings “Save” to API** | Persisted fields; success/error toasts. |
 | P3-14 | **Consistent error/empty/loading states** | Shared component or pattern; 3+ key pages updated. |
 
 ### 3C — Money movement (minimal real path)
 
+> **Retired (2026-07-14):** Patient pay / Stripe Connect (P3-20–P3-23) are out of product scope. CollectRx is Practice→Insurance only. Practice SaaS billing uses Stripe Billing (+ optional GoCardless PAD), not Connect.
+
 | ID | Task | Definition of done |
 |----|------|-------------------|
-| P3-20 | **Stripe: dev keys + test Checkout path** | One end-to-end payment in test mode; webhook updates balance state. |
-| P3-21 | **Idempotent payment webhook handler** | Duplicate events don’t double-post. |
-| P3-22 | **Patient pay link: tokenized link or Checkout session** | Spec + implementation: link expires; no staff cookie required; audit logged. |
-| P3-23 | **Receipt / confirmation** | Email or on-screen confirmation for patient payment. |
+| P3-20 | ~~Stripe: patient Checkout path~~ | **RETIRED** — no patient payment collection. |
+| P3-21 | ~~Idempotent patient payment webhook~~ | **RETIRED** — platform Billing webhooks remain for practice subscriptions. |
+| P3-22 | ~~Patient pay link~~ | **RETIRED**. |
+| P3-23 | ~~Patient receipt / confirmation~~ | **RETIRED**. |
 
 ### 3D — PMS / data in
 
@@ -113,7 +117,7 @@
 | P4-01 | **SendGrid: production API key + sender domain** | SPF/DKIM/DMARC verified; bounces to monitoring or inbox. |
 | P4-02 | **Unsubscribe + preference compliance** | Footer links, honored in API; law checklist reviewed by compliance. |
 | P4-03 | **Twilio: prod numbers + opt-out keywords** | STOP/HELP; rate limits; logging without message body. |
-| P4-04 | **Stripe: Connect review** | Onboarding flow, dashboard links, fee disclosure; test + prod keys separated. |
+| P4-04 | **Stripe: practice SaaS Billing** | Practice subscription Checkout/Portal; test + prod keys separated. ~~Connect~~ retired (no patient pay). |
 | P4-05 | **Vapi: webhook HMAC + replay table** | Signature verification; store event idempotency; rotate secrets procedure documented. |
 | P4-06 | **AWS SSM / secrets runbook** | How keys are loaded in staging/prod; who can rotate; break-glass. |
 | P4-07 | **Abeldent / Dentrix (if v1): connector spike** [L] | Time-boxed: prove read path or file drop; out-of-scope clearly marked if not. |
@@ -121,7 +125,7 @@
 
 **Go-live (Phase 4 “done”):** The **product** is go-live ready when you complete the **operator** column in [docs/operations/PHASE4-GO-LIVE.md](docs/operations/PHASE4-GO-LIVE.md) (DNS, live keys, webhooks, counsel) and **Admin → Integrations** shows the expected config for your practice.
 
-**Code + runbooks (2026-04-22):** [PHASE4-INTEGRATIONS.md](docs/operations/PHASE4-INTEGRATIONS.md), [SECRETS-GO-LIVE.md](docs/operations/SECRETS-GO-LIVE.md). **P4-01** — Event Webhook `POST /api/webhooks/sendgrid` (Ed25519 if key set), bounce/drop/spam → `emailOptOutAt` (by `balance_id` custom arg or email). **P4-02** — `emailOptOutAt`, one-click `GET /api/public/email-unsubscribe`, `List-Unsubscribe` on reminders, footers. **P4-03** — unchanged Twilio path. **P4-04** — in app: `GET /api/admin/integrations` + Admin “Integrations” readout (keys present, Connect flags); **not** a substitute for the full table row (fee disclosure, Stripe Dashboard links, Connect *review* — see Phase 4 table and product/ops). **P4-05** — unchanged. **P4-06** — secrets runbook. **P4-07** — [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md); **scope and go-live inclusion are a program decision**, not fixed here. **P4-08** — 2-attempt email/SMS retry + Admin status; if both attempts fail, see [PHASE4-INTEGRATIONS](docs/operations/PHASE4-INTEGRATIONS.md#p4-08-retry--failures) (queue is Phase 6/8). Prisma: `emailOptOutAt` migration.
+**Code + runbooks (2026-04-22):** [PHASE4-INTEGRATIONS.md](docs/operations/PHASE4-INTEGRATIONS.md), [SECRETS-GO-LIVE.md](docs/operations/SECRETS-GO-LIVE.md). **P4-01** — Event Webhook `POST /api/webhooks/sendgrid` (Ed25519 if key set), bounce/drop/spam → `emailOptOutAt`. **P4-02** — `emailOptOutAt`, one-click `GET /api/public/email-unsubscribe`, `List-Unsubscribe` footers. **P4-03** — Twilio path where SMS is used. **P4-04** — practice SaaS Billing: `GET /api/admin/integrations` + Admin readout (keys present), `/billing` Checkout/Portal, Billing webhooks — **not** Connect/patient pay. **P4-05** — Vapi webhook HMAC + idempotency. **P4-06** — secrets runbook. **P4-07** — [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md); **scope and go-live inclusion are a program decision**. **P4-08** — send retry + Admin status; see [PHASE4-INTEGRATIONS](docs/operations/PHASE4-INTEGRATIONS.md#p4-08-retry--failures) (queue is Phase 6/8).
 
 ---
 
@@ -218,7 +222,7 @@
 ## Appendix A — Epics to split (too large for one ticket)
 
 - **[L] P1-02** may spawn: migrate data model, re-point CI, move env, and redirect docs.
-- **[L] P3-22** patient pay links: legal + Stripe + email + support workflow.
+- **[L] P3-22** ~~patient pay links~~ — **retired** (Practice→Insurance only).
 - **[L] P3-32** full PMS integration: multi-quarter; keep spike separate.
 - **[L] P5-06** HIPAA: often many sub-tasks after assessment.
 - **[L] P5-11** pen test: scheduling + full remediation pass.
@@ -232,8 +236,8 @@
 | Product & experience | P1, P3, P9 |
 | Engineering & architecture | P2, P8 |
 | Integrations | P3C–D, P4 |
-| Security & privacy (beyond current hardening) | P3A, P5, P3-21 |
-| Compliance & legal | P5, P3-22 content |
+| Security & privacy (beyond current hardening) | P3A, P5 |
+| Compliance & legal | P5 |
 | Operations & reliability | P6, P4-08 |
 | Quality assurance | P7 |
 | Documentation & handover | P1, P2-12, P1-05/06, P6 runbooks |
@@ -252,14 +256,14 @@
 | **P3-04** | **Complete** | [apiFetch.ts](Collect-RX-main/src/lib/apiFetch.ts) dispatches `crx:session-expired` on 401. |
 | **P3-05** | **Deferred (N/A v1)** | [AUTH-MODEL-V1.md](docs/compliance/AUTH-MODEL-V1.md): single practice per env; no switcher. |
 | **P3-10** | **Complete** | `PreTreatmentEstimate` → `/api/benefits/...` via `createBenefitsApiRouter` on protected `/api`. |
-| **P3-11** | **Complete** | `PatientAR` → `/api/patients/balances` via `createPatientArApiRouter`. |
+| **P3-11** | **Retired / superseded** | Patient A/R balances UI removed with patient-pay scope. Insurance claims / CSV AR are the product path. |
 | **P3-12** | **Complete** | Dashboard/Analytics: real data or honest empty/error via `DataState` + APIs (no mock KPIs). |
 | **P3-13** | **Complete** | Admin carrier settings: `GET`/``PUT` `/api/admin/settings` + UI save. |
 | **P3-14** | **Complete** | `DataState` on all six main data pages including **Pre-Treatment** ([PreTreatmentEstimate.tsx](Collect-RX-main/src/pages/PreTreatmentEstimate.tsx)): shared `loading` shell; `res.ok` / toasts; **benefits** errors inline in the right panel (not full-page) so the form stays usable. |
-| **P3-20** | **Complete (doc + ops sign-off)** | [README — Stripe test mode + P3-20 checklist](Collect-RX-main/README.md#stripe-test-mode-p3-20-webhooks). Implementation is in code; each environment is **complete** when an operator has run the checkbox e2e in test mode. |
-| **P3-21** | **Complete** | [connect.ts](Collect-RX-main/src/server/stripe/connect.ts): `ProcessedStripeEvent` + `checkout.session.completed` only; PI ignored; duplicate `event.id` safe. |
-| **P3-22** | **Complete** | `publicPayToken` + TTL, `GET /api/public/pay/:token`, `/pay/p/:token` UI. |
-| **P3-23** | **Complete** | [PaymentThankYou](Collect-RX-main/src/pages/PaymentThankYou.tsx); [sendPaymentReceiptEmail](Collect-RX-main/src/server/patients/messaging.ts) on webhook when SendGrid set. |
+| **P3-20** | **Retired** | Patient Checkout path removed — Practice→Insurance only. Practice SaaS Billing lives under P4-04 / `/billing`. |
+| **P3-21** | **Retired** | Patient payment webhook path removed. Platform Billing webhooks remain in `stripe/billing.ts`. |
+| **P3-22** | **Retired** | Patient pay links / public pay tokens removed. |
+| **P3-23** | **Retired** | Patient receipt / thank-you flow removed. |
 | **P3-30** | **Complete** | CSV upload, [header aliases](Collect-RX-main/src/server/csv/parseSimple.ts), row `errors` + Admin panel; `400` empty file. |
 | **P3-31** | **Complete** | [upsertBalances](Collect-RX-main/src/server/patients/balances.ts) + [CSV-IMPORT-IDEMPOTENCY.md](docs/product/CSV-IMPORT-IDEMPOTENCY.md). |
 | **P3-32** | **Complete (doc epic)** | [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md). |

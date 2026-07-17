@@ -7,7 +7,7 @@ This document ties **P7-01…P7-08** in [OUTSTANDING-FIXES-PRODUCT-READY.md](../
 | Item | What | Command / location |
 |------|------|--------------------|
 | **P7-01** | E2E: login → dashboard (Playwright) | `npm run e2e -w dental-ar-system` (see below) |
-| **P7-02** | Stripe webhook with mock HMAC (no CLI in CI) | `tests/app.integration.test.ts` (Stripe `generateTestHeaderString`) |
+| **P7-02** | Stripe **Billing** webhook with mock HMAC (practice SaaS only; no patient pay) | `tests/app.integration.test.ts` (`handlePlatformBillingWebhook` + signature cases) |
 | **P7-03** | API integration (health, auth, session) | Same file + `vitest run` |
 | **P7-04** | Reproducible fixtures | `db:seed` (CI) + `tests/factories/practice.ts` for factory-created practices |
 

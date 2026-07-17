@@ -24,7 +24,7 @@ Use this checklist when rotating secrets after exposure, a team change, or on a 
 
 | Variable | Where to rotate | After rotation |
 |----------|-----------------|----------------|
-| `STRIPE_SECRET_KEY` | [Dashboard → API keys](https://dashboard.stripe.com/apikeys) | Test payment link + Connect onboarding in staging |
+| `STRIPE_SECRET_KEY` | [Dashboard → API keys](https://dashboard.stripe.com/apikeys) | Practice `/billing` Checkout in staging (SaaS Billing only) |
 | `STRIPE_WEBHOOK_SECRET` | Webhook endpoint → "Signing secret" (per endpoint) | `POST /api/stripe/webhook` receives 200 on test event from Dashboard |
 
 If you rotate the webhook secret, update it in **one place** (e.g. Railway) and in Stripe for the same endpoint URL.

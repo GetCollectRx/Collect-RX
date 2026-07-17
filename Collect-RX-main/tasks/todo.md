@@ -76,6 +76,24 @@
 
 ---
 
+---
+
+## GoCardless PAD billing — go-live blockers (backlog, 2026-07-14)
+> Integration code is complete and tested (src/server/gocardless/, routes, webhook, scheduler,
+> frontend PAD card in PracticeBillingPage.tsx). Blocked on external account setup, not code.
+
+- [ ] Register CollectRx as a formal business entity (if not already) — provincial registration or federal incorporation
+- [ ] Open a Canadian business bank account (needed for GoCardless live payouts, not sandbox)
+- [ ] Sign up for GoCardless **live** account, select Standard plan ($0.75%+$0.40, capped $3/transaction)
+- [ ] Set `GOCARDLESS_ACCESS_TOKEN`, `GOCARDLESS_WEBHOOK_SECRET`, `GOCARDLESS_ENV=production`, `PAD_RECONCILE_ENABLED=1`
+- [ ] No active practices as of 2026-07-14 (Dr. Hasan pilot went cold) — no urgency to rush this
+
+## GoCardless PAD billing — unblocked next steps (no bank account needed)
+- [ ] Sign up for a free GoCardless **sandbox** account (manage-sandbox.gocardless.com/sign-up) — no business bank account required
+- [ ] Use sandbox `GOCARDLESS_ACCESS_TOKEN` to verify the integration end-to-end: create a Billing Request, complete the hosted flow with GoCardless's test bank details, confirm a subscription and webhook fire correctly
+- [ ] This also resolves the one remaining unconfirmed detail from research: the exact `GoCardless-Version` header value and webhook event `action` strings, verified against a live (sandbox) response rather than secondary docs
+- [ ] Write route-level tests for `src/server/routes/gocardlessRoutes.ts` (auth required, practice-owner required, happy path, validation error) — currently only the pure-logic `decidePadTransactionUpdate` function has test coverage
+
 ## Safety invariants (must hold in every file)
 - `patientToken` is the ONLY patient identifier in DB tables touching Vapi
 - `CARRIER_BLOCK` check fires before every call dispatch — no exceptions

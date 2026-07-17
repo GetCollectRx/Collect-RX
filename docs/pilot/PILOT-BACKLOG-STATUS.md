@@ -26,7 +26,7 @@ Legend: ✅ Engineering done · 🔧 Ops / deploy · 🏥 Field validation · �
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 13 | Re-point webhooks to Fly | 🔧 | `GO-LIVE-ENGINEERING.md` §1 |
-| 14 | Stripe live + Connect | 🔧 | §2 |
+| 14 | Stripe live (practice SaaS Billing) | 🔧 | §2 |
 | 15 | SendGrid SPF/DKIM + event webhook | 🔧 | §3 |
 | 16 | Secrets audit/rotate | 🔧 | §4, `SECRETS-GO-LIVE.md` |
 | 17 | Fly Postgres encryption at rest | 🔧 | §5 |

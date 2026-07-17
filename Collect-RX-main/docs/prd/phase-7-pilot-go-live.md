@@ -69,10 +69,9 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 - Email notification to practice staff with recommended next action
 - Escalation reason logged: `CARRIER_BLOCK`, `NO_ANSWER`, `DENIED`, `NEEDS_HUMAN`
 
-### Patient AR Collection
-- SMS/email reminders: day 7, 21, 45 after insurance adjudication
-- Stripe Connect payment links: payment routes directly to practice
-- Reminder rate limiting: max 5 reminders per patient per cycle
+### Practice SaaS Billing
+- Stripe Billing Checkout / Customer Portal for the practice subscription only
+- No patient/client payment collection
 
 ### Monitoring & Alerts
 - Webhook failure alert → ops email within 5 minutes

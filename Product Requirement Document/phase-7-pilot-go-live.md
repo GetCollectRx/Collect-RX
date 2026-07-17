@@ -1,5 +1,7 @@
 # PRD — Phase 7: Pilot Go-Live & Assumption Validation
 
+> **Stale partner naming.** Canonical Phase 7: [`Collect-RX-main/docs/prd/phase-7-pilot-go-live.md`](../Collect-RX-main/docs/prd/phase-7-pilot-go-live.md) (generic first onboarded practice). Historical “Dr. Hasan / Tenth Line” references below are obsolete.
+
 **Status:** ⏳ Pending  
 **Owner:** Khalid  
 **Pilot Partner:** Dr. Hasan — Tenth Line Family Dentistry, Ottawa  
@@ -67,10 +69,9 @@ CollectRx has three core assumptions that, if wrong, would fundamentally change 
 - Email notification to practice staff with recommended next action
 - Escalation reason logged: `CARRIER_BLOCK`, `NO_ANSWER`, `DENIED`, `NEEDS_HUMAN`
 
-### Patient AR Collection
-- SMS/email reminders: day 7, 21, 45 after insurance adjudication
-- Stripe Connect payment links: payment routes directly to practice
-- Reminder rate limiting: max 5 reminders per patient per cycle
+### Practice SaaS Billing
+- Stripe Billing Checkout / Customer Portal for the practice subscription only
+- No patient/client payment collection
 
 ### Monitoring & Alerts
 - Webhook failure alert → Khalid email within 5 minutes

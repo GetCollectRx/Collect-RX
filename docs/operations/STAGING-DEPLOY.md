@@ -21,3 +21,10 @@ fly deploy -c fly.staging.toml -a collect-rx-staging
 ```
 
 Use staging URL for Playwright/k6 before production releases.
+
+**After deploy:** run the Group C smoke pack — [STAGING-SMOKE.md](STAGING-SMOKE.md):
+
+```bash
+export STAGING_API_BASE='https://YOUR_STAGING_HOST'
+npm run smoke:staging -w dental-ar-system
+```

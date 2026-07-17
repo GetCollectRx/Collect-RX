@@ -15,7 +15,7 @@
 | **CORS / `ALLOWED_ORIGINS`** | Localhost origins | Staging app origin | Prod app origin(s) |
 | **SendGrid (email)** | Mock if no `SENDGRID_API_KEY` (root API) / configure per app | **Live test** or sandbox | Live |
 | **Twilio (SMS)** | Not wired everywhere | Test numbers | Live numbers + opt-out |
-| **Stripe** | Test keys + webhooks (Stripe CLI locally) | Test or live test | Live + webhooks |
+| **Stripe (practice SaaS Billing)** | Test keys + webhooks (Stripe CLI locally); `/billing` | Test keys + Billing webhooks | Live Billing keys + webhooks — **no** Connect / patient pay |
 | **Vapi / voice** | Dev keys; webhook to tunnel (ngrok) or local; `POST /api/vapi/webhook` | Staging project | Production project + **SSM/rotate keys**; see [PHASE4-INTEGRATIONS.md](operations/PHASE4-INTEGRATIONS.md) |
 | **AWS SSM (secrets)** | Optional; often `.env` only | Recommended | **Required** for `NODE_ENV=production` patterns in `secrets.js` |
 | **Feature flags** | All experimental **on** by default | Gated; mirror prod as much as possible | **Explicit**; kill-switch for risky features |
@@ -28,7 +28,7 @@
 |-------------|--------------|---------|------|
 | Email (SendGrid) | mock without keys | live/sandbox | live |
 | SMS | mock / off | test | live |
-| Stripe | mock without keys in root API; use test keys in Collect-RX | test | live |
-| PMS (Dentrix) | not connected | N/A or pilot | per contract |
+| Stripe Billing | mock without keys; test keys for `/billing` | test | live (practice subscription only) |
+| PMS | CSV-first default; AbelDent optional | CSV or pilot connector | per contract |
 
 *Update this table when you add environments or feature flags.*

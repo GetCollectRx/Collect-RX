@@ -69,7 +69,7 @@ If Canadian patients: document **jurisdiction** (federal PIPEDA vs provincial pr
 
 ## P5-09 — PCI scope
 
-- **Model:** Stripe-hosted **Payment Links**; CollectRx does **not** process or store PAN/CVC.  
+- **Model:** Stripe-hosted **Checkout / Customer Portal** for the **practice SaaS subscription** only; CollectRx does **not** process or store PAN/CVC. Patient/client payments are out of scope.  
 - **Doc:** [PCI-SCOPE-COLLECTRX.md](PCI-SCOPE-COLLECTRX.md) and [PCI-BAA-STRIPE.md](PCI-BAA-STRIPE.md). Formal SAQ/ROC is for your org with your acquirer.
 
 ---

@@ -1,8 +1,10 @@
-> **DEPRECATED — 2026-06-11**
+> **DEPRECATED — 2026-06-11** (updated 2026-07-16)
 >
 > The pricing/billing scheme in this document (starter / professional / enterprise flat tiers, `Subscription` model) is **superseded**.
 >
-> The confirmed pricing model going forward is **minutes-based** (trial / core / growth / scale), defined in [`src/billing/tiers.js`](../../src/billing/tiers.js). See [`tasks/lessons.md`](../../tasks/lessons.md) for why minutes-based won and the blast-radius notes for migrating off the `Plan`/`UsageEvent` model that this document's `Subscription` model predates.
+> The confirmed pricing model going forward is **minutes-based** (trial / core / growth / scale), defined in [`src/billing/tiers.js`](../../src/billing/tiers.js) / Collect-RX-main billing tiers.
+>
+> **Also obsolete:** Stripe Connect / patient Payment Links / client payment collection. CollectRx is Practice → Insurance only; practice SaaS uses Stripe Billing (`/billing`).
 >
 > This file is kept for historical reference only. Do not implement against it.
 

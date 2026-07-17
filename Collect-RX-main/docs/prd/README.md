@@ -4,6 +4,8 @@ Product requirements for every build phase. These are the source of truth — No
 
 **Platform scope (2026):** CollectRx is **multi-tenant SaaS** — any Canadian dental practice signs up, creates a tenant, and imports data via CSV or PMS connector. PRDs refer to a **pilot practice** generically (first onboarded site); do not hardcode practice names in code, seeds, or env. Per-tenant identity (name, phone, NPI) lives in the `Practice` database row and Admin UI.
 
+**Product boundary:** **Practice → Insurance** recovery only. Patients remain the claim story (tokenized PHI for carrier calls). Patient billing / patient pay / Stripe Connect are **retired** — see [MVP-SCOPE.md](../../../docs/product/MVP-SCOPE.md).
+
 ## Phase Index
 
 | Phase | File | Status |
