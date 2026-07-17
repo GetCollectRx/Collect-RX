@@ -46,11 +46,6 @@ function integrationPayload() {
       secretKey: Boolean(sk),
       testMode: sk.startsWith('sk_test_'),
     },
-    stripeConnect: {
-      account: false,
-      onboardingComplete: false,
-      chargesEnabled: false,
-    },
     vapi: {
       webhookSecret: Boolean(process.env.VAPI_WEBHOOK_SECRET?.trim()),
     },
@@ -112,9 +107,7 @@ router.put('/settings', async (req: Request, res: Response) => {
 
 router.get('/integrations', async (_req: Request, res: Response) => {
   try {
-    const base = integrationPayload();
-    // Stripe Connect (patient payment collection) removed — stripeConnect defaults to disabled.
-    return res.json(base);
+    return res.json(integrationPayload());
   } catch (err) {
     console.error('[GET /admin/integrations]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });

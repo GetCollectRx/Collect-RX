@@ -308,7 +308,7 @@ function checkAccessControl(): ComplianceCheck[] {
     'assertPhiRouteAllowed() is enforced in the authenticate middleware on every request.',
     hasPhiGate ? 'pass' : 'fail',
     hasPhiGate
-      ? 'phiRoutes.ts: assertPhiRouteAllowed() gates /api/patients, /api/benefits, /api/balances, /api/eligibility, /api/cdcp, /api/canadian, /api/vapi/phi.'
+      ? 'phiRoutes.ts: assertPhiRouteAllowed() gates /api/benefits, /api/eligibility, /api/cdcp, /api/canadian, /api/vapi/phi.'
       : 'MISSING: PHI route gating not found.',
     { reference: 'PHIPA s.33; PIPEDA Principle 4.4' },
   ));
@@ -497,11 +497,11 @@ function checkRateLimiting(): ComplianceCheck[] {
     hasStrictLimiter ? 'rateLimiter.ts: strictLimiter — max 10 / 1min window.' : 'WARNING: strict limiter not found.',
   ));
 
-  // E4 — Public patient pay limiter (prevents UUID enumeration)
+  // E4 — Public unauthenticated limiter (unsubscribe / public marketing)
   const hasPublicLimiter = rateLimiter.includes('publicLimiter') && rateLimiter.includes('max: 60');
   results.push(check(
     'E4', 'RATE_LIMITING', ['PIPEDA', 'OWASP'],
-    'Public patient pay / unsubscribe endpoint limited to 60/min (UUID enumeration prevention)',
+    'Public unauthenticated endpoints limited to 60/min (enumeration prevention)',
     'Tighter rate limit on unauthenticated endpoints slows token or UUID scanning.',
     hasPublicLimiter ? 'pass' : 'warn',
     hasPublicLimiter ? 'rateLimiter.ts: publicLimiter — 60 req/min.' : 'WARNING: publicLimiter not found.',

@@ -1,6 +1,6 @@
 /**
- * Railway dashboard sometimes uses display labels instead of canonical env keys.
- * Read canonical names first, then common aliases set in the UI.
+ * Host dashboard env aliases (Fly.io Variables UI may use display labels).
+ * Railway is decommissioned — canonical keys only.
  */
 function readEnv(...keys: string[]): string {
   for (const key of keys) {

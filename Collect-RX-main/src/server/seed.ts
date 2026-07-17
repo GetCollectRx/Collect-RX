@@ -14,6 +14,7 @@ async function main() {
   const passwordHash = await bcrypt.hash(defaultPassword, 12);
 
   const practiceName = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
+  const ownerEmail = (process.env.SEED_PRACTICE_EMAIL || 'demo@collectrx-test.local').trim();
   const practice = await prisma.practice.create({
     data: {
       name: practiceName,
@@ -23,8 +24,29 @@ async function main() {
   });
   console.log(`✅ Created practice: ${practice.name}`);
 
+  // Login is email/password against User — practice.passwordHash alone is not enough.
+  await prisma.user.upsert({
+    where: { email: ownerEmail },
+    update: {
+      practiceId: practice.id,
+      passwordHash,
+      role: 'practice_owner',
+      isActive: true,
+    },
+    create: {
+      practiceId: practice.id,
+      email: ownerEmail,
+      passwordHash,
+      role: 'practice_owner',
+      displayName: 'Practice Owner',
+      isActive: true,
+    },
+  });
+  console.log(`✅ Owner user: ${ownerEmail}`);
+
   console.log('\n✨ Seed completed successfully!');
   console.log(`\n📊 Practice ID: ${practice.id}`);
+  console.log(`🔐 Sign in: ${ownerEmail} / (SEED_PRACTICE_PASSWORD)`);
   console.log('💡 For rich insurance demo data (claims, calls, recovery), run: npm run demo:seed');
   console.log('   CollectRx no longer seeds patient outreach balances — insurance carrier recovery only.');
 }

@@ -63,6 +63,10 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests on this endpoint' },
+    skip: () => {
+      const e2e = (process.env.COLLECTRX_E2E || '').trim();
+      return process.env.VITEST === 'true' || e2e === '1' || e2e.toLowerCase() === 'true';
+    },
   });
 
   /** MOD-01 — list CDCP reconsideration cases with 60-day countdown */
