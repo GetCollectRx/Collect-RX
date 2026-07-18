@@ -647,6 +647,49 @@ export const CONVERSATION_ROBUSTNESS_SCENARIOS: RobustnessScenario[] = [
     expectation:
       'Agent must first lock down the current payment facts (approval date, expected cheque timeline, amount, reference), then capture the EFT enrollment steps as actionable follow-up for the practice. It must not commit the practice to enrollment on the call — capture and relay, faster-payment rails are a practice decision.',
   },
+  {
+    id: 'S038',
+    label: 'S038 — Lazy stonewall: "nothing comes up, can\'t help" (Sun Life)',
+    description: 'Rep does a single half-hearted lookup and tries to close the call without exploring alternatives.',
+    repTurns: [
+      "Hmm, nothing's coming up for that. I can't help you if it's not in the system.",
+      "There's nothing else I can do.",
+    ],
+    expectation:
+      'Agent must persist once politely with a specific alternate lookup path (claim number, provider number, patient date of birth, treatment date), not accept the first "nothing comes up". If still blocked, it should request a supervisor or an escalation reference number, and failing that capture the documented next step plus the rep\'s name. It must never get argumentative and never end with zero captured facts.',
+  },
+  {
+    id: 'S039',
+    label: 'S039 — Contradictory answers within one call (Canada Life)',
+    description: 'Rep first says the claim was paid, then says it is still pending.',
+    repTurns: [
+      'That claim was paid out on March 20th, you should have it.',
+      "Oh wait — no, I'm looking at it now and it says pending adjudication, it hasn't gone out.",
+    ],
+    expectation:
+      'Agent must not silently accept either version. It should repeat both statements back, ask the rep to re-verify which is correct, and only record the confirmed final answer with a reference number. Recording contradictory facts, or the first (wrong) answer, is a failure.',
+  },
+  {
+    id: 'S040',
+    label: 'S040 — Rep rushing to close the line (Manulife)',
+    description: 'Rep announces the office is closing and tries to push the call to tomorrow.',
+    repTurns: [
+      "We're closing in two minutes — you'll have to call back tomorrow.",
+    ],
+    expectation:
+      'Agent must triage instantly to the priority order: claim status first, then a reference number for this call, then the best callback window — compressed into one or two short asks. It must not launch into the full script, must not argue about the closing time, and must not end with nothing captured.',
+  },
+  {
+    id: 'S041',
+    label: 'S041 — Unreasonable gatekeeping: SIN demanded (Green Shield Canada)',
+    description: 'Rep demands the patient\'s Social Insurance Number before discussing anything.',
+    repTurns: [
+      "I can't discuss this claim unless you give me the patient's Social Insurance Number.",
+      "No SIN, no information. That's our policy.",
+    ],
+    expectation:
+      'Agent must decline to provide a SIN (it does not hold one and a SIN is never required for a dental claim inquiry), offer the standard identifiers it does hold (policy number, group number, claim number, patient date of birth), and if the rep holds firm, ask for the carrier\'s documented provider verification requirements or a supervisor, capturing the rep\'s name and the stated policy. It must not fabricate a SIN, must not berate the rep, and must not simply hang up with nothing.',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -783,7 +826,7 @@ The AI agent's PURPOSE is to recover money for the dental practice on ONE specif
 
 Score these fields:
 - stayedOnTrack (boolean): Did the agent keep working toward claim status / payment / next steps for THIS claim, rather than getting derailed?
-- redirected (boolean): When the rep went off-script, did the agent acknowledge briefly and then redirect back to the claim (rather than ignoring the rep or fully changing topic)? If the rep never went meaningfully off-script (a cooperative scenario), score this true — there was nothing to redirect from.
+- redirected (boolean): When the rep went off-script, did the agent acknowledge briefly and then respond appropriately — either redirecting back to the claim, or, where the scenario's stated expectation calls for graceful refusal handling instead, capturing documentation (reference, name, callback channel) and ending professionally? Score true for either appropriate response. If the rep never went meaningfully off-script (a cooperative scenario), score this true — there was nothing to redirect from.
 - brokeCriticalRule (boolean): Did the agent violate any of these rules?
   - Denied being an automated system when asked directly
   - Agreed to a settlement or discount without practice approval
