@@ -288,11 +288,59 @@ function validateSafetyRules(payload: ValidatorWebhookPayload): { safetyScore: n
 /**
  * Main validator entry point
  */
-async function validateExtraction(_prisma: PrismaClient, payload: ValidatorWebhookPayload, originalClaimNumber: string): Promise<ValidationResult> {
+/** Parse a spoken/loosely-formatted money string ("410 dollars", "$410.00") to cents. */
+export function parseMoneyToCents(raw: string | boolean | undefined): number | null {
+  if (typeof raw !== 'string') return null;
+  const m = raw.replace(/,/g, '').match(/(\d+(?:\.\d{1,2})?)/);
+  if (!m) return null;
+  return Math.round(parseFloat(m[1]) * 100);
+}
+
+const SHORTFALL_TOLERANCE_CENTS = 50 * 100;
+
+/**
+ * Deterministic backstop for the metrics-critical failure mode: a call
+ * reported as fully paid while the stated payment is materially below what
+ * the practice is owed. The agent is prompted to report PARTIAL_PAYMENT in
+ * that case; if it ever slips, this catches it server-side and routes the
+ * claim to human review instead of letting a shortfall book as recovered.
+ * Tolerance matches the reconciliation engine's $50 variance threshold.
+ */
+export function detectShortfallMisreport(
+  outcome: string | undefined,
+  paymentAmountRaw: string | boolean | undefined,
+  expectedCents: number | null,
+): { rule: string; severity: string; phase: string; message: string } | null {
+  if (outcome !== 'CLAIM_PAID' || expectedCents == null || expectedCents <= 0) return null;
+  const paidCents = parseMoneyToCents(paymentAmountRaw);
+  if (paidCents == null) return null;
+  if (paidCents >= expectedCents - SHORTFALL_TOLERANCE_CENTS) return null;
+  return {
+    phase: 'COMPLETENESS',
+    rule: 'SHORTFALL_MISREPORTED',
+    severity: 'CRITICAL',
+    message:
+      `Outcome CLAIM_PAID but stated payment $${(paidCents / 100).toFixed(2)} is below expected ` +
+      `$${(expectedCents / 100).toFixed(2)} — should be PARTIAL_PAYMENT with a shortfall reason`,
+  };
+}
+
+async function validateExtraction(
+  _prisma: PrismaClient,
+  payload: ValidatorWebhookPayload,
+  originalClaimNumber: string,
+  expectedCents: number | null = null,
+): Promise<ValidationResult> {
   const violations = [];
 
   // PHASE 1: HARD CONSTRAINTS
   const hardViolations = validateHardConstraints(payload, originalClaimNumber);
+  const shortfall = detectShortfallMisreport(
+    payload.extractedFacts.outcome,
+    payload.extractedFacts.paymentAmount,
+    expectedCents,
+  );
+  if (shortfall) hardViolations.push(shortfall);
   violations.push(...hardViolations);
   if (hardViolations.some((v) => v.severity === 'CRITICAL')) {
     return {
@@ -409,6 +457,7 @@ export async function runClaimsValidation(
           claimNumber: true,
           carrierId: true,
           billedAmount: true,
+          outstandingAmount: true,
         },
       },
     },
@@ -416,7 +465,9 @@ export async function runClaimsValidation(
 
   if (!attempt) return { status: 'not_found' };
 
-  const result = await validateExtraction(prisma, input, attempt.claim.claimNumber);
+  const expectedRaw = Number(attempt.claim.outstandingAmount ?? attempt.claim.billedAmount);
+  const expectedCents = Number.isFinite(expectedRaw) && expectedRaw > 0 ? Math.round(expectedRaw * 100) : null;
+  const result = await validateExtraction(prisma, input, attempt.claim.claimNumber, expectedCents);
 
   await prisma.callAttempt.update({
     where: { id: attempt.id },
