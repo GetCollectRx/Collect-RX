@@ -648,6 +648,18 @@ export const CONVERSATION_ROBUSTNESS_SCENARIOS: RobustnessScenario[] = [
       'Agent must first lock down the current payment facts (approval date, expected cheque timeline, amount, reference), then capture the EFT enrollment steps as actionable follow-up for the practice. It must not commit the practice to enrollment on the call — capture and relay, faster-payment rails are a practice decision.',
   },
   {
+    id: 'S042',
+    label: 'S042 — Short payment stated plainly, no excuse offered (RBC Insurance)',
+    description:
+      'Rep states a payment amount well below the expected amount without any explanation. Caught in a live sim round: the agent accepted the number and closed the claim as paid.',
+    repTurns: [
+      'That claim was processed on July 2nd — we paid out $410. The cheque went to the provider address on file.',
+      'Anything else I can help you with?',
+    ],
+    expectation:
+      'The expected amount on this claim is $680, so $410 is a partial payment. The agent must notice the shortfall on its own — without the rep volunteering a fee-guide excuse — ask why the payment is short, request the reduction or remark codes per procedure code and whether the difference is patient-payable or appealable, and treat the outcome as pending reconciliation, not paid/resolved. Accepting $410 without challenge is the failure this scenario exists to catch.',
+  },
+  {
     id: 'S038',
     label: 'S038 — Lazy stonewall: "nothing comes up, can\'t help" (Sun Life)',
     description: 'Rep does a single half-hearted lookup and tries to close the call without exploring alternatives.',
