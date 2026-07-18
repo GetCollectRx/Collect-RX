@@ -20,6 +20,7 @@ import {
   tryCdcpFromVapiPayload,
 } from '../recovery/cdcpRecoveryBridge.js';
 import { isHeldThenDumped } from '../recovery/holdLedger.js';
+import { parseMoneyToCents } from './claimsValidatorWebhook.js';
 import { piiVault } from '../../pii-vault.js';
 import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
 import {
@@ -183,19 +184,76 @@ function verifyVapiAuth(req: Request): boolean {
   return false;
 }
 
+/**
+ * Deterministic in-call payment comparison. The voice model reliably calls
+ * tools (DTMF/transfer/endCall are 100% across sim rounds) but drops prose
+ * arithmetic rules, so the comparison lives here: the model copies the two
+ * amounts it has, the server does the math and hands back the exact next
+ * move as a tool result — the one channel the model never ignores.
+ * Mirrors the SHORTFALL_MISREPORTED post-call backstop ($50 tolerance).
+ */
+export function verifyPaymentToolResult(
+  statedRaw: unknown,
+  expectedRaw: unknown,
+): string {
+  const stated = parseMoneyToCents(typeof statedRaw === 'string' ? statedRaw : String(statedRaw ?? ''));
+  const expected = parseMoneyToCents(typeof expectedRaw === 'string' ? expectedRaw : String(expectedRaw ?? ''));
+  if (stated == null || expected == null) {
+    return 'AMOUNT UNCLEAR — read the stated payment amount back to the representative and confirm it digit by digit, then call this tool again.';
+  }
+  if (stated >= expected - 50 * 100) {
+    return (
+      `AMOUNT OK — $${(stated / 100).toFixed(2)} covers the expected $${(expected / 100).toFixed(2)}. ` +
+      'Proceed: capture the check number, payment date, mailing address or deposit details, and a reference number. Outcome CLAIM_PAID.'
+    );
+  }
+  const shortfall = ((expected - stated) / 100).toFixed(2);
+  return (
+    `SHORTFALL DETECTED — the stated $${(stated / 100).toFixed(2)} is $${shortfall} below the expected ` +
+    `$${(expected / 100).toFixed(2)}. Say now: 'That is less than the $${(expected / 100).toFixed(2)} we expected ` +
+    `on this claim — can you explain the difference?' Then collect the reduction or remark codes for each procedure ` +
+    'code, the fee guide year and province if cited, and whether the difference is patient-payable or appealable, ' +
+    'plus a reference number. Report the outcome as PARTIAL_PAYMENT with the shortfall amount and reason.'
+  );
+}
+
 function responseForVapiMessage(body: unknown): Record<string, unknown> {
-  const b = body as { message?: { type?: string; toolWithToolCallList?: Array<{ name: string; toolCall?: { id?: string } }> } };
+  const b = body as {
+    message?: {
+      type?: string;
+      toolWithToolCallList?: Array<{
+        name: string;
+        toolCall?: { id?: string; function?: { arguments?: unknown } };
+      }>;
+    };
+  };
   const type = b?.message?.type;
   if (type === 'assistant-request' && process.env.VAPI_DEFAULT_ASSISTANT_ID) {
     return { assistantId: process.env.VAPI_DEFAULT_ASSISTANT_ID };
   }
   if (type === 'tool-calls' && b.message?.toolWithToolCallList?.length) {
     return {
-      results: b.message.toolWithToolCallList.map((t) => ({
-        name: t.name,
-        toolCallId: t.toolCall?.id,
-        result: JSON.stringify({ ok: false, error: 'No tool handlers configured.' }),
-      })),
+      results: b.message.toolWithToolCallList.map((t) => {
+        if (t.name === 'verify_payment_amount' || t.toolCall?.function && (t as { toolCall?: { function?: { name?: string } } }).toolCall?.function?.name === 'verify_payment_amount') {
+          let args: Record<string, unknown> = {};
+          const rawArgs = t.toolCall?.function?.arguments;
+          try {
+            args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
+          } catch {
+            args = {};
+          }
+          return {
+            name: 'verify_payment_amount',
+            toolCallId: t.toolCall?.id,
+            result: verifyPaymentToolResult(args.statedAmount, args.expectedAmount),
+          };
+        }
+        return {
+          name: t.name,
+          toolCallId: t.toolCall?.id,
+          result: JSON.stringify({ ok: false, error: 'No tool handlers configured.' }),
+        };
+      }),
     };
   }
   return {};
