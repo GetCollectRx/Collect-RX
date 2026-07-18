@@ -190,6 +190,7 @@ function validateOutcomeCompleteness(
   const required: Record<string, string[]> = {
     CLAIM_NOT_RECEIVED: ['submissionMethod', 'submissionDestination'],
     CLAIM_PAID: ['paymentAmount', 'paymentDate', 'paymentReference'],
+    PARTIAL_PAYMENT: ['paymentAmount', 'paymentDate', 'shortfallReason'],
     CLAIM_DENIED: ['denialCode', 'denialReason'],
     PROCESSING: ['expectedCompletionDate'],
     NEED_INFORMATION: ['requiredDocumentation', 'submissionMethod', 'submissionDestination'],
