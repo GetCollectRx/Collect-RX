@@ -10,11 +10,11 @@
 The last active workstream was the **in-call payment-shortfall check** (`verify_payment_amount` tool).
 Everything is coded, tested, committed, and pushed. **One step remains:**
 
-- [ ] **Deploy staging, then run voice round 7 to verify the tool round-trip.**
+- [x] **Deploy staging, then run voice round 7 to verify the tool round-trip. VERIFIED round 7 2026-07-19.**
   - Deploy: `gh workflow run collectrx-staging-deploy.yml --repo GetCollectRx/Collect-RX` (repo secret `FLY_API_TOKEN` is set; local `fly deploy` works only if the Mac clock is synced — see §5).
   - Run a round: `POST https://api.vapi.ai/call` with `assistantId=a3180f2c-…` (sim), `phoneNumberId=` the Twilio number (`a4003bab…`, +16139098770), `customer.number=+19518486241`. Keys in `Collect-RX-main/.env`.
   - Pass = the squad-leg call log shows a `verify_payment_amount` `tool_call_result` containing `SHORTFALL DETECTED` (not "No result returned"), the agent challenges the $410-vs-$1,250 shortfall aloud, and structuredData outcome = `PARTIAL_PAYMENT`.
-- [ ] **After round 7 passes: roll the tool to production** — the prod Claims_Agent config already has the tool (committed in `vapi-squad-config.json`), but prod's webhook host **`collect-rx.fly.dev` has NOT been deployed with any of this code**. Production deploy needs the operator's go.
+- [ ] **After round 7 passes: roll the tool to production** — the prod Claims_Agent config already has the tool (committed in `vapi-squad-config.json`), but prod's webhook host **`collect-rx.fly.dev` has NOT been deployed with any of this code**. Production deploy needs the operator's go. (round 7 green — awaiting operator go)
 
 Why this design (do not re-litigate): six sim rounds proved the voice model executes tool calls with 100% reliability but drops prose rules; round 6 proved it also mis-copies amounts ($450 passed with $1,250 in its prompt). Therefore the server owns the math: the webhook looks up the claim's outstanding amount by `metadata.claimId` (production), falling back to the model-passed value only for sim calls. Independent post-call backstop `SHORTFALL_MISREPORTED` (claims validator) guarantees a short payment can never book as `CLAIM_PAID` even if the in-call layer fails.
 
