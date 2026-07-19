@@ -16,6 +16,7 @@ import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
+import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,71 +66,56 @@ export interface DispatchGuard {
 
 // ---------------------------------------------------------------------------
 // Per-carrier configuration
+//
+// Carrier rules are data, not code: dispatch behavior (wait days, hold times,
+// IVR hints) lives in rules/carrier-configs.json so mid-pilot carrier tweaks
+// need no deploy. This module only assembles the typed view of that data.
 // ---------------------------------------------------------------------------
 
-export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
-  sun_life: {
-    carrierId: 'sun_life',
-    displayName: 'Sun Life Financial',
-    phone: CARRIER_PHONE_MAP.sun_life,
-    minWaitDays: 32,
-    avgHoldMinutes: 18,
-    isClearinghouse: false,
-    // Updated 2026: electronic claim age limit extended from 30 to 365 days (carrier ID 000016)
-    maxRecoverableAgeDays: 365,
-    ivrHints: ['Press 2 for dental claims', 'Enter group number, then member ID'],
-  },
-  canada_life: {
-    carrierId: 'canada_life',
-    displayName: 'Canada Life',
-    phone: CARRIER_PHONE_MAP.canada_life,
-    minWaitDays: 32,
-    avgHoldMinutes: 22,
-    isClearinghouse: false,
-    // Portal-first: attempt providerConnect EOB/status lookup before Vapi dispatch (carrier ID 000011)
-    portalFirstDispatch: true,
-    ivrHints: ['Press 3 for claim status', 'Enter plan number followed by pound'],
-  },
-  manulife: {
-    carrierId: 'manulife',
-    displayName: 'Manulife',
-    phone: CARRIER_PHONE_MAP.manulife,
-    minWaitDays: 32,
-    avgHoldMinutes: 15,
-    isClearinghouse: false,
-    ivrHints: ['Press 1 for English', 'Press 2 for benefits inquiries'],
-  },
-  green_shield: {
-    carrierId: 'green_shield',
-    displayName: 'Green Shield Canada',
-    phone: CARRIER_PHONE_MAP.green_shield,
-    minWaitDays: 32,
-    avgHoldMinutes: 20,
-    isClearinghouse: false,
-    ivrHints: ['Press 2 for provider inquiries', 'Provide certificate number'],
-  },
-  rbc: {
-    carrierId: 'rbc',
-    displayName: 'RBC Insurance',
-    phone: CARRIER_PHONE_MAP.rbc,
-    minWaitDays: 32,
-    avgHoldMinutes: 16,
-    isClearinghouse: false,
-    ivrHints: ['Press 3 for group benefits', 'Enter policy number when prompted'],
-  },
-  telus_adjudicare: {
-    carrierId: 'telus_adjudicare',
-    displayName: 'TELUS AdjudiCare',
-    phone: CARRIER_PHONE_MAP.telus_adjudicare,
-    minWaitDays: 21,           // TELUS minimum is day 21, not day 32
-    avgHoldMinutes: 12,
-    isClearinghouse: true,     // Routes to underlying TPA — identify TPA first
-    ivrHints: [
-      'TELUS is a clearinghouse — identify TPA from group number prefix first',
-      'TPA identification required before IVR navigation',
-    ],
-  },
-};
+interface CarrierDispatchRules {
+  displayName: string;
+  avgHoldMinutes: number;
+  ivrHints: string[];
+  maxRecoverableAgeDays?: number;
+  ivrAlias?: string;
+  supportsTransaction23?: boolean;
+  portalFirstDispatch?: boolean;
+}
+
+interface CarrierRulesEntry {
+  isClearinghouse: boolean;
+  minWaitDayForClaims: number;
+  dispatch: CarrierDispatchRules;
+}
+
+function buildCarrierConfigs(): Record<CarrierId, CarrierConfig> {
+  const rules = carrierRulesJson.carriers as Record<string, Partial<CarrierRulesEntry>>;
+  const configs = {} as Record<CarrierId, CarrierConfig>;
+
+  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as CarrierId[]) {
+    const entry = rules[carrierId];
+    if (!entry?.dispatch || entry.isClearinghouse === undefined || entry.minWaitDayForClaims === undefined) {
+      throw new Error(`carrier-configs.json is missing dispatch rules for carrier "${carrierId}"`);
+    }
+    configs[carrierId] = {
+      carrierId,
+      displayName: entry.dispatch.displayName,
+      phone: CARRIER_PHONE_MAP[carrierId],
+      minWaitDays: entry.minWaitDayForClaims,
+      avgHoldMinutes: entry.dispatch.avgHoldMinutes,
+      isClearinghouse: entry.isClearinghouse,
+      ivrHints: entry.dispatch.ivrHints,
+      maxRecoverableAgeDays: entry.dispatch.maxRecoverableAgeDays,
+      ivrAlias: entry.dispatch.ivrAlias,
+      supportsTransaction23: entry.dispatch.supportsTransaction23,
+      portalFirstDispatch: entry.dispatch.portalFirstDispatch,
+    };
+  }
+
+  return configs;
+}
+
+export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = buildCarrierConfigs();
 
 // ---------------------------------------------------------------------------
 // TELUS TPA supplementary configs

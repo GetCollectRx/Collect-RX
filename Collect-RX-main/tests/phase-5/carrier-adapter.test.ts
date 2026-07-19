@@ -11,6 +11,7 @@ import {
   checkCarrierAuthorizationGate,
 } from '../../src/carriers/adapter';
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
+import carrierRulesJson from '../../src/services/eligibility/rules/carrier-configs.json';
 
 function authorizedSettings() {
   return {
@@ -92,6 +93,25 @@ describe('CarrierAdapter', () => {
 
     it('non-TELUS carriers are not clearinghouses', () => {
       expect(CARRIER_CONFIGS.sun_life.isClearinghouse).toBe(false);
+    });
+
+    it('minWaitDays comes from carrier-configs.json (minWaitDayForClaims)', () => {
+      const rules = carrierRulesJson.carriers as Record<string, { minWaitDayForClaims?: number }>;
+      for (const cfg of Object.values(CARRIER_CONFIGS)) {
+        expect(cfg.minWaitDays).toBe(rules[cfg.carrierId]?.minWaitDayForClaims);
+      }
+    });
+
+    it('avgHoldMinutes and ivrHints come from carrier-configs.json dispatch rules', () => {
+      const rules = carrierRulesJson.carriers as Record<
+        string,
+        { dispatch?: { avgHoldMinutes: number; ivrHints: string[] } }
+      >;
+      for (const cfg of Object.values(CARRIER_CONFIGS)) {
+        expect(cfg.avgHoldMinutes).toBe(rules[cfg.carrierId]?.dispatch?.avgHoldMinutes);
+        expect(cfg.ivrHints).toEqual(rules[cfg.carrierId]?.dispatch?.ivrHints);
+        expect(cfg.ivrHints.length).toBeGreaterThan(0);
+      }
     });
 
     it('all carriers have a non-empty phone number', () => {
