@@ -12,6 +12,7 @@ import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBan
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Analytics             from './pages/Analytics'
+import AssumptionValidation  from './pages/AssumptionValidation'
 import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
@@ -285,6 +286,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Tools',
     items: [
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
+      { to: '/validation', exact: true, label: 'Validation', icon: 'analytics' },
       { to: '/cdcp', exact: false, label: 'CDCP (legacy)', icon: 'cdcp' },
     ],
   },
@@ -474,6 +476,7 @@ function AppShell() {
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
           <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
           <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/validation" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><AssumptionValidation /></ProtectedRoute>} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />

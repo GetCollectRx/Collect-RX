@@ -80,6 +80,30 @@ router.get('/insurance', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/analytics/assumption-validation?days=30|60|90
+// Day 30/60/90 pilot assumption checks: carrier acceptance rate, resolution
+// rate vs the 60% target, and recovered revenue vs subscription cost.
+// ---------------------------------------------------------------------------
+router.get('/assumption-validation', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const { computeAssumptionValidation, parseValidationWindow } = await import(
+      '../server/services/assumptionValidation.js'
+    );
+    const windowDays = parseValidationWindow(req.query.days);
+    const data = await computeAssumptionValidation(prisma, practiceId, windowDays);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /analytics/assumption-validation]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.get('/collection-rate', async (req: Request, res: Response) => {
   try {
     const qPractice = req.query.practiceId as string | undefined;
