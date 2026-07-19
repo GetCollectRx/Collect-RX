@@ -43,7 +43,7 @@ Nothing below is optional filler; this is the honest full set, split by who acts
 
 ### A. Engineering (small, hours)
 1. ~~Round 7 verification + prod rollout~~ **DONE 2026-07-18** (§1 above).
-2. **`trialEndsAt` backfill** — practices created before 2026-07-17 have never-expiring trials. **Staging DONE 2026-07-18 (4 practices).** Prod at cutover. NOTE: Practice has NO createdAt column — the raw SQL originally written here was wrong. Use the Prisma script instead (anchor = earliest User.createdAt per practice, else now, + 30 days): upload via the base64 `flyctl ssh console` pattern, script shape in git history (`backfill-v2.ts` — findMany trial practices with null trialEndsAt → first user's createdAt + 30d → practice.update).
+2. **`trialEndsAt` backfill** — practices created before 2026-07-17 have never-expiring trials. **Staging DONE (4 practices) and prod DONE (101 practices), both 2026-07-18 — item fully closed.** Script committed: `Collect-RX-main/scripts/backfill-trial-ends-at.ts`. NOTE: Practice has NO createdAt column — the raw SQL originally written here was wrong. Use the Prisma script instead (anchor = earliest User.createdAt per practice, else now, + 30 days): upload via the base64 `flyctl ssh console` pattern, script shape in git history (`backfill-v2.ts` — findMany trial practices with null trialEndsAt → first user's createdAt + 30d → practice.update).
 3. ~~Production app deploy~~ **DONE 2026-07-18** via `collectrx-prod-deploy.yml` (use that workflow for all future prod deploys).
 
 ### B. Operator tasks (you, non-code)
