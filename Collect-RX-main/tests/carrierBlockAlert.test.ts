@@ -9,6 +9,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { CarrierId } from '@prisma/client';
 import { sendCarrierBlockAlert } from '../src/services/alerts';
 
+const { mockCreate } = vi.hoisted(() => ({
+  mockCreate: vi.fn().mockResolvedValue({ sid: 'SM123' }),
+}));
+
+vi.mock('twilio', () => ({
+  default: () => ({ messages: { create: mockCreate } }),
+}));
+
 describe('Carrier Block Alert Service', () => {
   beforeEach(() => {
     vi.stubEnv('TWILIO_ACCOUNT_SID', 'test_account_sid');
@@ -18,17 +26,7 @@ describe('Carrier Block Alert Service', () => {
   });
 
   it('sends SMS alert when carrier block is detected', async () => {
-    const mockCreate = vi.fn().mockResolvedValue({ sid: 'SM123' });
-    const mockMessages = { create: mockCreate };
-
-    vi.stubGlobal('require', (id: string) => {
-      if (id === 'twilio') {
-        return () => ({
-          messages: mockMessages,
-        });
-      }
-      return {};
-    });
+    mockCreate.mockClear();
 
     const params = {
       practiceId: 'practice-xyz',
