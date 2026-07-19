@@ -33,6 +33,7 @@ import {
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
+import { verifyPaymentToolResult } from '../server/vapi/vapiWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
@@ -116,11 +117,11 @@ function validateSignature(rawBody: Buffer, signature: string): boolean {
 
 router.post('/', async (req: Request, res: Response) => {
   // ── 1. Signature validation ──────────────────────────────────────────────
+  // Two auth paths: HMAC x-vapi-signature (assistant-level server credential)
+  // or x-vapi-secret (per-tool server config, which cannot carry the HMAC
+  // credential). Either must match before anything is processed.
   const signature = req.headers['x-vapi-signature'] as string | undefined;
-  if (!signature) {
-    console.warn('[vapi-webhook] Missing x-vapi-signature header');
-    return res.status(401).json({ error: 'Missing signature' });
-  }
+  const toolSecret = req.headers['x-vapi-secret'] as string | undefined;
 
   const rawBody = req.body as Buffer;  // Raw body provided by express.raw()
   if (!Buffer.isBuffer(rawBody)) {
@@ -128,9 +129,75 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid body format' });
   }
 
-  if (!validateSignature(rawBody, signature)) {
+  const secretOk =
+    !!toolSecret &&
+    !!process.env.VAPI_WEBHOOK_SECRET &&
+    toolSecret === process.env.VAPI_WEBHOOK_SECRET;
+
+  if (!signature && !secretOk) {
+    console.warn('[vapi-webhook] Missing x-vapi-signature header');
+    return res.status(401).json({ error: 'Missing signature' });
+  }
+
+  if (signature && !validateSignature(rawBody, signature)) {
     console.warn('[vapi-webhook] HMAC signature mismatch — rejecting request');
     return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // ── 1b. In-call tool calls — answered synchronously, nothing persisted ───
+  // verify_payment_amount: the model copies amounts, the server owns the
+  // math. Production calls carry metadata.claimId, so the expected amount is
+  // read from the claim itself (the model-passed value is only a fallback
+  // for sim/test calls with no claim behind them — round 6 proved the model
+  // can mis-copy an amount that is plainly in its prompt).
+  try {
+    const peek = JSON.parse(rawBody.toString('utf-8')) as {
+      message?: {
+        type?: string;
+        call?: { assistantOverrides?: { metadata?: { claimId?: string } } };
+        toolWithToolCallList?: Array<{
+          name?: string;
+          toolCall?: { id?: string; function?: { name?: string; arguments?: unknown } };
+        }>;
+      };
+    };
+    if (peek?.message?.type === 'tool-calls' && peek.message.toolWithToolCallList?.length) {
+      const claimId = peek.message.call?.assistantOverrides?.metadata?.claimId;
+      let dbExpected: string | null = null;
+      if (claimId) {
+        const claim = await runWithRlsBypass(async () =>
+          prisma.insuranceClaim.findUnique({
+            where: { id: claimId },
+            select: { outstandingAmount: true, billedAmount: true },
+          }),
+        );
+        const amt = Number(claim?.outstandingAmount ?? claim?.billedAmount);
+        if (Number.isFinite(amt) && amt > 0) dbExpected = amt.toFixed(2);
+      }
+      const results = peek.message.toolWithToolCallList.map((t) => {
+        const fnName = t.name || t.toolCall?.function?.name;
+        if (fnName === 'verify_payment_amount') {
+          let args: Record<string, unknown> = {};
+          try {
+            const rawArgs = t.toolCall?.function?.arguments;
+            args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
+          } catch { /* fall through with empty args */ }
+          return {
+            name: 'verify_payment_amount',
+            toolCallId: t.toolCall?.id,
+            result: verifyPaymentToolResult(args.statedAmount, dbExpected ?? args.expectedAmount),
+          };
+        }
+        return {
+          name: fnName,
+          toolCallId: t.toolCall?.id,
+          result: 'No handler for this tool.',
+        };
+      });
+      return res.status(200).json({ results });
+    }
+  } catch {
+    // Not JSON or not a tool-call envelope — continue to normal processing.
   }
 
   // ── 2. Parse + normalize payload ─────────────────────────────────────────
