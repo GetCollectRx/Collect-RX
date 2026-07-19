@@ -152,8 +152,8 @@ const STYLES = `
   .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
 
   .lp-btn-ghost {
-    background: transparent; color: var(--green);
-    border: 1.5px solid var(--green);
+    background: transparent; color: var(--green-dark);
+    border: 1.5px solid var(--green-dark);
     padding: 11px 24px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 16px; font-weight: 500;
     cursor: pointer; white-space: nowrap;
@@ -331,7 +331,7 @@ const STYLES = `
     color: var(--ink); letter-spacing: -0.01em; line-height: 1.1;
     margin-bottom: 8px; display: flex; align-items: baseline; gap: 4px;
   }
-  .lp-stat-num span { font-size: 24px; color: var(--green); font-family: var(--fn); font-weight: 500; }
+  .lp-stat-num span { font-size: 24px; color: var(--green-dark); font-family: var(--fn); font-weight: 500; }
   .lp-stat-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
 
   /* ─── SECTION STRUCTURE ──────────────────────────── */
@@ -648,7 +648,7 @@ const STYLES = `
     text-align: center;
   }
   .lp-cta-tag {
-    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green);
+    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green-dark);
     letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 14px;
   }
   .lp-cta-h {
@@ -710,7 +710,7 @@ const STYLES = `
   .lp-modal-success { text-align: center; padding: 8px 0; }
   .lp-modal-success-icon {
     width: 48px; height: 48px; border-radius: 50%;
-    background: var(--green-lo); color: var(--green);
+    background: var(--green-lo); color: var(--green-dark);
     display: grid; place-items: center; margin: 0 auto 16px;
   }
   .lp-modal-success-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; }

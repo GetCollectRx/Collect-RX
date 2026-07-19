@@ -450,7 +450,7 @@
 
 .crx-app .crx-badge-green {
   background: var(--crx-green-lo);
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   border: 1px solid var(--crx-green-hi);
 }
 
@@ -726,7 +726,7 @@
   text-transform: uppercase;
   padding: 0.25rem 0.55rem;
   border-radius: 999px;
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   border: 1px solid var(--crx-green-hi);
   background: var(--crx-green-lo);
 }
@@ -1654,7 +1654,7 @@
 .crx-app .practice-demo-story-reopen {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   background: var(--crx-green-lo);
   border: 1px dashed var(--crx-green-hi);
   border-radius: 10px;
@@ -1755,7 +1755,7 @@
 }
 
 .crx-app .practice-demo-story-label--good {
-  color: var(--crx-green);
+  color: var(--crx-green-text);
 }
 
 .crx-app .practice-demo-story-copy {
@@ -1776,7 +1776,7 @@
 .crx-app .practice-demo-story-link {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   text-decoration: none;
 }
 
