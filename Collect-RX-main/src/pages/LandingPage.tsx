@@ -141,7 +141,7 @@ const STYLES = `
 
   /* ─── BUTTONS ────────────────────────────────────── */
   .lp-btn-primary {
-    background: var(--green); color: #fcfcfa; border: none;
+    background: var(--green-dark); color: #fcfcfa; border: none;
     padding: 12px 24px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 16px; font-weight: 500;
     cursor: pointer; white-space: nowrap;
@@ -298,7 +298,7 @@ const STYLES = `
   }
   .lp-badge.approved { background: var(--green-lo); color: var(--green-dark); border: 1px solid var(--green-hi); }
   .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: #1b4a8c;  border: 1px solid rgba(59,127,212,0.25); }
-  .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: var(--gold);  border: 1px solid rgba(201,143,18,0.25); }
+  .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: #8b5c0d;  border: 1px solid rgba(201,143,18,0.25); }
   .lp-badge-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
   .lp-badge.calling .lp-badge-dot { animation: lp-blink 0.9s ease-in-out infinite; }
 
@@ -784,7 +784,7 @@ const STYLES = `
   }
   .lp-pain-cta {
     display: inline-flex; align-items: center; gap: 8px;
-    background: var(--green); color: #fcfcfa; border: none;
+    background: var(--green-dark); color: #fcfcfa; border: none;
     padding: 11px 22px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 15px; font-weight: 500;
     cursor: pointer; transition: background var(--transition), transform var(--transition);
