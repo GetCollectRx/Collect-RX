@@ -50,13 +50,13 @@ Nothing below is optional filler; this is the honest full set, split by who acts
 4. **Fix the Mac clock permanently** — it drifted 40 min, was fixed, then drifted 3 h 10 m the next day. Enable *System Settings → General → Date & Time → Set automatically*. Until then local `fly deploy` and Fly auth fail; use the GitHub Actions deploy workflow.
 5. **Stripe live mode** — requires business bank account + business verification in the Stripe dashboard. Then create the three live prices, set live keys + live webhook secret on prod, keep test keys on staging. (Test-mode flow is already fully proven — this is paperwork, not engineering.)
 6. **`GITHUB_RELEASES_TOKEN`** on the server if you want real installer downloads on /download (fine-grained token, Contents-read on `GetCollectRx/Collect-RX`). Optional — CSV onboarding needs no desktop app.
-7. **Delete the stale Railway webhook endpoint** in the Stripe dashboard (points at the dead `collect-rx-production.up.railway.app`).
+7. ~~Delete the stale Railway webhook endpoint~~ **DONE 2026-07-18** via API — only the correct prod + staging endpoints remain.
 
 ### C. Legal / compliance (go-live gate, tracked in PATH-TO-DELIVERY §E)
-8. BAAs/DPAs with SendGrid, Twilio, Stripe, Vapi, Fly. 9. Counsel-reviewed Terms/Privacy. 10. PIPEDA breach contact. 11. Pen test or written pilot exception. 12. DNS `www.collectrx.ca` → prod.
+8. BAAs/DPAs — vendor register now has verified links + instructions per vendor (`docs/compliance/COMPLIANCE-LAUNCH-TRACKER.md`); mostly self-serve, only Vapi HIPAA mode needs an explicit request. 9. Counsel-reviewed Terms/Privacy — **drafts ready** in `docs/legal/` (TERMS-OF-SERVICE-DRAFT, PRIVACY-POLICY-DRAFT); send to counsel. 10. PIPEDA breach contact — designate a person (blank in the Privacy draft). 11. Pen test — **written pilot-exception memo ready to sign**: `docs/legal/PENTEST-PILOT-EXCEPTION.md`. 12. DNS — **Fly certs issued for `collectrx.ca` + `www.collectrx.ca`**; operator adds at the registrar: `A → 66.241.124.252`, `AAAA → 2a09:8280:1::13a:5de:0` (both hosts), then `fly certs check`.
 
 ### D. Proof (the only thing code cannot provide)
-13. **One pilot practice, 50–100 supervised live carrier calls.** Measure: connect rate, status-obtained rate, carrier-block incidents, dollars moved. This is the recovery-rate evidence the sales pitch needs. Everything in the product is instrumented for it; there are currently **zero active practices**.
+13. **One pilot practice, 50–100 supervised live carrier calls.** Complete pilot kit (offer copy, outreach sequence, supervised call-day runbook, metrics definitions) ready: `docs/pilot/PILOT-KIT.md`. Measure: connect rate, status-obtained rate, carrier-block incidents, dollars moved. This is the recovery-rate evidence the sales pitch needs. Everything in the product is instrumented for it; there are currently **zero active practices**.
 
 **Sellable =** engineering is DONE (A1–A3 complete). Remaining: B4–B5 (clock, Stripe live mode) + C-list signed + D started. B6 is done on prod (token present); B7 still open.
 
