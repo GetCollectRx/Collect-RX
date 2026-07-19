@@ -224,7 +224,7 @@ const STYLES = `
   .lp-ops-title { font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
   .lp-ops-sample {
     display: flex; align-items: center; gap: 5px;
-    font-family: var(--fm); font-size: 10px; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: var(--fm); font-size: 10px; color: var(--graphite); letter-spacing: 0.06em; text-transform: uppercase;
   }
   .lp-ops-sample-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--mist); }
 
@@ -297,7 +297,7 @@ const STYLES = `
     padding: 3px 9px; border-radius: var(--radius-badge); font-family: var(--fn); font-size: 11px; font-weight: 500; white-space: nowrap;
   }
   .lp-badge.approved { background: var(--green-lo); color: var(--green-dark); border: 1px solid var(--green-hi); }
-  .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: var(--blue);  border: 1px solid rgba(59,127,212,0.25); }
+  .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: #1b4a8c;  border: 1px solid rgba(59,127,212,0.25); }
   .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: var(--gold);  border: 1px solid rgba(201,143,18,0.25); }
   .lp-badge-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
   .lp-badge.calling .lp-badge-dot { animation: lp-blink 0.9s ease-in-out infinite; }
@@ -747,7 +747,7 @@ const STYLES = `
     text-align: center; padding: 10px 48px; position: relative;
     line-height: 1.4;
   }
-  .lp-announce a { color: #a8dfc0; text-decoration: underline; text-underline-offset: 2px; }
+  .lp-announce a { color: var(--green-dark); text-decoration: underline; text-underline-offset: 2px; }
   .lp-announce a:hover { color: #fcfcfa; }
   .lp-announce-close {
     position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
