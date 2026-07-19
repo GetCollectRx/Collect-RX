@@ -75,6 +75,7 @@ beforeAll(async () => {
   if (!dbReady) return;
 
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', TEST_STRIPE_WEBHOOK_SECRET);
+  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_webhook_validation_offline');
 
   const practiceASetup = await createPracticeWithOwnerForTests(prisma);
   practiceA = { id: practiceASetup.practice.id, name: practiceASetup.practice.name };
@@ -365,7 +366,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
       .post('/api/stripe/webhook')
       .set('Stripe-Signature', signature)
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     // Stripe webhook requires signature; should not be 401 if signature is valid
     expect(res.status).not.toBe(401);
@@ -390,7 +391,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
       .post('/api/stripe/webhook')
       .set('Stripe-Signature', 't=12345,v1=invalid_signature_here')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     expect(res.status).toBe(400);
   });
@@ -413,7 +414,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
     const res = await request(app)
       .post('/api/stripe/webhook')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     expect(res.status).toBe(400);
   });
@@ -436,7 +437,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
       .post('/api/stripe/webhook')
       .set('Stripe-Signature', 't=invalid,v1=bad_sig')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     expect([400, 401]).toContain(res.status);
   });
@@ -444,18 +445,26 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
   // ─── Test 5: Idempotency — same event twice should not duplicate state changes ✓
   it('idempotent — duplicate event processed only once', async () => {
     const eventId = `evt_idempotent_test_${Date.now()}`;
+    const epochNow = Math.floor(Date.now() / 1000);
     const payload = JSON.stringify({
       id: eventId,
       object: 'event',
-      type: 'payment_intent.succeeded',
+      type: 'customer.subscription.updated',
       data: {
         object: {
-          id: 'pi_idempotent_test',
-          amount: 75000,
-          currency: 'cad',
-          metadata: {
-            practiceId: practiceA.id,
-            patientId: 'patient-uuid-456',
+          id: `sub_idempotent_test_${Date.now()}`,
+          object: 'subscription',
+          customer: 'cus_idempotent_test',
+          status: 'active',
+          metadata: { practice_id: practiceA.id },
+          items: {
+            data: [
+              {
+                price: { id: 'price_idempotent_test' },
+                current_period_start: epochNow,
+                current_period_end: epochNow + 30 * 24 * 60 * 60,
+              },
+            ],
           },
         },
       },
@@ -468,7 +477,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
       .post('/api/stripe/webhook')
       .set('Stripe-Signature', signature)
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     expect(res1.status).not.toBe(401);
     expect(res1.body.handled).toBe(true);
@@ -478,7 +487,7 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
       .post('/api/stripe/webhook')
       .set('Stripe-Signature', signature)
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
 
     expect(res2.status).not.toBe(401);
     // Second request should indicate duplicate
