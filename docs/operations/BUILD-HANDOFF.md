@@ -14,7 +14,7 @@ Everything is coded, tested, committed, and pushed. **One step remains:**
   - Deploy: `gh workflow run collectrx-staging-deploy.yml --repo GetCollectRx/Collect-RX` (repo secret `FLY_API_TOKEN` is set; local `fly deploy` works only if the Mac clock is synced — see §5).
   - Run a round: `POST https://api.vapi.ai/call` with `assistantId=a3180f2c-…` (sim), `phoneNumberId=` the Twilio number (`a4003bab…`, +16139098770), `customer.number=+19518486241`. Keys in `Collect-RX-main/.env`.
   - Pass = the squad-leg call log shows a `verify_payment_amount` `tool_call_result` containing `SHORTFALL DETECTED` (not "No result returned"), the agent challenges the $410-vs-$1,250 shortfall aloud, and structuredData outcome = `PARTIAL_PAYMENT`.
-- [ ] **After round 7 passes: roll the tool to production** — the prod Claims_Agent config already has the tool (committed in `vapi-squad-config.json`), but prod's webhook host **`collect-rx.fly.dev` has NOT been deployed with any of this code**. Production deploy needs the operator's go. (round 7 green — awaiting operator go)
+- [x] **Prod rollout DONE 2026-07-18**: `collect-rx` deployed via the new `collectrx-prod-deploy.yml` workflow (migrations applied), prod secrets set (Stripe test keys + prices, `SUBSCRIPTION_ENFORCE=1`, `PHI_ENCRYPTION_AT_REST=1`, fresh `EMAIL_UNSUBSCRIBE_SECRET`), prod Stripe webhook endpoint created. Verified live: fresh signup → trial 500/50/+30d with enforce=true, Checkout URL issues, /download serves 4 real assets, tool endpoint returns the SHORTFALL DETECTED directive. Trial backfill run on prod (101 practices).
 
 Why this design (do not re-litigate): six sim rounds proved the voice model executes tool calls with 100% reliability but drops prose rules; round 6 proved it also mis-copies amounts ($450 passed with $1,250 in its prompt). Therefore the server owns the math: the webhook looks up the claim's outstanding amount by `metadata.claimId` (production), falling back to the model-passed value only for sim calls. Independent post-call backstop `SHORTFALL_MISREPORTED` (claims validator) guarantees a short payment can never book as `CLAIM_PAID` even if the in-call layer fails.
 
@@ -42,9 +42,9 @@ Why this design (do not re-litigate): six sim rounds proved the voice model exec
 Nothing below is optional filler; this is the honest full set, split by who acts.
 
 ### A. Engineering (small, hours)
-1. **Round 7 verification + prod rollout of the tool** (§1 above). ~30 min.
+1. ~~Round 7 verification + prod rollout~~ **DONE 2026-07-18** (§1 above).
 2. **`trialEndsAt` backfill** — practices created before 2026-07-17 have never-expiring trials. **Staging DONE 2026-07-18 (4 practices).** Prod at cutover. NOTE: Practice has NO createdAt column — the raw SQL originally written here was wrong. Use the Prisma script instead (anchor = earliest User.createdAt per practice, else now, + 30 days): upload via the base64 `flyctl ssh console` pattern, script shape in git history (`backfill-v2.ts` — findMany trial practices with null trialEndsAt → first user's createdAt + 30d → practice.update).
-3. **Production app deploy** (`collect-rx` Fly app): deploy current main, run migrations (release_command does it), set prod secrets (mirror staging + Stripe live when ready), `SUBSCRIPTION_ENFORCE=1`. Blocked only on operator go.
+3. ~~Production app deploy~~ **DONE 2026-07-18** via `collectrx-prod-deploy.yml` (use that workflow for all future prod deploys).
 
 ### B. Operator tasks (you, non-code)
 4. **Fix the Mac clock permanently** — it drifted 40 min, was fixed, then drifted 3 h 10 m the next day. Enable *System Settings → General → Date & Time → Set automatically*. Until then local `fly deploy` and Fly auth fail; use the GitHub Actions deploy workflow.
@@ -58,7 +58,7 @@ Nothing below is optional filler; this is the honest full set, split by who acts
 ### D. Proof (the only thing code cannot provide)
 13. **One pilot practice, 50–100 supervised live carrier calls.** Measure: connect rate, status-obtained rate, carrier-block incidents, dollars moved. This is the recovery-rate evidence the sales pitch needs. Everything in the product is instrumented for it; there are currently **zero active practices**.
 
-**Sellable =** A1–A3 + B4–B5 + C-list signed + D started. B6–B7 are polish.
+**Sellable =** engineering is DONE (A1–A3 complete). Remaining: B4–B5 (clock, Stripe live mode) + C-list signed + D started. B6 is done on prod (token present); B7 still open.
 
 ---
 
