@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Dashboard             from './pages/Dashboard'
 import Analytics             from './pages/Analytics'
 import AssumptionValidation  from './pages/AssumptionValidation'
+import PilotRunbook          from './pages/PilotRunbook'
 import Admin                 from './pages/Admin'
 import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
@@ -292,7 +293,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: 'Setup',
-    items: [{ to: '/admin', exact: false, label: 'Admin', icon: 'admin' }],
+    items: [
+      { to: '/admin', exact: false, label: 'Admin', icon: 'admin' },
+      { to: '/admin/runbook', exact: true, label: 'Runbook', icon: 'admin' },
+    ],
   },
 ]
 
@@ -465,6 +469,7 @@ function AppShell() {
           <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />
           <Route path="/admin/staff" element={<ProtectedRoute allowedRoles={['practice_owner']}><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
+          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PilotRunbook /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
           <Route path="/download" element={<DesktopDownload />} />
