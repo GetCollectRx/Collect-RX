@@ -67,6 +67,12 @@ jobs:
       - name: Lint
         run: npm run lint:collectrx
 
+      - name: Semgrep SAST
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" returntocorp/semgrep \
+            semgrep --config=p/typescript --config=p/owasp-top-ten --error \
+            /src/Collect-RX-main/src
+
       - name: Production build
         env:
           NODE_ENV: production
