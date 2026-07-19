@@ -29,11 +29,11 @@ import {
   markWebhookProcessed,
   markVapiWebhookFailed,
   type VapiWebhookProcessingClaim,
+  verifyPaymentToolResult,
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
-import { verifyPaymentToolResult } from '../server/vapi/vapiWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
