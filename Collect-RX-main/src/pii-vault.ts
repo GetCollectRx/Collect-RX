@@ -56,8 +56,10 @@ function encryptPhi(phi: PatientPHI): { ciphertext: string; iv: string; authTag:
 
 function decryptPhi(ciphertext: string, iv: string, authTag: string): PatientPHI {
   const key = getPhiKey();
-  const decipher = createDecipheriv(GCM_ALGO, key, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(authTag, 'hex').slice(0, TAG_BYTES));
+  const decipher = createDecipheriv(GCM_ALGO, key, Buffer.from(iv, 'hex'), {
+    authTagLength: TAG_BYTES,
+  });
+  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
   const dec = Buffer.concat([
     decipher.update(Buffer.from(ciphertext, 'hex')),
     decipher.final(),
