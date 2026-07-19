@@ -48,6 +48,9 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
       # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
         run: npm run db:generate:collectrx
