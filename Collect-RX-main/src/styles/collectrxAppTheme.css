@@ -993,7 +993,7 @@
 
 .crx-app .text-crx-500,
 .crx-app .text-crx-600 {
-  color: var(--crx-green) !important;
+  color: var(--crx-green-text) !important;
 }
 
 .crx-app .bg-crx-500 {
@@ -1547,7 +1547,7 @@
   margin-top: 0.625rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   text-decoration: none;
 }
 

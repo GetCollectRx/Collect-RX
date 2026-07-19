@@ -28,7 +28,7 @@ export function OnboardingProgress({ status }: { status: SetupStatus | null }) {
         subtitle={`${status.complete} of ${status.total} complete — finish onboarding to start carrier follow-up`}
       />
       <div className="px-4 pb-4 space-y-3">
-        <div className="crx-progress-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="crx-progress-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${pct}% complete`}>
           <div className="crx-progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <ol className="space-y-2">
