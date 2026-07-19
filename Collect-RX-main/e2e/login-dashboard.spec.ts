@@ -4,21 +4,28 @@
  * Includes WCAG A/AA accessibility checks via axe-core.
  */
 import { test, expect } from '@playwright/test';
-import { injectAxe, checkA11y } from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
+import type { Page } from '@playwright/test';
 import { signInAsE2eUser } from './helpers/signIn';
+
+async function expectNoWcagViolations(page: Page): Promise<void> {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const summary = results.violations.map((v) => ({
+    id: v.id,
+    impact: v.impact,
+    nodes: v.nodes.map((n) => n.target.join(' ')).slice(0, 5),
+  }));
+  expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+}
 
 const email = process.env.E2E_USER_EMAIL;
 const password = process.env.E2E_USER_PASSWORD || 'changeme';
 
 test('login page is accessible (WCAG A/AA)', async ({ page }) => {
   await page.goto('/');
-  await injectAxe(page);
-  await checkA11y(page, null, {
-    detailedReport: true,
-    detailedReportOptions: {
-      html: true,
-    },
-  });
+  await expectNoWcagViolations(page);
 });
 
 test('sees dashboard after sign-in', async ({ page }) => {
@@ -34,11 +41,5 @@ test('dashboard is accessible (WCAG A/AA)', async ({ page }) => {
   await signInAsE2eUser(page, email!, password);
   await expect(page.getByText('Command center', { exact: true })).toBeVisible();
 
-  await injectAxe(page);
-  await checkA11y(page, null, {
-    detailedReport: true,
-    detailedReportOptions: {
-      html: true,
-    },
-  });
+  await expectNoWcagViolations(page);
 });

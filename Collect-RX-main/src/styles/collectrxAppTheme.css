@@ -10,6 +10,8 @@
   --crx-bg4: #f0ece1;
   --crx-ring: var(--brand-mist);
   --crx-green: var(--brand-green);
+  /* WCAG AA text-on-light variant — #0f9d58 is only ~3.4:1 on the cream canvas */
+  --crx-green-text: var(--brand-green-dark);
   --crx-green-bright: var(--brand-green-bright);
   --crx-green-lo: var(--brand-green-lo);
   --crx-green-md: var(--brand-green-md);
@@ -159,7 +161,7 @@
 }
 
 .crx-app .crx-sidebar-logo > span:first-of-type {
-  color: var(--crx-green);
+  color: var(--crx-green-text);
 }
 
 .crx-app .crx-sidebar-logo-suffix {
@@ -219,7 +221,7 @@
 
 .crx-app .crx-nav-item.active {
   background: var(--crx-green-md);
-  color: var(--crx-green);
+  color: var(--crx-green-text);
   font-weight: 600;
 }
 
@@ -392,8 +394,7 @@
   font-size: 0.625rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--crx-green);
-  opacity: 0.85;
+  color: var(--crx-green-text);
 }
 
 .crx-app .crx-panel {
