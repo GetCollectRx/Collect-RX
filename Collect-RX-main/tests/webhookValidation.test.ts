@@ -440,6 +440,51 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
 
     expect([400, 401]).toContain(res.status);
   });
+
+  // ─── Test 5: Idempotency — same event twice should not duplicate state changes ✓
+  it('idempotent — duplicate event processed only once', async () => {
+    const eventId = `evt_idempotent_test_${Date.now()}`;
+    const payload = JSON.stringify({
+      id: eventId,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_idempotent_test',
+          amount: 75000,
+          currency: 'cad',
+          metadata: {
+            practiceId: practiceA.id,
+            patientId: 'patient-uuid-456',
+          },
+        },
+      },
+    });
+
+    const signature = generateStripeSignature(payload, TEST_STRIPE_WEBHOOK_SECRET);
+
+    // Send first webhook
+    const res1 = await request(app)
+      .post('/api/stripe/webhook')
+      .set('Stripe-Signature', signature)
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from(payload));
+
+    expect(res1.status).not.toBe(401);
+    expect(res1.body.handled).toBe(true);
+
+    // Send identical webhook again
+    const res2 = await request(app)
+      .post('/api/stripe/webhook')
+      .set('Stripe-Signature', signature)
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from(payload));
+
+    expect(res2.status).not.toBe(401);
+    // Second request should indicate duplicate
+    expect(res2.body.handled).toBe(true);
+    expect(res2.body.reason).toBe('duplicate_event');
+  });
 });
 
 describe.skipIf(!dbReady)('Claims Validator webhook validation', () => {
