@@ -61,6 +61,8 @@ Work in `/Users/khalidegeh/Desktop/Dentist/collectrx-platform`. First read `docs
 
 ## Task B — staging trialEndsAt backfill (BUILD-HANDOFF §3 A2)
 
+**DONE 2026-07-18 on staging (4 practices) — do NOT run again on staging.** The steps below are kept only as the template for the production cutover, with one correction: Practice has no `created_at` column, so step 1's script must anchor on the practice's earliest `User.createdAt` via the Prisma client (see BUILD-HANDOFF §3 A2), not raw SQL.
+
 1. Write this file to `/tmp/backfill.ts` exactly:
    ```ts
    import { prisma } from '/app/src/lib/prisma.js';

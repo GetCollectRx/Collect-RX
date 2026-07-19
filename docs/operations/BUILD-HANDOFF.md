@@ -43,7 +43,7 @@ Nothing below is optional filler; this is the honest full set, split by who acts
 
 ### A. Engineering (small, hours)
 1. **Round 7 verification + prod rollout of the tool** (§1 above). ~30 min.
-2. **`trialEndsAt` backfill** — practices created before 2026-07-17 have never-expiring trials. One SQL on each DB: `UPDATE "Practice" SET trial_ends_at = created_at + interval '30 days' WHERE billing_tier = 'trial' AND trial_ends_at IS NULL;` (staging now, prod at cutover). NOT YET RUN ANYWHERE.
+2. **`trialEndsAt` backfill** — practices created before 2026-07-17 have never-expiring trials. **Staging DONE 2026-07-18 (4 practices).** Prod at cutover. NOTE: Practice has NO createdAt column — the raw SQL originally written here was wrong. Use the Prisma script instead (anchor = earliest User.createdAt per practice, else now, + 30 days): upload via the base64 `flyctl ssh console` pattern, script shape in git history (`backfill-v2.ts` — findMany trial practices with null trialEndsAt → first user's createdAt + 30d → practice.update).
 3. **Production app deploy** (`collect-rx` Fly app): deploy current main, run migrations (release_command does it), set prod secrets (mirror staging + Stripe live when ready), `SUBSCRIPTION_ENFORCE=1`. Blocked only on operator go.
 
 ### B. Operator tasks (you, non-code)
