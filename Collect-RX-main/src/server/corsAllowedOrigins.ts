@@ -1,7 +1,7 @@
 const COLLECTRX_APEX = 'https://collectrx.ca';
 const COLLECTRX_WWW = 'https://www.collectrx.ca';
 
-import { readAllowedOriginsRaw as readAllowedOriginsEnv } from './envRailway.js';
+import { readAllowedOriginsRaw as readAllowedOriginsEnv } from './envAliases.js';
 
 /**
  * Raw `ALLOWED_ORIGINS` string. Some host dashboards label the row "Allowed Origins";

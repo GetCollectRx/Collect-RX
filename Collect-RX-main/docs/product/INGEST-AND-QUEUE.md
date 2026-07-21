@@ -53,7 +53,7 @@ whatever), and the queue engine picks up anything eligible on its own fixed cade
 
 `desktop/services/abeldent-sync.js` is the reference implementation of "practice sync agent":
 read `ABELDENT_SCHEMA_MAP` for the practice's schema mapping, query SQL Server on the practice
-PC, POST the resulting rows to the Railway/Fly API. It requires `ABELDENT_SCHEMA_MAP` to be set
+PC, POST the resulting rows to the Fly API. It requires `ABELDENT_SCHEMA_MAP` to be set
 to activate — without it, nothing runs, and the server operates fully on CSV import alone (see
 `CLAUDE.md` → "Abeldent Connector (Phase 4)"). Treat this file as the pattern to copy for a
 future PMS-specific agent, not as a peer product practices are expected to install by default.

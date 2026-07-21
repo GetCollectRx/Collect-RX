@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readPublicAppUrl, readServerUrl, readAllowedOriginsRaw } from '../src/server/envRailway.js';
+import { readPublicAppUrl, readServerUrl, readAllowedOriginsRaw } from '../src/server/envAliases.js';
 
-describe('envRailway aliases', () => {
+describe('env aliases', () => {
   const prev = { ...process.env };
 
   afterEach(() => {

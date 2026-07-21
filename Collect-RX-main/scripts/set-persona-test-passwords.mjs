@@ -8,7 +8,7 @@
  *
  * Usage:
  *   node scripts/set-persona-test-passwords.mjs
- *   railway run node scripts/set-persona-test-passwords.mjs
+ *   fly ssh console -a collect-rx -C 'node scripts/set-persona-test-passwords.mjs'
  *
  * Password: PERSONA_TEST_PASSWORD or SEED_PRACTICE_PASSWORD (min 8 chars).
  */

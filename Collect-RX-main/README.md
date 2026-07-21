@@ -28,7 +28,7 @@ cd .. && npm install && cd Collect-RX-main
 
 # 1. Environment — `.env` is not in git (secrets). Copy the template to create it:
 cp .env.example .env
-# Set DATABASE_URL to your PostgreSQL (e.g. Railway) and JWT_SECRET
+# Set DATABASE_URL to your PostgreSQL (e.g. Fly Postgres) and JWT_SECRET
 # Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead
 
 # 2. Prisma client + migrations (PostgreSQL; do not use db:push in prod — use migrate deploy)

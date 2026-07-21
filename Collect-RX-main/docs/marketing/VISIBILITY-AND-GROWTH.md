@@ -84,7 +84,7 @@ Full architecture: [MARKETING-AGENTS-PLAN.md](./MARKETING-AGENTS-PLAN.md). Deplo
 # 1. Migrations
 cd Collect-RX-main && npx prisma migrate deploy
 
-# 2. Verify env (run after setting Railway variables)
+# 2. Verify env (run after setting Fly secrets)
 node scripts/verify-marketing-ready.mjs
 
 # 3. Dry run
@@ -92,7 +92,7 @@ node scripts/verify-marketing-ready.mjs
 # Add yourself as manual prospect → Email preview → Run cadence tick
 ```
 
-### Required Railway variables
+### Required Fly secrets
 
 | Variable | Why |
 |----------|-----|
@@ -192,7 +192,7 @@ Add `inbound_seo` when early-access form includes `?utm_source=resource` UTM par
 
 ## Phase 6 — Split marketing from app (when ready)
 
-Today one Railway service serves both. When marketing ships weekly and app ships daily:
+Today one Fly app serves both. When marketing ships weekly and app ships daily:
 
 1. `www.collectrx.ca` → marketing-only static deploy (`website/marketing` branch)
 2. `app.collectrx.ca` → practice portal + API
@@ -214,7 +214,7 @@ See [WEBSITE-AND-APP-TRACKS.md](../../docs/product/WEBSITE-AND-APP-TRACKS.md).
 ## Immediate next actions (priority order)
 
 1. Submit sitemap to Google Search Console and Bing
-2. Set `GOOGLE_PLACES_API_KEY` + `SENDGRID_*` on Railway; run `verify-marketing-ready.mjs`
+2. Set `GOOGLE_PLACES_API_KEY` + `SENDGRID_*` as Fly secrets; run `verify-marketing-ready.mjs`
 3. Dry-run marketing cadence with your own email
 4. Publish resource hub + 2 new SEO pages (shipped in this repo)
 5. Create first Ontario harvest campaign at low volume

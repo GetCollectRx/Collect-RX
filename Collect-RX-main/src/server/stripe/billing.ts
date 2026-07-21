@@ -6,7 +6,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
-import { readPublicAppUrl } from '../envRailway.js';
+import { readPublicAppUrl } from '../envAliases.js';
 import {
   billingSkipPracticeIds,
   defaultSubscriptionPlan,
