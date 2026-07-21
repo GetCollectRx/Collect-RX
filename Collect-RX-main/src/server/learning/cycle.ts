@@ -9,7 +9,8 @@ import { pullLearningBacklog, getNotionConfig } from './notionClient.js';
 import { researchItem } from './research.js';
 import { rankCandidates } from './bucketRanker.js';
 import { implementRankedItem } from './implementer.js';
-import { sendLearningCycleSms } from './notify.js';
+import { sendLearningCycleSms, sendLearningCycleCompleteNotification } from './notify.js';
+import { runEmailScheduler } from './emailScheduler.js';
 import type { CycleSummary } from './types.js';
 
 export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSummary> {
@@ -136,6 +137,17 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
     }
 
     const smsSent = await sendLearningCycleSms(summary);
+
+    // Run email scheduler (prospect outreach)
+    const emailSummary = await runEmailScheduler(prisma).catch((err) => {
+      console.error('[learning] email scheduler error:', err);
+      return { totalProcessed: 0, initialEmailsSent: 0, followUpEmailsSent: 0, failed: 0, skipped: 1, results: [] };
+    });
+
+    // Send comprehensive notifications (email, Slack)
+    void sendLearningCycleCompleteNotification(summary).catch((err) =>
+      console.error('[learning] notification error:', err),
+    );
 
     await prisma.learningCycleRun.update({
       where: { id: run.id },
