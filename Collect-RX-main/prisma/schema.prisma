@@ -1640,14 +1640,24 @@ model Prospect {
   trialStartedAt      DateTime?          @map("trial_started_at")
   /// Which trial onboarding email has been sent next (0=pre-kickoff through 4=day-60).
   trialSequenceStep   Int                @default(0) @map("trial_sequence_step")
+  /// Cold outreach email sequence step (0=not sent, 1=initial sent, 2=follow-up sent, 3=follow-up2, etc.)
+  emailSequenceStep   Int                @default(0) @map("email_sequence_step")
+  initialEmailSentAt  DateTime?          @map("initial_email_sent_at")
+  followUpEmailSentAt DateTime?          @map("follow_up_email_sent_at")
+  followUpScheduledFor DateTime?         @map("follow_up_scheduled_for")
+  emailRepliedAt      DateTime?          @map("email_replied_at")
+  emailBounceReason   String?            @map("email_bounce_reason")
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
   activities          ProspectActivity[]
+  emailCampaignEvents EmailCampaignEvent[]
 
   @@index([stage])
   @@index([email])
   @@index([createdAt])
   @@index([campaignId])
+  @@index([emailSequenceStep, stage])
+  @@index([followUpScheduledFor])
   @@map("prospects")
 }
 
@@ -1912,4 +1922,21 @@ model CarrierNavigationProposal {
   @@index([carrierId, status, createdAt(sort: Desc)])
   @@index([discoveryRunId])
   @@map("carrier_navigation_proposals")
+}
+
+model EmailCampaignEvent {
+  id             String   @id @default(uuid())
+  prospectId     String   @map("prospect_id")
+  prospect       Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  eventType      String   @map("event_type") // sent, opened, clicked, replied, bounced, unsubscribed
+  eventTimestamp DateTime @default(now()) @map("event_timestamp")
+  emailSubject   String?  @map("email_subject")
+  replyBody      String?  @map("reply_body") @db.Text
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([prospectId])
+  @@index([eventTimestamp])
+  @@index([eventType])
+  @@map("email_campaign_events")
 }

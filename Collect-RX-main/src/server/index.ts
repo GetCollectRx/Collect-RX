@@ -138,12 +138,15 @@ import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
 import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
 import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
+import { startEmailCampaignScheduler } from './marketing/emailCampaignScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
 import { complianceWorkspaceRouter } from './routes/complianceWorkspaceRoutes.js';
 import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
 import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
+import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
+import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -391,6 +394,8 @@ app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
+registerEmailCampaignRoutes(app, prisma);
+registerCampaignRoutes(app, prisma);
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/pms', pmsApiRouter);
@@ -535,6 +540,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     }
     startMarketingLoopInProcess(prisma);
     startMarketingLearningInProcess(prisma);
+    startEmailCampaignScheduler(prisma);
   }
 
   startConnectorMonitorScheduler(prisma);

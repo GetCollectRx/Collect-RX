@@ -201,12 +201,17 @@ export async function patchCdcpReconsiderationCase(
     metadata: Prisma.InputJsonValue;
   } = { metadata: nextMeta as unknown as Prisma.InputJsonValue };
 
+  let statusChanged = false;
+  let newStatus: string | undefined;
+
   if (patch.status) {
     const mapped = mapLegacyPatchStatus(patch.status);
     if (!mapped) {
       return { ok: false, httpStatus: 422, error: `Unsupported status: ${patch.status}` };
     }
     data.status = mapped.status;
+    newStatus = mapped.status;
+    statusChanged = existing.status !== mapped.status;
     if (mapped.exclusionReason !== undefined) {
       data.exclusionReason = mapped.exclusionReason;
     }
@@ -220,6 +225,23 @@ export async function patchCdcpReconsiderationCase(
     where: { id: caseId },
     data,
   });
+
+  // Send notification if status changed to 'submitted'
+  if (statusChanged && newStatus === 'submitted') {
+    try {
+      const { sendCdcpReconsiderationNotification } = await import('../services/practiceNotificationService.js');
+      void sendCdcpReconsiderationNotification(prisma, {
+        practiceId,
+        claimRef: existing.claimRef,
+        status: 'submitted',
+        submissionMethod: nextMeta.submissionMethod,
+        confirmationNumber: nextMeta.confirmationNumber,
+        notes: nextMeta.notes,
+      });
+    } catch (err) {
+      console.error('[cdcpPrismaQueue] Failed to send notification:', err);
+    }
+  }
 
   return { ok: true };
 }
