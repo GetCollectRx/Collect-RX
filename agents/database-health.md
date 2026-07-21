@@ -1,12 +1,12 @@
 # CollectRx Database Health Agent
 
-**Purpose:** Monitor Railway PostgreSQL for migration drift, orphaned records, data integrity issues, and capacity concerns. Run weekly. A database problem that isn't caught early will corrupt claim state or lose PHI audit trail data.
+**Purpose:** Monitor Fly Postgres for migration drift, orphaned records, data integrity issues, and capacity concerns. Run weekly. A database problem that isn't caught early will corrupt claim state or lose PHI audit trail data.
 
 ---
 
 ## Context
 
-CollectRx uses Prisma ORM with PostgreSQL on Railway. Migrations run via `prisma migrate deploy` at deploy time. The PHI encryption key (`PHI_ENCRYPTION_KEY`) is required at startup.
+CollectRx uses Prisma ORM with PostgreSQL on Fly.io. Migrations run via the Fly release command (`npx prisma migrate deploy`). The PHI encryption key (`PHI_ENCRYPTION_KEY`) is required at startup.
 
 Key tables and their importance:
 - `insuranceClaim` — the core business entity; data corruption here = lost revenue
@@ -25,7 +25,7 @@ npx prisma migrate status
 
 - [ ] All migrations are applied — no "pending" state in production
 - [ ] No drift between schema.prisma and the actual DB schema (`prisma migrate diff`)
-- [ ] The `eligibility-schema.sql` migration was run directly against Railway (not via Prisma migration) — confirm these tables exist: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`
+- [ ] The `eligibility-schema.sql` migration was run directly against the database (not via Prisma migration) — confirm these tables exist: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`
 
 ### Migration Safety Check
 
@@ -119,7 +119,7 @@ Flag if any table is growing unexpectedly fast. `phi_access_log` and `call_attem
 
 ### PHI Encryption Key
 
-- [ ] `PHI_ENCRYPTION_KEY` is set in Railway environment
+- [ ] `PHI_ENCRYPTION_KEY` is set as a Fly secret (`fly secrets list -a collect-rx`)
 - [ ] The encrypted PHI fields decrypt successfully (test with a known claim that has encrypted data)
 - [ ] The encryption key version in stored payloads matches the current key (supports rotation — check for stale version markers)
 
@@ -127,7 +127,7 @@ Flag if any table is growing unexpectedly fast. `phi_access_log` and `call_attem
 
 ## Backup Status
 
-Railway provides automated backups for PostgreSQL. Verify:
+Fly Postgres backups are volume snapshots (`fly volumes snapshots list`). Verify:
 - [ ] Backup schedule is configured (daily minimum)
 - [ ] Last backup timestamp is within 24 hours
 - [ ] A restore test has been performed in the last 90 days (restore to staging, verify data)
@@ -186,5 +186,5 @@ Any query averaging >500ms is a concern. The most likely slow queries:
 ## How to Run This Agent
 
 ```
-"Run the CollectRx database health check against the Railway PostgreSQL instance. Run the integrity SQL queries in agents/database-health.md. Check migration status with prisma migrate status. Flag any orphaned records, PHI log gaps, or >90d claims in queue. Produce the health report."
+"Run the CollectRx database health check against the Fly Postgres instance (`fly postgres connect`). Run the integrity SQL queries in agents/database-health.md. Check migration status with prisma migrate status. Flag any orphaned records, PHI log gaps, or >90d claims in queue. Produce the health report."
 ```

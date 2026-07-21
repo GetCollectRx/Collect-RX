@@ -8,7 +8,7 @@
 
 1. Navigates the live site using browser tools
 2. Compares what's live against what should be live per `collectrx-persona-gaps.md` and this doc
-3. Checks backend API responses from the Railway deployment
+3. Checks backend API responses from the Fly deployment
 4. Flags anything that is broken, missing, or non-compliant
 5. Produces a structured report with severity levels
 

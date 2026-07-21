@@ -64,7 +64,7 @@ These are project-level risks that could delay or derail delivery:
 | Pilot partner never re-engages | High | Medium | AbelDent connector parked; CSV path is primary — no dependency |
 | CRTC 2026-132 rules tighten | Medium | Critical | Monitor monthly; pause plan ready in compliance-checker.md |
 | Vapi changes their API or pricing | Medium | High | Abstract vapiService.ts; never hardcode Vapi-specific calls outside that file |
-| Railway outage during call window | Low | High | Health endpoint monitoring; auto-retry in queue engine |
+| Fly.io outage during call window | Low | High | Health endpoint monitoring; auto-retry in queue engine |
 | Scale tier margin erosion | Medium | Medium | Track in tier-billing-health.md; escalate at <30% gross margin |
 
 ---

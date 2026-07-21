@@ -8,7 +8,7 @@
 
 CollectRx's value proposition: recover dental insurance AR that would otherwise sit unpaid. The unit of success is dollars recovered relative to dollars claimed and minutes burned. This agent tracks that across all practices.
 
-Unit cost per minute: $0.115 (Vapi + GPT + Deepgram + TTS + Twilio + Railway)
+Unit cost per minute: $0.115 (Vapi + GPT + Deepgram + TTS + Twilio + Fly)
 Gross margins per tier (from `src/billing/tiers.ts`):
 - Trial: no margin (acquisition)
 - Core: 82%
