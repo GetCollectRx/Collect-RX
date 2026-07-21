@@ -26,11 +26,11 @@ Originally these were intended to run **in-process** with the HTTP server (`setI
 
 4. **Scaling rule:** you may run **multiple API** replicas; schedule registration should run in a way that does not duplicate repeatables (we remove existing repeatables of the same logical job before re-registering on API boot, or you run a **single** “scheduler” release job—see [PHASE8-BACKGROUND.md](../operations/PHASE8-BACKGROUND.md)). Run **one or more workers**; job handlers use **DB idempotency** (P8-04) so retries are safe for reminders.
 
-5. **Redis hosting:** any compatible Redis 6+ (Railway Redis, Upstash, ElastiCache, self-hosted). TLS URLs must be supported by the deployment’s `ioredis` config if required by the host.
+5. **Redis hosting:** any compatible Redis 6+ (Upstash, ElastiCache, self-hosted, etc.). TLS URLs must be supported by the deployment’s `ioredis` config if required by the host.
 
 ## Consequences
 
-- **Ops:** add Redis to production/staging; set `REDIS_URL`; add a second Railway service (or process type) for `node ... workerEntry`.  
+- **Ops:** add Redis to production/staging; set `REDIS_URL`; add a second service (or process type) for `node ... workerEntry`.  
 - **Failure modes:** if Redis is down, API still serves HTTP; workers stop processing until Redis returns (repeatables resume).  
 - **CI:** can omit `REDIS_URL`; unit/integration tests use in-process or skip queue metrics.
 

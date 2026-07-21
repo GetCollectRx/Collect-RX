@@ -1,22 +1,22 @@
 # Always-on CollectRx (no daily `npm start`)
 
-You have two durable options: **hosted (Railway)** for production, or **PM2 on your Mac** for local always-on.
+You have two durable options: **hosted (Fly.io)** for production, or **PM2 on your Mac** for local always-on.
 
 ---
 
-## Option 1 — Railway (recommended long-term)
+## Option 1 — Fly.io (recommended long-term)
 
-Railway keeps the app running, restarts on failure, and runs migrations on deploy. Your repo is already set up (`Dockerfile`, `railway.toml`, health check `/api/health`).
+Fly keeps the app running, restarts on failure, and runs migrations on deploy. Your repo is already set up (`Dockerfile`, `fly.toml`, health check `/api/health`).
 
 ### One service (simplest)
 
-1. Deploy `Collect-RX-main` as a Railway service (see [Collect-RX-main/DEPLOY.md](../../Collect-RX-main/DEPLOY.md)).
+1. Deploy `Collect-RX-main` to Fly (see [Collect-RX-main/DEPLOY.md](../../Collect-RX-main/DEPLOY.md)).
 2. Set variables: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `PUBLIC_APP_URL`, etc.
 3. Open the generated URL — no `npm start` on your laptop.
 
 **Background jobs without a second process:** leave `REDIS_URL` unset. Rules, reminders, and (if enabled) the **Phase 6 learning cron** run **inside** the web process.
 
-**Phase 6 on Railway (single service):**
+**Phase 6 on Fly (single app):**
 
 ```bash
 LEARNING_LOOP_ENABLED=1
@@ -29,7 +29,7 @@ ALERT_SMS_TO=+1...
 
 ### Two services (scale / isolation)
 
-1. Add **Redis** on Railway → set `REDIS_URL` on web + worker.
+1. Add **Redis** (Fly or Upstash) → set `REDIS_URL` on app + worker.
 2. Duplicate the service; set start command to **`npm run worker`** (same root dir + env).
 3. Web service: optional `DISABLE_SCHEDULER=1` on extra replicas (see [PHASE8-BACKGROUND.md](./PHASE8-BACKGROUND.md)).
 
@@ -80,8 +80,8 @@ pm2 save
 
 | Manual habit | Replacement |
 |--------------|-------------|
-| `npm start` every session | Railway URL or `npm run pm2:start` once |
-| `npm run dev` for production use | Railway deploy; use `dev` only when editing UI code |
+| `npm start` every session | Fly URL or `npm run pm2:start` once |
+| `npm run dev` for production use | Fly deploy; use `dev` only when editing UI code |
 | `npm run learning:cycle` on a schedule | `LEARNING_LOOP_ENABLED=1` + cron (API in-process or worker with Redis) |
 
 ---
@@ -92,4 +92,4 @@ pm2 save
 |------|-----|
 | Live product / pilot deployment | **Fly.io** |
 | Mac always serves API locally | **PM2** + `docker compose` Postgres |
-| Phase 6 learns daily + texts you | Railway or PM2 + `LEARNING_LOOP_ENABLED=1` + Notion + Twilio |
+| Phase 6 learns daily + texts you | Fly or PM2 + `LEARNING_LOOP_ENABLED=1` + Notion + Twilio |

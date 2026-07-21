@@ -1,12 +1,12 @@
-# Credential rotation — pilot checklist (Vapi + Railway Postgres)
+# Credential rotation — pilot checklist (Vapi + Postgres)
 
-Secrets are not rotatable from git: operators perform these steps in each provider, then update Railway (or your host) variables and restart services.
+Secrets are not rotatable from git: operators perform these steps in each provider, then update the host’s variables and restart services.
 
 ## 1. Vapi API key (`VAPI_API_KEY`)
 
 1. Log in to [Vapi dashboard](https://dashboard.vapi.ai).
 2. Create a **new** API key; copy it once.
-3. In **Railway** → your CollectRx service → **Variables**, set `VAPI_API_KEY` to the new value.
+3. In your host’s **Variables**, set `VAPI_API_KEY` to the new value.
 4. **Deploy / restart** the service so all instances load the new key.
 5. In the Vapi dashboard, **revoke** the old API key after confirming calls still work.
 
@@ -15,13 +15,13 @@ Secrets are not rotatable from git: operators perform these steps in each provid
 This must match the “custom credential” / webhook secret configured in Vapi for `POST /api/vapi/webhook`.
 
 1. Generate a new random secret, for example: `openssl rand -hex 32`.
-2. Set `VAPI_WEBHOOK_SECRET` in Railway to that value; redeploy.
+2. Set `VAPI_WEBHOOK_SECRET` in host secrets to that value; redeploy.
 3. In Vapi, update the webhook / server URL secret to the **same** value (see [PHASE4-GO-LIVE.md](PHASE4-GO-LIVE.md) P4-05).
 4. Send a test webhook or place a test call and confirm **200** and no signature errors in logs.
 
-## 3. Railway PostgreSQL password (`DATABASE_URL`)
+## 3. PostgreSQL password (`DATABASE_URL`)
 
-1. In **Railway** → your **Postgres** plugin → **Variables** (or **Connect**), use **Reset password** / rotate credentials per Railway’s current UI.
+1. In your managed **Postgres** console, use **Reset password** / rotate credentials per the host’s current UI.
 2. Copy the new connection URL (or update only the password segment in `DATABASE_URL`).
 3. Update `DATABASE_URL` on **every** service that connects to that database (API, workers, Prisma migrate jobs).
 4. **Redeploy** all dependent services.

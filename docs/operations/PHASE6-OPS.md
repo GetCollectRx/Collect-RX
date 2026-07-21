@@ -1,15 +1,15 @@
 # Phase 6 — Platform operations & reliability (CollectRx)
 
-Master index for P6-01…P6-10. **Not** a substitute for your host’s own runbooks (Railway, etc.).
+Master index for P6-01…P6-10. **Not** a substitute for your host’s own runbooks.
 
 | ID | Topic | In repo | You / operator |
 |----|-------|---------|----------------|
 | **P6-01** | Structured logging | `LOG_JSON`, JSON request lines, `redactString` in [logger.ts](../../Collect-RX-main/src/server/observability/logger.ts); [tests](../../Collect-RX-main/tests/observability-logger.test.ts) | Forward stdout to your log store; set retention; never log raw bodies in prod |
-| **P6-02** | Error tracking | Optional **Sentry** server + browser: `SENTRY_DSN`, `VITE_SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_RELEASE` / `RAILWAY_GIT_COMMIT_SHA` | Create Sentry project; set DSNs; tune sampling; link alerts |
+| **P6-02** | Error tracking | Optional **Sentry** server + browser: `SENTRY_DSN`, `VITE_SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_RELEASE` | Create Sentry project; set DSNs; tune sampling; link alerts |
 | **P6-03** | Golden signals | `GET /api/health/metrics` — in-process `requests`, `errors5xx`, `avgLatencyMs` + `processUptimeSec` | Use Sentry APM, Datadog, or Grafana for **per-route p95** and multi-instance; this endpoint is a **single-node** hint |
 | **P6-04** | Uptime / alerts | `GET /api/health` (liveness, no DB) · `GET /api/health/ready` (DB `SELECT 1`, **503** if down) | Configure UptimeRobot / Better Uptime / cloud LB health checks: poll **`/api/health/ready`** for deep checks; ` /api/health` for “process up only”; alert if **ready** down **> N min** |
 | **P6-05** | Backups + restore | [Backups (below)](#database-backups-p6-05) + [DATABASE.md](../DATABASE.md) | Enable auto backups on Postgres; **quarterly** restore to staging; write **RPO/RTO** in your op doc |
-| **P6-06** | Deploy & rollback | [Deploy/rollback (below)](#deploy--rollback-p6-06) | Railway “rollback deployment” or re-tag previous image; `prisma migrate deploy` after deploy |
+| **P6-06** | Deploy & rollback | [Deploy/rollback (below)](#deploy--rollback-p6-06) | host “rollback deployment” or re-tag previous image; `prisma migrate deploy` after deploy |
 | **P6-07** | Failed webhook replay | [Webhook replay (below)](#webhook-replay-p6-07) | Prefer Stripe **Dashboard** resend after fix; or CLI with care for signature age |
 | **P6-08** | Staging = prod | [Parity (below)](#staging-parity--smoke-p6-08) | Same `NODE_ENV` shape, same Prisma migrate path; smoke [curl](#smoke) after prod deploy |
 | **P6-09** | Status / comms | Optional: `STATUS_PAGE_URL` in your internal wiki or vendor status (Atlassian Statuspage, Instatus) | Link in customer comms; or email template for incidents |
@@ -25,7 +25,7 @@ Master index for P6-01…P6-10. **Not** a substitute for your host’s own runbo
 
 **Deploy (typical monorepo root):** `git pull` → set env on host → `npm run db:migrate -w dental-ar-system` (or your CI does this) → `npm run build -w dental-ar-system` / start `tsx src/server/index.ts` or `node` dist.
 
-**Rollback:** redeploy the **previous** good commit (Railway: redeploy; Docker: previous tag). Migrations: **do not** auto-downgrade in prod without a DBA; forward-fix data if a migration already ran.
+**Rollback:** redeploy the **previous** good commit (host redeploy, or previous Docker tag). Migrations: **do not** auto-downgrade in prod without a DBA; forward-fix data if a migration already ran.
 
 **Feature flags:** not in app v1; use env or separate route if needed.
 

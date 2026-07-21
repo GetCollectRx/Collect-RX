@@ -7,7 +7,7 @@
 | **Canonical app** | Repo root: `npm run dev` → workspace **Collect-RX-main** (Vite 5173 + API 3000); or `cd Collect-RX-main && npm run dev` | Staging app URL (HTTPS) | Production app URL(s) (HTTPS) |
 | **Root prototype** | `npm run dev:all` (UI + API 3001) or `npm run dev:prototype` | Optional; usually **off** | **Off** unless needed for internal tools |
 | **Database** | `docker compose up -d` + `DATABASE_URL` in `.env` (see [DATABASE.md](./DATABASE.md)) | **Hosted Postgres**; `DATABASE_URL` in secrets; **synthetic/anon** data only | **Hosted Postgres**; `DATABASE_URL` in secrets; backups enabled |
-| **Staging DB host** | N/A | e.g. Neon / RDS / Supabase / Railway — **separate** instance from prod | e.g. same family as chosen for staging, prod-scaled |
+| **Staging DB host** | N/A | e.g. Neon / RDS / Supabase — **separate** instance from prod | e.g. same family as chosen for staging, prod-scaled |
 | **TLS** | HTTP localhost | HTTPS | HTTPS |
 | **`NODE_ENV`** | `development` | `staging` or `production` | `production` |
 | **`JWT_SECRET`** | Dev fallback allowed in code paths — **set explicit value for team** | **Required** | **Required** |

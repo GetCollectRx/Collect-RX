@@ -48,7 +48,7 @@ The loop **always** scans the local repo for anchor files, then adds **external*
 2. **Gemini + Google Search grounding** — set `GEMINI_API_KEY` (Google AI Studio or Cloud). Used automatically as **fallback** after NotebookLM, or as **primary** when `LEARNING_RESEARCH_PROVIDER=gemini`.
 3. **Local only** — `LEARNING_RESEARCH_PROVIDER=local` skips external calls (offline / strict environments).
 
-Railway: prefer **Gemini API key** (no cookie refresh). For NotebookLM on a server you must supply durable session material via `NOTEBOOKLM_COOKIES*` or a mounted `session.json` — interactive login is dev-only.
+On a headless host: prefer **Gemini API key** (no cookie refresh). For NotebookLM on a server you must supply durable session material via `NOTEBOOKLM_COOKIES*` or a mounted `session.json` — interactive login is dev-only.
 
 See `.env.example` (Phase 6 block) for all variables.
 

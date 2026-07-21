@@ -1,6 +1,6 @@
 # Phase 4 — go-live (production integrations)
 
-**Goal:** Close Phase 4 for a real launch, not a “code slice” demo. The app will **read** this checklist; operators **execute** DNS, SendGrid, Twilio, Stripe Billing, and secrets in the **hosting platform** (e.g. Railway), not in git.
+**Goal:** Close Phase 4 for a real launch, not a “code slice” demo. The app will **read** this checklist; operators **execute** DNS, SendGrid, Twilio, Stripe Billing, and secrets in the **hosting platform**, not in git.
 
 **Product boundary:** Practice → Insurance recovery only. No patient/client payment collection (Stripe Connect / Payment Links retired).
 

@@ -19,7 +19,7 @@
 
 ## Checklist (operator)
 
-- [ ] BAA/DPA with hosting/DB (e.g. Railway) where PHI is stored.
+- [ ] BAA/DPA with hosting/DB where PHI is stored.
 - [ ] Stripe: BAA or confirmation PHI is not processed per your config.
 - [ ] Vapi/telephony: BAA or equivalent if PHI in calls.
 - [ ] `npm audit` and dependency updates tracked ([NPM-AUDIT.md](../NPM-AUDIT.md)).

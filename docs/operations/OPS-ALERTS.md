@@ -8,7 +8,7 @@ When the **API server** starts (production) or the **Electron app** opens, Colle
 
 Default recipient: **khalid@collectrx.ca** (override with `STARTUP_ALERT_EMAIL_TO`).
 
-Required in `.env` / Railway:
+Required in `.env` / host secrets:
 
 ```bash
 SENDGRID_API_KEY=...
@@ -23,7 +23,7 @@ STARTUP_ALERT_EMAIL_TO=khalid@collectrx.ca
 
 ## Enable alerts (ongoing ops)
 
-On Railway (or `.env`), set at minimum:
+In host secrets (or `.env`), set at minimum:
 
 ```bash
 OPS_ALERTS_ENABLED=1
@@ -106,7 +106,7 @@ OPS_ALERTS_ENABLED=1 npm run smoke:live
 npm run alert:diagnosis -- --skip-tests
 ```
 
-## Railway cron (post-deploy smoke)
+## Host cron (post-deploy smoke)
 
 Add a cron or GitHub Action that runs after deploy:
 
