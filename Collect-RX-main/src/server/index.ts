@@ -607,8 +607,19 @@ async function boot() {
   if (process.env.SIDECAR_URL) {
     setInterval(drainGuardrailAuditOutbox, 60_000);
     console.log('[server] Guardrail audit worker started');
+  } else if (process.env.NODE_ENV === 'production') {
+    // Guardrail audit is a post-call compliance control (PHI-leak / hallucination /
+    // off-script / carrier-block detection that can auto-apply CARRIER_BLOCK). With no
+    // SIDECAR_URL the outbox is never drained, so calls still enqueue but go unaudited
+    // and the outbox grows unbounded. Fail loud so error alerting catches it rather than
+    // letting a compliance control silently degrade in production.
+    console.error(
+      '[server] CRITICAL: SIDECAR_URL not set in production — guardrail audit is DISABLED. ' +
+      'Post-call PHI-leak/hallucination/carrier-block auditing is NOT running and the audit ' +
+      'outbox will accumulate unprocessed rows. Set SIDECAR_URL (fly secrets set) to restore it.',
+    );
   } else {
-    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled');
+    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled (dev).');
   }
 
   try {

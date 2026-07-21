@@ -747,25 +747,6 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /**
-   * GET /api/auth/reset-password/token/:userId
-   * Platform-dev only — retrieves the current active reset token for a user.
-   * Used by admin to relay the token to the user until email delivery is wired up.
-   */
-  r.get('/reset-password/token/:userId', authenticate, authorizeRole('platform_dev'), async (req, res) => {
-    try {
-      const record = await prisma.passwordResetToken.findFirst({
-        where: { userId: req.params.userId, usedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!record) return res.status(404).json({ error: 'No active reset token found' });
-      return res.json({ token: record.token, expiresAt: record.expiresAt });
-    } catch (e) {
-      console.error('get reset token error:', e);
-      return res.status(500).json({ error: 'Failed' });
-    }
-  });
-
-  /**
    * POST /api/auth/reset-password/confirm
    * Body: { token, newPassword }
    * Consumes the token and sets the new password.
