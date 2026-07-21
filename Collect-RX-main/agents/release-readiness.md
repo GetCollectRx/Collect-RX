@@ -6,7 +6,7 @@
 
 ## Context
 
-CollectRx deploys to Railway (backend + PostgreSQL) and as an Electron `.exe` installer for Windows desktop. CI builds trigger on version tags. The Electron build must be code-signed — unsigned builds must never reach a practice machine.
+CollectRx deploys to Fly.io (backend + Postgres, app `collect-rx`) and as an Electron `.exe` installer for Windows desktop. CI builds trigger on version tags. The Electron build must be code-signed — unsigned builds must never reach a practice machine.
 
 CI reference: `.github/workflows/ci-collectrx.yml`
 Release process: `docs/RELEASING.md`
@@ -65,7 +65,7 @@ Changelog: `CHANGELOG.md`
 1. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
 2. CI builds backend, runs tests, runs Semgrep
 3. If Electron is in scope: CI builds and signs the Windows installer
-4. Railway auto-deploys on successful CI (or manually trigger if not configured)
+4. Deploy with `fly deploy` after CI passes
 5. Run `prisma migrate deploy` against production (if migrations are pending)
 6. Proceed to Post-Deployment Verification immediately
 
@@ -124,7 +124,7 @@ Rollback immediately if any of the following are observed within 30 minutes of d
 - Any `callAttempt` write failing in logs
 - `phi_access_log` writes failing
 
-Rollback process: revert Railway to the previous deployment via Railway dashboard. Database rollback is only needed if a migration was applied — restore from last backup to staging, test, then apply fix forward.
+Rollback process: find the previous release with `fly releases -a collect-rx`, then redeploy its image with `fly deploy --image <ref>`. Database rollback is only needed if a migration was applied — restore from last backup to staging, test, then apply fix forward.
 
 ---
 

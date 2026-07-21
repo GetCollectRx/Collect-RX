@@ -16,11 +16,11 @@
 | [DEPRECATION.md](./DEPRECATION.md) | Policy for non-canonical `src/` (P1-07) |
 | [../CHANGELOG.md](../CHANGELOG.md) | User-visible / release changes |
 | [CREDENTIAL_ROTATION.md](./CREDENTIAL_ROTATION.md) | How to rotate Stripe, SendGrid, Twilio, API keys, etc. |
-| [operations/CREDENTIAL-ROTATION-PILOT.md](./operations/CREDENTIAL-ROTATION-PILOT.md) | Vapi + Railway Postgres rotation before pilot |
+| [operations/CREDENTIAL-ROTATION-PILOT.md](./operations/CREDENTIAL-ROTATION-PILOT.md) | Vapi + Fly Postgres rotation before pilot |
 | [PILOT_SCOPE.md](./PILOT_SCOPE.md) | Single-practice pilot until Day-90 decision |
 | [PHI_DATA_CLASSIFICATION.md](./PHI_DATA_CLASSIFICATION.md) | PHI handling and third-party boundaries |
 | [compliance/PHASE5-COMPLIANCE.md](./compliance/PHASE5-COMPLIANCE.md) | Phase 5 security/privacy — index + P5-01…P5-12 |
-| [operations/RAILWAY-PRODUCTION.md](./operations/RAILWAY-PRODUCTION.md) | **Production Railway** — web + Postgres + Redis + worker for clients |
+| [../Collect-RX-main/DEPLOY.md](../Collect-RX-main/DEPLOY.md) | **Production (Fly.io)** — app `collect-rx`, Postgres, deploy/rollback/secrets |
 | [operations/ALWAYS-ON.md](./operations/ALWAYS-ON.md) | Local PM2 only (not for client-facing hosting) |
 | [operations/PHASE6-LEARNING-LOOP.md](./operations/PHASE6-LEARNING-LOOP.md) | Phase 6: Notion learning loop (research → rank → implement → SMS) |
 | [operations/PHASE6-OPS.md](./operations/PHASE6-OPS.md) | Platform ops: logging, Sentry, health, metrics, deploy, webhooks, smoke |

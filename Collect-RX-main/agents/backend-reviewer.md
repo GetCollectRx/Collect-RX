@@ -6,7 +6,7 @@
 
 ## Context
 
-CollectRx is a Canadian dental insurance A/R collection product. Vapi AI voice agents call insurance carrier provider lines on behalf of dental practices. The server runs on Railway (Express + Prisma + PostgreSQL). The Electron desktop app handles data sync from the practice's PMS (AbelDent or CSV) but is not involved in call dispatch.
+CollectRx is a Canadian dental insurance A/R collection product. Vapi AI voice agents call insurance carrier provider lines on behalf of dental practices. The server runs on Fly.io (Express + Prisma + PostgreSQL). The Electron desktop app handles data sync from the practice's PMS (AbelDent or CSV) but is not involved in call dispatch.
 
 **The three most safety-critical paths in this codebase:**
 

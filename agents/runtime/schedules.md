@@ -1,7 +1,7 @@
 # CollectRx Agent Schedules
 
 All 19 agents run weekly on Monday, staggered 30 minutes apart in dependency order.
-API_BASE is the Railway backend URL. AGENT_RUNTIME_SECRET is an env var set in Railway.
+API_BASE is the Fly backend URL. AGENT_RUNTIME_SECRET is a Fly secret (`fly secrets set`).
 
 ---
 

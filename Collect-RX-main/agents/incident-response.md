@@ -107,17 +107,17 @@
 
 ### IC-4: Platform Outage
 
-**Trigger:** Railway deployment failure, queue engine down >2 hours during call window, critical API dependency (Vapi, Stripe) unavailable.
+**Trigger:** Fly deployment failure, queue engine down >2 hours during call window, critical API dependency (Vapi, Stripe) unavailable.
 
 **Time to respond:** Within 30 minutes of detection.
 
 **Response steps:**
 
-1. **DIAGNOSE** — Check Railway health dashboard, Vapi status page, Stripe status page.
+1. **DIAGNOSE** — Check `fly status -a collect-rx` and `fly logs`, Vapi status page, Stripe status page.
 
 2. **COMMUNICATE** — If outage is >1 hour: post a status update in Khalid's communication channel. If active practices will notice missed calls: proactively notify them.
 
-3. **RECOVER** — Railway deployment failure: roll back to previous deploy. Queue engine failure: restart Railway service. Vapi outage: queue calls for retry when Vapi recovers (do not lose the queue).
+3. **RECOVER** — Fly deployment failure: roll back to the previous release (`fly releases`, then `fly deploy --image <ref>`). Queue engine failure: restart the machines (`fly machine restart`). Vapi outage: queue calls for retry when Vapi recovers (do not lose the queue).
 
 4. **VERIFY** — After recovery, check: queue engine heartbeat, /api/health endpoint, WebSocket connectivity, Vapi webhook. Run through release-readiness.md post-deploy checklist.
 
@@ -157,7 +157,7 @@
 
 2. **ASSESS** — What data could have been accessed? PHI? Stripe keys? Provider numbers? Scope the exposure.
 
-3. **ROTATE** — Rotate any potentially compromised secrets (JWT secret, API keys, database credentials). Update all Railway environment variables.
+3. **ROTATE** — Rotate any potentially compromised secrets (JWT secret, API keys, database credentials). Update all Fly secrets (`fly secrets set`).
 
 4. **PATCH** — Apply the security fix. Do not restore service until the vulnerability is patched.
 

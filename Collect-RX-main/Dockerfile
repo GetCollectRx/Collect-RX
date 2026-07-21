@@ -4,7 +4,7 @@ RUN apt-get update \
 && apt-get install -y openssl ca-certificates python3 make g++ \
 && rm -rf /var/lib/apt/lists/*
 
-# Bump when Railway keeps serving a stale cached layer.
+# Bump to bust a stale cached build layer.
 ARG CACHEBUST=20260703b
 # Previously declared but never referenced in a RUN, so bumping the value
 # above never actually busted the build cache — Depot kept serving a stale

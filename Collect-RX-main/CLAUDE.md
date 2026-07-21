@@ -16,7 +16,7 @@ Six Canadian carriers are supported: Sun Life, Canada Life, Manulife, Green Shie
 # Install
 npm ci
 
-# Run the backend server (Express on port 3001)
+# Run the backend server (Express on port 3000)
 npm run dev
 
 # Run all tests
@@ -155,9 +155,9 @@ Electron shell (thin wrapper — no business logic)
     ↓
 React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Patient AR, Estimate, Analytics, Outbox, Admin). The old `Collect-RX-main/frontend/` app was removed; one surface only.
     ↓
-Express backend  src/server/index.ts  (Railway, port 3001)
+Express backend  src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
     ↓
-Prisma ORM → PostgreSQL (Railway)
+Prisma ORM → PostgreSQL (Fly.io)
     ↓
 Vapi.ai voice agents (4-agent squad via Vapi API)
     ↓
@@ -204,7 +204,7 @@ Abeldent Local Plus is dental practice management software running on SQL Server
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
 3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
-4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Railway API.
+4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
 
 ---
 
@@ -229,7 +229,7 @@ CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure 
 
 ## Database
 
-PostgreSQL on Railway, accessed via Prisma. Schema migrations for the eligibility engine are in `migrations/eligibility-schema.sql` — run directly against the Railway database via the Railway console or `psql $DATABASE_URL -f migrations/eligibility-schema.sql`.
+PostgreSQL on Fly.io, accessed via Prisma. Schema migrations for the eligibility engine are in `migrations/eligibility-schema.sql` — run directly against the database via `fly postgres connect` or `psql $DATABASE_URL -f migrations/eligibility-schema.sql`.
 
 Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`.
 
