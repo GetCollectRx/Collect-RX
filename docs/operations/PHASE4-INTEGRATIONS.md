@@ -9,7 +9,7 @@
 | **P4-03** | Twilio | **Code:** inbound SMS handlers where used; STOP/START/HELP. **Operator:** inbound URL exact match to Twilio’s “A message comes in” URL. |
 | **P4-04** | Stripe Billing (practice SaaS) | **In app today:** `GET /api/admin/integrations` + Admin show whether `STRIPE_SECRET_KEY` is set (test vs live); `/billing` Checkout + Customer Portal; `POST /api/stripe/webhook` for subscription events. **No** Stripe Connect / patient Payment Links. **Doc:** [README — Stripe](../../Collect-RX-main/README.md#stripe-test-mode-practice-saas-billing). |
 | **P4-05** | Vapi | **Code:** `POST /api/vapi/webhook` + idempotency. **Operator:** [Vapi server authentication](https://docs.vapi.ai/server-url/server-authentication). |
-| **P4-06** | Secrets | [SECRETS-GO-LIVE.md](SECRETS-GO-LIVE.md) — Railway / SSM, rotation, break-glass. |
+| **P4-06** | Secrets | [SECRETS-GO-LIVE.md](SECRETS-GO-LIVE.md) — host secrets / SSM, rotation, break-glass. |
 | **P4-07** | PMS | [PMS-INTEGRATION-PLAN.md](../product/PMS-INTEGRATION-PLAN.md) — what ship and when is a **program decision** (connector spike vs other intake). |
 | **P4-08** | Degraded providers | **Code:** `sendEmailWithRetry` / `sendSMSWithRetry` (2 attempts per channel); **Admin** shows integration status. **Later:** queue (Phase 6/8). |
 

@@ -1,10 +1,10 @@
 # Credential rotation (CollectRx)
 
 **Project root:** `/Users/khalidegeh/Desktop/Dentist/collectrx-platform`  
-The **Click** app (`Click-main/` or `collectrx-platform/Click` clone) implements API routes referenced below; keep this checklist with your deployment env (Railway, etc.).
+The **Click** app (`Click-main/` or `collectrx-platform/Click` clone) implements API routes referenced below; keep this checklist with your deployment env.
 
 Use this checklist when rotating secrets after exposure, a team change, or on a regular schedule.  
-**Do not commit real values.** Store them in Railway, AWS Parameter Store, or your team’s secret manager.
+**Do not commit real values.** Store them in your host’s secret store, AWS Parameter Store, or your team’s secret manager.
 
 ## Verify repo is clean
 
@@ -14,7 +14,7 @@ Use this checklist when rotating secrets after exposure, a team change, or on a 
 ## Rotation order (minimize downtime)
 
 1. **Create new secret** in the provider UI (or roll API key) while old key still works.
-2. **Update deployment env** (Railway / host) with the new value. Deploy or restart.
+2. **Update deployment env** (your hosting platform) with the new value. Deploy or restart.
 3. **Update local `.env`** for developers (share via 1Password / vault, not Slack).
 4. **Revoke old secret** in the provider after confirming health checks pass.
 
@@ -27,7 +27,7 @@ Use this checklist when rotating secrets after exposure, a team change, or on a 
 | `STRIPE_SECRET_KEY` | [Dashboard → API keys](https://dashboard.stripe.com/apikeys) | Practice `/billing` Checkout in staging (SaaS Billing only) |
 | `STRIPE_WEBHOOK_SECRET` | Webhook endpoint → "Signing secret" (per endpoint) | `POST /api/stripe/webhook` receives 200 on test event from Dashboard |
 
-If you rotate the webhook secret, update it in **one place** (e.g. Railway) and in Stripe for the same endpoint URL.
+If you rotate the webhook secret, update it in **one place** (your host’s secret store) and in Stripe for the same endpoint URL.
 
 ### SendGrid
 
@@ -48,7 +48,7 @@ If you rotate the webhook secret, update it in **one place** (e.g. Railway) and 
 | Variable | Purpose | After |
 |----------|---------|--------|
 | `COLLECTRX_API_KEY` | Optional; protects mutating API routes | Regenerate a long random string; update any client (scripts, Postman) |
-| `RAILWAY_API_TOKEN` | Desktop sync → backend (if used) | Regenerate in Railway; update practice machine env |
+| `RAILWAY_API_TOKEN` | Desktop sync → backend (if used) | Regenerate on the server; update practice machine env |
 
 ### Database
 

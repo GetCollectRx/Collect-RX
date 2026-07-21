@@ -19,7 +19,7 @@ These are technical audits that both Claudes MUST reference. They contain infras
 - [ ] Verify Fly volume encryption via `fly volumes list`
 - [ ] Fix SPF/DKIM/DMARC (DNS records)
 - [ ] Create staging environment on Fly
-- [ ] Rotate secrets (all currently copied verbatim from Railway, not regenerated)
+- [ ] Rotate secrets (all copied verbatim during the host migration, not regenerated)
 - [ ] Test database restore RTO
 - [ ] Add WCAG label fixes to login forms
 

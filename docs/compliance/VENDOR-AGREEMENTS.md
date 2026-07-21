@@ -8,7 +8,7 @@ Not legal advice. **Signed** documents stay in your DMS, not in git.
 | Twilio (SMS) |  |  |  |  |
 | Stripe (payments) |  |  |  |  |
 | Vapi (voice) |  |  |  |  |
-| Host / DB (e.g. Railway) |  |  |  |  |
+| Host / DB |  |  |  |  |
 | Backups (if different) |  |  |  |  |
 
 Orientation: [PCI-BAA-STRIPE.md](PCI-BAA-STRIPE.md), [PHASE4-INTEGRATIONS.md](../operations/PHASE4-INTEGRATIONS.md).

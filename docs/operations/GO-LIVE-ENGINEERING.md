@@ -45,7 +45,7 @@ Confirm Admin → Integrations shows the Stripe secret set (live mode). Verify `
 cd Collect-RX-main && npm run check:env
 ```
 
-Rotate any Railway-era values. Minimum set:
+Rotate any legacy/pre-migration values. Minimum set:
 
 - `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`
 - `VAPI_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`
