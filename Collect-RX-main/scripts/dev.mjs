@@ -2,7 +2,7 @@
 /**
  * Dev orchestrator:
  * - DEV_API_TARGET=local (default): free ports, local Express + Vite (aligned proxy).
- * - DEV_API_TARGET=remote: Vite only; /api proxied to production (collectrx.ca / Railway).
+ * - DEV_API_TARGET=remote: Vite only; /api proxied to production (collectrx.ca / Fly).
  */
 import { spawn } from 'node:child_process';
 import {

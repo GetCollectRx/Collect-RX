@@ -6,19 +6,19 @@ This document explains how sensitive data is protected for HIPAA/PHIPA-style exp
 
 | Path | Mechanism |
 |------|-----------|
-| Browser ↔ API | **HTTPS** in production. Railway (or your reverse proxy) terminates TLS 1.2+ to clients. The API enables **HSTS** and related headers via **Helmet** in `src/server/index.ts` (CSP is disabled for the Vite SPA shell — tighten if this process serves JSON-only). |
+| Browser ↔ API | **HTTPS** in production. Fly (or your reverse proxy) terminates TLS 1.2+ to clients. The API enables **HSTS** and related headers via **Helmet** in `src/server/index.ts` (CSP is disabled for the Vite SPA shell — tighten if this process serves JSON-only). |
 | API / worker ↔ PostgreSQL | **TLS to Postgres** is **required in production**: `DATABASE_URL` must include `sslmode=require`, `sslmode=verify-ca`, `sslmode=verify-full`, or `ssl=true`. The API and BullMQ worker call `assertPostgresTlsInProduction()` at startup. |
 | API ↔ Redis | Use **`rediss://`** when your provider supports TLS. Local `redis://` is normal for development only. |
 | Webhooks (Vapi, Stripe, SendGrid, Twilio) | **Provider signatures** (HMAC, Ed25519, etc.); transport is HTTPS to your origin. |
 | Outbound HTTP(S) from Node | Do **not** disable certificate verification (`rejectUnauthorized: false`) for third-party APIs. |
 
-**Optional — TLS terminated inside Node:** If you set **`TLS_KEY_PATH`** and **`TLS_CERT_PATH`** (PEM files), the API uses `https.createServer` with **min TLS 1.2**, **max TLS 1.3**, and a **restricted ECDHE cipher list** (`src/server/tls/nodeHttpsSettings.ts`). On Railway, leave these unset so the platform terminates TLS and the app listens on HTTP behind the proxy.
+**Optional — TLS terminated inside Node:** If you set **`TLS_KEY_PATH`** and **`TLS_CERT_PATH`** (PEM files), the API uses `https.createServer` with **min TLS 1.2**, **max TLS 1.3**, and a **restricted ECDHE cipher list** (`src/server/tls/nodeHttpsSettings.ts`). On Fly, leave these unset so the platform terminates TLS and the app listens on HTTP behind the proxy.
 
 ## 2. Encryption at rest (storage)
 
 | Layer | Responsibility |
 |-------|------------------|
-| PostgreSQL data files | **Transparent Data Encryption (TDE)** and volume encryption are **provider features** (e.g. encrypted RDS, Railway managed disks). Enable in the host console; the app does not replace TDE. |
+| PostgreSQL data files | **Transparent Data Encryption (TDE)** and volume encryption are **provider features** (e.g. Fly volume encryption / encrypted managed Postgres). Enable in the host console; the app does not replace TDE. |
 | Secrets (API keys, `DATABASE_URL`, JWT secret) | Prefer **AWS Systems Manager Parameter Store `SecureString`** (KMS-encrypted) via `src/config/secrets.js`, or your cloud KMS + environment injection. Never commit `.env`. |
 | Backups & exports | Treat CSV/database dumps as **sensitive**; store only in encrypted buckets with strict IAM. |
 
@@ -71,5 +71,5 @@ Unless you route a column through `phiAtRest`, Prisma stores values as **normal 
 
 - `docs/audit/security-audit.md` — transport headers, CORS, PHI boundaries.
 - `Collect-RX-main/.env.example` — environment variable reference.
-- `Collect-RX-main/DEPLOY.md` — Railway variable wiring.
+- `Collect-RX-main/DEPLOY.md` — Fly deploy + secret wiring.
 - `docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md` — Canada/US launch scrutiny: how technical controls map to typical regulatory/customer review (not legal advice).

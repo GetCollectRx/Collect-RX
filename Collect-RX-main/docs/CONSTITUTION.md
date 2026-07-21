@@ -120,7 +120,7 @@ All interactive elements are keyboard-navigable. Color is never the sole signal 
 
 ### 24. Dashboard load budget
 
-The main dashboard (claim list, queue stats, carrier summary) must load its first meaningful data within **2 seconds** on a standard clinic network connection (50 Mbps, 20ms latency to Railway). Page-level loading spinners that persist beyond 2 seconds are a performance regression.
+The main dashboard (claim list, queue stats, carrier summary) must load its first meaningful data within **2 seconds** on a standard clinic network connection (50 Mbps, 20ms latency to the Fly.io backend). Page-level loading spinners that persist beyond 2 seconds are a performance regression.
 
 ### 25. Queue build is background work
 

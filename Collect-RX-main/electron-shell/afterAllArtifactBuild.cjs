@@ -21,7 +21,7 @@ module.exports = async () => {
 If "CollectRx.app" in THIS folder (dist-electron) says not supported, ignore it
 and open the app inside mac/ or mac-arm64/ as above.
 
-Railway / hosted dashboard (packaged app opens a URL in the window)
+Fly / hosted dashboard (packaged app opens a URL in the window)
 ────────────────────────────────────────
 The default host is https://www.collectrx.ca. If you use a custom deployment,
 set dashboard-url.txt or COLLECTRX_DASHBOARD_URL (see electron/main.js).

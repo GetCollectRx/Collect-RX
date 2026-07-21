@@ -35,7 +35,7 @@ function loadEnv() {
   }
 }
 
-/** Railway URLs often omit sslmode; Prisma needs it for TLS. */
+/** Managed Postgres URLs often omit sslmode; Prisma needs it for TLS. */
 function ensureTls(url) {
   const trimmed = (url || '').trim();
   if (!trimmed.startsWith('postgres')) return trimmed;

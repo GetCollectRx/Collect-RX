@@ -1,5 +1,5 @@
 /**
- * Inspect Railway DB schema vs Prisma — practice columns and migration history.
+ * Inspect the database schema vs Prisma — practice columns and migration history.
  * Usage: npx tsx scripts/inspect-db-schema.ts
  */
 import 'dotenv/config';

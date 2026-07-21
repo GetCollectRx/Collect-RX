@@ -131,7 +131,7 @@ const stripe = Boolean((process.env.STRIPE_SECRET_KEY || '').trim());
 ok('STRIPE_SECRET_KEY', stripe, 'optional if no payments');
 ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').trim()), stripe ? 'set when using Stripe webhooks' : 'optional');
 
-ok('TRUST_PROXY', process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || prod, prod ? 'auto-enabled in production on API' : 'set TRUST_PROXY=1 behind Railway/nginx if needed');
+ok('TRUST_PROXY', process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || prod, prod ? 'auto-enabled in production on API' : 'set TRUST_PROXY=1 behind Fly/nginx if needed');
 
 ok(
   'ALLOWED_ORIGINS',
@@ -143,7 +143,7 @@ ok(
       ''
     ).trim(),
   ),
-  'comma list for browser CORS; use variable name ALLOWED_ORIGINS on Railway when possible',
+  'comma list for browser CORS; use variable name ALLOWED_ORIGINS as a Fly secret when possible',
 );
 
 ok('REDIS_URL', Boolean((process.env.REDIS_URL || '').trim()), 'optional — enables shared rate limits + worker');
