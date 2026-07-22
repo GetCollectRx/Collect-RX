@@ -1932,7 +1932,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
-                <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                <img src="/assets/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
@@ -2323,7 +2323,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                    <img src="/assets/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>
