@@ -942,9 +942,10 @@ describe.skipIf(!dbReady)('RLS: Direct SQL Enforcement (Database-Level Policies)
     expect(claim.claim_number).toBe('CLAIM-A-001');
   });
 
-  it("Raw SQL under Practice A context cannot see Practice B's claim", async () => {
-    // Same query shape as above, but the row belongs to Practice B — the
-    // DB-level policy (not the WHERE clause) must hide it.
+  // Requires a connection RLS actually applies to — CI's service role is the
+  // Postgres superuser, which bypasses even FORCE RLS, so this only proves
+  // enforcement under the strict-RLS environment (same gate as write isolation).
+  it.skipIf(!strictRls)("Raw SQL under Practice A context cannot see Practice B's claim", async () => {
     const result = await queryRawAsPractice(
       practiceA.id,
       (tx) => tx.$queryRaw`
