@@ -69,6 +69,8 @@ const SERVER_PREFIXES = [
 const SERVER_EXTRA = [
   /^\/api\/balances$/,
   /^\/api\/balances\//,
+  /^\/api\/campaigns$/,
+  /^\/api\/campaigns\//,
   /^\/api\/outreach$/,
   /^\/api\/outreach\//,
   /^\/api\/pay\/[^/]+$/,
