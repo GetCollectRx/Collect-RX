@@ -1,0 +1,89 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "id": "PRE_DISPATCH_CARRIER_BLOCK",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Suspend dispatch if carrier is under active CARRIER_BLOCK",
+      "delegates_to": "validateDispatch.carrierBlockCheck"
+    },
+    {
+      "id": "PRE_DISPATCH_BUSINESS_HOURS",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Calls only Mon–Fri 08:00–17:00 America/Toronto",
+      "delegates_to": "validateDispatch.businessHoursCheck"
+    },
+    {
+      "id": "PRE_DISPATCH_CLAIM_AGE_MIN",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Claim must be ≥30 days outstanding (≥21 for TELUS)",
+      "delegates_to": "validateDispatch.claimAgeCheck"
+    },
+    {
+      "id": "PRE_DISPATCH_CLAIM_AGE_MAX",
+      "tier": "hot-path",
+      "severity": "escalate",
+      "description": "Claim >90 days outstanding → skip AI, escalate to human",
+      "delegates_to": "validateDispatch.claimAgeCheck"
+    },
+    {
+      "id": "PRE_DISPATCH_MAX_ATTEMPTS",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Max 3 call attempts per claim",
+      "delegates_to": "validateDispatch.attemptCountCheck"
+    },
+    {
+      "id": "PRE_DISPATCH_PHI_TOKENIZED",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Patient identifier sent to Vapi must be a valid UUID token in PIIVault",
+      "delegates_to": "guardrails.preDispatch.checkTokenValidity"
+    },
+    {
+      "id": "WEBHOOK_NO_RAW_PHI_IN_METADATA",
+      "tier": "hot-path",
+      "severity": "alert",
+      "description": "Vapi webhook metadata echo must not contain raw names/DOBs/HCN",
+      "delegates_to": "guardrails.webhookGuard.scanMetadata"
+    },
+    {
+      "id": "POST_CALL_CARRIER_BLOCK_REGEX",
+      "tier": "hot-path",
+      "severity": "block",
+      "description": "Regex match on known block phrases (existing behavior)",
+      "delegates_to": "outcome.processor.BLOCK_SIGNAL_PATTERNS"
+    },
+    {
+      "id": "POST_CALL_CARRIER_BLOCK_SEMANTIC",
+      "tier": "audit",
+      "severity": "block",
+      "description": "Semantic classifier — flag transcripts where rep's intent matches 'this is a bot, stop calling'",
+      "colang_flow": "rails/carrier_block.co"
+    },
+    {
+      "id": "POST_CALL_PHI_LEAK_SCAN",
+      "tier": "audit",
+      "severity": "alert",
+      "description": "Scan agent turns for non-tokenized identifiers (numeric strings resembling HCN, DOB-formatted strings, surname patterns)",
+      "colang_flow": "rails/phi_leak.co"
+    },
+    {
+      "id": "POST_CALL_OFF_SCRIPT",
+      "tier": "audit",
+      "severity": "alert",
+      "description": "Flag agent turns where topic drifts outside insurance claim status (small talk beyond pleasantries, medical advice, billing disputes outside scope)",
+      "colang_flow": "rails/off_script.co"
+    },
+    {
+      "id": "POST_CALL_AGENT_HALLUCINATION",
+      "tier": "audit",
+      "severity": "alert",
+      "description": "Agent stated a fact not present in call context (e.g., invented a reference number, fabricated a coverage detail)",
+      "colang_flow": "rails/off_script.co"
+    }
+  ]
+}
