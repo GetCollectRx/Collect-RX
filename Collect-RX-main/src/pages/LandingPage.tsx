@@ -151,6 +151,17 @@ const STYLES = `
   .lp-btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
   .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
 
+  .lp-btn-secondary {
+    background: transparent; color: var(--green-dark);
+    border: 1.5px solid var(--green-dark);
+    padding: 10px 16px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 14px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lp-btn-secondary:hover { background: var(--green-lo); border-color: var(--green); }
+
   .lp-btn-ghost {
     background: transparent; color: var(--green-dark);
     border: 1.5px solid var(--green-dark);
@@ -1932,7 +1943,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
-                <img src="/assets/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
+                <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
@@ -1957,7 +1968,7 @@ export default function LandingPage() {
                 )}
               </button>
               <Link to="/login" className="lp-nav-signin">Sign in</Link>
-              <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-secondary">
                 Create account
               </Link>
             </div>
@@ -2323,7 +2334,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <img src="/assets/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
+                    <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>
