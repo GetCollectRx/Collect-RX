@@ -6,6 +6,29 @@ const prisma = new PrismaClient();
 
 async function importDentalProspects() {
   try {
+    // Read enriched emails from JSON file
+    const enrichedPath = path.resolve(__dirname, '../../enriched_emails.json');
+    if (!fs.existsSync(enrichedPath)) {
+      console.error('Enriched emails file not found at', enrichedPath);
+      process.exit(1);
+    }
+
+    const enrichedData = JSON.parse(fs.readFileSync(enrichedPath, 'utf-8'));
+    const enrichedMap: Record<string, string> = {};
+
+    // Flatten all batches into a practice name → email map
+    Object.keys(enrichedData).forEach((key) => {
+      if (key === 'enrichment_summary') return;
+      const batch = enrichedData[key];
+      if (Array.isArray(batch)) {
+        batch.forEach((item: { practice_name: string; email: string }) => {
+          enrichedMap[item.practice_name.toLowerCase()] = item.email;
+        });
+      }
+    });
+
+    console.log(`Loaded ${Object.keys(enrichedMap).length} enriched emails`);
+
     // Read CSV file from outreach directory
     const csvPath = path.resolve(__dirname, '../../outreach/dental-prospects-ottawa-gta.csv');
     if (!fs.existsSync(csvPath)) {
@@ -28,7 +51,7 @@ async function importDentalProspects() {
       data: {
         name: 'Ottawa + GTA Dental Practices Q3 2026',
         targetProvinces: ['ON'],
-        notes: 'Initial cold outreach to 150 dental practices in Ottawa and GTA area',
+        notes: 'Initial cold outreach to 101 dental practices in Ottawa and GTA area with verified emails',
         active: true,
       },
     });
@@ -37,6 +60,7 @@ async function importDentalProspects() {
 
     // Import prospects
     const prospects = [];
+    let skippedNoEmail = 0;
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
 
@@ -52,13 +76,13 @@ async function importDentalProspects() {
 
       if (!practiceName || !city) continue;
 
-      // Try to extract email from general email column if it exists, or build placeholder
-      let email = values[headerMap['general_email_(_to_enrich_)']] || '';
+      // Look up email from enriched map
+      const email = enrichedMap[practiceName.toLowerCase()];
 
-      // Improve email by guessing from practice info
+      // Skip practices without emails (no verified contact found)
       if (!email) {
-        const practiceLower = practiceName.toLowerCase().replace(/\s+/g, '');
-        email = `info@${practiceLower}.local`; // Placeholder - will be enriched later
+        skippedNoEmail++;
+        continue;
       }
 
       prospects.push({

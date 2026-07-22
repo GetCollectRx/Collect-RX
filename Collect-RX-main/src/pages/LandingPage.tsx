@@ -92,9 +92,9 @@ const STYLES = `
   .lp-nav-inner {
     max-width: 1200px; margin: 0 auto;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 40px; height: 68px;
+    padding: 0 56px; height: 68px;
   }
-  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 80px; }
   .lp-logo-mark {
     width: 28px; height: 28px; border-radius: 8px;
     background: var(--green);
@@ -151,6 +151,17 @@ const STYLES = `
   .lp-btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
   .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
 
+  .lp-btn-secondary {
+    background: transparent; color: var(--green-dark);
+    border: 1.5px solid var(--green-dark);
+    padding: 10px 16px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 14px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lp-btn-secondary:hover { background: var(--green-lo); border-color: var(--green); }
+
   .lp-btn-ghost {
     background: transparent; color: var(--green-dark);
     border: 1.5px solid var(--green-dark);
@@ -184,9 +195,9 @@ const STYLES = `
   }
   .lp-hero {
     max-width: 1200px; margin: 0 auto;
-    padding: 72px 40px 96px;
+    padding: 120px 56px 140px;
     display: grid; grid-template-columns: 54% 46%;
-    gap: 64px; align-items: center;
+    gap: 80px; align-items: center;
   }
 
   /* Left column */
@@ -195,13 +206,13 @@ const STYLES = `
     font-size: clamp(40px, 6vw, 80px);
     font-weight: 500; line-height: 1.10;
     letter-spacing: -0.01em; color: var(--ink);
-    margin-bottom: 24px;
+    margin-bottom: 40px;
   }
   .lp-h1 .lp-dot { color: var(--green); }
   .lp-hero-body {
     font-family: var(--fn);
     font-size: 18px; color: var(--graphite); line-height: 1.67;
-    max-width: 460px; margin-bottom: 32px; font-weight: 400;
+    max-width: 460px; margin-bottom: 48px; font-weight: 400;
   }
   .lp-hero-btns { margin-bottom: 36px; }
   .lp-trust-row { display: flex; gap: 20px; flex-wrap: wrap; }
@@ -642,7 +653,7 @@ const STYLES = `
   .lp-about-pillars { grid-template-columns: repeat(3,1fr); margin-top: 40px; }
 
   /* ─── CTA ────────────────────────────────────────── */
-  .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 80px 40px; }
+  .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 120px 56px; }
   .lp-cta-inner {
     max-width: 1200px; margin: 0 auto;
     text-align: center;
@@ -718,7 +729,7 @@ const STYLES = `
   .lp-modal-success .lp-btn-primary { margin-top: 8px; }
 
   /* ─── FOOTER ─────────────────────────────────────── */
-  .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 64px 40px 32px; }
+  .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 100px 56px 48px; }
   .lp-footer-inner { max-width: 1200px; margin: 0 auto; }
   .lp-footer-top { display: flex; justify-content: space-between; gap: 40px; flex-wrap: wrap; margin-bottom: 48px; }
   .lp-footer-brand-sub { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 12px; max-width: 220px; line-height: 1.57; }
@@ -765,8 +776,8 @@ const STYLES = `
   }
   .lp-pain-inner {
     max-width: 1200px; margin: 0 auto;
-    padding: 72px 40px;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+    padding: 120px 56px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
   }
   .lp-pain-eyebrow {
     font-family: var(--fn); font-size: 12px; font-weight: 600;
@@ -806,7 +817,7 @@ const STYLES = `
 
   /* ─── PROCESS PREVIEW (home) ─────────────────────── */
   .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
-  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
+  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 120px 56px; }
   .lp-process-steps {
     display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 0; position: relative; margin-top: 48px;
@@ -853,8 +864,8 @@ const STYLES = `
   /* ─── COMPLIANCE SNIPPET (home) ──────────────────── */
   .lp-compliance-snippet { background: var(--cream); border-top: 1px solid var(--bdr); }
   .lp-compliance-snippet-inner {
-    max-width: 1200px; margin: 0 auto; padding: 72px 40px;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+    max-width: 1200px; margin: 0 auto; padding: 120px 56px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
   }
   .lp-compliance-snippet-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .lp-compliance-snippet-card {
@@ -1061,7 +1072,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours enforcement',
-    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
+    p: 'All carrier calls are placed Monday to Friday, 8am to 5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
   },
 ]
 
@@ -1131,14 +1142,14 @@ const ABOUT_PILLARS = [
 const PAIN_STATS = [
   { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
   { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
-  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery; most never needed to be' },
 ]
 
 const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
     h: 'AI calls carriers for you',
-    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back without your team touching a phone.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
@@ -1148,7 +1159,7 @@ const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
     h: 'Recovery metrics you can verify',
-    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes, all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
   },
 ]
 
@@ -1171,7 +1182,7 @@ const COMPLIANCE_SNIPPETS = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours only',
-    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
+    p: 'All calls Monday to Friday, 8am to 5pm Eastern. Scheduling windows enforced at system level.',
   },
 ]
 
@@ -1597,7 +1608,7 @@ function PricingSection() {
           <p className="lp-pricing-dual-p">
             Each carrier follow-up your team would handle manually costs roughly{' '}
             {STAFF_EQUIV_MINUTES_PER_CALL} staff-equivalent minutes on hold, IVR navigation,
-            and note-taking. CollectRx runs those calls concurrently — at a burdened{' '}
+            and note-taking. CollectRx runs those calls concurrently, at a burdened{' '}
             {fmtCad(STAFF_BURDENED_HOURLY_CAD)}/hr, that time adds up fast.
           </p>
         </div>
@@ -1608,7 +1619,7 @@ function PricingSection() {
           <div className="lp-pricing-dual-h">Money recovered</div>
           <p className="lp-pricing-dual-p">
             When a claim balance drops on re-import or connector sync, CollectRx marks it as
-            verified recovery in your dashboard. You see dollars collected — not just calls
+            verified recovery in your dashboard. You see dollars collected, not just calls
             completed. Both savings streams justify the subscription.
           </p>
         </div>
@@ -1636,7 +1647,7 @@ function PricingSection() {
             <div className="lp-pricing-savings">
               Illustrative staff time freed: ~{fmtCad(tier.illustrativeStaffSavings)}/mo
               {' '}({tier.illustrativeCalls} calls × {STAFF_EQUIV_MINUTES_PER_CALL} min)
-              — plus verified recovery tracked in your dashboard.
+              Plus verified recovery tracked in your dashboard.
             </div>
             <div className="lp-pricing-features">
               {tier.features.map((feature) => (
@@ -1670,7 +1681,7 @@ function PricingSection() {
         </Link>
       </div>
       <p className="lp-roi-note" style={{ marginTop: 24 }}>
-        All prices in CAD. HST applied where applicable. Illustrative savings are estimates — actual
+        All prices in CAD. HST applied where applicable. Illustrative savings are estimates; actual
         recovery depends on your claim mix, carriers, and re-import cadence.{' '}
         <Link to={MARKETING_PATHS.roi}>Run your numbers →</Link>
       </p>
@@ -1805,7 +1816,7 @@ function ComplianceSnippet() {
           </h2>
           <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
             In healthcare, compliance built in after the fact is compliance that fails. PHI
-            protection in CollectRx is a structural requirement — it cannot be disabled or
+            protection in CollectRx is a structural requirement; it cannot be disabled or
             accidentally bypassed.
           </p>
           <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
@@ -1932,7 +1943,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
-                <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
@@ -1957,7 +1968,7 @@ export default function LandingPage() {
                 )}
               </button>
               <Link to="/login" className="lp-nav-signin">Sign in</Link>
-              <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-secondary">
                 Create account
               </Link>
             </div>
@@ -1997,8 +2008,8 @@ export default function LandingPage() {
               </h1>
               <p className="lp-hero-body">
                 Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
-                that never lands. CollectRx works with any PMS — import a CSV export, or connect an
-                optional sync agent — then runs follow-up to six major Canadian insurers and handles denials.
+                that never lands. CollectRx works with any PMS: import a CSV export, or connect an
+                optional sync agent, then runs follow-up to six major Canadian insurers and handles denials.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
@@ -2082,7 +2093,7 @@ export default function LandingPage() {
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Pricing</div>
               <h2 className="lp-section-h2">
-                Priced on what you save — staff time and recovered dollars<span className="lp-dot">.</span>
+                Priced on what you save: staff time and recovered dollars<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 Flat monthly tiers with included call minutes. You pay for automation that frees
@@ -2323,7 +2334,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                    <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>

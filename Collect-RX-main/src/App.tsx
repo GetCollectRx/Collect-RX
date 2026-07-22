@@ -611,6 +611,7 @@ function App() {
               </Routes>
             ) : (
               <Routes>
+                <Route path="/" element={<MarketingSite />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
                 <Route path="/legal/privacy" element={<LegalPrivacy />} />
                 <Route path="/product" element={<ProductOnePager />} />
