@@ -1,4 +1,5 @@
 import type { Prospect, PrismaClient } from '@prisma/client';
+import cron from 'node-cron';
 import { sendProspectEmail } from './prospectEmail.js';
 import { renderEmailTemplate, type EmailTemplateData } from './emailCampaignTemplates.js';
 
@@ -119,7 +120,6 @@ export function registerEmailCampaignScheduler() {
 
 // Start email campaign scheduler via cron (every 5 minutes)
 export function startEmailCampaignScheduler(prisma: PrismaClient): void {
-  const cron = require('node-cron');
 
   // Run every 5 minutes
   cron.schedule('*/5 * * * *', () => {
