@@ -94,7 +94,7 @@ const STYLES = `
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 56px; height: 68px;
   }
-  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 80px; }
   .lp-logo-mark {
     width: 28px; height: 28px; border-radius: 8px;
     background: var(--green);
