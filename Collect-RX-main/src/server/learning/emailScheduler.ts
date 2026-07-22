@@ -1,4 +1,5 @@
 import { type PrismaClient } from '@prisma/client';
+import { wrapOutreachEmail } from '../marketing/emailLayout.js';
 
 interface EmailSchedulerConfig {
   batchSize: number;
@@ -70,6 +71,9 @@ async function sendEmailViaSendGrid(
         email: fromEmail,
         name: 'CollectRx Growth',
       },
+      // Replies must land on the inbound-parse domain or the reply pipeline
+      // (unsubscribe handling, emailRepliedAt) never sees them.
+      replyTo: process.env.SENDGRID_REPLY_TO || 'reply@inbound.collectrx.ca',
       subject,
       html: htmlContent,
       customArgs: metadata,
@@ -91,49 +95,33 @@ async function sendEmailViaSendGrid(
 /**
  * Generate initial outreach email HTML.
  */
-function generateInitialEmailHtml(prospectName: string): string {
-  return `
-    <html>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-          <p>Hi ${prospectName},</p>
-
-          <p>I wanted to reach out about CollectRx — a platform that automates insurance follow-up for dental practices.</p>
-
-          <p>Most practices spend 5-10 hours per week chasing down claim statuses and missing payments. CollectRx handles this with AI voice agents that call carriers, check claims, and resolve them automatically — often collecting claims within 24 hours.</p>
-
-          <p>If you're interested in learning how practices like yours are reducing admin overhead, I'd be happy to show you a quick demo.</p>
-
-          <p>Best regards,<br>
-          CollectRx Growth Team</p>
-        </div>
-      </body>
-    </html>
-  `;
+export function generateInitialEmailHtml(prospectName: string): string {
+  return wrapOutreachEmail({
+    preheader: 'Automated insurance follow-up for dental practices',
+    bodyHtml: `
+      <p>Hi ${prospectName},</p>
+      <p>I wanted to reach out about CollectRx — a platform that automates insurance follow-up for dental practices.</p>
+      <p>Most practices spend 5-10 hours per week chasing down claim statuses and missing payments. CollectRx handles this with AI voice agents that call carriers, check claims, and resolve them automatically — often collecting claims within 24 hours.</p>
+      <p>If you're interested in learning how practices like yours are reducing admin overhead, I'd be happy to show you a quick demo.</p>
+      <p>Best regards,<br>CollectRx Growth Team</p>
+    `,
+  });
 }
 
 /**
  * Generate follow-up email HTML.
  */
-function generateFollowUpEmailHtml(prospectName: string): string {
-  return `
-    <html>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-          <p>Hi ${prospectName},</p>
-
-          <p>Checking in — wanted to see if you had any questions about CollectRx or if now is a better time to chat.</p>
-
-          <p>Many dental practices have mentioned they're looking for ways to reduce the 5+ hours per week spent on insurance follow-up. If that resonates, I'd love to show you a 15-minute demo of how this works.</p>
-
-          <p>Feel free to reply to this email or let me know what works best for your schedule.</p>
-
-          <p>Best regards,<br>
-          CollectRx Growth Team</p>
-        </div>
-      </body>
-    </html>
-  `;
+export function generateFollowUpEmailHtml(prospectName: string): string {
+  return wrapOutreachEmail({
+    preheader: 'Quick follow-up on automating your insurance follow-up',
+    bodyHtml: `
+      <p>Hi ${prospectName},</p>
+      <p>Checking in — wanted to see if you had any questions about CollectRx or if now is a better time to chat.</p>
+      <p>Many dental practices have mentioned they're looking for ways to reduce the 5+ hours per week spent on insurance follow-up. If that resonates, I'd love to show you a 15-minute demo of how this works.</p>
+      <p>Feel free to reply to this email or let me know what works best for your schedule.</p>
+      <p>Best regards,<br>CollectRx Growth Team</p>
+    `,
+  });
 }
 
 /**
