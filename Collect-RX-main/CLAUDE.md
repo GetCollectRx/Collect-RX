@@ -130,8 +130,8 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 - Prisma generate and migrate run cleanly.
 
 **PHI boundary (PHIPA/PIPEDA — never negotiate this)**
-- Patient names, DOBs, health card numbers never leave the backend. Vapi receives UUID tokens only.
-- Detokenization happens server-side after call completion, never in transit.
+- Vapi `metadata` carries UUID tokens only — never patient names, DOBs, or health card numbers.
+- PHI needed for carrier lookup crosses only as ephemeral Vapi call `variables` at dispatch time (Option B — see `docs/compliance/PHI-VAPI-BOUNDARY.md`): detokenized server-side in `initiateCall()`, never stored, never logged, deleted from Vapi post-call.
 - Any code that routes data to an external service must be reviewed against this rule before merging.
 
 **CARRIER_BLOCK**
@@ -173,7 +173,7 @@ Four agents are orchestrated as a squad — they hand off to each other mid-call
 - **Escalation_Closer** — handles denied/disputed claims
 - **Resolution_Closer** — confirms payment, closes the claim
 
-The squad receives only UUID tokens — never real patient names, DOBs, or identifiers. A PIIVault layer detokenizes on the backend after the call.
+The squad receives UUID tokens in `metadata` — never PHI there. Patient identifiers required for carrier lookup are injected as ephemeral Vapi call `variables` at dispatch time only (Option B — see `docs/compliance/PHI-VAPI-BOUNDARY.md`); piiVault detokenizes server-side before the call, and nothing PHI-bearing is stored or logged.
 
 ### Eligibility Engine (Phase 3)
 
@@ -211,7 +211,7 @@ Abeldent Local Plus is dental practice management software running on SQL Server
 ## Critical safety rules
 
 ### PHI Boundary
-PHI (patient names, DOBs, health card numbers) **never crosses to Vapi**. The backend tokenizes all identifiers before sending anything to the voice agent. The Vapi squad operates entirely on UUID tokens. Detokenization happens on the backend after call completion. Violating this boundary breaks PHIPA/PIPEDA compliance.
+PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata** — UUID tokens only there. Identifiers carriers require to locate a claim are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — decision record in `docs/compliance/PHI-VAPI-BOUNDARY.md`): detokenized server-side in `initiateCall()`, never written to any DB table or log, recording disabled, and deleted from Vapi after the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
 If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
