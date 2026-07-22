@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, ProspectStage } from '@prisma/client';
 
 export interface ReplyAnalysis {
   prospectId: string;
@@ -153,7 +153,7 @@ export async function analyzeAndUpdateProspectFromReply(
   const analysis = analyzeReply(replyText, prospectName);
 
   // Update prospect stage based on analysis
-  let newStage: string;
+  let newStage: ProspectStage;
   if (analysis.isInterested) {
     if (analysis.nextAction === 'schedule_demo') {
       newStage = 'demo_booked';
@@ -167,7 +167,7 @@ export async function analyzeAndUpdateProspectFromReply(
   await prisma.prospect.update({
     where: { id: prospectId },
     data: {
-      stage: newStage as any,
+      stage: newStage,
       metadata: {
         replyAnalysis: {
           analyzedAt: new Date().toISOString(),

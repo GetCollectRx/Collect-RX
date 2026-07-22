@@ -1,7 +1,6 @@
 import type { Prospect, PrismaClient } from '@prisma/client';
 import { sendProspectEmail } from './prospectEmail.js';
-import { renderEmailTemplate } from './emailCampaignTemplates.js';
-import type { EmailTemplateData } from './emailCampaignTemplates.js';
+import { renderEmailTemplate, type EmailTemplateData } from './emailCampaignTemplates.js';
 
 const MAX_EMAILS_PER_BATCH = 10; // Rate limit: max 10 emails per scheduler run
 

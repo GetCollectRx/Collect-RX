@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, ProspectStage } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate.js';
 import { runEmailCampaignScheduler } from '../marketing/emailCampaignScheduler.js';
 import { enrichCampaignEmails } from '../marketing/emailEnrichment.js';
@@ -228,7 +228,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
         const updated = await prisma.prospect.update({
           where: { id: prospectId },
           data: {
-            stage: (stage as any) || 'engaged',
+            stage: (stage as ProspectStage) || ('engaged' as ProspectStage),
             metadata: {
               replied: true,
               repliedAt: new Date().toISOString(),
