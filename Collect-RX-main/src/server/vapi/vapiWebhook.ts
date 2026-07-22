@@ -443,7 +443,10 @@ async function processCallEnded(
   });
 
   try {
-    const cdcpHit = await tryCdcpFromVapiPayload(prisma, rawBody ?? payload);
+    const cdcpHit = await tryCdcpFromVapiPayload(prisma, rawBody ?? payload, {
+      practiceId: claim.practiceId,
+      patientToken: claim.patientToken,
+    });
     if (cdcpHit) {
       await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpHit.caseId);
     }

@@ -87,9 +87,21 @@ export async function processPreVisitCallEnded(
     let cdcpCaseId: string | null = null;
 
     if (meta?.cdcpContext || meta?.preVisitType === 'cdcp_predet') {
+      // Tenant identity must come from the verification row, not the Vapi
+      // payload: dispatch metadata carries camelCase keys the detector does
+      // not read, and structuredData is LLM output — an absent or wrong
+      // practice_id there either drops the denial or violates the RLS
+      // WITH CHECK on CdcpReconsiderationCase (42501).
       const denialSignal = detectDenialFromEndOfCall({
         type: 'end-of-call-report',
-        call: { id: payload.call.id, metadata: meta as unknown as Record<string, unknown> },
+        call: {
+          id: payload.call.id,
+          metadata: {
+            ...(meta as unknown as Record<string, unknown>),
+            practice_id: verification.practiceId,
+            patient_token: verification.patientToken,
+          },
+        },
         analysis: { structuredData: sd },
       });
       if (denialSignal) {
