@@ -81,14 +81,26 @@ describe('Email Service', () => {
     });
 
     it('handles optional fields gracefully', () => {
+      // Optional means not listed in requiredFields — a template field that is
+      // required must throw when absent (covered by the previous test).
+      const templateWithOptionalCity: EmailTemplate = {
+        ...sampleTemplate,
+        requiredFields: sampleTemplate.requiredFields.filter(
+          (field) => field !== 'PracticeCity',
+        ),
+      };
       const data: ProspectMergeData = {
         ...sampleMergeData,
-        PracticeCity: undefined, // Optional field
+        PracticeCity: undefined,
       };
 
-      const result = renderTemplate(sampleTemplate, data);
-      // Should render, leaving {{PracticeCity}} as is or blank
+      const result = renderTemplate(templateWithOptionalCity, data);
       expect(result.htmlBody).toBeDefined();
+      // Absent optional fields must not leak "undefined"/"null" into email copy
+      expect(result.htmlBody).not.toContain('undefined');
+      expect(result.htmlBody).not.toContain('null');
+      expect(result.textBody).not.toContain('undefined');
+      expect(result.textBody).not.toContain('null');
     });
 
     it('escapes merge fields to prevent XSS', () => {

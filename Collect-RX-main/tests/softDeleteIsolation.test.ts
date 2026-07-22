@@ -57,11 +57,13 @@ async function softDeleteUser(userId: string) {
 
 /**
  * Query claims excluding soft-deleted records.
- * This mimics the expected query scope filtering in the application.
+ * Mirrors the application's explicit scope filtering (see src/routes/insurance.ts):
+ * there is no global soft-delete Prisma extension, so `deletedAt: null` is part
+ * of every claim lookup's where clause.
  */
 async function findClaimNotDeleted(claimId: string) {
-  return prisma.insuranceClaim.findUnique({
-    where: { id: claimId },
+  return prisma.insuranceClaim.findFirst({
+    where: { id: claimId, deletedAt: null },
   });
 }
 
@@ -102,7 +104,9 @@ async function createHardDeleteAudit(
 // Test Suite
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady || !softDeleteSchemaReady || !userSoftDeleteSchemaReady)('Soft Delete Isolation', () => {
+// Claim soft delete shipped (migration 20260712020000_insurance_claim_soft_delete);
+// User.deletedAt has no migration yet, so only user-dependent tests gate on it.
+describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () => {
   describe('1. Deleted claims not returned by findUnique', () => {
     it('should skip deleted claim in findUnique', async () => {
       if (!dbReady) {
@@ -308,7 +312,7 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady || !userSoftDeleteSchemaReady
     });
   });
 
-  describe('3. Deleted users cannot login', () => {
+  describe.skipIf(!userSoftDeleteSchemaReady)('3. Deleted users cannot login', () => {
     it('should prevent authentication with soft-deleted user', async () => {
       if (!dbReady) {
         console.log('Skipping: database not ready');
@@ -482,7 +486,7 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady || !userSoftDeleteSchemaReady
       await cleanupPracticeWithUsers(prisma, practice.id);
     });
 
-    it('should preserve AuditLog when user is soft-deleted', async () => {
+    it.skipIf(!userSoftDeleteSchemaReady)('should preserve AuditLog when user is soft-deleted', async () => {
       if (!dbReady) {
         console.log('Skipping: database not ready');
         return;
