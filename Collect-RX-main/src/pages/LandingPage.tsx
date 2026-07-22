@@ -1061,7 +1061,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours enforcement',
-    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
+    p: 'All carrier calls are placed Monday to Friday, 8am to 5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
   },
 ]
 
@@ -1131,14 +1131,14 @@ const ABOUT_PILLARS = [
 const PAIN_STATS = [
   { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
   { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
-  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery; most never needed to be' },
 ]
 
 const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
     h: 'AI calls carriers for you',
-    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back without your team touching a phone.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
@@ -1148,7 +1148,7 @@ const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
     h: 'Recovery metrics you can verify',
-    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes, all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
   },
 ]
 
@@ -1171,7 +1171,7 @@ const COMPLIANCE_SNIPPETS = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours only',
-    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
+    p: 'All calls Monday to Friday, 8am to 5pm Eastern. Scheduling windows enforced at system level.',
   },
 ]
 
@@ -1597,7 +1597,7 @@ function PricingSection() {
           <p className="lp-pricing-dual-p">
             Each carrier follow-up your team would handle manually costs roughly{' '}
             {STAFF_EQUIV_MINUTES_PER_CALL} staff-equivalent minutes on hold, IVR navigation,
-            and note-taking. CollectRx runs those calls concurrently — at a burdened{' '}
+            and note-taking. CollectRx runs those calls concurrently, at a burdened{' '}
             {fmtCad(STAFF_BURDENED_HOURLY_CAD)}/hr, that time adds up fast.
           </p>
         </div>
@@ -1608,7 +1608,7 @@ function PricingSection() {
           <div className="lp-pricing-dual-h">Money recovered</div>
           <p className="lp-pricing-dual-p">
             When a claim balance drops on re-import or connector sync, CollectRx marks it as
-            verified recovery in your dashboard. You see dollars collected — not just calls
+            verified recovery in your dashboard. You see dollars collected, not just calls
             completed. Both savings streams justify the subscription.
           </p>
         </div>
@@ -1636,7 +1636,7 @@ function PricingSection() {
             <div className="lp-pricing-savings">
               Illustrative staff time freed: ~{fmtCad(tier.illustrativeStaffSavings)}/mo
               {' '}({tier.illustrativeCalls} calls × {STAFF_EQUIV_MINUTES_PER_CALL} min)
-              — plus verified recovery tracked in your dashboard.
+              Plus verified recovery tracked in your dashboard.
             </div>
             <div className="lp-pricing-features">
               {tier.features.map((feature) => (
@@ -1670,7 +1670,7 @@ function PricingSection() {
         </Link>
       </div>
       <p className="lp-roi-note" style={{ marginTop: 24 }}>
-        All prices in CAD. HST applied where applicable. Illustrative savings are estimates — actual
+        All prices in CAD. HST applied where applicable. Illustrative savings are estimates; actual
         recovery depends on your claim mix, carriers, and re-import cadence.{' '}
         <Link to={MARKETING_PATHS.roi}>Run your numbers →</Link>
       </p>
@@ -1805,7 +1805,7 @@ function ComplianceSnippet() {
           </h2>
           <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
             In healthcare, compliance built in after the fact is compliance that fails. PHI
-            protection in CollectRx is a structural requirement — it cannot be disabled or
+            protection in CollectRx is a structural requirement; it cannot be disabled or
             accidentally bypassed.
           </p>
           <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
@@ -1997,8 +1997,8 @@ export default function LandingPage() {
               </h1>
               <p className="lp-hero-body">
                 Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
-                that never lands. CollectRx works with any PMS — import a CSV export, or connect an
-                optional sync agent — then runs follow-up to six major Canadian insurers and handles denials.
+                that never lands. CollectRx works with any PMS: import a CSV export, or connect an
+                optional sync agent, then runs follow-up to six major Canadian insurers and handles denials.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
@@ -2082,7 +2082,7 @@ export default function LandingPage() {
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Pricing</div>
               <h2 className="lp-section-h2">
-                Priced on what you save — staff time and recovered dollars<span className="lp-dot">.</span>
+                Priced on what you save: staff time and recovered dollars<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 Flat monthly tiers with included call minutes. You pay for automation that frees
