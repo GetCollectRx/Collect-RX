@@ -10,7 +10,14 @@
 
 ## When Do You Need Multiple Phone Numbers?
 
-### Scenario 1: Carrier Rate Limiting ❌ (Not yet a blocker)
+### Scenario 1: Twilio Concurrency ✓ (NOT a bottleneck)
+**Question:** Can one Twilio number handle 20+ concurrent outbound calls?
+
+**Answer:** YES. Twilio standard numbers support **100+ concurrent calls** natively. One shared number works fine for 50+ practices. Billing is per call, not per number.
+
+**Verified:** Twilio docs confirm up to 100 concurrent (CPS limits may apply for very high volume).
+
+### Scenario 2: Carrier Rate Limiting ❌ (Not yet a blocker)
 **Risk:** Some carriers may block repeated calls from the same number within short timeframes.
 
 **Current reality:**
@@ -19,11 +26,6 @@
 - No evidence yet that carriers block by caller ID frequency
 
 **Timeline:** Only matters at 50+ concurrent calls/minute per carrier
-
-### Scenario 2: Twilio Concurrency ✓ (You're fine)
-**Question:** Can one Twilio number handle multiple concurrent outbound calls?
-
-**Answer:** YES. Twilio numbers support unlimited concurrent calls. Billing is per call, not per number.
 
 ### Scenario 3: Geographic Routing / Local Presence (Maybe)
 **Question:** Do Canadian carriers care about area codes?
@@ -85,31 +87,40 @@ const CARRIER_PHONE_MAP = {
 
 ---
 
-## Actual Scaling Timeline
+## Actual Scaling Timeline (Vapi is the bottleneck, not phone numbers)
 
-| Phase | Practices | Claims/Day | Calls/Min | Phone Numbers | Blocker? |
-|-------|-----------|-----------|-----------|---------------|----------|
-| **Now** | 1–2 | 100–200 | 2–4 | 1 | ✓ None |
-| **Q3** | 5–10 | 500–1000 | 8–15 | 1 | ✓ None |
-| **Q4** | 20+ | 2000+ | 30–50 | 3–5 | ⚠️ Monitor |
-| **2027** | 50+ | 5000+ | 80–150 | 5–10 | 🔴 Implement |
+| Phase | Practices | Concurrent Calls | VAPI_MAX_CONCURRENT_CALLS | Available Slots | Status |
+|-------|-----------|------------------|--------------------------|-----------------|--------|
+| **Now** | 1–2 | 1–2 | 10 (default) | 8 | ✓ Safe |
+| **Q3 Growth** | 5–10 | 5–10 | 10 (default) | 8 | ⚠️ Some queue at 8+ |
+| **Q4 Expansion** | 15–25 | 15–25 | **Need: 30** | 28 | 🔴 Upgrade env var |
+| **2027 Enterprise** | 50+ | 50+ | **Need: 60+** | 58 | Contact Vapi support |
 
-**Blocker threshold:** ~150 calls/minute on a single number
+**Current default:** `VAPI_MAX_CONCURRENT_CALLS=10` (8 available after 2-slot reserve)
+
+**Upgrade path:** 
+- To handle 25 concurrent: Set `VAPI_MAX_CONCURRENT_CALLS=30` 
+- To handle 50+ concurrent: Contact Vapi support for enterprise plan
+
+**Phone numbers needed:** Just 1. Twilio handles 100+ concurrent on a single number.
 
 ---
 
 ## What Actually Needs Scaling First
 
-**Before phone numbers become an issue, you'll hit these first:**
+**The real bottleneck sequence:**
 
-1. **Vapi concurrency** — Can the squad handle 50 concurrent calls?
-   - Vapi charges per concurrent minute, not per call
-   - Scaling = adding assistant instances (Vapi dashboard)
-   - **Effort:** None (Vapi auto-scales)
+1. **Vapi concurrency limit** — THE bottleneck
+   - Current default: 10 concurrent calls (8 available after reserve)
+   - Action at 10 practices: Increase `VAPI_MAX_CONCURRENT_CALLS` env var
+   - **Effort:** 1 line of config, no code changes
+   - Cost: Vapi charges per concurrent minute (scales with your plan)
 
-2. **Twilio transcription queue** — Vapi uses Twilio for recording/transcription
-   - At 100+ calls/day you may hit Twilio's async transcription queue
-   - **Fix:** Pre-configure higher concurrency with Twilio (settings)
+2. **Vapi queue management** — Handles overflow gracefully
+   - If 20 practices call but only 8 slots available: 12 calls queue automatically
+   - Queued calls start when slots free up
+   - **No dropped calls**, just delayed dispatch
+   - **Effort:** Monitor logs; no action needed until you want <5s dispatch latency
 
 3. **Database IOPS** — Call webhooks write to `call_attempts`, `insurance_claims`, etc.
    - ~10 calls/min = ~10 writes/min = negligible for PostgreSQL
