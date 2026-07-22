@@ -25,13 +25,6 @@ interface SchedulerSummary {
   results: SendResult[];
 }
 
-const DEFAULT_CONFIG: EmailSchedulerConfig = {
-  batchSize: 10,
-  rateLimitPerMinute: 30,
-  followUpDelayDays: 5,
-  enableLogging: true,
-};
-
 /**
  * Get email scheduler configuration from environment variables.
  */
@@ -79,7 +72,7 @@ async function sendEmailViaSendGrid(
       },
       subject,
       html: htmlContent,
-      custom_args: metadata,
+      customArgs: metadata,
       trackingSettings: {
         clickTracking: { enable: true },
         openTracking: { enable: true },
@@ -150,7 +143,7 @@ async function selectProspectsDueForInitialEmail(
   prisma: PrismaClient,
   limit: number,
 ): Promise<Array<{ id: string; email: string; practiceName: string }>> {
-  return prisma.prospect.findMany({
+  const rows = await prisma.prospect.findMany({
     where: {
       email: { not: null },
       emailSequenceStep: 0,
@@ -162,6 +155,8 @@ async function selectProspectsDueForInitialEmail(
     take: limit,
     orderBy: { createdAt: 'asc' },
   });
+  // Prisma does not narrow nullable columns from the where clause.
+  return rows.filter((r): r is typeof r & { email: string } => r.email !== null);
 }
 
 /**
@@ -174,7 +169,7 @@ async function selectProspectsDueForFollowUp(
 ): Promise<Array<{ id: string; email: string; practiceName: string; initialEmailSentAt: Date }>> {
   const followUpThreshold = new Date(Date.now() - followUpDelayDays * 24 * 60 * 60 * 1000);
 
-  return prisma.prospect.findMany({
+  const rows = await prisma.prospect.findMany({
     where: {
       email: { not: null },
       emailSequenceStep: 1,
@@ -188,6 +183,11 @@ async function selectProspectsDueForFollowUp(
     take: limit,
     orderBy: { initialEmailSentAt: 'asc' },
   });
+  // Prisma does not narrow nullable columns from the where clause.
+  return rows.filter(
+    (r): r is typeof r & { email: string; initialEmailSentAt: Date } =>
+      r.email !== null && r.initialEmailSentAt !== null,
+  );
 }
 
 /**
@@ -234,7 +234,7 @@ async function processBatchInitialEmails(
       prospect.email,
       subject,
       htmlContent,
-      { prospectId: prospect.id, type: 'initial' },
+      { prospect_id: prospect.id, type: 'initial' },
     );
 
     const result: SendResult = {
@@ -289,7 +289,7 @@ async function processBatchFollowUpEmails(
       prospect.email,
       subject,
       htmlContent,
-      { prospectId: prospect.id, type: 'followup' },
+      { prospect_id: prospect.id, type: 'followup' },
     );
 
     const result: SendResult = {

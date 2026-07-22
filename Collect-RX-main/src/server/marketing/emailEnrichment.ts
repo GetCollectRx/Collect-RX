@@ -18,13 +18,12 @@ interface EnrichmentResult {
 }
 
 async function findEmailFromCommonPatterns(
-  practiceName: string,
   website?: string | null,
 ): Promise<EnrichmentResult | null> {
   if (!website) return null;
 
   // Extract domain from website URL
-  const domainMatch = website.match(/https?:\/\/([^\/]+)/);
+  const domainMatch = website.match(/https?:\/\/([^/]+)/);
   if (!domainMatch) return null;
 
   const domain = domainMatch[1];
@@ -121,7 +120,7 @@ export async function enrichProspectEmail(
 
   // Strategy 1: Pattern-based from website
   if (prospect.website) {
-    result = await findEmailFromCommonPatterns(prospect.practiceName, prospect.website);
+    result = await findEmailFromCommonPatterns(prospect.website);
     if (result && result.confidence === 'high') {
       await prisma.prospect.update({
         where: { id: prospect.id },
@@ -143,7 +142,7 @@ export async function enrichProspectEmail(
 
   // Strategy 3: Use best guess from patterns
   if (prospect.website) {
-    result = await findEmailFromCommonPatterns(prospect.practiceName, prospect.website);
+    result = await findEmailFromCommonPatterns(prospect.website);
     if (result) {
       // Store enriched email but mark as low confidence for follow-up
       await prisma.prospect.update({

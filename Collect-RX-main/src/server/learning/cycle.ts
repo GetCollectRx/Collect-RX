@@ -139,9 +139,8 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
     const smsSent = await sendLearningCycleSms(summary);
 
     // Run email scheduler (prospect outreach)
-    const emailSummary = await runEmailScheduler(prisma).catch((err) => {
+    await runEmailScheduler(prisma).catch((err) => {
       console.error('[learning] email scheduler error:', err);
-      return { totalProcessed: 0, initialEmailsSent: 0, followUpEmailsSent: 0, failed: 0, skipped: 1, results: [] };
     });
 
     // Send comprehensive notifications (email, Slack)

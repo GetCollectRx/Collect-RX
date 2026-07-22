@@ -11,7 +11,7 @@
  * - Audit trail: all sends + bounces logged to EmailCampaignEvent
  */
 
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { logLine } from '../observability/logger.js';
 
 /**
@@ -136,10 +136,7 @@ export function renderTemplate(
  * Build CASL-compliant unsubscribe footer HTML.
  * Includes: list-unsubscribe header hint, mailing address, unsubscribe link.
  */
-function buildCaslFooter(
-  prospectEmail: string,
-  unsubscribeLink?: string,
-): string {
+function buildCaslFooter(unsubscribeLink?: string): string {
   const mailingAddress = getMailingAddress();
   const footer = `
     <hr style="border: none; border-top: 1px solid #ccc; margin: 2em 0;">
@@ -157,7 +154,7 @@ function buildCaslFooter(
 /**
  * Validate email address format.
  */
-function isValidEmail(email: string | null | undefined): boolean {
+function isValidEmail(email: string | null | undefined): email is string {
   if (!email) return false;
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email) && email.length <= 254;
@@ -284,7 +281,7 @@ export async function sendCampaignEmail(
 
     // Build CASL footer
     const unsubscribeLink = mergeData.UnsubscribeLink;
-    const caslFooter = buildCaslFooter(prospect.email, unsubscribeLink);
+    const caslFooter = buildCaslFooter(unsubscribeLink);
 
     // Add footer to HTML body
     const htmlBody = rendered.htmlBody + caslFooter;
@@ -325,11 +322,12 @@ export async function sendCampaignEmail(
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
       }),
-      // Custom args for webhook processing
+      // Custom args for webhook processing — snake_case is the webhook
+      // contract (handleSendgridEventWebhook reads ev.prospect_id).
       customArgs: {
-        prospectId,
-        campaignId: campaignId || prospect.campaign?.id || 'unknown',
-        templateId: template.id,
+        prospect_id: prospectId,
+        campaign_id: campaignId || prospect.campaign?.id || 'unknown',
+        template_id: template.id,
       },
     };
 
@@ -445,7 +443,7 @@ export async function markEmailEvent(
         prospectId,
         eventType,
         emailSubject: metadata?.subject,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        metadata: metadata ? (metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
     });
 
@@ -576,7 +574,7 @@ export async function getProspectEngagement(
  * For production, prefer webhook events (real-time) over periodic pulls.
  */
 export async function syncSendGridSuppressions(
-  db: PrismaClient,
+  _db: PrismaClient,
 ): Promise<{ synced: number; failed: number }> {
   const apiKey = process.env.SENDGRID_API_KEY?.trim();
   if (!apiKey) {
