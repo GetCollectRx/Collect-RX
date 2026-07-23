@@ -13,7 +13,7 @@ const BRAND = {
   border: 'rgba(31,31,31,0.10)',
 } as const;
 
-const LOGO_URL = process.env.MARKETING_LOGO_URL || 'https://www.collectrx.ca/og-image.png';
+const LOGO_URL = process.env.MARKETING_LOGO_URL || 'https://www.collectrx.ca/collectrx-mark.png';
 const SITE_URL = process.env.MARKETING_SITE_URL || 'https://www.collectrx.ca';
 const MAILING_ADDRESS = process.env.MARKETING_MAILING_ADDRESS || 'PO Box [TBD], Toronto, ON';
 
