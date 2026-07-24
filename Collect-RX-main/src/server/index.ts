@@ -55,6 +55,7 @@ import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
@@ -148,6 +149,7 @@ import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
+app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // Without these, an uncaught error anywhere (e.g. a background async path) kills the
@@ -449,7 +451,19 @@ function getSpaIndexHtml(): string {
 }
 
 app.use(createResourceStaticMiddleware(distPath));
-app.use(express.static(distPath));
+app.use(
+  express.static(distPath, {
+    setHeaders(res, filePath) {
+      // Vite emits content-hashed asset filenames, so a new build changes the
+      // URL — those can be cached indefinitely. index.html (served by the SPA
+      // catch-all below, not here) must never be long-cached or new deploys
+      // wouldn't be picked up.
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }),
+);
 app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ success: false, error: 'Not found' });

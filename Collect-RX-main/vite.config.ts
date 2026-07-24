@@ -24,6 +24,17 @@ export default defineConfig(({ mode }) => {
     base: isDesktopBuild ? './' : '/',
     build: {
       target: 'es2022',
+      rollupOptions: {
+        output: {
+          // Keep all third-party code in one vendor chunk. Splitting React into
+          // its own chunk breaks libraries that call React.createContext at eval
+          // time (cross-chunk init order leaves React undefined). Route-level
+          // lazy() already carries the per-page code-splitting win.
+          manualChunks(id) {
+            if (id.includes('node_modules')) return 'vendor'
+          },
+        },
+      },
     },
     resolve: {
       dedupe: ['react', 'react-dom'],

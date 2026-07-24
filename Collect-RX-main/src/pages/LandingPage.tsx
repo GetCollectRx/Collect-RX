@@ -1950,7 +1950,7 @@ export default function LandingPage() {
               {MARKETING_NAV_TABS.map(tab => (
                 <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
               ))}
-              <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
+              <Link to={MARKETING_PATHS.download} className="lp-nav-link">Download</Link>
             </div>
             <div className="lp-nav-right">
               <button
@@ -1980,7 +1980,7 @@ export default function LandingPage() {
               {tab.label}
             </Link>
           ))}
-          <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+          <Link to={MARKETING_PATHS.download} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Download</Link>
           <Link
             to={MARKETING_PATHS.signup}
             className="lp-btn-primary"
@@ -2349,6 +2349,7 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
                   <Link to={MARKETING_PATHS.pricing}>Pricing</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
+                  <Link to={MARKETING_PATHS.download}>Download desktop app</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
