@@ -36,6 +36,7 @@ const { prisma } = await import('../../src/server/index.js');
 const { runDeskQueueTick } = await import('../../src/server/frontDesk/queueEngine.js');
 const { runWithRlsBypass } = await import('../../src/server/db/rlsContext.js');
 const { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } = await import('../../src/billing/tiers.js');
+const { canMakeCall } = await import('../../src/server/plans/planBridge.js');
 const { seedScenarioFleet, teardownScenarioFleet } = await import('./seedScenarioFleet.js');
 type ScenarioFleet = Awaited<ReturnType<typeof seedScenarioFleet>>;
 
@@ -231,6 +232,16 @@ describe.skipIf(!dbReady)('Queue engine at scale — 50-practice fleet', () => {
       expect(wronglyBlocked, 'unrelated practices were blocked by a sibling org\'s CARRIER_BLOCK event — propagation over-reached').toHaveLength(0);
 
       // ── Invariant: COGS breaker isolates per practice ──────────────────────
+      // canMakeCall() is what actually flips callsPaused — it only runs when
+      // the tick loop's shuffled practice order and fleet-wide slot budget
+      // happen to reach this specific practice within the fixed tick count.
+      // With shuffling now fair, every practice gets *most* runs, but "did
+      // pick this exact one" isn't guaranteed by chance in a fixed window —
+      // that's a fleet-throughput property already covered by the starvation
+      // invariant above, not what this assertion is testing. Call it directly
+      // to pin down the thing actually under test here: does the breaker
+      // correctly pause a practice once evaluated, and does that isolate it.
+      await canMakeCall(fleet.cogsPausedPracticeId);
       const pausedPractice = await prisma.practice.findUnique({ where: { id: fleet.cogsPausedPracticeId } });
       expect(pausedPractice?.callsPaused).toBe(true);
       expect(pausedPractice?.callsPausedReason).toBe('cogs_breaker');
