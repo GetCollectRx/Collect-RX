@@ -90,9 +90,91 @@ const DEFER_DISPATCH_FAILURE_BASE_MS = 15 * 60 * 1000; // Vapi error — retry a
 const DEFER_DISPATCH_FAILURE_JITTER_MS = 5 * 60 * 1000;
 const DEFER_CARRIER_CONCURRENCY_BASE_MS = 3 * 60 * 1000; // just waiting on a fleet-wide slot, not a failure
 const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 2 * 60 * 1000;
+// Shorter than the per-carrier ceiling's window: a single carrier line stays
+// busy for one call's whole duration, but the fleet-wide slot pool is shared
+// across every carrier and every practice — any one of many concurrent calls
+// completing anywhere frees a slot, so it churns much faster and is worth
+// rechecking sooner.
+const DEFER_VAPI_CAPACITY_BASE_MS = 30 * 1000;
+const DEFER_VAPI_CAPACITY_JITTER_MS = 30 * 1000;
 
 function withJitter(baseMs: number, jitterMs: number): number {
   return baseMs + Math.floor(Math.random() * jitterMs);
+}
+
+// A practice skipped because the fleet-wide Vapi slot budget is exhausted
+// this tick would otherwise sit PENDING with no dispatchDeferralCode — same
+// failure mode as the per-carrier concurrency ceiling, but for the whole
+// fleet. One bulk update per skipped practice (not a per-candidate guard
+// pass) since we already know the outcome: there's no slot regardless of
+// what the candidate is — EXCEPT a candidate whose carrier is already under
+// an active CARRIER_BLOCK (this practice's own, or inherited from an org
+// sibling): that one must still resolve to BLOCKED once actually evaluated,
+// not get mislabeled as merely waiting on capacity, so those are excluded
+// here and left for validateDispatch to catch on this practice's next turn.
+async function deferForFleetCapacity(prisma: PrismaClient, practiceIds: string[]): Promise<void> {
+  if (practiceIds.length === 0) return;
+
+  const [ownBlocks, orgMemberships] = await Promise.all([
+    prisma.carrierBlockEvent.findMany({
+      where: { resumedAt: null },
+      select: { practiceId: true, carrierId: true },
+    }),
+    prisma.organizationPractice.findMany({
+      where: { practiceId: { in: practiceIds } },
+      select: { practiceId: true, organizationId: true },
+    }),
+  ]);
+
+  const blockedPairs = new Set(ownBlocks.map((b) => `${b.practiceId}:${b.carrierId}`));
+  if (orgMemberships.length > 0) {
+    const orgIds = [...new Set(orgMemberships.map((m) => m.organizationId))];
+    const allOrgMemberships = await prisma.organizationPractice.findMany({
+      where: { organizationId: { in: orgIds } },
+      select: { practiceId: true, organizationId: true },
+    });
+    const orgOfPractice = new Map(orgMemberships.map((m) => [m.practiceId, m.organizationId]));
+    const practicesByOrg = new Map<string, string[]>();
+    for (const m of allOrgMemberships) {
+      const list = practicesByOrg.get(m.organizationId) ?? [];
+      list.push(m.practiceId);
+      practicesByOrg.set(m.organizationId, list);
+    }
+    for (const practiceId of practiceIds) {
+      const orgId = orgOfPractice.get(practiceId);
+      if (!orgId) continue;
+      const siblingIds = practicesByOrg.get(orgId) ?? [];
+      for (const block of ownBlocks) {
+        if (siblingIds.includes(block.practiceId)) {
+          blockedPairs.add(`${practiceId}:${block.carrierId}`);
+        }
+      }
+    }
+  }
+
+  const candidates = await prisma.callQueue.findMany({
+    where: {
+      practiceId: { in: practiceIds },
+      status: 'PENDING',
+      scheduledFor: { lte: new Date() },
+      dispatchDeferralCode: null,
+    },
+    select: { id: true, practiceId: true, claim: { select: { carrierId: true } } },
+  });
+  const idsToDefer = candidates
+    .filter((c) => !blockedPairs.has(`${c.practiceId}:${c.claim.carrierId}`))
+    .map((c) => c.id);
+  if (idsToDefer.length === 0) return;
+
+  await prisma.callQueue.updateMany({
+    where: { id: { in: idsToDefer } },
+    data: {
+      scheduledFor: new Date(Date.now() + withJitter(DEFER_VAPI_CAPACITY_BASE_MS, DEFER_VAPI_CAPACITY_JITTER_MS)),
+      dispatchDeferralCode: 'VAPI_FLEET_CONCURRENCY_LIMIT',
+      dispatchDeferralNextAction: 'Waiting for an open fleet-wide Vapi calling slot; retries automatically.',
+      dispatchDeferredAt: new Date(),
+    },
+  });
 }
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
@@ -290,11 +372,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       activeCallsGlobal,
       slotBudget: vapiSlotBudget(),
     });
+    await runWithRlsBypass(() => deferForFleetCapacity(prisma, practices.map((p) => p.id)));
     return;
   }
 
-  for (const { id: practiceId } of practices) {
-    if (slotsRemaining <= 0) return;
+  // Postgres returns findMany rows in a stable order absent an ORDER BY —
+  // without shuffling, the same practices early in that order would win the
+  // fleet-wide Vapi slot budget every single tick, starving everyone after
+  // them whenever the fleet is at or above budget. Shuffling rotates who
+  // gets first crack at scarce slots tick over tick.
+  const shuffledPractices = [...practices];
+  for (let i = shuffledPractices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledPractices[i], shuffledPractices[j]] = [shuffledPractices[j], shuffledPractices[i]];
+  }
+
+  for (let i = 0; i < shuffledPractices.length; i++) {
+    const { id: practiceId } = shuffledPractices[i];
+    if (slotsRemaining <= 0) {
+      await runWithRlsBypass(() =>
+        deferForFleetCapacity(prisma, shuffledPractices.slice(i).map((p) => p.id)),
+      );
+      return;
+    }
     // One practice's failure must never starve the practices after it in the
     // loop — isolate each practice's tick.
     try {
@@ -414,15 +514,28 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     // COGS breaker throttle: spend the remaining budget on the claims worth
-    // the most, not on whatever is next in line.
+    // the most, not on whatever is next in line. The claims filtered out here
+    // still need a recorded reason — otherwise they sit PENDING with no
+    // dispatchDeferralCode indefinitely (as long as the practice stays
+    // throttled), indistinguishable from the engine never having reached them.
     const dispatchable = planGate.essentialOnly
       ? candidates.filter((c) => c.priority === 'HIGH' || c.priority === 'URGENT')
       : candidates;
     if (planGate.essentialOnly && dispatchable.length < candidates.length) {
+      const throttledOut = candidates.filter((c) => c.priority !== 'HIGH' && c.priority !== 'URGENT');
       logger.warn('[deskQueueEngine] COGS throttle active — dispatching high-priority claims only', {
         practiceId,
-        skipped: candidates.length - dispatchable.length,
+        skipped: throttledOut.length,
       });
+      for (const entry of throttledOut) {
+        await deferQueueEntry(
+          prisma,
+          entry.id,
+          DEFER_STAFF_ACTION_MS,
+          'COGS_THROTTLE_LOW_PRIORITY',
+          'Delivery cost is elevated this billing period — only HIGH/URGENT claims dispatch until it eases or the period resets.',
+        );
+      }
     }
 
     for (const next of dispatchable) {
