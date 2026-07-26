@@ -17,8 +17,22 @@ function parseCookie(header: string | undefined, name: string): string | null {
   return null;
 }
 
+const WS_PATH = '/ws/desk';
+
 export function attachDeskWebSocket(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws/desk' });
+  // noServer + a manually path-scoped 'upgrade' listener, not the {server, path}
+  // shortcut, ws's own handleUpgrade() calls abortHandshake(socket, 400) for any
+  // request whose path doesn't match, on every upgrade the server gets, not just
+  // ones aimed at this instance. That silently breaks any other WebSocketServer
+  // sharing this same http.Server (see src/webhooks/holdParkAudioStream.ts).
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req: IncomingMessage, socket, head) => {
+    if (req.url !== WS_PATH) return;
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const token =
