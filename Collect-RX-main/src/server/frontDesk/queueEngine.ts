@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
@@ -80,7 +80,20 @@ const CANDIDATE_BATCH_SIZE = 10;
 const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is automatic
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
-const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+
+// Retry-after-failure/congestion delays are jittered rather than fixed:
+// every claim that failed around the same moment (a carrier line down, a
+// carrier saturated at its concurrency ceiling) would otherwise re-dial in
+// lockstep on the same clock — a synchronized retry burst reads as
+// coordinated automation to carrier IVR security, not organic backoff.
+const DEFER_DISPATCH_FAILURE_BASE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+const DEFER_DISPATCH_FAILURE_JITTER_MS = 5 * 60 * 1000;
+const DEFER_CARRIER_CONCURRENCY_BASE_MS = 3 * 60 * 1000; // just waiting on a fleet-wide slot, not a failure
+const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 2 * 60 * 1000;
+
+function withJitter(baseMs: number, jitterMs: number): number {
+  return baseMs + Math.floor(Math.random() * jitterMs);
+}
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
@@ -134,6 +147,7 @@ async function settleBlockedCandidate(
     };
   },
   guardCode: string | undefined,
+  guardReason: string | undefined,
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
@@ -180,13 +194,19 @@ async function settleBlockedCandidate(
       return 'skip';
     case 'CARRIER_BLOCK':
       // Mirrors carrierBlockService for entries queued after the block landed.
+      // guardReason carries the specific cause (this practice's own block, or
+      // a sibling organization location's block) — surface it verbatim rather
+      // than a generic message, since a practice that never tripped its own
+      // block would otherwise see an unexplained pause.
       await prisma.$transaction([
         prisma.callQueue.update({
           where: { id: entry.id },
           data: {
             status: 'BLOCKED',
             dispatchDeferralCode: 'CARRIER_BLOCK',
-            dispatchDeferralNextAction: 'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
+            dispatchDeferralNextAction:
+              guardReason ??
+              'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
             dispatchDeferredAt: new Date(),
           },
         }),
@@ -210,6 +230,18 @@ async function settleBlockedCandidate(
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
       );
       return 'skip';
+    case 'CARRIER_CONCURRENCY_LIMIT':
+      // Fleet-wide, not practice-wide — a different candidate in this same
+      // batch may target a carrier with room, so skip this one claim rather
+      // than stopping the practice's whole tick.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        withJitter(DEFER_CARRIER_CONCURRENCY_BASE_MS, DEFER_CARRIER_CONCURRENCY_JITTER_MS),
+        'CARRIER_CONCURRENCY_LIMIT',
+        'Waiting for an open fleet-wide calling slot to this carrier; retries automatically.',
+      );
+      return 'skip';
     default:
       // RECOVERY_GATE, CARRIER_NOT_AUTHORIZED, and any un-coded rejection:
       // state must change (staff action, route change) before retry makes sense.
@@ -227,12 +259,30 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
-  const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
+  const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
       prisma.practice.findMany({ select: { id: true } }),
       prisma.callAttempt.count({ where: { completedAt: null } }),
+      // Fleet-wide per-carrier snapshot for the concurrency guard below. Must
+      // be gathered here, outside any single practice's RLS scope — a query
+      // run inside runWithPracticeRls would silently narrow to that one
+      // practice's calls under enforced RLS, defeating a fleet-wide ceiling.
+      prisma.callAttempt.findMany({
+        where: { completedAt: null },
+        select: { claim: { select: { carrierId: true } } },
+      }),
     ]),
   );
+
+  // Mutated in-memory as calls dispatch through this tick so two practices
+  // targeting the same carrier in the same pass don't both slip under the
+  // ceiling before either write lands.
+  const carrierActiveCounts = new Map<CarrierId, number>();
+  for (const attempt of activeAttemptCarriers) {
+    const carrierId = attempt.claim?.carrierId;
+    if (!carrierId) continue;
+    carrierActiveCounts.set(carrierId, (carrierActiveCounts.get(carrierId) ?? 0) + 1);
+  }
 
   let slotsRemaining = vapiSlotBudget() - activeCallsGlobal;
   if (slotsRemaining <= 0) {
@@ -385,6 +435,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       attemptsSoFar,
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
+      carrierActiveCounts,
     });
 
     if (!guard.allowed) {
@@ -393,7 +444,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         code: guard.code,
         reason: guard.reason,
       });
-      const disposition = await settleBlockedCandidate(prisma, next, guard.code);
+      const disposition = await settleBlockedCandidate(prisma, next, guard.code, guard.reason);
       if (disposition === 'stop') return;
       continue;
     }
@@ -577,13 +628,14 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       await deferQueueEntry(
         prisma,
         next.id,
-        DEFER_DISPATCH_FAILURE_MS,
+        withJitter(DEFER_DISPATCH_FAILURE_BASE_MS, DEFER_DISPATCH_FAILURE_JITTER_MS),
         'TRANSIENT_DISPATCH_FAILURE',
         'The system will retry during the next scheduled dispatch window.',
       );
       continue;
     }
     slotsRemaining -= 1;
+    carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
       const attempt = await prisma.callAttempt.create({
