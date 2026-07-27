@@ -9,6 +9,7 @@ interface StaffUser {
   displayName: string
   role: PracticeRole
   isActive: boolean
+  providerId?: string | null
   tokenExpiresAt?: string | null
   createdAt: string
 }
@@ -68,6 +69,24 @@ export default function UsersAdmin() {
     finally { setBusy(null) }
   }
 
+  async function handleEditProviderId(id: string, currentValue: string | null | undefined) {
+    const next = window.prompt('Provider ID (used to scope this associate dentist\'s queries):', currentValue ?? '')
+    if (next === null) return
+    const trimmed = next.trim()
+    if (!trimmed) { setError('Provider ID cannot be empty'); return }
+    setBusy(id)
+    try {
+      const res = await apiFetch(`/api/auth/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerId: trimmed }),
+      })
+      if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
+      await load()
+    } catch (e) { setError((e as Error).message) }
+    finally { setBusy(null) }
+  }
+
   async function handleReactivate(id: string) {
     setBusy(id)
     try {
@@ -85,6 +104,10 @@ export default function UsersAdmin() {
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
+    if (form.role === 'associate_dentist' && !form.providerId.trim()) {
+      setFormError('Provider ID is required for an associate dentist')
+      return
+    }
     setBusy('new')
     try {
       const res = await apiFetch('/api/auth/invite', {
@@ -93,6 +116,7 @@ export default function UsersAdmin() {
         body: JSON.stringify({
           email: form.email,
           role: form.role,
+          ...(form.role === 'associate_dentist' ? { providerId: form.providerId.trim() } : {}),
         }),
       })
       const body = await res.json() as { error?: string; emailSent?: boolean; token?: string }
@@ -160,6 +184,15 @@ export default function UsersAdmin() {
                       className="text-xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400 disabled:opacity-50 transition-colors"
                     >
                       {busy === u.id ? '…' : 'Renew 90d'}
+                    </button>
+                  )}
+                  {u.role === 'associate_dentist' && (
+                    <button
+                      onClick={() => void handleEditProviderId(u.id, u.providerId)}
+                      disabled={busy === u.id}
+                      className={`text-xs disabled:opacity-50 transition-colors ${u.providerId ? 'text-gray-400 hover:text-crx-500 dark:hover:text-crx-400' : 'text-amber-600 hover:text-amber-700 dark:text-amber-400 font-medium'}`}
+                    >
+                      {busy === u.id ? '…' : u.providerId ? `Provider: ${u.providerId}` : 'Set provider ID'}
                     </button>
                   )}
                   {u.id !== sessionUser?.id && (
@@ -258,6 +291,17 @@ export default function UsersAdmin() {
                   ))}
                 </select>
               </div>
+              {form.role === 'associate_dentist' && (
+                <div>
+                  <label htmlFor="au-provider-id" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Provider ID</label>
+                  <input
+                    id="au-provider-id" type="text" required value={form.providerId}
+                    onChange={e => setForm(p => ({ ...p, providerId: e.target.value }))}
+                    placeholder="Provider ID used by your PMS"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-crx-500/30 focus:border-crx-500 transition-colors"
+                  />
+                </div>
+              )}
               {formError && (
                 <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">{formError}</p>
               )}

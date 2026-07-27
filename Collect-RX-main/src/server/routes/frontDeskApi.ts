@@ -488,6 +488,10 @@ router.get('/:practiceId/ar-inbox', async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.AR_COMMAND_CENTER))) {
+      return res.status(403).json({ success: false, error: 'AR command center is paused for this practice' });
+    }
     const { buildArCommandCenterInbox } = await import('../arCommandCenter/inboxService.js');
     const data = await buildArCommandCenterInbox(prisma, practiceId);
     return res.json({ success: true, data });
@@ -500,6 +504,10 @@ router.get('/:practiceId/managed-recovery', async (req: Request, res: Response) 
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.AR_COMMAND_CENTER))) {
+      return res.status(403).json({ success: false, error: 'AR command center is paused for this practice' });
+    }
     const { listManagedRecoveryQueue } = await import('../arCommandCenter/inboxService.js');
     const data = await listManagedRecoveryQueue(prisma, practiceId);
     return res.json({ success: true, data });

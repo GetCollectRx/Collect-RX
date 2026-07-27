@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePlatformAdmin } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
+import { CSV_AR_FEATURES, setCsvArFeaturePaused, type CsvArFeature } from '../featureFlags/csvArFeatures.js';
 import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
@@ -127,6 +128,34 @@ export function createPlatformPersonaAdminRouter(): Router {
     await prisma.platformAdminPracticeGrant.deleteMany({
       where: { id: req.params.grantId, practiceId: req.params.practiceId },
     });
+    return res.json({ success: true });
+  });
+
+  /** Global (practiceId: null) state of every staged CSV-AR rollout flag — the kill switch for csv_ar.* features. */
+  router.get('/feature-flags', async (_req, res) => {
+    const features = Object.values(CSV_AR_FEATURES);
+    const flags = await prisma.featureFlag.findMany({ where: { feature: { in: features }, practiceId: null } });
+    const byFeature = new Map(flags.map((f) => [f.feature, f]));
+    const data = features.map((feature) => {
+      const row = byFeature.get(feature);
+      return {
+        feature,
+        paused: row?.paused ?? false,
+        pauseReason: row?.pauseReason ?? null,
+        pausedAt: row?.pausedAt?.toISOString() ?? null,
+      };
+    });
+    return res.json({ success: true, data });
+  });
+
+  router.patch('/feature-flags/:feature', async (req, res) => {
+    const feature = req.params.feature as CsvArFeature;
+    if (!Object.values(CSV_AR_FEATURES).includes(feature)) {
+      return res.status(404).json({ success: false, error: `Unknown feature "${feature}"` });
+    }
+    const paused = Boolean(req.body?.paused);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    await setCsvArFeaturePaused(prisma, null, feature, paused, reason);
     return res.json({ success: true });
   });
 

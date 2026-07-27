@@ -8,7 +8,13 @@ import { apiClientErrorMessage } from '../apiErrorMessage.js';
 import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
 import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
-import { groupPmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
+import {
+  groupPmsImportBodySchema,
+  addOrgPracticeBodySchema,
+  updateOrgMemberBodySchema,
+  formatZodError,
+} from '../validation/zodSchemas.js';
+import { unusedLegacyPasswordHash, createOrgPractice } from '../organizations/practiceProvisioning.js';
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.
@@ -27,6 +33,11 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     try {
       const userId = req.auth?.userId;
       if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const { CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      const dsoConsoleFlag = await prisma.featureFlag.findFirst({
+        where: { feature: CSV_AR_FEATURES.DSO_CONSOLE, practiceId: null },
+      });
+      if (dsoConsoleFlag?.paused) return res.status(403).json({ error: 'DSO console is currently paused' });
       const memberships = await prisma.organizationMember.findMany({
         where: { userId },
         select: { organizationId: true },
@@ -82,6 +93,11 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     try {
       const userId = req.auth?.userId;
       if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const { CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      const carrierIntelFlag = await prisma.featureFlag.findFirst({
+        where: { feature: CSV_AR_FEATURES.CARRIER_INTELLIGENCE, practiceId: null },
+      });
+      if (carrierIntelFlag?.paused) return res.status(403).json({ error: 'Carrier intelligence is currently paused' });
       const { listProposedCarrierLessons } = await import('../learning/practiceCarrierFeed.js');
       const carrierId = typeof req.query.carrierId === 'string' ? req.query.carrierId : undefined;
       const data = await listProposedCarrierLessons(prisma, carrierId as import('@prisma/client').CarrierId | undefined);
@@ -237,6 +253,11 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     try {
       const userId = req.auth?.userId;
       if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const { CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      const complianceFlag = await prisma.featureFlag.findFirst({
+        where: { feature: CSV_AR_FEATURES.COMPLIANCE_WORKSPACE, practiceId: null },
+      });
+      if (complianceFlag?.paused) return res.status(403).json({ error: 'Compliance workspace is currently paused' });
       const memberships = await prisma.organizationMember.findMany({
         where: { userId },
         select: { organizationId: true },
@@ -341,6 +362,150 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('group pms-import error:', e);
       return res.status(500).json({ error: 'Batch import failed' });
+    }
+  });
+
+  /**
+   * POST /api/group/practices
+   * Add a location to the caller's existing organization — the self-serve
+   * counterpart to POST /api/admin/organizations for a DSO that's already
+   * onboarded and is opening a new location.
+   */
+  r.post('/practices', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const parsed = addOrgPracticeBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+
+      const passwordHash = await unusedLegacyPasswordHash();
+      const practice = await prisma.$transaction((tx) => createOrgPractice(tx, organizationId, { ...parsed.data, passwordHash }));
+
+      return res.status(201).json({ practice: { id: practice.id, name: practice.name, timezone: practice.timezone } });
+    } catch (e) {
+      console.error('group add-practice error:', e);
+      return res.status(500).json({ error: 'Failed to add location' });
+    }
+  });
+
+  /** Number of org_admin members in an organization — used to guard against locking the org out of admin access. */
+  async function countOrgAdmins(organizationId: string): Promise<number> {
+    return prisma.organizationMember.count({ where: { organizationId, role: 'org_admin' } });
+  }
+
+  /**
+   * GET /api/group/members
+   * List the caller's organization membership roster.
+   */
+  r.get('/members', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const members = await prisma.organizationMember.findMany({
+        where: { organizationId },
+        select: {
+          userId: true,
+          role: true,
+          createdAt: true,
+          user: { select: { email: true, displayName: true, isActive: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      return res.json({
+        members: members.map((m) => ({
+          userId: m.userId,
+          role: m.role,
+          email: m.user.email,
+          displayName: m.user.displayName,
+          isActive: m.user.isActive,
+          joinedAt: m.createdAt,
+        })),
+      });
+    } catch (e) {
+      console.error('group members list error:', e);
+      return res.status(500).json({ error: 'Failed to load organization members' });
+    }
+  });
+
+  /**
+   * PATCH /api/group/members/:userId
+   * Promote/demote a co-admin within the caller's organization. Blocks
+   * self-service (a member cannot change their own role) and blocks
+   * demoting the org's last remaining admin, which would lock the
+   * organization out of admin access entirely.
+   */
+  r.patch('/members/:userId', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const targetUserId = req.params.userId;
+      if (targetUserId === userId) return res.status(400).json({ error: 'Cannot change your own membership role' });
+
+      const parsed = updateOrgMemberBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+
+      const membership = await prisma.organizationMember.findFirst({ where: { organizationId, userId: targetUserId } });
+      if (!membership) return res.status(404).json({ error: 'Member not found in your organization' });
+
+      if (membership.role === 'org_admin' && parsed.data.role === 'org_member' && (await countOrgAdmins(organizationId)) <= 1) {
+        return res.status(400).json({ error: 'Organization must have at least one admin' });
+      }
+
+      await prisma.organizationMember.update({
+        where: { id: membership.id },
+        data: { role: parsed.data.role },
+      });
+
+      return res.json({ userId: targetUserId, role: parsed.data.role });
+    } catch (e) {
+      console.error('group member update error:', e);
+      return res.status(500).json({ error: 'Failed to update member' });
+    }
+  });
+
+  /**
+   * DELETE /api/group/members/:userId
+   * Remove a member from the caller's organization. Same self-service and
+   * last-admin guards as the role update above. A removed group_admin's
+   * PracticeRole is downgraded to practice_owner on their home practice so
+   * they don't retain an org-tier role with no organization behind it.
+   */
+  r.delete('/members/:userId', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const targetUserId = req.params.userId;
+      if (targetUserId === userId) return res.status(400).json({ error: 'Cannot remove your own membership' });
+
+      const membership = await prisma.organizationMember.findFirst({ where: { organizationId, userId: targetUserId } });
+      if (!membership) return res.status(404).json({ error: 'Member not found in your organization' });
+
+      if (membership.role === 'org_admin' && (await countOrgAdmins(organizationId)) <= 1) {
+        return res.status(400).json({ error: 'Organization must have at least one admin' });
+      }
+
+      await prisma.$transaction([
+        prisma.organizationMember.delete({ where: { id: membership.id } }),
+        prisma.user.updateMany({ where: { id: targetUserId, role: 'group_admin' }, data: { role: 'practice_owner' } }),
+      ]);
+
+      return res.json({ removed: true });
+    } catch (e) {
+      console.error('group member remove error:', e);
+      return res.status(500).json({ error: 'Failed to remove member' });
     }
   });
 

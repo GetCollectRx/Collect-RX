@@ -37,9 +37,11 @@ import {
   registerBodySchema,
   inviteBodySchema,
   acceptInviteBodySchema,
+  convertToOrganizationBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
+import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
@@ -844,20 +846,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
         const createdPractices = [];
         for (const p of allPractices) {
-          const created = await tx.practice.create({
-            data: {
-              name: p.practiceName,
-              passwordHash,
-              timezone: p.timezone ?? 'America/Toronto',
-              billingTier: 'trial',
-              trialEndsAt: trialEndDate(),
-            },
-          });
-          if (organization) {
-            await tx.organizationPractice.create({
-              data: { organizationId: organization.id, practiceId: created.id },
-            });
-          }
+          const created = organization
+            ? await createOrgPractice(tx, organization.id, { practiceName: p.practiceName, timezone: p.timezone, passwordHash })
+            : await tx.practice.create({
+                data: {
+                  name: p.practiceName,
+                  passwordHash,
+                  timezone: p.timezone ?? 'America/Toronto',
+                  billingTier: 'trial',
+                  trialEndsAt: trialEndDate(),
+                },
+              });
           createdPractices.push(created);
         }
 
@@ -903,6 +902,45 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     }
   });
 
+  /**
+   * POST /api/auth/convert-to-organization — self-serve upgrade for a
+   * standalone practice_owner who wants to become a DSO owner, without
+   * re-registering. Links their existing practice into a new Organization
+   * and upgrades their PracticeRole to group_admin.
+   */
+  r.post('/convert-to-organization', authenticate, authorizeRole('practice_owner'), async (req: Request, res: Response) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      if (!actorAuth) return res.status(403).json({ error: 'Practice owner session required' });
+
+      const existingMembership = await prisma.organizationMember.findFirst({ where: { userId: actorAuth.userId } });
+      if (existingMembership) return res.status(400).json({ error: 'You are already part of an organization' });
+
+      const parsed = convertToOrganizationBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+
+      const organizationId = await prisma.$transaction(async (tx) => {
+        const organization = await tx.organization.create({ data: { name: parsed.data.organizationName } });
+        await tx.organizationPractice.create({
+          data: { organizationId: organization.id, practiceId: actorAuth.practiceId },
+        });
+        await tx.organizationMember.create({
+          data: { organizationId: organization.id, userId: actorAuth.userId, role: 'org_admin' },
+        });
+        await tx.user.update({ where: { id: actorAuth.userId }, data: { role: 'group_admin' } });
+        return organization.id;
+      });
+
+      setUserAuthCookie(res, { userId: actorAuth.userId, practiceId: actorAuth.practiceId, role: 'group_admin' });
+
+      return res.status(201).json({ organizationId, role: 'group_admin' });
+    } catch (e) {
+      console.error('convert-to-organization error:', e);
+      return res.status(500).json({ error: 'Failed to create organization' });
+    }
+  });
+
   // ── Staff invites ─────────────────────────────────────────────────────────
 
   /** POST /api/auth/invite — send an invite email to a staff member (practice_owner/office_manager) */
@@ -910,11 +948,15 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     try {
       const auth = req.auth!;
       const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
-      const practiceId = actorAuth?.practiceId ?? practiceIdFromRequestHints(req) ?? '';
+      let practiceId = actorAuth?.practiceId ?? practiceIdFromRequestHints(req) ?? '';
 
       const parsed = inviteBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { email, role } = parsed.data;
+      const { email, role, providerId } = parsed.data;
+
+      if (role === 'associate_dentist' && !providerId) {
+        return res.status(400).json({ error: 'providerId is required for associate_dentist role' });
+      }
 
       // A co-admin invite (role === 'group_admin') is a same-level invite that
       // canManageRole's actorLevel > targetLevel rule would otherwise block —
@@ -930,6 +972,20 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         } else if (!canManageRole(actorAuth, role)) {
           return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
         }
+
+        // A group_admin may target a specific sibling practice instead of their
+        // own home practice — validated against their org membership, not just
+        // trusted from the request body (authorized narrow RLS iteration).
+        if (actorAuth.role === 'group_admin' && parsed.data.practiceId && parsed.data.practiceId !== actorAuth.practiceId) {
+          const callerOrgId = await callerAdminOrganizationId(prisma, actorAuth.userId);
+          const belongs = callerOrgId
+            ? await prisma.organizationPractice.findFirst({ where: { organizationId: callerOrgId, practiceId: parsed.data.practiceId } })
+            : null;
+          if (!belongs) {
+            return res.status(403).json({ error: 'That practice is not in your organization' });
+          }
+          practiceId = parsed.data.practiceId;
+        }
       }
 
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -940,7 +996,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
       const invite = await prisma.inviteToken.create({
-        data: { practiceId, email, role: role as import('@prisma/client').PracticeRole, expiresAt, organizationId },
+        data: {
+          practiceId,
+          email,
+          role: role as import('@prisma/client').PracticeRole,
+          expiresAt,
+          organizationId,
+          providerId: providerId ?? null,
+        },
         select: { token: true },
       });
 
@@ -1002,6 +1065,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
             passwordHash,
             displayName,
             role: invite.role,
+            providerId: invite.providerId,
           },
           select: { id: true, email: true, displayName: true, role: true },
         });

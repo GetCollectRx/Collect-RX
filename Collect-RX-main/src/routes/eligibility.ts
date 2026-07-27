@@ -168,6 +168,10 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
 // ---------------------------------------------------------------------------
 router.post('/reconcile', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../server/featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceIdFromSession(req), CSV_AR_FEATURES.EOB_RECONCILIATION))) {
+      return res.status(403).json({ success: false, error: 'EOB reconciliation is paused for this practice' });
+    }
     const body = req.body as ReconcileRequest & { estimate: unknown };
 
     if (!body.estimateId) {

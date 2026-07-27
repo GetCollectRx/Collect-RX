@@ -21,6 +21,7 @@ import PracticeBillingPage   from './pages/PracticeBillingPage'
 import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
 import CanadianExpansion     from './pages/CanadianExpansion'
 import GroupDashboard        from './pages/GroupDashboard'
+import GroupPmsImportPage    from './pages/GroupPmsImportPage'
 import ArCommandCenter       from './pages/ArCommandCenter'
 import InsuranceClaims       from './pages/InsuranceClaims'
 import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
@@ -194,6 +195,7 @@ const AUDITOR_NAV: NavItem[] = [
 
 const GROUP_ADMIN_NAV: NavItem[] = [
   { to: '/group-dashboard', exact: true, label: 'Group overview', icon: 'portfolio' },
+  { to: '/group/pms-import', exact: true, label: 'Batch PMS import', icon: 'workqueue' },
 ]
 
 const BILLING_OPS_NAV: NavItem[] = [
@@ -374,7 +376,6 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Close the mobile drawer whenever the route changes (e.g. after tapping a nav link).
   useEffect(() => {
     onClose()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
   const sidebarClassName = `crx-sidebar${open ? ' crx-sidebar-open' : ''}`
@@ -520,6 +521,7 @@ function AppShell() {
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
           <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
           <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
+          <Route path="/group/pms-import" element={<GroupAdminRoute><GroupPmsImportPage /></GroupAdminRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
         </PlatformDevRouteGuard>

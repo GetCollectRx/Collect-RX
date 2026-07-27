@@ -1,20 +1,11 @@
-import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 import { authenticate } from '../middleware/authenticate.js';
 import { authorizeRole } from '../middleware/authorizeRole.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
-import { trialEndDate } from '../../billing/tiers.js';
 import { createOrganizationBodySchema, formatZodError } from '../validation/zodSchemas.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
-
-const BCRYPT_ROUNDS = 12;
-
-/** Practice.passwordHash is legacy-only (User.passwordHash is what login uses) — never issued to anyone. */
-function unusedLegacyPasswordHash(): Promise<string> {
-  return bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
-}
+import { unusedLegacyPasswordHash, createOrgPractice } from '../organizations/practiceProvisioning.js';
 
 /**
  * Admin-assisted DSO/multi-location onboarding — platform_dev only.
@@ -48,17 +39,10 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
         const createdPractices = [];
         for (let i = 0; i < practices.length; i += 1) {
           const p = practices[i];
-          const practice = await tx.practice.create({
-            data: {
-              name: p.practiceName,
-              timezone: p.timezone ?? 'America/Toronto',
-              passwordHash: legacyPasswordHashes[i],
-              billingTier: 'trial',
-              trialEndsAt: trialEndDate(),
-            },
-          });
-          await tx.organizationPractice.create({
-            data: { organizationId: organization.id, practiceId: practice.id },
+          const practice = await createOrgPractice(tx, organization.id, {
+            practiceName: p.practiceName,
+            timezone: p.timezone,
+            passwordHash: legacyPasswordHashes[i],
           });
           createdPractices.push(practice);
         }

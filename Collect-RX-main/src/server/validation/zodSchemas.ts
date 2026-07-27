@@ -69,6 +69,10 @@ export const registerBodySchema = z.object({
 export const inviteBodySchema = z.object({
   email: z.string().email().toLowerCase(),
   role: z.enum(PRACTICE_ROLES),
+  /** group_admin only: target a specific sibling practice instead of the inviter's own. */
+  practiceId: z.string().uuid().optional(),
+  /** Required when role is associate_dentist — carried onto the User row accept-invite creates. */
+  providerId: z.string().trim().optional(),
 });
 
 export const acceptInviteBodySchema = z.object({
@@ -115,6 +119,22 @@ export const groupPmsImportBodySchema = z.object({
     )
     .min(1, 'at least one practice import is required')
     .max(50, 'batch imports are capped at 50 practices per call'),
+});
+
+/** POST /api/group/practices — add a location to the caller's existing organization. */
+export const addOrgPracticeBodySchema = z.object({
+  practiceName: z.string().trim().min(1).max(200),
+  timezone: z.string().trim().min(1).max(64).optional(),
+});
+
+/** PATCH /api/group/members/:userId — promote/demote within the caller's organization. */
+export const updateOrgMemberBodySchema = z.object({
+  role: z.enum(['org_admin', 'org_member']),
+});
+
+/** POST /api/auth/convert-to-organization — upgrade a standalone practice into an org. */
+export const convertToOrganizationBodySchema = z.object({
+  organizationName: z.string().trim().min(1).max(200),
 });
 
 // ─── Existing schemas (unchanged) ─────────────────────────────────────────────

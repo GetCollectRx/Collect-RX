@@ -536,6 +536,39 @@ export async function confirmOverage(
 }
 
 /**
+ * Org-level equivalent of confirmOverage — resumes the whole pooled org's
+ * calling after an org_admin accepts overage charges from the Group Dashboard.
+ * evaluateOrgCallGate is the only writer of callsPausedReason='overage_pending'
+ * on Organization, so this mirrors confirmOverage's practice-level contract.
+ */
+export async function confirmOrgOverage(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org?.callsPaused || org.callsPausedReason !== 'overage_pending') {
+    return { status: 'not_paused' };
+  }
+  if (org.callsPausedAt) {
+    const expiresAt = org.callsPausedAt.getTime() + OVERAGE.confirmationExpiryHours * 60 * 60 * 1000;
+    if (Date.now() > expiresAt) {
+      return { status: 'expired' };
+    }
+  }
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: {
+      callsPaused: false,
+      callsPausedReason: null,
+      callsPausedAt: null,
+      overageConfirmed: true,
+      overageConfirmedAt: new Date(),
+    },
+  });
+  return { status: 'resumed' };
+}
+
+/**
  * Start a fresh UsagePeriod at billing-cycle renewal (Stripe invoice.paid).
  * Clears any pause that was waiting on this cycle's reset.
  */

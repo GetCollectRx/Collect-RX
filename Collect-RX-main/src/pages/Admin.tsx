@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
@@ -44,7 +44,33 @@ type AuditEntry = {
 }
 
 export default function Admin() {
-  const { practiceId } = usePractice()
+  const { practiceId, role, refreshSession } = usePractice()
+  const navigate = useNavigate()
+  const [orgName, setOrgName] = useState('')
+  const [convertBusy, setConvertBusy] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+
+  async function convertToOrganization(e: React.FormEvent) {
+    e.preventDefault()
+    setConvertError(null)
+    setConvertBusy(true)
+    try {
+      const res = await apiFetch('/api/auth/convert-to-organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationName: orgName }),
+      })
+      const body = await res.json() as { error?: string }
+      if (!res.ok) { setConvertError(body.error ?? 'Failed to create organization'); return }
+      await refreshSession()
+      navigate('/group-dashboard', { replace: true })
+    } catch (e) {
+      setConvertError((e as Error).message)
+    } finally {
+      setConvertBusy(false)
+    }
+  }
+
   const [savingCarriers, setSavingCarriers] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [carriers, setCarriers] = useState<Record<string, CarrierFlags>>(defaultFlags)
@@ -213,6 +239,27 @@ export default function Admin() {
       </div>
 
       {toast && <InlineToast toast={toast} />}
+
+      {role === 'practice_owner' && (
+        <Card>
+          <CardHeader
+            title="Turn this into a multi-location organization"
+            subtitle="Opening more than one location? Convert this practice into the home base of a new organization — you'll become its admin and can add other locations and invite co-admins afterward."
+          />
+          <form onSubmit={convertToOrganization} className="flex items-center gap-2 flex-wrap">
+            <Input
+              placeholder="Organization name"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              required
+            />
+            <Button type="submit" disabled={convertBusy}>
+              {convertBusy ? 'Creating…' : 'Create organization'}
+            </Button>
+          </form>
+          {convertError && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{convertError}</p>}
+        </Card>
+      )}
 
       <OnboardingProgress status={setupStatus} />
 

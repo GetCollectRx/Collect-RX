@@ -50,6 +50,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
+      }
+
       const { ingestCdcpDeniedClaimsToPrisma } = await import('../recovery/cdcpPrismaQueue.js');
       const result = await ingestCdcpDeniedClaimsToPrisma(prisma, practiceId, claims);
 
@@ -71,6 +76,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const practiceId = req.practiceAuth?.practiceId;
       if (!practiceId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
       }
 
       const { listCdcpQueueFromPrisma } = await import('../recovery/cdcpPrismaQueue.js');

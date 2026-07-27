@@ -1763,6 +1763,8 @@ model InviteToken {
   /// accept-invite also creates an OrganizationMember row when this is set.
   organizationId String?       @map("organization_id")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  /// associate_dentist invites only — carried onto the User row accept-invite creates.
+  providerId     String?       @map("provider_id")
 
   @@index([token])
   @@index([practiceId])

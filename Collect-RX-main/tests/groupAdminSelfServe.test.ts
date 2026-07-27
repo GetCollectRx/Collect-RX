@@ -51,6 +51,11 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
   let ownerCookie = '';
   let coAdminUserId: string | undefined;
   let outsidePracticeId: string | undefined;
+  let siblingInviteUserId: string | undefined;
+
+  let convertedUserId: string | undefined;
+  let convertedPracticeId: string | undefined;
+  let convertedOrganizationId: string | undefined;
 
   afterAll(async () => {
     for (const practiceId of practiceIds) {
@@ -59,6 +64,7 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
     }
     if (ownerUserId) await prisma.user.deleteMany({ where: { id: ownerUserId } });
     if (coAdminUserId) await prisma.user.deleteMany({ where: { id: coAdminUserId } });
+    if (siblingInviteUserId) await prisma.user.deleteMany({ where: { id: siblingInviteUserId } });
     if (organizationId) {
       await prisma.organizationMember.deleteMany({ where: { organizationId } });
       await prisma.organizationPractice.deleteMany({ where: { organizationId } });
@@ -66,10 +72,22 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
       await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
     }
     if (practiceIds.length) {
+      // The sibling-practice staff invite is practice-scoped, not org-scoped
+      // (organizationId is null), so it isn't caught by the org-scoped cleanup above.
+      await prisma.inviteToken.deleteMany({ where: { practiceId: { in: practiceIds } } });
       await prisma.practice.deleteMany({ where: { id: { in: practiceIds } } });
     }
     if (outsidePracticeId) {
       await prisma.practice.delete({ where: { id: outsidePracticeId } }).catch(() => undefined);
+    }
+    if (convertedUserId) await prisma.user.deleteMany({ where: { id: convertedUserId } });
+    if (convertedOrganizationId) {
+      await prisma.organizationMember.deleteMany({ where: { organizationId: convertedOrganizationId } });
+      await prisma.organizationPractice.deleteMany({ where: { organizationId: convertedOrganizationId } });
+      await prisma.organization.delete({ where: { id: convertedOrganizationId } }).catch(() => undefined);
+    }
+    if (convertedPracticeId) {
+      await prisma.practice.delete({ where: { id: convertedPracticeId } }).catch(() => undefined);
     }
   });
 
@@ -206,5 +224,129 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
 
     const outsideClaims = await prisma.insuranceClaim.findMany({ where: { practiceId: outsidePractice.id } });
     expect(outsideClaims).toHaveLength(0);
+  });
+
+  it('the org_admin owner adds a third location to the existing organization', async () => {
+    const addRes = await request(app)
+      .post('/api/group/practices')
+      .set('Cookie', ownerCookie)
+      .send({ practiceName: `Fixture Location C ${suffix}` });
+    expect(addRes.status).toBe(201);
+    practiceIds.push(addRes.body.practice.id);
+
+    const me = await request(app).get('/api/auth/me').set('Cookie', ownerCookie);
+    const mePracticeIds = (me.body.practices as Array<{ id: string }>).map((p) => p.id);
+    expect(mePracticeIds).toEqual(expect.arrayContaining(practiceIds));
+    expect(mePracticeIds.length).toBe(3);
+  });
+
+  it('the group_admin owner invites staff to a specific sibling practice, not their own', async () => {
+    const [practiceA, practiceB] = practiceIds;
+    const staffEmail = `sibling-staff-${suffix}@fixture.test`;
+
+    const inviteRes = await request(app)
+      .post('/api/auth/invite')
+      .set('Cookie', ownerCookie)
+      .send({ email: staffEmail, role: 'office_manager', practiceId: practiceB });
+    expect(inviteRes.status).toBe(200);
+
+    const invite = await prisma.inviteToken.findFirstOrThrow({ where: { email: staffEmail } });
+    expect(invite.practiceId).toBe(practiceB);
+    expect(invite.practiceId).not.toBe(practiceA);
+    expect(invite.organizationId).toBeNull();
+
+    const acceptRes = await request(app).post('/api/auth/accept-invite').send({
+      token: invite.token,
+      displayName: 'Sibling Staff',
+      password: 'fixture-sibling-staff-pw',
+    });
+    expect(acceptRes.status).toBe(201);
+    siblingInviteUserId = acceptRes.body.user.id;
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: siblingInviteUserId } });
+    expect(user.practiceId).toBe(practiceB);
+  });
+
+  it('a group_admin cannot invite staff to a practice outside their organization', async () => {
+    const outsidePractice = await createPracticeForTests(prisma);
+    outsidePracticeId = outsidePractice.id;
+
+    const inviteRes = await request(app)
+      .post('/api/auth/invite')
+      .set('Cookie', ownerCookie)
+      .send({ email: `blocked-${suffix}@fixture.test`, role: 'office_manager', practiceId: outsidePractice.id });
+    expect(inviteRes.status).toBe(403);
+
+    await prisma.practice.delete({ where: { id: outsidePractice.id } }).catch(() => undefined);
+    outsidePracticeId = undefined;
+  });
+
+  it('org membership management: list, demote, and block removing the last admin', async () => {
+    const listRes = await request(app).get('/api/group/members').set('Cookie', ownerCookie);
+    expect(listRes.status).toBe(200);
+    const memberIds = (listRes.body.members as Array<{ userId: string }>).map((m) => m.userId);
+    expect(memberIds).toEqual(expect.arrayContaining([ownerUserId, coAdminUserId]));
+
+    // Demote the co-admin — org still has the owner as org_admin, so this is allowed.
+    const demoteRes = await request(app)
+      .patch(`/api/group/members/${coAdminUserId}`)
+      .set('Cookie', ownerCookie)
+      .send({ role: 'org_member' });
+    expect(demoteRes.status).toBe(200);
+
+    const membership = await prisma.organizationMember.findFirst({ where: { organizationId, userId: coAdminUserId } });
+    expect(membership?.role).toBe('org_member');
+
+    // The owner is now the sole org_admin — removing them must be blocked.
+    const removeSelfRes = await request(app)
+      .delete(`/api/group/members/${ownerUserId}`)
+      .set('Cookie', ownerCookie);
+    expect(removeSelfRes.status).toBe(400);
+
+    // Removing the demoted co-admin (an org_member, not the last admin) is fine.
+    const removeRes = await request(app)
+      .delete(`/api/group/members/${coAdminUserId}`)
+      .set('Cookie', ownerCookie);
+    expect(removeRes.status).toBe(200);
+
+    const removedMembership = await prisma.organizationMember.findFirst({ where: { organizationId, userId: coAdminUserId } });
+    expect(removedMembership).toBeNull();
+
+    // Removal downgrades the group_admin PracticeRole back to practice_owner.
+    const removedUser = await prisma.user.findUniqueOrThrow({ where: { id: coAdminUserId } });
+    expect(removedUser.role).toBe('practice_owner');
+  });
+
+  it('a standalone practice_owner self-converts into a new organization', async () => {
+    const { practice, user, email, password } = await createPracticeWithOwnerForTests(prisma);
+    convertedPracticeId = practice.id;
+    convertedUserId = user.id;
+
+    const login = await request(app).post('/api/auth/login').send({ email, password });
+    expect(login.status).toBe(200);
+    const cookie = extractCookie(login);
+
+    const convertRes = await request(app)
+      .post('/api/auth/convert-to-organization')
+      .set('Cookie', cookie)
+      .send({ organizationName: `Fixture Converted DSO ${suffix}` });
+    expect(convertRes.status).toBe(201);
+    expect(convertRes.body.role).toBe('group_admin');
+    convertedOrganizationId = convertRes.body.organizationId;
+
+    const membership = await prisma.organizationMember.findFirst({
+      where: { organizationId: convertedOrganizationId, userId: convertedUserId },
+    });
+    expect(membership?.role).toBe('org_admin');
+
+    const updatedUser = await prisma.user.findUniqueOrThrow({ where: { id: convertedUserId } });
+    expect(updatedUser.role).toBe('group_admin');
+
+    // Converting again must be rejected — already part of an organization.
+    const secondConvertRes = await request(app)
+      .post('/api/auth/convert-to-organization')
+      .set('Cookie', extractCookie(convertRes))
+      .send({ organizationName: 'Should Not Be Created' });
+    expect(secondConvertRes.status).toBe(400);
   });
 });
