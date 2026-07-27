@@ -182,26 +182,30 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   }
 
   const usage = await getOrCreateUsagePeriod(prisma, practice);
-  if (usage.minutesConsumed >= tier.includedMinutes) {
+  const inOverage = usage.minutesConsumed >= tier.includedMinutes;
+  if (inOverage) {
     if (tier.hardStopAtLimit) {
       return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
     }
-    // Confirmed overage: every further minute bills at the overage rate,
-    // which exceeds delivery cost on all paid tiers — profitable, so neither
-    // the soft stop nor the COGS breaker applies. Daily caps still do.
-    if (practice.overageConfirmed) {
-      return { allowed: true, reason: 'OK', overageRatePerMinute: tier.overageRatePerMinute };
+    if (!practice.overageConfirmed) {
+      await triggerSoftStop(prisma, practice);
+      return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
     }
-    await triggerSoftStop(prisma, practice);
-    return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+    // Confirmed overage still runs through the COGS breaker below — unlimited
+    // confirmed-overage minutes must not be exempt from a cost check just
+    // because the practice said yes to the rate. evaluateCogsBreaker compares
+    // against revenue collected so far (price + overage charges), not the
+    // flat subscription price, so this stays meaningful past includedMinutes.
   }
 
   const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
+  const overageRatePerMinute = inOverage ? tier.overageRatePerMinute : undefined;
+
   if (cogs === 'pause') {
     await pauseCalls(prisma, practice.id, 'cogs_breaker');
     console.error(
       `[cogsBreaker] delivery cost crossed ${Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100)}% ` +
-        `of subscription price — pausing calls for practice=${practice.id} ` +
+        `of revenue collected — pausing calls for practice=${practice.id} ` +
         `(${usage.minutesConsumed} min consumed on ${practice.billingTier})`,
     );
     try {
@@ -217,18 +221,32 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
   }
   if (cogs === 'throttle') {
-    return { allowed: true, reason: 'OK', essentialOnly: true };
+    return { allowed: true, reason: 'OK', essentialOnly: true, overageRatePerMinute };
   }
 
-  return { allowed: true, reason: 'OK' };
+  return { allowed: true, reason: 'OK', overageRatePerMinute };
 }
 
 /**
- * Month-to-date delivery cost as a fraction of the subscription price.
- * Structural guarantee that no practice can become unprofitable: at the
- * throttle threshold only high-value calls dispatch; at the pause threshold
- * calling stops until the billing cycle resets (startNewBillingCycle clears
- * the pause) or an operator intervenes.
+ * Month-to-date delivery cost as a fraction of REVENUE — base subscription
+ * price, plus overage-rate revenue for any minutes already beyond the
+ * included pool. Structural guarantee that no practice can become
+ * unprofitable: at the throttle threshold only high-value calls dispatch;
+ * at the pause threshold calling stops until the billing cycle resets
+ * (startNewBillingCycle clears the pause) or an operator intervenes.
+ *
+ * Comparing cost against the flat subscription price alone (as this
+ * function did previously) made it structurally unreachable once
+ * minutesConsumed passed includedMinutes: every tier is priced so 100% of
+ * included minutes costs only ~20% of price (that's the ~80% margin), while
+ * the throttle/pause thresholds are 40%/60% — mathematically impossible to
+ * cross within the included-minutes zone. The breaker was only ever called
+ * in exactly that unreachable zone (see evaluateCallGate below, which used
+ * to skip this function entirely once a practice confirmed overage) — a
+ * practice burning unlimited confirmed-overage minutes had no cost check at
+ * all. Using revenue-so-far instead of the flat price keeps the same
+ * behavior for in-plan usage (overageMinutes is 0, so revenue === tier.price
+ * exactly) while making the breaker meaningful in the overage zone too.
  */
 export function evaluateCogsBreaker(
   tier: TierConfig,
@@ -236,8 +254,10 @@ export function evaluateCogsBreaker(
 ): 'ok' | 'throttle' | 'pause' {
   if (tier.price <= 0) return 'ok';
   const deliveryCost = minutesConsumed * UNIT_ECONOMICS.costPerMinute;
-  if (deliveryCost >= tier.price * COGS_BREAKER.pauseAtPctOfPrice) return 'pause';
-  if (deliveryCost >= tier.price * COGS_BREAKER.throttleAtPctOfPrice) return 'throttle';
+  const overageMinutes = Math.max(0, minutesConsumed - tier.includedMinutes);
+  const revenue = tier.price + overageMinutes * (tier.overageRatePerMinute ?? 0);
+  if (deliveryCost >= revenue * COGS_BREAKER.pauseAtPctOfPrice) return 'pause';
+  if (deliveryCost >= revenue * COGS_BREAKER.throttleAtPctOfPrice) return 'throttle';
   return 'ok';
 }
 

@@ -88,7 +88,18 @@ export function gateBlockMessage(reason: PlanGateReason, overageRatePerMinute?: 
     case 'SUBSCRIPTION_CANCELED':
       return 'Your subscription is canceled. Resubscribe to resume calling.';
     case 'COGS_BREAKER_PAUSED':
-      return 'Calling is paused for this billing period — usage far exceeded your plan. Contact support to review or upgrade.';
+      // Distinct from OVERAGE_PENDING: this can fire while the monthly minute
+      // allowance shown on the usage banner is nowhere near exhausted — the
+      // trigger is unusually long carrier hold times driving delivery cost up
+      // faster than minutes climb, not the minute count itself. Saying so
+      // explicitly prevents the "my dashboard shows I still have minutes,
+      // why did calling stop" confusion a generic message invites.
+      return (
+        'Calling is paused for this billing period — your recent claims required unusually long carrier ' +
+        "hold times, which is driving this plan's delivery cost higher than it's built to cover, even though " +
+        "your monthly minute allowance isn't exhausted. Contact support to review your carrier mix or move to " +
+        'a higher tier.'
+      );
     case 'BILLING_MISCONFIGURED':
       return 'Calling is paused — your billing setup needs attention. Contact support@collectrx.ca.';
     default:
