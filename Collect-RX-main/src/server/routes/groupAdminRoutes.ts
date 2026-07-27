@@ -2,6 +2,13 @@ import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
+import { runWithPracticeRls } from '../db/rlsContext.js';
+import { createOrgBillingCheckoutSession, createOrgBillingPortalSession } from '../stripe/billing.js';
+import { apiClientErrorMessage } from '../apiErrorMessage.js';
+import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
+import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
+import { groupPmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.
@@ -33,15 +40,18 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
 
       const summaries = await Promise.all(
         practices.map(async (p) => {
+          // insurance_claims is RLS-protected on practice_id; the caller's session
+          // RLS context is scoped to their own home practice, so every sibling
+          // practice in the org needs its own narrow RLS scope for this query.
           const [
             totalClaims,
             resolvedClaims,
             activeUsers,
-          ] = await Promise.all([
+          ] = await runWithPracticeRls(p.id, () => Promise.all([
             prisma.insuranceClaim.count({ where: { practiceId: p.id } }),
             prisma.insuranceClaim.count({ where: { practiceId: p.id, status: { in: ['RESOLVED', 'APPROVED_PENDING_PAYMENT'] } } }),
             prisma.user.count({ where: { practiceId: p.id, isActive: true } }),
-          ]);
+          ]));
 
           return {
             id: p.id,
@@ -96,6 +106,133 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     }
   });
 
+  /**
+   * GET /api/group/billing
+   * Consolidated subscription + pooled-usage view for the DSO's org_admin —
+   * "charge the parent company" per the enterprise billing decision.
+   */
+  r.get('/billing', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: {
+          id: true,
+          name: true,
+          stripeCustomerId: true,
+          subscriptionStatus: true,
+          billingTier: true,
+          cogsPoolingEnabled: true,
+          callsPaused: true,
+          callsPausedReason: true,
+          subscriptionCurrentPeriodEnd: true,
+        },
+      });
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+      const memberPracticeIds = (
+        await prisma.organizationPractice.findMany({ where: { organizationId }, select: { practiceId: true } })
+      ).map((p) => p.practiceId);
+
+      const usagePeriods = await Promise.all(
+        memberPracticeIds.map((practiceId) =>
+          runWithPracticeRls(practiceId, () =>
+            prisma.usagePeriod.findFirst({
+              where: { practiceId, periodStart: { lte: new Date() }, periodEnd: { gte: new Date() } },
+              orderBy: { periodStart: 'desc' },
+              select: { minutesConsumed: true, callsCompleted: true },
+            }),
+          ),
+        ),
+      );
+      const pooledMinutesConsumed = usagePeriods.reduce((sum, p) => sum + (p?.minutesConsumed ?? 0), 0);
+      const pooledCallsCompleted = usagePeriods.reduce((sum, p) => sum + (p?.callsCompleted ?? 0), 0);
+
+      return res.json({
+        organization: {
+          id: org.id,
+          name: org.name,
+          billed: Boolean(org.stripeCustomerId),
+          subscriptionStatus: org.subscriptionStatus,
+          billingTier: org.billingTier,
+          cogsPoolingEnabled: org.cogsPoolingEnabled,
+          callsPaused: org.callsPaused,
+          callsPausedReason: org.callsPausedReason,
+          subscriptionCurrentPeriodEnd: org.subscriptionCurrentPeriodEnd,
+        },
+        pooledUsage: {
+          practiceCount: memberPracticeIds.length,
+          minutesConsumed: pooledMinutesConsumed,
+          callsCompleted: pooledCallsCompleted,
+        },
+      });
+    } catch (e) {
+      console.error('group billing status error:', e);
+      return res.status(500).json({ error: 'Failed to load organization billing' });
+    }
+  });
+
+  r.post('/billing/checkout', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      const requestedPlanId = typeof req.body?.planId === 'string' ? req.body.planId.trim() : undefined;
+      const { url } = await createOrgBillingCheckoutSession(organizationId, prisma, requestedPlanId);
+      return res.json({ url });
+    } catch (e) {
+      console.error('group billing checkout error:', e);
+      return res.status(400).json({ error: apiClientErrorMessage(e) });
+    }
+  });
+
+  /**
+   * PATCH /api/group/billing/cogs-pooling
+   * Org admin opt-out of usage pooling in favor of hard per-practice caps.
+   * Takes effect immediately — evaluateCallGate/recordCallUsage in
+   * usagePeriodService.ts read this flag live on every dispatch, so there is
+   * no separate "pending" state to reconcile at cycle boundary.
+   */
+  r.patch('/billing/cogs-pooling', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      if (typeof req.body?.enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+      }
+      const org = await prisma.organization.update({
+        where: { id: organizationId },
+        data: { cogsPoolingEnabled: req.body.enabled },
+        select: { cogsPoolingEnabled: true },
+      });
+      return res.json({ cogsPoolingEnabled: org.cogsPoolingEnabled });
+    } catch (e) {
+      console.error('group cogs-pooling update error:', e);
+      return res.status(500).json({ error: 'Failed to update pooling setting' });
+    }
+  });
+
+  r.post('/billing/portal', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      const { url } = await createOrgBillingPortalSession(organizationId, prisma);
+      return res.json({ url });
+    } catch (e) {
+      console.error('group billing portal error:', e);
+      return res.status(400).json({ error: apiClientErrorMessage(e) });
+    }
+  });
+
   r.get('/compliance/export', async (req: Request, res: Response) => {
     try {
       const userId = req.auth?.userId;
@@ -114,19 +251,96 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
 
       const summaries = await Promise.all(
         practiceIds.map(async (practiceId) => {
-          const [phiAccessCount, openGates, openUnderpayments] = await Promise.all([
+          const [phiAccessCount, openGates, openUnderpayments] = await runWithPracticeRls(practiceId, () => Promise.all([
             prisma.phiAccessEvent.count({ where: { practiceId } }),
             prisma.claimRecoveryAction.count({
               where: { practiceId, status: { in: ['OPEN', 'BLOCKING'] }, clearedAt: null },
             }),
             prisma.underpaymentCase.count({ where: { practiceId, status: 'OPEN' } }),
-          ]);
+          ]));
           return { practiceId, phiAccessCount, openGates, openUnderpayments };
         }),
       );
       return res.json({ practices: summaries });
     } catch {
       return res.status(500).json({ error: 'Compliance export failed' });
+    }
+  });
+
+  /**
+   * POST /api/group/pms-import
+   * Batch PMS import across the caller's org practices — replaces logging
+   * into each practice's session and uploading N times. Every practiceId is
+   * checked against the caller's org membership before it's touched, then
+   * imported independently under its own narrow RLS scope (authorized
+   * narrow RLS iteration — see docs/architecture/authorized-narrow-rls-iteration.md).
+   */
+  r.post('/pms-import', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+
+      const parsed = groupPmsImportBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+      const { imports } = parsed.data;
+
+      const memberships = await prisma.organizationMember.findMany({
+        where: { userId },
+        select: { organizationId: true },
+      });
+      if (memberships.length === 0) return res.status(403).json({ error: 'Organization membership required' });
+      const authorizedPracticeIds = new Set(
+        (
+          await prisma.organizationPractice.findMany({
+            where: { organizationId: { in: memberships.map((m) => m.organizationId) } },
+            select: { practiceId: true },
+          })
+        ).map((p) => p.practiceId),
+      );
+
+      const unauthorized = imports.filter((i) => !authorizedPracticeIds.has(i.practiceId));
+      if (unauthorized.length > 0) {
+        return res.status(403).json({
+          error: 'One or more practices are not in your organization',
+          practiceIds: unauthorized.map((i) => i.practiceId),
+        });
+      }
+
+      const results = await Promise.all(
+        imports.map(async (entry) => {
+          const vendorId = normalizePmsVendorId(entry.pmsVendor);
+          if (!vendorId) {
+            return { practiceId: entry.practiceId, success: false, error: `Unknown PMS vendor "${entry.pmsVendor}"` };
+          }
+          try {
+            const result = await runWithPracticeRls(entry.practiceId, () =>
+              runPmsImportPipeline(prisma, {
+                practiceId: entry.practiceId,
+                pmsSource: vendorId,
+                rows: entry.records,
+                sourceRecordCount: entry.records.length,
+                sourceBalanceTotal: entry.sourceBalanceTotal,
+              }),
+            );
+            return {
+              practiceId: entry.practiceId,
+              success: true,
+              runId: result.runId,
+              imported: result.imported,
+              skipped: result.skipped,
+              failed: result.failed,
+            };
+          } catch (e) {
+            console.error('group pms-import practice error:', entry.practiceId, e);
+            return { practiceId: entry.practiceId, success: false, error: apiClientErrorMessage(e) };
+          }
+        }),
+      );
+
+      return res.json({ results });
+    } catch (e) {
+      console.error('group pms-import error:', e);
+      return res.status(500).json({ error: 'Batch import failed' });
     }
   });
 

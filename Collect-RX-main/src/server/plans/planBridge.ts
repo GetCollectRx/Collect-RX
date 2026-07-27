@@ -15,7 +15,9 @@ import {
   recordCallUsage as recordCallUsageInternal,
   recoveredCentsForClaim as recoveredCentsForClaimInternal,
   startNewBillingCycle as startNewBillingCycleInternal,
+  startNewOrgBillingCycle as startNewOrgBillingCycleInternal,
   syncSubscriptionHealth,
+  syncOrgSubscriptionHealth as syncOrgSubscriptionHealthInternal,
   type PlanGateReason,
   type PlanGateResult,
 } from './usagePeriodService.js';
@@ -275,4 +277,15 @@ export async function syncPlanStatusFromSubscription(
   subscriptionStatus: string | null | undefined,
 ): Promise<void> {
   await syncSubscriptionHealth(prisma, practiceId, subscriptionStatus);
+}
+
+export async function startNewOrgBillingCycle(organizationId: string): Promise<void> {
+  await startNewOrgBillingCycleInternal(prisma, organizationId);
+}
+
+export async function syncOrgPlanStatusFromSubscription(
+  organizationId: string,
+  subscriptionStatus: string | null | undefined,
+): Promise<void> {
+  await syncOrgSubscriptionHealthInternal(prisma, organizationId, subscriptionStatus);
 }

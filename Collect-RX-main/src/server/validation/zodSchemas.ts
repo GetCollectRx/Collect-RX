@@ -53,6 +53,17 @@ export const registerBodySchema = z.object({
   displayName: z.string().trim().min(1).max(120),
   email: z.string().email().toLowerCase(),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+  /** Self-serve DSO signup: when set, an Organization is created alongside additionalPractices. */
+  organizationName: z.string().trim().min(1).max(200).optional(),
+  additionalPractices: z
+    .array(
+      z.object({
+        practiceName: z.string().trim().min(1).max(200),
+        timezone: z.string().trim().min(1).max(64).optional(),
+      }),
+    )
+    .max(49, 'use a batch import for organizations larger than 50 locations')
+    .optional(),
 });
 
 export const inviteBodySchema = z.object({
@@ -64,6 +75,46 @@ export const acceptInviteBodySchema = z.object({
   token: z.string().uuid(),
   displayName: z.string().trim().min(1).max(120),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+});
+
+/** Admin-assisted DSO/multi-location org creation (POST /api/admin/organizations). */
+export const createOrganizationBodySchema = z.object({
+  organizationName: z.string().trim().min(1).max(200),
+  practices: z
+    .array(
+      z.object({
+        practiceName: z.string().trim().min(1).max(200),
+        timezone: z.string().trim().min(1).max(64).optional(),
+      }),
+    )
+    .min(1, 'at least one practice is required')
+    .max(50, 'use a batch import for organizations larger than 50 locations'),
+  /** Invited as group_admin on the first practice — sees the cross-practice dashboard. */
+  primaryContact: z.object({
+    email: z.string().email().toLowerCase(),
+    displayName: z.string().trim().min(1).max(120),
+  }),
+});
+
+/**
+ * Batch PMS import (POST /api/group/pms-import) — replaces the admin-run
+ * per-practice loop with one authorized call across an org's practices.
+ * Each entry runs through the same runPmsImportPipeline as the single-practice
+ * upload; the route validates every practiceId belongs to the caller's org
+ * before touching it (authorized narrow RLS iteration).
+ */
+export const groupPmsImportBodySchema = z.object({
+  imports: z
+    .array(
+      z.object({
+        practiceId: z.string().uuid(),
+        pmsVendor: z.string().trim().min(1),
+        records: z.array(z.record(z.string(), z.unknown())).min(1, 'at least one record is required'),
+        sourceBalanceTotal: z.coerce.number().finite().optional(),
+      }),
+    )
+    .min(1, 'at least one practice import is required')
+    .max(50, 'batch imports are capped at 50 practices per call'),
 });
 
 // ─── Existing schemas (unchanged) ─────────────────────────────────────────────

@@ -81,20 +81,20 @@ model Practice {
 
 /// Individual user account within a practice (or spanning practices for group_admin).
 model User {
-  id             String       @id @default(uuid())
-  practiceId     String
-  email          String       @unique
-  passwordHash   String
-  role           PracticeRole
-  displayName    String
-  isActive       Boolean      @default(true)
+  id                      String               @id @default(uuid())
+  practiceId              String
+  email                   String               @unique
+  passwordHash            String
+  role                    PracticeRole
+  displayName             String
+  isActive                Boolean              @default(true)
   /// associate_dentist only — all queries scoped to this provider ID server-side.
-  providerId     String?
+  providerId              String?
   /// accountant only — token is invalid after this date; renewable by office_manager.
-  tokenExpiresAt DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  practice       Practice     @relation(fields: [practiceId], references: [id])
+  tokenExpiresAt          DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  practice                Practice             @relation(fields: [practiceId], references: [id])
   organizationMemberships OrganizationMember[]
 
   @@index([practiceId])
@@ -103,12 +103,36 @@ model User {
 
 /// Customer-owned DSO / multi-location boundary. Platform staff are not members.
 model Organization {
-  id          String                 @id @default(uuid())
-  name        String
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
-  practices   OrganizationPractice[]
-  members     OrganizationMember[]
+  id           String                 @id @default(uuid())
+  name         String
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  practices    OrganizationPractice[]
+  members      OrganizationMember[]
+  inviteTokens InviteToken[]
+
+  // ─── Consolidated Stripe Billing (enterprise/DSO deals) ───────────────────
+  /// Set only when the organization itself is billed (enterprise deal) instead
+  /// of each member practice billing individually — see billingEntity.ts.
+  stripeCustomerId               String?      @unique @map("stripe_customer_id")
+  stripeSubscriptionId           String?      @unique @map("stripe_subscription_id")
+  subscriptionStatus             String?      @map("subscription_status")
+  subscriptionPriceId            String?      @map("subscription_price_id")
+  subscriptionPlanId             String?      @map("subscription_plan_id")
+  subscriptionCurrentPeriodStart DateTime?    @map("subscription_current_period_start")
+  subscriptionCurrentPeriodEnd   DateTime?    @map("subscription_current_period_end")
+  /// Minutes-based billing tier (src/billing/tiers.ts) applied to the pooled org.
+  billingTier                    BillingTier? @map("billing_tier")
+  billingPeriodStart             DateTime?    @map("billing_period_start")
+  trialEndsAt                    DateTime?    @map("trial_ends_at")
+  callsPaused                    Boolean      @default(false) @map("calls_paused")
+  callsPausedReason              String?      @map("calls_paused_reason")
+  callsPausedAt                  DateTime?    @map("calls_paused_at")
+  overageConfirmed               Boolean      @default(false) @map("overage_confirmed")
+  overageConfirmedAt             DateTime?    @map("overage_confirmed_at")
+  /// When true (default for an org-billed organization), minutes/cost are evaluated
+  /// as one pool across all member practices instead of each practice's own cap.
+  cogsPoolingEnabled             Boolean      @default(true) @map("cogs_pooling_enabled")
 
   @@map("organizations")
 }
@@ -127,17 +151,24 @@ model OrganizationPractice {
 }
 
 model OrganizationMember {
-  id             String       @id @default(uuid())
-  organizationId String       @map("organization_id")
-  userId         String       @map("user_id")
-  role           String       @default("org_admin")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String           @id @default(uuid())
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  role           OrganizationRole @default(org_admin)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([userId])
   @@map("organization_members")
+}
+
+/// org_admin manages membership/billing for the DSO; org_member has read-only
+/// cross-practice visibility (group dashboards) without admin actions.
+enum OrganizationRole {
+  org_admin
+  org_member
 }
 
 model RuleSet {
@@ -462,18 +493,18 @@ model PhiAccessEvent {
 /// One encrypted credential payload for the practice's pre-call triage channel.
 /// The plaintext is never persisted; use triageCredentialService to access it.
 model TriageCredential {
-  id         String   @id @default(uuid())
-  practiceId String   @unique @map("practice_id")
-  ciphertext String
-  iv         String
-  authTag    String   @map("auth_tag")
-  lastHealthCheckAt DateTime? @map("last_health_check_at")
-  lastHealthCheckStatus String? @map("last_health_check_status")
-  lastHealthCheckErrorCode String? @map("last_health_check_error_code")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id                       String    @id @default(uuid())
+  practiceId               String    @unique @map("practice_id")
+  ciphertext               String
+  iv                       String
+  authTag                  String    @map("auth_tag")
+  lastHealthCheckAt        DateTime? @map("last_health_check_at")
+  lastHealthCheckStatus    String?   @map("last_health_check_status")
+  lastHealthCheckErrorCode String?   @map("last_health_check_error_code")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  practice Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  practice Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   audits   TriageAudit[]
 
   @@map("triage_credentials")
@@ -618,10 +649,10 @@ model InsuranceClaim {
   /// What the practice expected the carrier to pay. When set, the voice agent
   /// uses this when discussing the discrepancy — distinct from outstandingAmount.
   expectedAmount    Decimal?       @map("expected_amount") @db.Decimal(10, 2)
-  denialReasonCode String?        @map("denial_reason_code")
-  denialReasonText String?        @map("denial_reason_text")
-  denialDate       DateTime?      @map("denial_date")
-  appealDeadline   DateTime?      @map("appeal_deadline")
+  denialReasonCode  String?        @map("denial_reason_code")
+  denialReasonText  String?        @map("denial_reason_text")
+  denialDate        DateTime?      @map("denial_date")
+  appealDeadline    DateTime?      @map("appeal_deadline")
   daysOutstanding   Int            @map("days_outstanding")
   /// Date of service — canonical anchor for carrier appeal deadlines. Prefer PMS backfill over inferred dates.
   servicedAt        DateTime?      @map("serviced_at")
@@ -643,15 +674,15 @@ model InsuranceClaim {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  callAttempts    CallAttempt[]
-  queueEntry      CallQueue?
-  recoveryActions ClaimRecoveryAction[]
-  recoveryEvents  ClaimRecoveryEvent[]
-  evidenceItems   ClaimEvidenceItem[]
-  submissions     ClaimSubmission[]
-  evidencePacks   EvidencePackExport[]
+  callAttempts      CallAttempt[]
+  queueEntry        CallQueue?
+  recoveryActions   ClaimRecoveryAction[]
+  recoveryEvents    ClaimRecoveryEvent[]
+  evidenceItems     ClaimEvidenceItem[]
+  submissions       ClaimSubmission[]
+  evidencePacks     EvidencePackExport[]
   underpaymentCases UnderpaymentCase[]
-  notifications   PracticeNotification[]
+  notifications     PracticeNotification[]
 
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
@@ -718,17 +749,17 @@ model ClaimRecoveryEvent {
 
 /// Staff-held evidence status. Clinical files remain in the PMS for v1.
 model ClaimEvidenceItem {
-  id               String   @id @default(uuid())
-  practiceId       String   @map("practice_id")
-  claimId          String   @map("claim_id")
-  recoveryActionId String?  @map("recovery_action_id")
-  evidenceType     String   @map("evidence_type")
-  status           String   @default("REQUIRED")
-  attestedAt       DateTime? @map("attested_at")
-  attestedBy       String?  @map("attested_by")
+  id               String         @id @default(uuid())
+  practiceId       String         @map("practice_id")
+  claimId          String         @map("claim_id")
+  recoveryActionId String?        @map("recovery_action_id")
+  evidenceType     String         @map("evidence_type")
+  status           String         @default("REQUIRED")
+  attestedAt       DateTime?      @map("attested_at")
+  attestedBy       String?        @map("attested_by")
   note             String?
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
   claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
 
   @@unique([claimId, recoveryActionId, evidenceType])
@@ -738,16 +769,16 @@ model ClaimEvidenceItem {
 
 /// Practice-entered carrier submission proof; no PMS write is implied.
 model ClaimSubmission {
-  id               String   @id @default(uuid())
-  practiceId       String   @map("practice_id")
-  claimId          String   @map("claim_id")
-  recoveryActionId String?  @map("recovery_action_id")
+  id               String         @id @default(uuid())
+  practiceId       String         @map("practice_id")
+  claimId          String         @map("claim_id")
+  recoveryActionId String?        @map("recovery_action_id")
   method           String
-  referenceNumber  String?  @map("reference_number")
-  submittedAt      DateTime @default(now()) @map("submitted_at")
-  submittedBy      String?  @map("submitted_by")
+  referenceNumber  String?        @map("reference_number")
+  submittedAt      DateTime       @default(now()) @map("submitted_at")
+  submittedBy      String?        @map("submitted_by")
   note             String?
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
   claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
 
   @@index([practiceId, submittedAt])
@@ -757,14 +788,14 @@ model ClaimSubmission {
 
 /// Immutable metadata-only evidence pack export record.
 model EvidencePackExport {
-  id          String   @id @default(uuid())
-  practiceId  String   @map("practice_id")
-  claimId     String   @map("claim_id")
-  exportedBy  String?  @map("exported_by")
-  checksum    String
-  format      String   @default("JSON")
-  createdAt   DateTime @default(now()) @map("created_at")
-  claim       InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  id         String         @id @default(uuid())
+  practiceId String         @map("practice_id")
+  claimId    String         @map("claim_id")
+  exportedBy String?        @map("exported_by")
+  checksum   String
+  format     String         @default("JSON")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  claim      InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
 
   @@index([practiceId, createdAt])
   @@index([claimId])
@@ -772,17 +803,17 @@ model EvidencePackExport {
 }
 
 model UnderpaymentCase {
-  id              String   @id @default(uuid())
-  practiceId      String   @map("practice_id")
-  claimId         String   @map("claim_id")
-  expectedCents   Int      @map("expected_cents")
-  paidCents       Int      @map("paid_cents")
-  varianceCents   Int      @map("variance_cents")
-  reasonCode      String?  @map("reason_code")
-  status          String   @default("OPEN")
-  createdAt       DateTime @default(now()) @map("created_at")
-  resolvedAt      DateTime? @map("resolved_at")
-  claim           InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  practiceId    String         @map("practice_id")
+  claimId       String         @map("claim_id")
+  expectedCents Int            @map("expected_cents")
+  paidCents     Int            @map("paid_cents")
+  varianceCents Int            @map("variance_cents")
+  reasonCode    String?        @map("reason_code")
+  status        String         @default("OPEN")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  resolvedAt    DateTime?      @map("resolved_at")
+  claim         InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
 
   @@unique([claimId, expectedCents, paidCents])
   @@index([practiceId, status])
@@ -886,22 +917,22 @@ model CarrierBlockEvent {
 
 /// One row per claim in the call queue. Tracks scheduling, retry count, state.
 model CallQueue {
-  id            String        @id @default(uuid())
-  practiceId    String        @map("practice_id")
-  claimId       String        @unique @map("claim_id")
-  scheduledFor  DateTime      @map("scheduled_for")
-  priority      ClaimPriority @default(NORMAL)
+  id                         String        @id @default(uuid())
+  practiceId                 String        @map("practice_id")
+  claimId                    String        @unique @map("claim_id")
+  scheduledFor               DateTime      @map("scheduled_for")
+  priority                   ClaimPriority @default(NORMAL)
   /// Number of attempts made so far. Hard cap: 3 (enforced before dispatch).
-  attempts      Int           @default(0)
-  lastAttemptAt DateTime?     @map("last_attempt_at")
+  attempts                   Int           @default(0)
+  lastAttemptAt              DateTime?     @map("last_attempt_at")
   /// Safe, structured reason for the latest dispatch deferral. Never stores PHI or vendor errors.
-  dispatchDeferralCode String? @map("dispatch_deferral_code")
+  dispatchDeferralCode       String?       @map("dispatch_deferral_code")
   /// Staff-facing next step for the latest dispatch deferral. Never stores PHI.
-  dispatchDeferralNextAction String? @map("dispatch_deferral_next_action")
-  dispatchDeferredAt DateTime? @map("dispatch_deferred_at")
-  status        QueueStatus   @default(PENDING)
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  dispatchDeferralNextAction String?       @map("dispatch_deferral_next_action")
+  dispatchDeferredAt         DateTime?     @map("dispatch_deferred_at")
+  status                     QueueStatus   @default(PENDING)
+  createdAt                  DateTime      @default(now()) @map("created_at")
+  updatedAt                  DateTime      @updatedAt @map("updated_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
 
@@ -1597,60 +1628,60 @@ model MarketingCampaign {
 }
 
 model Prospect {
-  id                  String             @id @default(uuid())
-  practiceName        String             @map("practice_name")
-  contactName         String?            @map("contact_name")
-  email               String?
-  phone               String?
-  city                String?
-  province            String?
-  website             String?
-  googlePlaceId       String?            @map("google_place_id")
-  score               Int                @default(0)
-  stage               ProspectStage      @default(new)
-  source              ProspectSource     @default(manual)
-  campaignId          String?            @map("campaign_id")
-  campaign            MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  linkedPracticeId    String?            @unique @map("linked_practice_id")
-  linkedPractice      Practice?          @relation(fields: [linkedPracticeId], references: [id], onDelete: SetNull)
-  pmsHint             String?            @map("pms_hint")
-  sequenceStep        Int                @default(0) @map("sequence_step")
-  sequencePausedUntil DateTime?          @map("sequence_paused_until")
-  sequenceCompleted   Boolean            @default(false) @map("sequence_completed")
-  referralStep        Int                @default(0) @map("referral_step")
-  referralCompleted   Boolean            @default(false) @map("referral_completed")
-  emailOpenCount      Int                @default(0) @map("email_open_count")
-  emailClickCount     Int                @default(0) @map("email_click_count")
-  lastEmailSentAt     DateTime?          @map("last_email_sent_at")
-  lastEngagedAt       DateTime?          @map("last_engaged_at")
-  closedWonAt         DateTime?          @map("closed_won_at")
-  demoScheduledAt     DateTime?          @map("demo_scheduled_at")
-  preDemoEmailSentAt  DateTime?          @map("pre_demo_email_sent_at")
-  dnclCheckedAt       DateTime?          @map("dncl_checked_at")
-  dnclListed          Boolean?           @map("dncl_listed")
-  hubspotDealId       String?            @map("hubspot_deal_id")
-  optOutAt            DateTime?          @map("opt_out_at")
-  callSummary         String?            @map("call_summary") @db.Text
-  replyIntent         String?            @map("reply_intent")
-  suggestedReply      String?            @map("suggested_reply") @db.Text
-  painPoints          Json?              @map("pain_points")
-  metadata            Json?
-  lastVapiCallId      String?            @map("last_vapi_call_id")
+  id                   String               @id @default(uuid())
+  practiceName         String               @map("practice_name")
+  contactName          String?              @map("contact_name")
+  email                String?
+  phone                String?
+  city                 String?
+  province             String?
+  website              String?
+  googlePlaceId        String?              @map("google_place_id")
+  score                Int                  @default(0)
+  stage                ProspectStage        @default(new)
+  source               ProspectSource       @default(manual)
+  campaignId           String?              @map("campaign_id")
+  campaign             MarketingCampaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  linkedPracticeId     String?              @unique @map("linked_practice_id")
+  linkedPractice       Practice?            @relation(fields: [linkedPracticeId], references: [id], onDelete: SetNull)
+  pmsHint              String?              @map("pms_hint")
+  sequenceStep         Int                  @default(0) @map("sequence_step")
+  sequencePausedUntil  DateTime?            @map("sequence_paused_until")
+  sequenceCompleted    Boolean              @default(false) @map("sequence_completed")
+  referralStep         Int                  @default(0) @map("referral_step")
+  referralCompleted    Boolean              @default(false) @map("referral_completed")
+  emailOpenCount       Int                  @default(0) @map("email_open_count")
+  emailClickCount      Int                  @default(0) @map("email_click_count")
+  lastEmailSentAt      DateTime?            @map("last_email_sent_at")
+  lastEngagedAt        DateTime?            @map("last_engaged_at")
+  closedWonAt          DateTime?            @map("closed_won_at")
+  demoScheduledAt      DateTime?            @map("demo_scheduled_at")
+  preDemoEmailSentAt   DateTime?            @map("pre_demo_email_sent_at")
+  dnclCheckedAt        DateTime?            @map("dncl_checked_at")
+  dnclListed           Boolean?             @map("dncl_listed")
+  hubspotDealId        String?              @map("hubspot_deal_id")
+  optOutAt             DateTime?            @map("opt_out_at")
+  callSummary          String?              @map("call_summary") @db.Text
+  replyIntent          String?              @map("reply_intent")
+  suggestedReply       String?              @map("suggested_reply") @db.Text
+  painPoints           Json?                @map("pain_points")
+  metadata             Json?
+  lastVapiCallId       String?              @map("last_vapi_call_id")
   /// Set when Khalid manually triggers start-trial. Drives trial onboarding sequence.
-  trialStartedAt      DateTime?          @map("trial_started_at")
+  trialStartedAt       DateTime?            @map("trial_started_at")
   /// Which trial onboarding email has been sent next (0=pre-kickoff through 4=day-60).
-  trialSequenceStep   Int                @default(0) @map("trial_sequence_step")
+  trialSequenceStep    Int                  @default(0) @map("trial_sequence_step")
   /// Cold outreach email sequence step (0=not sent, 1=initial sent, 2=follow-up sent, 3=follow-up2, etc.)
-  emailSequenceStep   Int                @default(0) @map("email_sequence_step")
-  initialEmailSentAt  DateTime?          @map("initial_email_sent_at")
-  followUpEmailSentAt DateTime?          @map("follow_up_email_sent_at")
-  followUpScheduledFor DateTime?         @map("follow_up_scheduled_for")
-  emailRepliedAt      DateTime?          @map("email_replied_at")
-  emailBounceReason   String?            @map("email_bounce_reason")
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
-  activities          ProspectActivity[]
-  emailCampaignEvents EmailCampaignEvent[]
+  emailSequenceStep    Int                  @default(0) @map("email_sequence_step")
+  initialEmailSentAt   DateTime?            @map("initial_email_sent_at")
+  followUpEmailSentAt  DateTime?            @map("follow_up_email_sent_at")
+  followUpScheduledFor DateTime?            @map("follow_up_scheduled_for")
+  emailRepliedAt       DateTime?            @map("email_replied_at")
+  emailBounceReason    String?              @map("email_bounce_reason")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  activities           ProspectActivity[]
+  emailCampaignEvents  EmailCampaignEvent[]
 
   @@index([stage])
   @@index([email])
@@ -1719,18 +1750,23 @@ model AgentRun {
 
 /// Single-use invite token for staff onboarding. Created by practice_owner/office_manager.
 model InviteToken {
-  id         String       @id @default(uuid())
-  practiceId String
-  email      String
-  role       PracticeRole
-  token      String       @unique @default(uuid())
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime     @default(now())
-  practice   Practice     @relation(fields: [practiceId], references: [id])
+  id             String        @id @default(uuid())
+  practiceId     String
+  email          String
+  role           PracticeRole
+  token          String        @unique @default(uuid())
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime      @default(now())
+  practice       Practice      @relation(fields: [practiceId], references: [id])
+  /// Set only for DSO-owner invites created by the admin org-creation tool —
+  /// accept-invite also creates an OrganizationMember row when this is set.
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([token])
   @@index([practiceId])
+  @@index([organizationId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1887,7 +1923,7 @@ model CarrierNavigationSnapshot {
   publishedBy String?   @map("published_by")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  proposalsBase     CarrierNavigationProposal[] @relation("ProposalBaseSnapshot")
+  proposalsBase      CarrierNavigationProposal[] @relation("ProposalBaseSnapshot")
   proposalsPublished CarrierNavigationProposal[] @relation("ProposalPublishedSnapshot")
 
   @@unique([carrierId, version])
@@ -1915,7 +1951,7 @@ model CarrierNavigationProposal {
   createdAt           DateTime                        @default(now()) @map("created_at")
   updatedAt           DateTime                        @updatedAt @map("updated_at")
 
-  discoveryRun      CarrierDiscoveryRun?      @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  discoveryRun      CarrierDiscoveryRun?       @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
   baseSnapshot      CarrierNavigationSnapshot? @relation("ProposalBaseSnapshot", fields: [baseSnapshotId], references: [id], onDelete: SetNull)
   publishedSnapshot CarrierNavigationSnapshot? @relation("ProposalPublishedSnapshot", fields: [publishedSnapshotId], references: [id], onDelete: SetNull)
 

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { HOME_ROUTE, USER_ROLE_LABELS, type UserRole } from '../types/userRole'
+import { usePractice } from '../context/PracticeContext'
 
 interface InviteInfo {
   email: string
@@ -14,6 +15,7 @@ export default function AcceptInvitePage() {
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const navigate = useNavigate()
+  const { refreshSession } = usePractice()
 
   const [invite, setInvite] = useState<InviteInfo | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -41,6 +43,7 @@ export default function AcceptInvitePage() {
       const data = await res.json() as { error?: string; role?: string }
       if (!res.ok) { setError(data.error ?? 'Failed to create account'); return }
       const role = (data.role ?? invite?.role ?? 'front_desk') as UserRole
+      await refreshSession()
       navigate(HOME_ROUTE[role] ?? '/dashboard', { replace: true })
     } catch {
       setError('Something went wrong. Please try again.')

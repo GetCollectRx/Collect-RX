@@ -39,6 +39,7 @@ import {
   acceptInviteBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
@@ -51,6 +52,27 @@ async function buildSessionHealth(prisma: PrismaClient) {
     console.warn('[sessionHealth] Login health check failed:', health.checks.filter((c) => !c.ok && !c.skipped));
   }
   return health;
+}
+
+/**
+ * A real customer group_admin's org practices, for the practice switcher —
+ * PracticeContext.tsx already falls back to `data.practices` for any session
+ * shape, so populating this array here is the only change the switcher needs.
+ */
+async function groupAdminOrgPractices(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<Array<{ id: string; name: string; timezone: string }>> {
+  const memberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  });
+  if (memberships.length === 0) return [];
+  return prisma.practice.findMany({
+    where: { organizationMemberships: { some: { organizationId: { in: memberships.map((m) => m.organizationId) } } } },
+    select: { id: true, name: true, timezone: true },
+    orderBy: { name: 'asc' },
+  });
 }
 
 // ─── Platform dev password ────────────────────────────────────────────────────
@@ -128,6 +150,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     });
     const subscription = await getSubscriptionGateState(prisma, user.practiceId);
     const health = await buildSessionHealth(prisma);
+    const practices = user.role === 'group_admin' ? await groupAdminOrgPractices(prisma, user.id) : undefined;
 
     return res.json({
       role: user.role,
@@ -135,6 +158,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
       phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
       practice,
+      ...(practices ? { practices } : {}),
       subscription,
       user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
       health,
@@ -416,9 +440,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         const legacyRole =
           userRole === 'auditor'
             ? ('accountant' as const)
-            : userRole === 'billing_ops_manager' || userRole === 'platform_admin'
+            : userRole === 'billing_ops_manager'
               ? ('group_admin' as const)
-              : ('practice_owner' as const);
+              : userRole === 'platform_admin'
+                ? ('platform_dev' as const)
+                : ('practice_owner' as const);
         return res.json({
           role: legacyRole,
           userRole,
@@ -453,12 +479,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Session invalid' });
       }
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+      const practices = dbUser.role === 'group_admin' ? await groupAdminOrgPractices(prisma, dbUser.id) : undefined;
       return res.json({
         role: user.role,
         userRole: getUserRole(auth) ?? practiceRoleToBrief(user.role),
         deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
         phiAccess: auth.phiAccess,
         practice,
+        ...(practices ? { practices } : {}),
         subscription,
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
       });
@@ -782,45 +810,82 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
   // ── Self-service registration ─────────────────────────────────────────────
 
-  /** POST /api/auth/register — create a new practice + owner account (public) */
+  /**
+   * POST /api/auth/register — create a new practice + owner account (public).
+   * When `additionalPractices` is present, self-serve DSO signup: creates an
+   * Organization plus every practice in one transaction, with the signing-up
+   * user as group_admin/org_admin — the self-serve counterpart to the
+   * platform_dev-only POST /api/admin/organizations tool.
+   */
   r.post('/register', authLimiter, async (req: Request, res: Response) => {
     try {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { practiceName, displayName, email, password } = parsed.data;
+      const { practiceName, displayName, email, password, organizationName, additionalPractices } = parsed.data;
+
+      if (additionalPractices && additionalPractices.length > 0 && !organizationName) {
+        return res.status(400).json({ error: 'organizationName is required when adding additional locations' });
+      }
 
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
 
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const isOrgSignup = Boolean(additionalPractices && additionalPractices.length > 0);
 
-      const { practice, user } = await prisma.$transaction(async (tx) => {
-        const practice = await tx.practice.create({
-          data: {
-            name: practiceName,
-            passwordHash,
-            timezone: 'America/Toronto',
-            billingTier: 'trial',
-            trialEndsAt: trialEndDate(),
-          },
-        });
+      const { practice, user, organizationId } = await prisma.$transaction(async (tx) => {
+        const allPractices = [{ practiceName, timezone: undefined as string | undefined }, ...(additionalPractices ?? [])];
+
+        // organizationName is guaranteed set here — the 400 check above already
+        // rejected a non-empty additionalPractices with no organizationName.
+        const organization = isOrgSignup
+          ? await tx.organization.create({ data: { name: organizationName! } })
+          : null;
+
+        const createdPractices = [];
+        for (const p of allPractices) {
+          const created = await tx.practice.create({
+            data: {
+              name: p.practiceName,
+              passwordHash,
+              timezone: p.timezone ?? 'America/Toronto',
+              billingTier: 'trial',
+              trialEndsAt: trialEndDate(),
+            },
+          });
+          if (organization) {
+            await tx.organizationPractice.create({
+              data: { organizationId: organization.id, practiceId: created.id },
+            });
+          }
+          createdPractices.push(created);
+        }
+
+        const practice = createdPractices[0];
         const user = await tx.user.create({
           data: {
             practiceId: practice.id,
             email,
             passwordHash,
             displayName,
-            role: 'practice_owner',
+            role: isOrgSignup ? 'group_admin' : 'practice_owner',
           },
           select: { id: true, email: true, displayName: true, role: true },
         });
-        return { practice, user };
+
+        if (organization) {
+          await tx.organizationMember.create({
+            data: { organizationId: organization.id, userId: user.id, role: 'org_admin' },
+          });
+        }
+
+        return { practice, user, organizationId: organization?.id };
       });
 
       const sessionAuth = {
         userId: user.id,
         practiceId: practice.id,
-        role: 'practice_owner' as const,
+        role: user.role as 'practice_owner' | 'group_admin',
         email: user.email,
         displayName: user.displayName,
       };
@@ -828,8 +893,9 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       return res.status(201).json({
         user,
         practiceId: practice.id,
-        role: 'practice_owner',
-        userRole: 'owner',
+        organizationId,
+        role: user.role,
+        userRole: isOrgSignup ? 'billing_ops_manager' : 'owner',
       });
     } catch (e) {
       console.error('register error:', e);
@@ -850,8 +916,20 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
       const { email, role } = parsed.data;
 
-      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, role)) {
-        return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
+      // A co-admin invite (role === 'group_admin') is a same-level invite that
+      // canManageRole's actorLevel > targetLevel rule would otherwise block —
+      // it's allowed only for an existing org_admin inviting into their own
+      // organization, checked separately from the normal role-hierarchy rule.
+      let organizationId: string | undefined;
+      if (actorAuth && !isPlatformDev(auth)) {
+        if (role === 'group_admin') {
+          organizationId = (await callerAdminOrganizationId(prisma, actorAuth.userId)) ?? undefined;
+          if (!organizationId) {
+            return res.status(403).json({ error: 'Only an organization admin can invite a co-admin' });
+          }
+        } else if (!canManageRole(actorAuth, role)) {
+          return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
+        }
       }
 
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -862,15 +940,23 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
       const invite = await prisma.inviteToken.create({
-        data: { practiceId, email, role: role as import('@prisma/client').PracticeRole, expiresAt },
+        data: { practiceId, email, role: role as import('@prisma/client').PracticeRole, expiresAt, organizationId },
         select: { token: true },
       });
 
-      await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
-      return res.json({ invited: true });
+      // The invite token is already durably created at this point — an email
+      // delivery failure (bad credentials, SendGrid outage) must not report
+      // total failure, since the invite is still valid and usable via its link.
+      try {
+        await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
+        return res.json({ invited: true, emailSent: true });
+      } catch (emailErr) {
+        console.error('invite email send failed (token still created):', emailErr);
+        return res.json({ invited: true, emailSent: false, token: invite.token });
+      }
     } catch (e) {
       console.error('invite error:', e);
-      return res.status(500).json({ error: 'Failed to send invite' });
+      return res.status(500).json({ error: 'Failed to create invite' });
     }
   });
 
@@ -908,8 +994,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-      const [user] = await prisma.$transaction([
-        prisma.user.create({
+      const user = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
           data: {
             practiceId: invite.practiceId,
             email: invite.email,
@@ -918,9 +1004,15 @@ export function createAuthRouter(prisma: PrismaClient): Router {
             role: invite.role,
           },
           select: { id: true, email: true, displayName: true, role: true },
-        }),
-        prisma.inviteToken.update({ where: { token }, data: { usedAt: new Date() } }),
-      ]);
+        });
+        await tx.inviteToken.update({ where: { token }, data: { usedAt: new Date() } });
+        if (invite.organizationId) {
+          await tx.organizationMember.create({
+            data: { organizationId: invite.organizationId, userId: user.id, role: 'org_admin' },
+          });
+        }
+        return user;
+      });
 
       const sessionAuth = {
         userId: user.id,
