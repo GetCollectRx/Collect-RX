@@ -3,6 +3,8 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import { app, prisma } from '../src/server/index.js';
 import {
   createPracticeForTests,
@@ -88,5 +90,34 @@ describe.skipIf(!dbReady)('Platform developer access control', () => {
     expect(login.body.role).toBe('practice_owner');
     expect(login.body.phiAccess).toBe(true);
     await cleanupPracticeWithUsers(prisma, practice.id);
+  });
+
+  // Regression: /login and /me must agree on the legacy `role` shim for a
+  // platform_admin platform_user. The frontend's authRoleToBriefPersona()
+  // only recovers userRole 'platform_admin' from the literal role value
+  // 'platform_dev' — if either endpoint instead shims it to 'group_admin'
+  // (the billing_ops_manager shim), the client silently treats a real
+  // platform admin as a billing-ops session.
+  it('platform_admin login and session refresh agree on legacy role', async () => {
+    const email = `platform-admin-${randomUUID()}@test.local`;
+    const passwordHash = await bcrypt.hash('test-password-1234', 4);
+    await prisma.platformUser.create({
+      data: { id: randomUUID(), email, passwordHash, userRole: 'platform_admin' },
+    });
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'test-password-1234' });
+    expect(login.status).toBe(200);
+    expect(login.body.userRole).toBe('platform_admin');
+    expect(login.body.role).toBe('platform_dev');
+
+    const cookie = extractCookie(login);
+    const me = await request(app).get('/api/auth/me').set('Cookie', cookie);
+    expect(me.status).toBe(200);
+    expect(me.body.userRole).toBe('platform_admin');
+    expect(me.body.role).toBe(login.body.role);
+
+    await prisma.platformUser.delete({ where: { email } });
   });
 });

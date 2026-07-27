@@ -3,14 +3,21 @@ import { usePractice } from '../../context/PracticeContext'
 import { CollectRxLogoMark } from '../brand/CollectRxLogo'
 import { NotificationBell } from './NotificationBell'
 
-export function AppTopBar() {
-  const { practices, practiceId, setPracticeId, logout, isPlatformDev, practice } = usePractice()
+export function AppTopBar({ onToggleNav }: { onToggleNav?: () => void }) {
+  const { practices, practiceId, setPracticeId, logout, isPlatformDev, practice, userRole } = usePractice()
   const practiceName = practice?.name ?? practices.find((p) => p.id === practiceId)?.name
 
   return (
     <header className="crx-topbar flex-shrink-0" role="banner">
       <div className="crx-topbar-inner">
         <div className="crx-topbar-left">
+          {onToggleNav && (
+            <button type="button" className="crx-nav-toggle" onClick={onToggleNav} aria-label="Toggle navigation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
           {practices.length > 1 ? (
             <label className="crx-topbar-practice">
               <span className="crx-topbar-practice-label">Practice</span>
@@ -30,7 +37,7 @@ export function AppTopBar() {
           ) : (
             practiceName && <p className="crx-topbar-practice-name">{practiceName}</p>
           )}
-          {isPlatformDev && (
+          {isPlatformDev && userRole !== 'platform_admin' && (
             <span className="crx-topbar-dev-badge">Dev session</span>
           )}
         </div>

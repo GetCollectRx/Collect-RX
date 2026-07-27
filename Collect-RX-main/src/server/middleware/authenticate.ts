@@ -77,7 +77,10 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
     // Accountant token expiry — must be checked against DB since the JWT itself
     // has a 90-day TTL but the practice can revoke access before that via tokenExpiresAt.
-    if (payload.role === 'accountant') {
+    // Auditor sessions also carry role: 'accountant' (PracticeRole has no 'auditor'
+    // value, so signBriefSessionToken shims it) but their userId is a platform_users
+    // row, not a User row — platformUserSession distinguishes the two.
+    if (payload.role === 'accountant' && !payload.platformUserSession) {
       const userId = (payload as UserAuthPayload).userId;
       prisma.user.findUnique({ where: { id: userId }, select: { tokenExpiresAt: true, isActive: true } })
         .then((user) => {

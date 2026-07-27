@@ -71,7 +71,7 @@ async function notifyEarlyAccessRequest(lead: EarlyAccessLead): Promise<void> {
   if (!process.env.SENDGRID_API_KEY) return;
 
   const to = process.env.EARLY_ACCESS_NOTIFY_EMAIL || process.env.SENDGRID_FROM_EMAIL || 'billing@collectrx.ca';
-  const sg = require('@sendgrid/mail');
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
 
   const subject = lead.intent === 'demo'

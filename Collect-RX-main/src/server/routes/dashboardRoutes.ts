@@ -11,7 +11,9 @@ import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import { computeCarrierStats } from '../services/platformReports.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import { getPracticePmsContext } from '../pms/practicePmsContext.js';
+import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
 
 const router = Router();
@@ -240,7 +242,7 @@ router.get('/ar-close', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/ar-close/run', async (req: Request, res: Response) => {
+router.post('/ar-close/run', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const { runDailyArCloseForPractice } = await import('../jobs/dailyArClose.js');
@@ -256,7 +258,7 @@ router.post('/ar-close/run', async (req: Request, res: Response) => {
 router.get('/setup-status', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
-    const [practice, lastImport, claimCount, callCount, pms] = await Promise.all([
+    const [practice, lastImport, claimCount, callCount, pms, settings] = await Promise.all([
       prisma.practice.findUnique({
         where: { id: practiceId },
         select: { name: true, billingPhone: true, npi: true, settings: true },
@@ -269,11 +271,15 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       prisma.insuranceClaim.count({ where: { practiceId, deletedAt: null } }),
       prisma.callAttempt.count({ where: { claim: { practiceId } } }),
       getPracticePmsContext(prisma, practiceId),
+      getPracticeSettings(prisma, practiceId),
     ]);
 
     const pmsVendorSet = Boolean(pms.vendorId && pms.vendorId !== 'other');
     const identitySet = Boolean(practice?.name && practice?.billingPhone && practice?.npi);
-    const vapiReady = Boolean(process.env.VAPI_API_KEY?.trim());
+    // Practice-level toggle the owner/office_manager actually control on
+    // /admin/integrations — not the platform-wide VAPI_API_KEY presence,
+    // which every practice would see as "done" with no way to act on it.
+    const vapiReady = settings.voiceAgentEnabled === true;
 
     const steps = [
       {
@@ -302,21 +308,21 @@ router.get('/setup-status', async (req: Request, res: Response) => {
         title: 'Practice identity for carrier calls',
         detail: 'Name, callback number, and NPI are spoken on every carrier call.',
         done: identitySet,
-        href: '/settings',
+        href: '/admin/integrations',
       },
       {
         id: 'integrations',
         title: 'Voice agent configured',
-        detail: 'Vapi must be connected before CollectRx can dial carriers.',
+        detail: 'Turn on the voice agent for this practice before CollectRx can dial carriers.',
         done: vapiReady,
-        href: '/admin/integrations',
+        href: '/settings',
       },
       {
         id: 'first_call',
         title: 'First carrier call placed',
         detail: 'Optional — confirms the full loop is working end-to-end.',
         done: callCount > 0,
-        href: '/console',
+        href: '/insurance?tab=queue',
       },
     ];
 

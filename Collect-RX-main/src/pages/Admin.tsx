@@ -6,7 +6,7 @@ import { parseApiJson } from '../lib/parseApiJson'
 import {
   Card, CardHeader, Button, Input, Badge, InlineToast, useToast,
 } from '../components/ui'
-import { AdminOnboardingChecklist } from '../components/AdminOnboardingChecklist'
+import { OnboardingProgress, type SetupStatus } from '../components/OnboardingProgress'
 
 const CARRIER_ROWS = [
   { id: 'sun_life',         name: 'Sun Life Financial' },
@@ -52,7 +52,9 @@ export default function Admin() {
   const [integrationsLoading, setIntegrationsLoading] = useState(true)
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
+  const [engineRunning, setEngineRunning] = useState<boolean | null>(null)
   const [auditTick, setAuditTick] = useState(0)
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null)
   const { toast, showToast }            = useToast()
 
   // ── Practice Identity (direct Practice model fields, not settings JSON) ──────
@@ -76,7 +78,7 @@ export default function Admin() {
           : { billingPhone: '', faxNumber: '', practiceAddress: '', npi: '', taxId: '' },
       )
       .then((d) => setIdentity(d))
-      .catch(() => {})
+      .catch(() => showToast('err', 'Could not load practice identity'))
       .finally(() => setIdentityLoading(false))
   }, [practiceId])
 
@@ -121,8 +123,30 @@ export default function Admin() {
           setCarriers(defaultFlags())
         }
       })
-      .catch(() => setCarriers(defaultFlags()))
+      .catch(() => {
+        showToast('err', 'Could not load carrier settings — showing defaults, not saved values')
+        setCarriers(defaultFlags())
+      })
       .finally(() => setSettingsLoading(false))
+  }, [practiceId])
+
+  useEffect(() => {
+    if (!practiceId) { setEngineRunning(null); return }
+    apiFetch(`/api/practices/${practiceId}/reports/queue`)
+      .then(async (r) => (r.ok ? parseApiJson<{ success: boolean; data: { isPaused: boolean } }>(r) : null))
+      .then((d) => setEngineRunning(d ? !d.data.isPaused : null))
+      .catch(() => {
+        showToast('err', 'Could not load recovery engine status')
+        setEngineRunning(null)
+      })
+  }, [practiceId])
+
+  useEffect(() => {
+    if (!practiceId) { setSetupStatus(null); return }
+    apiFetch('/api/dashboard/setup-status')
+      .then(async (r) => (r.ok ? parseApiJson<{ success: boolean; data: SetupStatus | null }>(r) : null))
+      .then((d) => setSetupStatus(d?.data ?? null))
+      .catch(() => setSetupStatus(null))
   }, [practiceId])
 
   useEffect(() => {
@@ -134,7 +158,10 @@ export default function Admin() {
     apiFetch('/api/admin/integrations')
       .then(async (r) => (r.ok ? parseApiJson<IntegrationsPayload>(r) : null))
       .then((d) => setIntegrations(d))
-      .catch(() => setIntegrations(null))
+      .catch(() => {
+        showToast('err', 'Could not load integration status')
+        setIntegrations(null)
+      })
       .finally(() => setIntegrationsLoading(false))
   }, [practiceId])
 
@@ -187,7 +214,7 @@ export default function Admin() {
 
       {toast && <InlineToast toast={toast} />}
 
-      <AdminOnboardingChecklist practiceId={practiceId} />
+      <OnboardingProgress status={setupStatus} />
 
       {/* Practice Identity — fields read by the voice agent during carrier calls */}
       <Card>
@@ -397,8 +424,13 @@ export default function Admin() {
       <Card>
         <CardHeader title="Insurance recovery engine" subtitle="Call queue, payment trace, and work-queue sync every 60 seconds" />
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-2 h-2 rounded-full bg-crx-500 animate-pulse" aria-hidden="true" />
-          <span className="text-sm font-medium text-crx-600 dark:text-crx-400">Running</span>
+          <span
+            className={`w-2 h-2 rounded-full ${engineRunning ? 'bg-crx-500 animate-pulse' : engineRunning === false ? 'bg-amber-500' : 'bg-gray-400'}`}
+            aria-hidden="true"
+          />
+          <span className={`text-sm font-medium ${engineRunning ? 'text-crx-600 dark:text-crx-400' : engineRunning === false ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
+            {engineRunning === null ? 'Status unavailable' : engineRunning ? 'Running' : 'Paused'}
+          </span>
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 space-y-2">

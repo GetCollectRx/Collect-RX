@@ -56,6 +56,10 @@ function usagePrisma(opts: { durationSeconds: number; todayMinutesAfter: number 
       update: vi.fn(async () => ({})),
     },
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
+    // No org membership — resolveBillingEntity falls back to practice-level billing.
+    organizationPractice: {
+      findFirst: vi.fn(async () => null),
+    },
   } as unknown as PrismaClient;
   return prisma;
 }

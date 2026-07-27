@@ -26,7 +26,7 @@ export default function UsersAdmin() {
   const [busy, setBusy] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [form, setForm] = useState({ email: '', role: 'billing_coordinator' as PracticeRole, providerId: '' })
-  const [inviteSent, setInviteSent] = useState<string | null>(null)
+  const [inviteSent, setInviteSent] = useState<{ email: string; emailSent: boolean; link?: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -49,7 +49,7 @@ export default function UsersAdmin() {
       const res = await apiFetch(`/api/auth/users/${id}`, { method: 'DELETE' })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
@@ -64,7 +64,7 @@ export default function UsersAdmin() {
       })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
@@ -78,7 +78,7 @@ export default function UsersAdmin() {
       })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
@@ -95,10 +95,14 @@ export default function UsersAdmin() {
           role: form.role,
         }),
       })
-      const body = await res.json() as { error?: string }
+      const body = await res.json() as { error?: string; emailSent?: boolean; token?: string }
       if (!res.ok) { setFormError(body.error ?? 'Failed to send invite'); return }
       setShowAdd(false)
-      setInviteSent(form.email)
+      setInviteSent({
+        email: form.email,
+        emailSent: body.emailSent !== false,
+        link: body.token ? `${window.location.origin}/accept-invite?token=${body.token}` : undefined,
+      })
       setForm({ email: '', role: 'billing_coordinator', providerId: '' })
     } catch (e) { setFormError((e as Error).message) }
     finally { setBusy(null) }
@@ -196,12 +200,27 @@ export default function UsersAdmin() {
       )}
 
       {/* Invite sent banner */}
-      {inviteSent && (
+      {inviteSent && inviteSent.emailSent && (
         <div className="rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-green-800 dark:text-green-300">
-            Invite sent to <strong>{inviteSent}</strong>. They'll get an email to set up their account.
+            Invite sent to <strong>{inviteSent.email}</strong>. They'll get an email to set up their account.
           </p>
           <button onClick={() => setInviteSent(null)} className="text-green-500 hover:text-green-700 text-lg leading-none ml-4">×</button>
+        </div>
+      )}
+      {inviteSent && !inviteSent.emailSent && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Invite created for <strong>{inviteSent.email}</strong>, but the email couldn't be sent. Share this link with them directly:
+            </p>
+            <button onClick={() => setInviteSent(null)} className="text-amber-500 hover:text-amber-700 text-lg leading-none ml-4">×</button>
+          </div>
+          {inviteSent.link && (
+            <code className="mt-2 block text-xs bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5 break-all">
+              {inviteSent.link}
+            </code>
+          )}
         </div>
       )}
 

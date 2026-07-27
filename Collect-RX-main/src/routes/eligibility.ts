@@ -25,6 +25,7 @@ import { prisma } from '../lib/prisma';
 import type { CarrierId } from '@prisma/client';
 import { practiceIdFromSession } from '../server/middleware/requirePracticeSession';
 import { useOwnerPracticeApiAuthOnly } from '../server/middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../server/middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 
 // ---------------------------------------------------------------------------
@@ -165,7 +166,7 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
 // POST /api/eligibility/reconcile
 // Compare an estimate against an actual adjudication (EOB).
 // ---------------------------------------------------------------------------
-router.post('/reconcile', async (req: Request, res: Response) => {
+router.post('/reconcile', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const body = req.body as ReconcileRequest & { estimate: unknown };
 

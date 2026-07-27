@@ -61,6 +61,7 @@ import { usePublicPortalTheme } from './website/usePublicPortalTheme'
 import CsvImportPage from './pages/CsvImportPage'
 import { ToastProvider } from './context/ToastContext'
 import { CommandPalette } from './components/CommandPalette'
+import './styles/tailwind.css'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
@@ -179,6 +180,8 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+      { to: '/admin/integrations', exact: false, label: 'Integrations', icon: 'admin' },
+      { to: '/admin/staff', exact: true, label: 'Staff', icon: 'users' },
     ],
   },
 ]
@@ -354,45 +357,72 @@ function sidebarNavSections(
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
-function Sidebar() {
+function SidebarCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button type="button" className="crx-sidebar-close" onClick={onClose} aria-label="Close navigation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  )
+}
+
+function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole, role, sessionUser } = usePractice()
+  const location = useLocation()
+
+  // Close the mobile drawer whenever the route changes (e.g. after tapping a nav link).
+  useEffect(() => {
+    onClose()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+
+  const sidebarClassName = `crx-sidebar${open ? ' crx-sidebar-open' : ''}`
 
   if (isFrontDesk) {
     return (
-      <aside className="crx-sidebar" aria-label="Front desk navigation">
-        <div className="crx-sidebar-head">
-          <SidebarBrand to="/console" suffix=" Desk" />
-        </div>
-        <nav className="crx-sidebar-nav" role="navigation">
-          {FRONT_DESK_NAV.map((item) => (
-            <SidebarNavLink key={item.to} item={item} />
-          ))}
-        </nav>
-      </aside>
+      <>
+        {open && <button type="button" className="crx-sidebar-backdrop" onClick={onClose} aria-label="Close navigation" />}
+        <aside className={sidebarClassName} aria-label="Front desk navigation">
+          <div className="crx-sidebar-head">
+            <SidebarBrand to="/console" suffix=" Desk" />
+            <SidebarCloseButton onClose={onClose} />
+          </div>
+          <nav className="crx-sidebar-nav" role="navigation">
+            {FRONT_DESK_NAV.map((item) => (
+              <SidebarNavLink key={item.to} item={item} />
+            ))}
+          </nav>
+        </aside>
+      </>
     )
   }
 
   const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner, isPracticeGroupAdmin(role, sessionUser), role)
 
   return (
-    <aside className="crx-sidebar" aria-label="Main navigation">
-      <div className="crx-sidebar-head">
-        <SidebarBrand />
-        {isPlatformDev && <span className="crx-sidebar-dev-pill">Dev</span>}
-      </div>
-      <nav className="crx-sidebar-nav" role="navigation">
-        {navSections.map((section) => (
-          <div key={section.label || 'nav'} className="crx-nav-section">
-            {section.label ? (
-              <p className="crx-section-label crx-nav-section-label">{section.label}</p>
-            ) : null}
-            {section.items.map((item) => (
-              <SidebarNavLink key={item.to} item={item} />
-            ))}
-          </div>
-        ))}
-      </nav>
-    </aside>
+    <>
+      {open && <button type="button" className="crx-sidebar-backdrop" onClick={onClose} aria-label="Close navigation" />}
+      <aside className={sidebarClassName} aria-label="Main navigation">
+        <div className="crx-sidebar-head">
+          <SidebarBrand />
+          {isPlatformDev && userRole !== 'platform_admin' && <span className="crx-sidebar-dev-pill">Dev</span>}
+          <SidebarCloseButton onClose={onClose} />
+        </div>
+        <nav className="crx-sidebar-nav" role="navigation">
+          {navSections.map((section) => (
+            <div key={section.label || 'nav'} className="crx-nav-section">
+              {section.label ? (
+                <p className="crx-section-label crx-nav-section-label">{section.label}</p>
+              ) : null}
+              {section.items.map((item) => (
+                <SidebarNavLink key={item.to} item={item} />
+              ))}
+            </div>
+          ))}
+        </nav>
+      </aside>
+    </>
   )
 }
 
@@ -401,6 +431,7 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
   const location = useLocation()
   if (
     isPlatformDev &&
+    userRole !== 'platform_admin' &&
     PLATFORM_DEV_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
   ) {
     return <Navigate to="/" replace />
@@ -436,12 +467,13 @@ function useBrandAppShellTheme() {
 function AppShell() {
   useBrandAppShellTheme()
   const { sessionHealth, userRole } = usePractice()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <div className="crx-app flex min-h-screen">
       <CommandPalette />
-      <Sidebar />
+      <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="crx-app-main">
-        <AppTopBar />
+        <AppTopBar onToggleNav={() => setMobileNavOpen((v) => !v)} />
         <SessionHealthBanner
           health={sessionHealth}
           isPlatformAdmin={userRole === 'platform_admin'}
@@ -469,7 +501,7 @@ function AppShell() {
           <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />
           <Route path="/admin/staff" element={<ProtectedRoute allowedRoles={['practice_owner']}><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
-          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PilotRunbook /></ProtectedRoute>} />
+          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['platform_admin']}><PilotRunbook /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
           <Route path="/download" element={<DesktopDownload />} />
@@ -479,8 +511,8 @@ function AppShell() {
           <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
           <Route path="/import" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CsvImportPage /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
-          <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/admin/sync" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><SyncOpsDashboard /></ProtectedRoute>} />
+          <Route path="/analytics" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin']}><Analytics /></ProtectedRoute>} />
           <Route path="/validation" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><AssumptionValidation /></ProtectedRoute>} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />

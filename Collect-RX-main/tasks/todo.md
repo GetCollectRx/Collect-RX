@@ -113,7 +113,7 @@
 - [x] Live test calls placed, five attempts, each one found and fixed a real bug: Vapi/Twilio traffic collision on one URL, the assistant-request interception, Twilio's own hold-music file 502ing, a ws library multi-path bug, and an auto-resume VAD window that was too long for short utterances. Full detail in tasks/lessons.md.
 - [x] Billing question answered directly from real call data: Vapi's per-minute cost stops at the transfer moment (confirmed twice, billed minutes matched call duration to the transfer, not the full hold time)
 - [ ] Auto-resume trigger recalibrated from real audio diagnostics but not yet confirmed working on a live call
-- [ ] Twilio Voice URL for +16139098770 is currently pointed at our test endpoint, not Vapi's inbound handler; needs reverting once testing is done, since it currently can't be answered by any Vapi assistant for a genuine inbound call
+- [x] Twilio Voice URL for +16139098770 reverted to Vapi's inbound handler (`https://api.vapi.ai/twilio/inbound_call`) — confirmed directly against Twilio's API (queried live via SSH into the collect-rx Fly machine using the existing Fly-secret credentials) that it was already reverted by the time this was checked; no action needed, just verified
 
 ### Concurrency incident, 2026-07-25
 
