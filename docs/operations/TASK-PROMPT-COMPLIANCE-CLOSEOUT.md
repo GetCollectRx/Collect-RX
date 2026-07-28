@@ -11,11 +11,10 @@ Work in this repo's `Collect-RX-main/` workspace. First read `docs/compliance/CO
 - **Change 3** (PHI audit logging): exists as `Collect-RX-main/src/server/crypto/phiCryptoAudit.ts` (`logPhiCryptoAccess`) plus `src/server/audit/auditLog.ts` — different shape than the doc's `phiAuditService.log()` sketch, but covers the same requirement (structured log of PHI encrypt/decrypt operations, no plaintext, timestamped, actor-tagged).
 - **Change 4** (Practice Settings UI): `Collect-RX-main/src/pages/PracticeSettings.tsx` already has the provider-number input and authorization-submitted toggle.
 
-**Confirmed NOT done:** the doc's "optional enforcement" — `queueEngine.ts` does not check `authorizationSubmitted` before dispatching a call to a carrier. The original doc left this as an explicit open decision for Khalid ("hard block or soft warning... flag it for Khalid to decide"). It is still undecided.
+**Correction (2026-07-28):** this doc originally said the "optional enforcement" was not done. That was wrong — a closer read of `src/carriers/adapter.ts` found it already fully implemented as `checkCarrierAuthorizationGate()`, called from `validateDispatch()` (which `queueEngine.ts` calls before every dispatch). It hard-blocks with code `CARRIER_NOT_AUTHORIZED` — explicitly named "Billing Agent Authorization Letter (BAAL) not on file" in the rejection reason — when `authorizationSubmitted` is false, and the rejection is surfaced visibly: `queueEngine.ts`'s `deferQueueEntry()` writes `dispatchDeferralCode`/`dispatchDeferralNextAction` onto the queue entry, and `src/pages/LiveConsole.tsx` renders it. So the hard-block, with a non-silent UI state, was already shipped — nothing to implement here. Re-verify this yourself (don't just trust this note) and, if confirmed, tick it off rather than re-doing it.
 
 ## Hard rules (stop conditions)
-- Do NOT re-implement Changes 1–4. If your own verification finds a real gap in one of them, report it precisely (file, line, what's missing) — don't rewrite the whole thing to be safe.
-- Do NOT implement the `authorizationSubmitted` enforcement (hard block vs. soft warning vs. none) — that decision belongs to Khalid. Your job is to present the choice clearly, not to pick one.
+- Do NOT re-implement Changes 1–4, and do NOT re-implement the `authorizationSubmitted` gate described above — it already exists. If your own verification finds a real gap in any of them, report it precisely (file, line, what's missing) — don't rewrite the whole thing to be safe.
 - Do NOT modify `src/vapi/client.ts`'s payload construction without re-running the PHI-boundary check in step 3 immediately after, and reverting if it fails.
 - Do NOT touch CARRIER_BLOCK logic.
 
@@ -31,9 +30,8 @@ Go through `docs/compliance/CODE-HANDOFF-COMPLIANCE.md`'s "Acceptance Criteria" 
 7. **No patient name, DOB, or health card number appears in any Vapi API request payload** — re-verify this explicitly yourself by reading the full payload construction in `src/vapi/client.ts` for both call-starting functions, rather than trusting the earlier pass. This is the hard PHI-boundary line from `CLAUDE.md`; get it right.
 
 ## Output
-1. Update `docs/compliance/CODE-HANDOFF-COMPLIANCE.md`: tick each verified checkbox, and add a dated note near the top: "Verified against current codebase (`Collect-RX-main/`) on `<date>` — the file paths and `db`/`vapiService` structure described in this doc reflect the pre-Prisma architecture and are historical; see the verification note for current locations." Do not delete the original doc content — it's still useful history of what was required and why.
+1. Update `docs/compliance/CODE-HANDOFF-COMPLIANCE.md`: tick each verified checkbox, and add a dated note near the top: "Verified against current codebase (`Collect-RX-main/`) on `<date>` — the file paths and `db`/`vapiService` structure described in this doc reflect the pre-Prisma architecture and are historical; see the verification note for current locations. The 'optional enforcement' item is implemented (`checkCarrierAuthorizationGate` in `carriers/adapter.ts`, hard-block)." Do not delete the original doc content — it's still useful history of what was required and why.
 2. If you find a genuine gap in items 1–7 (not just a stale path, an actual missing behavior), report it clearly instead of silently fixing it — these are compliance-sensitive and should get a second set of eyes before merging.
-3. End your report with the one open question for Khalid, verbatim: should carrier dispatch **hard-block** calls when `authorizationSubmitted` is false, **soft-warn** (log and proceed), or stay as-is (no enforcement) until he says otherwise? Do not implement any of the three without his answer.
 
 ## Final report format
-Seven-item checklist (pass/fail/gap-found, one line each with the file:line citation), then the one question for Khalid. Nothing else.
+Seven-item checklist (pass/fail/gap-found, one line each with the file:line citation). Nothing else.

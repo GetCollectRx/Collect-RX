@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
@@ -92,6 +92,42 @@ function canManageRole(
   const actorLevel = ROLE_LEVEL[actorAuth.role as keyof typeof ROLE_LEVEL] ?? 0;
   const targetLevel = ROLE_LEVEL[targetRole as keyof typeof ROLE_LEVEL] ?? 0;
   return actorLevel > targetLevel;
+}
+
+// ─── Password reset token helpers ──────────────────────────────────────────────
+//
+// Tokens are stored and looked up by SHA-256 hash, never in plaintext — a DB
+// read (backup, replica, compromised admin session) can't be replayed into an
+// account takeover. Only the plaintext, which never touches the database,
+// goes out over email.
+
+function hashResetToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+async function issuePasswordResetToken(
+  prisma: PrismaClient,
+  user: { id: string; email: string; displayName: string },
+): Promise<void> {
+  // Invalidate any existing unused tokens for this user
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await prisma.passwordResetToken.create({
+    data: { userId: user.id, token: hashResetToken(token), expiresAt },
+  });
+
+  // Send email (fire-and-forget; errors are logged but never expose to caller)
+  void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
+    console.error('[password-reset] email send failed', e);
+  });
+
+  console.log(`[password-reset] token issued for ${user.email}`);
 }
 
 // ─── Router factory ───────────────────────────────────────────────────────────
@@ -703,8 +739,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   /**
    * POST /api/auth/reset-password/request
    * Body: { email }
-   * Issues a reset token. In production, the token would be emailed; for now it is
-   * returned in the response so the admin can relay it to the user.
+   * Issues a reset token and emails it. The plaintext token is never returned
+   * in the response or stored anywhere — only its SHA-256 hash is persisted.
    * Always returns 200 to avoid email enumeration.
    */
   r.post('/reset-password/request', authLimiter, async (req: Request, res: Response) => {
@@ -718,26 +754,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
       }
 
-      // Invalidate any existing unused tokens for this user
-      await prisma.passwordResetToken.updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: new Date() },
-      });
-
-      const { randomBytes } = await import('node:crypto');
-      const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-      await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt },
-      });
-
-      // Send email (fire-and-forget; errors are logged but never expose to caller)
-      void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
-        console.error('[password-reset] email send failed', e);
-      });
-
-      console.log(`[password-reset] token issued for ${email}`);
+      await issuePasswordResetToken(prisma, user);
 
       return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
     } catch (e) {
@@ -747,21 +764,25 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /**
-   * GET /api/auth/reset-password/token/:userId
-   * Platform-dev only — retrieves the current active reset token for a user.
-   * Used by admin to relay the token to the user until email delivery is wired up.
+   * POST /api/auth/reset-password/resend/:userId
+   * Platform-dev only — invalidates any active reset token for the user and
+   * issues + emails a fresh one, for when the original delivery failed.
+   * Never returns a token, plaintext or otherwise: the only way to complete a
+   * reset is the emailed link, matching how every major provider (Google,
+   * Meta, ...) handles a stuck reset — support can trigger a resend, never
+   * view the token itself.
    */
-  r.get('/reset-password/token/:userId', authenticate, authorizeRole('platform_dev'), async (req, res) => {
+  r.post('/reset-password/resend/:userId', authenticate, authorizeRole('platform_dev'), async (req, res) => {
     try {
-      const record = await prisma.passwordResetToken.findFirst({
-        where: { userId: req.params.userId, usedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!record) return res.status(404).json({ error: 'No active reset token found' });
-      return res.json({ token: record.token, expiresAt: record.expiresAt });
+      const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      await issuePasswordResetToken(prisma, user);
+
+      return res.json({ ok: true, message: `Reset email resent to ${user.email}.` });
     } catch (e) {
-      console.error('get reset token error:', e);
-      return res.status(500).json({ error: 'Failed' });
+      console.error('resend reset token error:', e);
+      return res.status(500).json({ error: 'Failed to resend reset email' });
     }
   });
 
@@ -781,7 +802,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
       }
 
-      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+      const record = await prisma.passwordResetToken.findUnique({ where: { token: hashResetToken(token) } });
       if (!record || record.usedAt || record.expiresAt < new Date()) {
         return res.status(400).json({ error: 'Invalid or expired reset token' });
       }
