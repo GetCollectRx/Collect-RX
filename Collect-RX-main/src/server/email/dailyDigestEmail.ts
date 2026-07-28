@@ -240,7 +240,7 @@ export async function computeDigestData(
   const carrierStats = new Map<string, { queued: number; resolved: number }>();
   for (const claim of allClaims) {
     const carrierId = claim.carrierId;
-    const carrierName = CARRIER_CONFIGS[carrierId]?.name || carrierId;
+    const carrierName = carrierId;
 
     if (!carrierStats.has(carrierName)) {
       carrierStats.set(carrierName, { queued: 0, resolved: 0 });
