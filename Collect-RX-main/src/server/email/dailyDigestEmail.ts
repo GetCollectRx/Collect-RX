@@ -194,7 +194,6 @@ export async function computeDigestData(
 ): Promise<DigestData> {
   const { getDenialAnalytics } = await import('../../services/insurance-denial-analytics.js');
   const { getQueueSummary } = await import('../frontDesk/batchClaimStatusService.js');
-  const { CARRIER_CONFIGS } = await import('../../carriers/adapter.js');
 
   const [denialAnalytics, queueSummary, allClaims] = await Promise.all([
     getDenialAnalytics(prisma, practiceId),

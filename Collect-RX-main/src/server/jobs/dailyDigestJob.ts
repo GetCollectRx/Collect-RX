@@ -6,7 +6,7 @@ import type { Job } from 'bullmq';
 import { prisma } from '../../lib/prisma.js';
 import { sendDailyDigestEmail, computeDigestData } from '../email/dailyDigestEmail.js';
 
-export async function processDailyDigestJob(job: Job): Promise<string> {
+export async function processDailyDigestJob(_job: Job): Promise<string> {
   try {
     const practices = await prisma.practice.findMany({
       select: {
@@ -51,7 +51,6 @@ export async function processDailyDigestJob(job: Job): Promise<string> {
 
     const msg = `Daily digest sent to ${sent} practice owner(s)${failed > 0 ? `, ${failed} failed` : ''}`;
     console.log(`[dailyDigestJob] ${msg}`);
-    job.progress(100);
 
     return msg;
   } catch (err) {

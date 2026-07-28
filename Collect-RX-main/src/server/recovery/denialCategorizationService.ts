@@ -96,7 +96,7 @@ function computeConfidence(
   code: string | null,
   text: string | null,
   outcomeDetail: string | null,
-  category: DenialCategory,
+  _category: DenialCategory,
 ): 'high' | 'medium' | 'low' {
   if (!code && !text && !outcomeDetail) return 'low';
   if ((code ?? '').includes('FREQ') || (code ?? '').includes('COB')) return 'high';
