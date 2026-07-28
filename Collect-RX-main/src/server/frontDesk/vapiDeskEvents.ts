@@ -16,6 +16,7 @@ import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js
 import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
   message?: { toolCalls?: Array<{ function?: { name?: string } }> };
@@ -119,6 +120,13 @@ export async function processVapiDeskWebhook(
         reason: `Transcript signal: "${phrase}"`,
       });
     }
+
+    try {
+      await checkAndTriggerEscalation(prisma, attempt.id, payload.transcript);
+    } catch (err) {
+      console.error('[vapiDeskEvents] sentiment escalation check failed:', err);
+    }
+
     return;
   }
 

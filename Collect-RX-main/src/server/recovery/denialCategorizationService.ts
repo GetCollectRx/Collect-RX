@@ -80,9 +80,9 @@ export async function getDenialCategoryStats(
   const total = categorized.length || 1;
   const stats: DenialCategoryStats[] = [];
 
-  for (const [category, claimIds] of byCategory) {
+  for (const [cat, claimIds] of byCategory) {
     stats.push({
-      category,
+      category: cat,
       count: claimIds.length,
       percentOfDenials: Math.round((claimIds.length / total) * 1000) / 10,
       claimIds,

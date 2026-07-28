@@ -117,20 +117,17 @@ export async function checkAndTriggerEscalation(
 
   if (!attempt) return null;
 
-  const escalation = await prisma.escalation.create({
+  await prisma.escalation.create({
     data: {
       claimId: attempt.claimId,
       type: 'SENTIMENT_DISTRESS',
       severity: sentiment.distressScore >= 75 ? 'HIGH' : 'MEDIUM',
       reason: `Sentiment analysis detected ${sentiment.distressScore}% distress. Markers: ${sentiment.markers.join(', ')}`,
-      metadata: JSON.stringify({
+      metadata: {
         sentiment,
         callAttemptId,
-      }),
+      },
       status: 'OPEN',
-      createdAt: new Date(),
-      resolvedAt: null,
-      resolution: null,
     },
   });
 

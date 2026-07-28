@@ -681,6 +681,7 @@ model InsuranceClaim {
 
   callAttempts      CallAttempt[]
   queueEntry        CallQueue?
+  escalations       Escalation[]
   recoveryActions   ClaimRecoveryAction[]
   recoveryEvents    ClaimRecoveryEvent[]
   evidenceItems     ClaimEvidenceItem[]
@@ -992,6 +993,8 @@ model CallQueue {
   /// Number of attempts made so far. Hard cap: 3 (enforced before dispatch).
   attempts                   Int           @default(0)
   lastAttemptAt              DateTime?     @map("last_attempt_at")
+  /// Next scheduled recall time after this claim's outcome (set by claim router).
+  nextRecallAt               DateTime?     @map("next_recall_at")
   /// Safe, structured reason for the latest dispatch deferral. Never stores PHI or vendor errors.
   dispatchDeferralCode       String?       @map("dispatch_deferral_code")
   /// Staff-facing next step for the latest dispatch deferral. Never stores PHI.
@@ -2030,6 +2033,24 @@ model CarrierNavigationProposal {
   @@index([carrierId, status, createdAt(sort: Desc)])
   @@index([discoveryRunId])
   @@map("carrier_navigation_proposals")
+}
+
+model Escalation {
+  id             String   @id @default(uuid())
+  claimId        String   @map("claim_id")
+  claim          InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  type           String   // SENTIMENT_DISTRESS, MANUAL, CARRIER_RESPONSE, etc.
+  severity       String   @default("MEDIUM") // HIGH, MEDIUM, LOW
+  reason         String   @map("reason") @db.Text
+  metadata       Json?
+  status         String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED
+  createdAt      DateTime @default(now()) @map("created_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  resolution     String?  @db.Text
+
+  @@index([claimId, status])
+  @@index([createdAt(sort: Desc)])
+  @@map("escalations")
 }
 
 model EmailCampaignEvent {

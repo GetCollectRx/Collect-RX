@@ -325,7 +325,6 @@ export function createPracticeReportsRouter(): Router {
         res.status(403).json({ success: false, error: 'practiceId does not match session' });
         return;
       }
-      const practiceId = practiceIdFromSession(req);
       const windowDays = Math.min(parseInt(req.query.window as string) || 7, 90);
       const { getLatencyMetricsByCarrier, getLatencyHealthStatus } = await import(
         '../learning/vapiLatencyTracker.js'
