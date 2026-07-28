@@ -353,7 +353,8 @@
       "Bash(agent-reach doctor *)",
       "Bash(cat)",
       "Bash(chmod +x /tmp/collectrx_research.sh)",
-      "Bash(/tmp/collectrx_research.sh)"
+      "Bash(/tmp/collectrx_research.sh)",
+      "Bash(grep -E \"error|^$\")"
     ]
   }
 }

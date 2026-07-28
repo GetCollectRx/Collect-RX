@@ -123,10 +123,7 @@ export async function checkAndTriggerEscalation(
       type: 'SENTIMENT_DISTRESS',
       severity: sentiment.distressScore >= 75 ? 'HIGH' : 'MEDIUM',
       reason: `Sentiment analysis detected ${sentiment.distressScore}% distress. Markers: ${sentiment.markers.join(', ')}`,
-      metadata: {
-        sentiment,
-        callAttemptId,
-      },
+      metadata: JSON.stringify({ sentiment, callAttemptId }),
       status: 'OPEN',
     },
   });

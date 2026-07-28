@@ -2,7 +2,7 @@
  * Daily digest email job — runs once per day, summarizes claim recovery metrics for all practices.
  */
 
-import type { Job } from 'bull';
+import type { Job } from 'bullmq';
 import { prisma } from '../../lib/prisma.js';
 import { sendDailyDigestEmail, computeDigestData } from '../email/dailyDigestEmail.js';
 
