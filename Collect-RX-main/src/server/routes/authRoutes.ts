@@ -277,6 +277,16 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         if (practiceUser.role === 'accountant' && practiceUser.tokenExpiresAt && practiceUser.tokenExpiresAt < new Date()) {
           return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
         }
+        // Phase 4 FR-5: domain-based SSO enforcement, checked live at login
+        // time (not stored per-user) — a config change takes effect immediately.
+        const { findEnforcingSsoOrgForEmail } = await import('../sso/organizationSsoService.js');
+        const ssoOrg = await findEnforcingSsoOrgForEmail(prisma, email);
+        if (ssoOrg) {
+          return res.status(403).json({
+            error: 'Your organization requires single sign-on. Use your SSO login link instead of a password.',
+            ssoLoginUrl: `/api/auth/sso/${ssoOrg.orgSlug}/login`,
+          });
+        }
         const ok = await bcrypt.compare(password, practiceUser.passwordHash);
         if (!ok) {
           return res.status(401).json({ error: 'Invalid credentials' });
@@ -952,23 +962,37 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const parsed = inviteBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { email, role, providerId } = parsed.data;
+      const { email, role, providerId, orgRole: requestedOrgRole } = parsed.data;
 
       if (role === 'associate_dentist' && !providerId) {
         return res.status(400).json({ error: 'providerId is required for associate_dentist role' });
+      }
+      if (requestedOrgRole === 'org_billing_viewer' && role !== 'accountant') {
+        return res.status(400).json({ error: 'orgRole "org_billing_viewer" requires role "accountant"' });
       }
 
       // A co-admin invite (role === 'group_admin') is a same-level invite that
       // canManageRole's actorLevel > targetLevel rule would otherwise block —
       // it's allowed only for an existing org_admin inviting into their own
       // organization, checked separately from the normal role-hierarchy rule.
+      // A billing-viewer invite (role === 'accountant' + orgRole === 'org_billing_viewer')
+      // is the same shape — org_admin-only, org-scoped — for the DSO controller/CFO
+      // persona (Phase 4 FR-9, specs/phase-4-enterprise-it-compliance.md).
       let organizationId: string | undefined;
+      let orgRole: 'org_admin' | 'org_billing_viewer' | undefined;
       if (actorAuth && !isPlatformDev(auth)) {
         if (role === 'group_admin') {
           organizationId = (await callerAdminOrganizationId(prisma, actorAuth.userId)) ?? undefined;
           if (!organizationId) {
             return res.status(403).json({ error: 'Only an organization admin can invite a co-admin' });
           }
+          orgRole = 'org_admin';
+        } else if (requestedOrgRole === 'org_billing_viewer') {
+          organizationId = (await callerAdminOrganizationId(prisma, actorAuth.userId)) ?? undefined;
+          if (!organizationId) {
+            return res.status(403).json({ error: 'Only an organization admin can invite a billing viewer' });
+          }
+          orgRole = 'org_billing_viewer';
         } else if (!canManageRole(actorAuth, role)) {
           return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
         }
@@ -1002,6 +1026,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           role: role as import('@prisma/client').PracticeRole,
           expiresAt,
           organizationId,
+          orgRole,
           providerId: providerId ?? null,
         },
         select: { token: true },
@@ -1072,7 +1097,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         await tx.inviteToken.update({ where: { token }, data: { usedAt: new Date() } });
         if (invite.organizationId) {
           await tx.organizationMember.create({
-            data: { organizationId: invite.organizationId, userId: user.id, role: 'org_admin' },
+            // Falls back to org_admin for invites predating the orgRole column.
+            data: { organizationId: invite.organizationId, userId: user.id, role: invite.orgRole ?? 'org_admin' },
           });
         }
         return user;

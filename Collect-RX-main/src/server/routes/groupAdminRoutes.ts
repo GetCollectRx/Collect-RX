@@ -1,11 +1,16 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate';
-import { authorizeRole } from '../middleware/authorizeRole';
 import { runWithPracticeRls } from '../db/rlsContext.js';
 import { createOrgBillingCheckoutSession, createOrgBillingPortalSession } from '../stripe/billing.js';
 import { apiClientErrorMessage } from '../apiErrorMessage.js';
-import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
+import {
+  callerAdminOrganizationId,
+  callerBillingViewerOrganizationId,
+  callerHasOrganizationMembership,
+  callerIsBillingViewer,
+} from '../accessControl/organizationContext.js';
+import { hasMinRole, type UserAuthPayload } from '../accessControl/types.js';
 import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 import {
@@ -18,12 +23,23 @@ import { unusedLegacyPasswordHash, createOrgPractice } from '../organizations/pr
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.
- * Accessible to group_admin and platform_dev only.
+ * Accessible to group_admin/platform_dev (full access) and, for the two
+ * billing routes only, an accountant-role org_billing_viewer controller —
+ * see FR-8 in specs/phase-4-enterprise-it-compliance.md. Every route below
+ * that must stay org_admin-only enforces that explicitly itself rather than
+ * relying on this coarse entry gate.
  */
 export function createGroupAdminRouter(prisma: PrismaClient): Router {
   const r = Router();
   r.use(authenticate);
-  r.use(authorizeRole('group_admin'));
+  r.use(async (req: Request, res: Response, next: NextFunction) => {
+    const auth = req.auth;
+    if (!auth) { res.status(401).json({ error: 'Authentication required' }); return; }
+    if (hasMinRole(auth, 'group_admin')) { next(); return; }
+    const userId = (auth as UserAuthPayload).userId;
+    if (userId && (await callerHasOrganizationMembership(prisma, userId))) { next(); return; }
+    res.status(403).json({ error: 'Insufficient permissions for this action' });
+  });
 
   /**
    * GET /api/group/practices-summary
@@ -38,6 +54,10 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
         where: { feature: CSV_AR_FEATURES.DSO_CONSOLE, practiceId: null },
       });
       if (dsoConsoleFlag?.paused) return res.status(403).json({ error: 'DSO console is currently paused' });
+      // FR-8: org_billing_viewer is billing-only — explicit 403, not an empty-but-200 fall-through.
+      if (await callerIsBillingViewer(prisma, userId)) {
+        return res.status(403).json({ error: 'Billing-only access cannot view practice data' });
+      }
       const memberships = await prisma.organizationMember.findMany({
         where: { userId },
         select: { organizationId: true },
@@ -131,8 +151,11 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     try {
       const userId = req.auth?.userId;
       if (!userId) return res.status(403).json({ error: 'Organization membership required' });
-      const organizationId = await callerAdminOrganizationId(prisma, userId);
-      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      // org_billing_viewer may read billing status too (FR-8) — org_admin-only
+      // actions (checkout, cogs-pooling, everything else below) stay on
+      // callerAdminOrganizationId, which explicitly excludes org_billing_viewer.
+      const organizationId = await callerBillingViewerOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization billing access required' });
 
       const org = await prisma.organization.findUnique({
         where: { id: organizationId },
@@ -235,12 +258,41 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.post('/billing/portal', async (req: Request, res: Response) => {
+  /**
+   * PATCH /api/group/sso/enforce
+   * Phase 4 FR-5: org_admin can turn SSO enforcement on/off once
+   * platform_dev has configured the IdP connection — but cannot configure
+   * the connection itself (that stays platform_dev-only, see Non-Goals).
+   */
+  r.patch('/sso/enforce', async (req: Request, res: Response) => {
     try {
       const userId = req.auth?.userId;
       if (!userId) return res.status(403).json({ error: 'Organization membership required' });
       const organizationId = await callerAdminOrganizationId(prisma, userId);
       if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      if (typeof req.body?.enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+      }
+      const existing = await prisma.organizationSsoConfig.findUnique({ where: { organizationId } });
+      if (!existing) {
+        return res.status(400).json({ error: 'No SSO connection is configured for your organization yet' });
+      }
+      const { setSsoEnforced } = await import('../sso/organizationSsoService.js');
+      await setSsoEnforced(prisma, organizationId, req.body.enabled);
+      return res.json({ ssoEnforced: req.body.enabled });
+    } catch (e) {
+      console.error('group sso enforce update error:', e);
+      return res.status(500).json({ error: 'Failed to update SSO enforcement' });
+    }
+  });
+
+  r.post('/billing/portal', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      // FR-8: org_billing_viewer may open the Stripe portal (view/manage invoices).
+      const organizationId = await callerBillingViewerOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization billing access required' });
       const { url } = await createOrgBillingPortalSession(organizationId, prisma);
       return res.json({ url });
     } catch (e) {
@@ -258,6 +310,10 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
         where: { feature: CSV_AR_FEATURES.COMPLIANCE_WORKSPACE, practiceId: null },
       });
       if (complianceFlag?.paused) return res.status(403).json({ error: 'Compliance workspace is currently paused' });
+      // FR-8: org_billing_viewer is billing-only — explicit 403, not an empty-but-200 fall-through.
+      if (await callerIsBillingViewer(prisma, userId)) {
+        return res.status(403).json({ error: 'Billing-only access cannot view compliance data' });
+      }
       const memberships = await prisma.organizationMember.findMany({
         where: { userId },
         select: { organizationId: true },
@@ -289,6 +345,54 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
   });
 
   /**
+   * GET /api/group/compliance/export/v2?from=&to=
+   * Auditor-facing bundle (Phase 4 FR-10-13): AuditLog, PhiAccessEvent,
+   * member roster, CarrierBlockEvent — CSV per category, zipped. org_admin
+   * only (this is additive to the v1 aggregate-counts export above, not a
+   * replacement — v1 stays as the internal dashboard's data source).
+   */
+  r.get('/compliance/export/v2', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+
+      const fromRaw = typeof req.query.from === 'string' ? req.query.from : undefined;
+      const toRaw = typeof req.query.to === 'string' ? req.query.to : undefined;
+      if (!fromRaw || !toRaw) {
+        return res.status(400).json({ error: 'from and to query params are required (ISO date)' });
+      }
+      const from = new Date(fromRaw);
+      const to = new Date(toRaw);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        return res.status(400).json({ error: 'from and to must be valid dates' });
+      }
+      if (from > to) {
+        return res.status(400).json({ error: 'from must be before to' });
+      }
+
+      const { buildOrgComplianceExportZip } = await import('../organizations/complianceExport.js');
+      const { buffer, checksum } = await buildOrgComplianceExportZip(prisma, organizationId, from, to);
+
+      await prisma.orgComplianceExport.create({
+        data: { organizationId, exportedBy: userId, dateRangeFrom: from, dateRangeTo: to, checksum },
+      });
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="collectrx-compliance-export-${fromRaw}-to-${toRaw}.zip"`,
+      );
+      res.setHeader('X-CollectRx-Export-Checksum', checksum);
+      return res.send(buffer);
+    } catch (e) {
+      console.error('group compliance export v2 error:', e);
+      return res.status(500).json({ error: 'Compliance export failed' });
+    }
+  });
+
+  /**
    * POST /api/group/pms-import
    * Batch PMS import across the caller's org practices — replaces logging
    * into each practice's session and uploading N times. Every practiceId is
@@ -305,8 +409,9 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
       const { imports } = parsed.data;
 
+      // FR-8: org_billing_viewer is billing-only — explicitly excluded, not merely unlisted.
       const memberships = await prisma.organizationMember.findMany({
-        where: { userId },
+        where: { userId, role: { not: 'org_billing_viewer' } },
         select: { organizationId: true },
       });
       if (memberships.length === 0) return res.status(403).json({ error: 'Organization membership required' });

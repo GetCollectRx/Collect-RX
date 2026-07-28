@@ -103,13 +103,16 @@ model User {
 
 /// Customer-owned DSO / multi-location boundary. Platform staff are not members.
 model Organization {
-  id           String                 @id @default(uuid())
-  name         String
-  createdAt    DateTime               @default(now()) @map("created_at")
-  updatedAt    DateTime               @updatedAt @map("updated_at")
-  practices    OrganizationPractice[]
-  members      OrganizationMember[]
-  inviteTokens InviteToken[]
+  id                String                 @id @default(uuid())
+  name              String
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  practices         OrganizationPractice[]
+  members           OrganizationMember[]
+  inviteTokens      InviteToken[]
+  complianceExports OrgComplianceExport[]
+  ssoConfig         OrganizationSsoConfig?
+  ssoEvents         OrgSsoEvent[]
 
   // ─── Consolidated Stripe Billing (enterprise/DSO deals) ───────────────────
   /// Set only when the organization itself is billed (enterprise deal) instead
@@ -169,6 +172,8 @@ model OrganizationMember {
 enum OrganizationRole {
   org_admin
   org_member
+  /// DSO controller/CFO persona — billing visibility only, no claims/PMS/member access.
+  org_billing_viewer
 }
 
 model RuleSet {
@@ -784,6 +789,68 @@ model ClaimSubmission {
   @@index([practiceId, submittedAt])
   @@index([claimId])
   @@map("claim_submissions")
+}
+
+/// Chain-of-custody record for auditor-facing org compliance exports
+/// (Phase 4 FR-11, GET /api/group/compliance/export/v2) — mirrors
+/// EvidencePackExport's pattern: metadata only, never the export contents.
+model OrgComplianceExport {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  exportedBy     String       @map("exported_by")
+  dateRangeFrom  DateTime     @map("date_range_from")
+  dateRangeTo    DateTime     @map("date_range_to")
+  checksum       String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("org_compliance_exports")
+}
+
+/// Phase 4 FR-1: one SAML 2.0 IdP connection per Organization. IdP SSO URL +
+/// signing cert are stored as one authenticated-encrypted blob (reuses the
+/// TriageCredential/phiAtRest AES-256-GCM pattern per the PRD's own
+/// recommendation) — not because they're confidential (an IdP cert is public),
+/// but so tampering with the stored connection is detectable, not just possible.
+/// platform_dev-configured only in v1 — no self-serve setup UI.
+model OrganizationSsoConfig {
+  id              String       @id @default(uuid())
+  organizationId  String       @unique @map("organization_id")
+  /// URL-safe identifier for the SP-initiated login path (/api/auth/sso/:orgSlug/...).
+  orgSlug         String       @unique @map("org_slug")
+  ciphertext      String
+  iv              String
+  authTag         String       @map("auth_tag")
+  /// org_admin-controlled (FR-5) — once true, password login is disabled for
+  /// any User whose email domain is in enforcedDomains.
+  ssoEnforced     Boolean      @default(false) @map("sso_enforced")
+  enforcedDomains String[]     @map("enforced_domains")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_sso_configs")
+}
+
+/// SSO login failures and admin overrides that AuditLog can't hold (its
+/// practiceId is NOT NULL; an unmatched-email SSO failure has no practice to
+/// attach to, and enforcement is set/broken at the org level, not a practice's).
+/// organizationId is always known here — resolved before any failure branch runs.
+model OrgSsoEvent {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  /// 'login_failed' | 'break_glass_disabled'
+  eventType      String       @map("event_type")
+  /// Failure reason code, or the break-glass justification text.
+  detail         String?
+  /// platform_dev userId for a break-glass override; null for an anonymous login failure.
+  actorUserId    String?      @map("actor_user_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("org_sso_events")
 }
 
 /// Immutable metadata-only evidence pack export record.
@@ -1750,21 +1817,24 @@ model AgentRun {
 
 /// Single-use invite token for staff onboarding. Created by practice_owner/office_manager.
 model InviteToken {
-  id             String        @id @default(uuid())
+  id             String            @id @default(uuid())
   practiceId     String
   email          String
   role           PracticeRole
-  token          String        @unique @default(uuid())
+  token          String            @unique @default(uuid())
   expiresAt      DateTime
   usedAt         DateTime?
-  createdAt      DateTime      @default(now())
-  practice       Practice      @relation(fields: [practiceId], references: [id])
+  createdAt      DateTime          @default(now())
+  practice       Practice          @relation(fields: [practiceId], references: [id])
   /// Set only for DSO-owner invites created by the admin org-creation tool —
   /// accept-invite also creates an OrganizationMember row when this is set.
-  organizationId String?       @map("organization_id")
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organizationId String?           @map("organization_id")
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   /// associate_dentist invites only — carried onto the User row accept-invite creates.
-  providerId     String?       @map("provider_id")
+  providerId     String?           @map("provider_id")
+  /// Org-level role the OrganizationMember row gets on accept, when organizationId is set.
+  /// Defaults to org_admin at the application layer for invites predating this column.
+  orgRole        OrganizationRole? @map("org_role")
 
   @@index([token])
   @@index([practiceId])

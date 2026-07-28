@@ -73,12 +73,45 @@ export const inviteBodySchema = z.object({
   practiceId: z.string().uuid().optional(),
   /** Required when role is associate_dentist — carried onto the User row accept-invite creates. */
   providerId: z.string().trim().optional(),
+  /**
+   * org_admin only: invite a DSO controller/CFO (role must be 'accountant')
+   * with billing-only org access instead of the default 'org_admin' co-invite
+   * (Phase 4 FR-9 — specs/phase-4-enterprise-it-compliance.md).
+   */
+  orgRole: z.enum(['org_admin', 'org_billing_viewer']).optional(),
 });
 
 export const acceptInviteBodySchema = z.object({
   token: z.string().uuid(),
   displayName: z.string().trim().min(1).max(120),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+});
+
+/**
+ * platform_dev-configured SAML IdP connection (Phase 4 FR-1, POST
+ * /api/admin/organizations/:organizationId/sso-config) — no self-serve UI in v1.
+ */
+export const organizationSsoConfigBodySchema = z.object({
+  orgSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9-]{3,64}$/, 'orgSlug must be 3-64 lowercase letters, digits, or hyphens'),
+  entryPoint: z.string().trim().url('entryPoint must be the IdP SSO URL'),
+  idpCert: z.string().trim().min(1, 'idpCert (X.509 certificate) is required'),
+  enforcedDomains: z.array(z.string().trim().toLowerCase().min(1)).default([]),
+});
+
+/**
+ * SSO break-glass override (Phase 4, POST
+ * /api/admin/organizations/:organizationId/sso/break-glass) — platform_dev
+ * force-disables ssoEnforced when a DSO's whole org_admin roster is locked
+ * out (their IdP is down and their own domain requires SSO, so the
+ * self-service enforce toggle is unreachable). A reason is mandatory —
+ * this is an emergency override, not a routine setting change.
+ */
+export const ssoBreakGlassBodySchema = z.object({
+  reason: z.string().trim().min(10, 'reason must describe the emergency (min 10 characters)').max(1000),
 });
 
 /** Admin-assisted DSO/multi-location org creation (POST /api/admin/organizations). */

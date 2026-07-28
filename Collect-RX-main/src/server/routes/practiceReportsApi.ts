@@ -319,6 +319,27 @@ export function createPracticeReportsRouter(): Router {
     }
   }));
 
+  router.get('/:practiceId/latency', blockFrontDeskReports, withGrantChecks(async (req, res) => {
+    try {
+      if (queryPracticeConflictsSession(req, req.params.practiceId)) {
+        res.status(403).json({ success: false, error: 'practiceId does not match session' });
+        return;
+      }
+      const practiceId = practiceIdFromSession(req);
+      const windowDays = Math.min(parseInt(req.query.window as string) || 7, 90);
+      const { getLatencyMetricsByCarrier, getLatencyHealthStatus } = await import(
+        '../learning/vapiLatencyTracker.js'
+      );
+      const [byCarrier, health] = await Promise.all([
+        getLatencyMetricsByCarrier(prisma, windowDays),
+        getLatencyHealthStatus(prisma, windowDays),
+      ]);
+      res.json({ success: true, data: { byCarrier, health, window: windowDays } });
+    } catch (err) {
+      res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  }));
+
   return router;
 }
 

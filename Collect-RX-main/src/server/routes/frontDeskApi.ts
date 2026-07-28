@@ -516,6 +516,36 @@ router.get('/:practiceId/managed-recovery', async (req: Request, res: Response) 
   }
 });
 
+router.post('/:practiceId/batch-status', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { claimIds } = req.body as { claimIds?: string[] };
+    if (!Array.isArray(claimIds) || claimIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'claimIds array is required and must not be empty' });
+    }
+    const { getBatchClaimStatus } = await import('../frontDesk/batchClaimStatusService.js');
+    const data = await getBatchClaimStatus(prisma, practiceId, claimIds);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[batch-status]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/queue-summary', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { getQueueSummary } = await import('../frontDesk/batchClaimStatusService.js');
+    const data = await getQueueSummary(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[queue-summary]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 export function createFrontDeskRouter(): Router {
   return router;
 }
