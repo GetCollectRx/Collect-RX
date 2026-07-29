@@ -20,7 +20,9 @@ COPY prisma ./prisma/
 
 # npm install (not ci) — avoids lock-file sync failures across npm versions.
 # Allow scripts to run so native modules (@tailwindcss/oxide) build properly.
-RUN npm install --include=dev
+# Use npm rebuild to compile native bindings for Linux platform (package-lock.json
+# was generated on macOS and has macOS binary references).
+RUN npm install --include=dev && npm rebuild
 
 RUN npx prisma generate
 
