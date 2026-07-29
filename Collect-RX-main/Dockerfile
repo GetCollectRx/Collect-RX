@@ -14,7 +14,8 @@ RUN echo "cachebust: ${CACHEBUST}" > /dev/null
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json ./
+COPY ../package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 

@@ -3,7 +3,6 @@
  * Source of truth for design tokens (replaces the old tailwind.config.ts).
  */
 @import "tailwindcss";
-@source "../../.storybook";
 
 /* `.dark` on <html> (see ThemeContext.tsx) drives dark: variants, not prefers-color-scheme. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -45,6 +44,18 @@
   --animate-fade-in: fade-in 0.2s ease-out both;
   --animate-slide-in: slide-in 0.2s ease-out both;
   --animate-spin-slow: spin-slow 0.8s linear infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes fade-in {
