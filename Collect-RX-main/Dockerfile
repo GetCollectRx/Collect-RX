@@ -19,7 +19,8 @@ COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
 # npm install (not ci) — avoids lock-file sync failures across npm versions.
-RUN npm install --include=dev --ignore-scripts
+# Allow scripts to run so native modules (@tailwindcss/oxide) build properly.
+RUN npm install --include=dev
 
 RUN npx prisma generate
 
