@@ -5,7 +5,7 @@ RUN apt-get update \
 && rm -rf /var/lib/apt/lists/*
 
 # Bump to bust a stale cached build layer.
-ARG CACHEBUST=20260703b
+ARG CACHEBUST=20260729a
 # Previously declared but never referenced in a RUN, so bumping the value
 # above never actually busted the build cache — Depot kept serving a stale
 # COPY . . layer regardless. This RUN consumes the ARG so future bumps
@@ -18,11 +18,9 @@ COPY package.json package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
-# npm install (not ci) — avoids lock-file sync failures across npm versions.
-# Allow scripts to run so native modules (@tailwindcss/oxide) build properly.
-# Use npm rebuild to compile native bindings for Linux platform (package-lock.json
-# was generated on macOS and has macOS binary references).
-RUN npm install --include=dev && npm rebuild
+# Use npm ci for strict lock file compliance in CI environment.
+# Allows postinstall scripts to build native modules (@tailwindcss/oxide).
+RUN npm ci --include=dev
 
 RUN npx prisma generate
 
