@@ -18,9 +18,9 @@ COPY package.json package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
-# Use npm ci for strict lock file compliance in CI environment.
+# Use npm install (not ci) to handle workspace version resolution.
 # Allows postinstall scripts to build native modules (@tailwindcss/oxide).
-RUN npm ci --include=dev
+RUN npm install --include=dev
 
 RUN npx prisma generate
 
