@@ -327,6 +327,12 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard middleware
 // ─────────────────────────────────────────────────────────────────────────────
+// Batch DSO import sends CSV rows as JSON, which inflates several-fold over the
+// raw file, and carries up to 50 locations in one call. The 2mb default would
+// make the batch path reject payloads the per-practice multipart route (12mb
+// per file) accepts, so it gets its own ceiling. Must precede the global parser
+// — Express body-parses on the first match.
+app.use('/api/group/pms-import', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
@@ -490,10 +496,29 @@ app.use((_req: Request, res: Response) => {
 // Global error handler
 // ─────────────────────────────────────────────────────────────────────────────
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[server] Unhandled error:', err);
-  res.status(500).json({
+  // body-parser and http-errors carry the real status (413 payload too large,
+  // 400 malformed JSON). Collapsing those to 500 tells the client the server
+  // failed when the request was at fault, and buries genuine faults in alerting.
+  const candidate = err as Error & { status?: unknown; statusCode?: unknown; expose?: unknown };
+  const declared = typeof candidate.status === 'number' ? candidate.status : candidate.statusCode;
+  const isClientError = typeof declared === 'number' && declared >= 400 && declared < 500;
+  const status = isClientError ? (declared as number) : 500;
+
+  if (isClientError) {
+    console.warn('[server] Client error:', status, err.message);
+  } else {
+    console.error('[server] Unhandled error:', err);
+  }
+
+  res.status(status).json({
     success: false,
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    // http-errors marks 4xx messages safe to surface; never leak a 5xx in production.
+    error:
+      isClientError && candidate.expose !== false
+        ? err.message
+        : process.env.NODE_ENV === 'production'
+          ? 'Internal server error'
+          : err.message,
   });
 });
 

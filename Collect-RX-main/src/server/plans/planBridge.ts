@@ -10,6 +10,7 @@ import { prisma } from '../../lib/prisma.js';
 import { WARNINGS } from '../../billing/tiers.js';
 import {
   confirmOverage as confirmOverageUsage,
+  confirmOrgOverage as confirmOrgOverageUsage,
   evaluateCallGate,
   getUsageSnapshot,
   recordCallUsage as recordCallUsageInternal,
@@ -262,6 +263,13 @@ export async function confirmOverage(
   practiceId: string,
 ): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
   return confirmOverageUsage(prisma, practiceId);
+}
+
+/** org_admin confirms pooled overage charges from the Group Dashboard — resumes calling for every member practice. */
+export async function confirmOrgOverage(
+  organizationId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
+  return confirmOrgOverageUsage(prisma, organizationId);
 }
 
 export async function recoveredCentsForClaim(claimId: string): Promise<number> {

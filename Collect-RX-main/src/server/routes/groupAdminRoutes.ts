@@ -20,6 +20,7 @@ import {
   formatZodError,
 } from '../validation/zodSchemas.js';
 import { unusedLegacyPasswordHash, createOrgPractice } from '../organizations/practiceProvisioning.js';
+import { confirmOrgOverage } from '../plans/planBridge.js';
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.
@@ -283,6 +284,33 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
     } catch (e) {
       console.error('group sso enforce update error:', e);
       return res.status(500).json({ error: 'Failed to update SSO enforcement' });
+    }
+  });
+
+  /**
+   * POST /api/group/billing/confirm-overage
+   * org_admin accepts pooled overage charges, resuming calling across every
+   * member practice. Stays org_admin-only: org_billing_viewer is a read-only
+   * controller persona (FR-8) and accepting charges is a billing action.
+   */
+  r.post('/billing/confirm-overage', async (req: Request, res: Response) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) return res.status(403).json({ error: 'Organization membership required' });
+      const organizationId = await callerAdminOrganizationId(prisma, userId);
+      if (!organizationId) return res.status(403).json({ error: 'Organization admin access required' });
+      const result = await confirmOrgOverage(organizationId);
+      if (result.status === 'expired') {
+        return res.status(409).json({
+          status: 'expired',
+          error:
+            'The overage confirmation window has expired. Upgrade your plan or wait for the next billing cycle to resume calling.',
+        });
+      }
+      return res.json({ status: result.status });
+    } catch (e) {
+      console.error('group confirm-overage error:', e);
+      return res.status(500).json({ error: 'Failed to confirm overage' });
     }
   });
 

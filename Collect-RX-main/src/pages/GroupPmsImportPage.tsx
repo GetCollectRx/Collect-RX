@@ -87,9 +87,19 @@ export default function GroupPmsImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imports }),
       })
-      const body = await res.json() as { error?: string; results?: ImportResult[] }
-      if (!res.ok) { setSubmitError(body.error ?? 'Batch import failed'); return }
-      setResults(body.results ?? [])
+      // A payload over the server's limit is rejected before any route runs, so
+      // the response is not JSON — parsing it unconditionally would surface a
+      // parse error instead of the real cause.
+      const body = await res.json().catch(() => null) as { error?: string; results?: ImportResult[] } | null
+      if (!res.ok) {
+        setSubmitError(
+          res.status === 413
+            ? 'These files are too large to import in one batch. Run the import in smaller groups of locations.'
+            : body?.error ?? 'Batch import failed',
+        )
+        return
+      }
+      setResults(body?.results ?? [])
     } catch (e) {
       setSubmitError((e as Error).message)
     } finally {

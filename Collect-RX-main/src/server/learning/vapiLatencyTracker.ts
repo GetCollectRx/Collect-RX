@@ -4,8 +4,7 @@
  * Targets industry baseline: <500ms response time from speech recognition to LLM output.
  */
 
-import type { PrismaClient } from '@prisma/client';
-import type { CarrierId } from '@prisma/client';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 
 export interface LatencyMetrics {
   carrier: CarrierId | 'all';
