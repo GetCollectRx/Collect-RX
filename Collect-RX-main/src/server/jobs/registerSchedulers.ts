@@ -61,12 +61,27 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
+  const dailyDigestPattern = (process.env.DAILY_DIGEST_CRON || '0 6 * * *').trim();
+  const dailyDigestOn = ['1', 'true', 'yes'].includes(
+    (process.env.DAILY_DIGEST_ENABLED ?? '1').trim().toLowerCase(),
+  );
+  if (dailyDigestOn) {
+    if (!cron.validate(dailyDigestPattern)) {
+      console.error(
+        `[registerSchedulers] Invalid DAILY_DIGEST_CRON "${dailyDigestPattern}" — DAILY_DIGEST not registered`,
+      );
+    } else {
+      await q.add('DAILY_DIGEST', {}, { repeat: { pattern: dailyDigestPattern } });
+    }
+  }
+
   console.log(
     `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, TRIAGE_CREDENTIAL_HEALTH daily` +
       (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
       (process.env.MARKETING_LOOP_ENABLED !== '0'
         ? `, MARKETING every ${marketingEveryMs}ms` +
           (marketingLearningOn ? `, MARKETING_LEARNING cron "${marketingLearningPattern}"` : '')
-        : ''),
+        : '') +
+      (dailyDigestOn ? `, DAILY_DIGEST cron "${dailyDigestPattern}"` : ''),
   );
 }

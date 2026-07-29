@@ -496,9 +496,7 @@ export default function LiveConsole() {
               {queue.length === 0 && (
                 <div className="text-xs text-gray-400 dark:text-gray-600 text-center py-6 space-y-2">
                   <p>Queue is empty</p>
-                  <Link to="/import" className="underline" style={{ color: 'var(--crx-green)' }}>
-                    Import claims CSV
-                  </Link>
+                  <p>Ask your office manager to import claims to fill the queue.</p>
                 </div>
               )}
               {queue.map((e, idx) => (

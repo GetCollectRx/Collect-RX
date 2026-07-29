@@ -9,6 +9,7 @@ interface StaffUser {
   displayName: string
   role: PracticeRole
   isActive: boolean
+  providerId?: string | null
   tokenExpiresAt?: string | null
   createdAt: string
 }
@@ -26,7 +27,7 @@ export default function UsersAdmin() {
   const [busy, setBusy] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [form, setForm] = useState({ email: '', role: 'billing_coordinator' as PracticeRole, providerId: '' })
-  const [inviteSent, setInviteSent] = useState<string | null>(null)
+  const [inviteSent, setInviteSent] = useState<{ email: string; emailSent: boolean; link?: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -49,7 +50,7 @@ export default function UsersAdmin() {
       const res = await apiFetch(`/api/auth/users/${id}`, { method: 'DELETE' })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
@@ -64,7 +65,25 @@ export default function UsersAdmin() {
       })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
+    finally { setBusy(null) }
+  }
+
+  async function handleEditProviderId(id: string, currentValue: string | null | undefined) {
+    const next = window.prompt('Provider ID (used to scope this associate dentist\'s queries):', currentValue ?? '')
+    if (next === null) return
+    const trimmed = next.trim()
+    if (!trimmed) { setError('Provider ID cannot be empty'); return }
+    setBusy(id)
+    try {
+      const res = await apiFetch(`/api/auth/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerId: trimmed }),
+      })
+      if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
+      await load()
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
@@ -78,13 +97,17 @@ export default function UsersAdmin() {
       })
       if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed') }
       await load()
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) { setError((e as Error).message) }
     finally { setBusy(null) }
   }
 
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
+    if (form.role === 'associate_dentist' && !form.providerId.trim()) {
+      setFormError('Provider ID is required for an associate dentist')
+      return
+    }
     setBusy('new')
     try {
       const res = await apiFetch('/api/auth/invite', {
@@ -93,12 +116,17 @@ export default function UsersAdmin() {
         body: JSON.stringify({
           email: form.email,
           role: form.role,
+          ...(form.role === 'associate_dentist' ? { providerId: form.providerId.trim() } : {}),
         }),
       })
-      const body = await res.json() as { error?: string }
+      const body = await res.json() as { error?: string; emailSent?: boolean; token?: string }
       if (!res.ok) { setFormError(body.error ?? 'Failed to send invite'); return }
       setShowAdd(false)
-      setInviteSent(form.email)
+      setInviteSent({
+        email: form.email,
+        emailSent: body.emailSent !== false,
+        link: body.token ? `${window.location.origin}/accept-invite?token=${body.token}` : undefined,
+      })
       setForm({ email: '', role: 'billing_coordinator', providerId: '' })
     } catch (e) { setFormError((e as Error).message) }
     finally { setBusy(null) }
@@ -158,6 +186,15 @@ export default function UsersAdmin() {
                       {busy === u.id ? '…' : 'Renew 90d'}
                     </button>
                   )}
+                  {u.role === 'associate_dentist' && (
+                    <button
+                      onClick={() => void handleEditProviderId(u.id, u.providerId)}
+                      disabled={busy === u.id}
+                      className={`text-xs disabled:opacity-50 transition-colors ${u.providerId ? 'text-gray-400 hover:text-crx-500 dark:hover:text-crx-400' : 'text-amber-600 hover:text-amber-700 dark:text-amber-400 font-medium'}`}
+                    >
+                      {busy === u.id ? '…' : u.providerId ? `Provider: ${u.providerId}` : 'Set provider ID'}
+                    </button>
+                  )}
                   {u.id !== sessionUser?.id && (
                     <button
                       onClick={() => void handleDeactivate(u.id, u.displayName)}
@@ -196,12 +233,27 @@ export default function UsersAdmin() {
       )}
 
       {/* Invite sent banner */}
-      {inviteSent && (
+      {inviteSent && inviteSent.emailSent && (
         <div className="rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-green-800 dark:text-green-300">
-            Invite sent to <strong>{inviteSent}</strong>. They'll get an email to set up their account.
+            Invite sent to <strong>{inviteSent.email}</strong>. They'll get an email to set up their account.
           </p>
           <button onClick={() => setInviteSent(null)} className="text-green-500 hover:text-green-700 text-lg leading-none ml-4">×</button>
+        </div>
+      )}
+      {inviteSent && !inviteSent.emailSent && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Invite created for <strong>{inviteSent.email}</strong>, but the email couldn't be sent. Share this link with them directly:
+            </p>
+            <button onClick={() => setInviteSent(null)} className="text-amber-500 hover:text-amber-700 text-lg leading-none ml-4">×</button>
+          </div>
+          {inviteSent.link && (
+            <code className="mt-2 block text-xs bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5 break-all">
+              {inviteSent.link}
+            </code>
+          )}
         </div>
       )}
 
@@ -239,6 +291,17 @@ export default function UsersAdmin() {
                   ))}
                 </select>
               </div>
+              {form.role === 'associate_dentist' && (
+                <div>
+                  <label htmlFor="au-provider-id" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Provider ID</label>
+                  <input
+                    id="au-provider-id" type="text" required value={form.providerId}
+                    onChange={e => setForm(p => ({ ...p, providerId: e.target.value }))}
+                    placeholder="Provider ID used by your PMS"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-crx-500/30 focus:border-crx-500 transition-colors"
+                  />
+                </div>
+              )}
               {formError && (
                 <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">{formError}</p>
               )}

@@ -99,6 +99,10 @@ describe('evaluateCallGate — confirmed overage is now subject to the COGS brea
       callAttempt: {
         aggregate: vi.fn(async () => ({ _sum: { minutesBilled: 0 } })),
       },
+      // No org membership — resolveBillingEntity falls back to practice-level billing.
+      organizationPractice: {
+        findFirst: vi.fn(async () => null),
+      },
     } as unknown as PrismaClient;
     return { prisma, pauseSpy };
   }
