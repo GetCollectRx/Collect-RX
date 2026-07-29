@@ -1,0 +1,342 @@
+{
+  "note": "Entries dropped from enriched_emails.json. Kept for auditability and as a worklist if the prospect CSV is later widened beyond Ottawa + GTA.",
+  "rejected_count": 56,
+  "rejected": [
+    {
+      "practice_name": "Westmount Dental",
+      "city": "Toronto",
+      "email": "info@wmdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Markham Dental Centre",
+      "city": "Markham",
+      "email": "info@centralmarkhamdental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "St. Jacobs Dental",
+      "city": "St. Jacobs",
+      "email": "info@stjacobsdentalcare.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Elmira Dental",
+      "city": "Elmira",
+      "email": "info@arthurstreetdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Woolwich Dental",
+      "city": "Guelph",
+      "email": "woolwichdental@rogers.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Cambridge North Dental",
+      "city": "Cambridge",
+      "email": "info@cambridgedentalcare.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Brant Dental",
+      "city": "Brantford/Burlington",
+      "email": "office@brantsmiles.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Simcoe Dental",
+      "city": "Simcoe",
+      "email": "info@simcoedentalclinic.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Tillsonburg Dental",
+      "city": "Tillsonburg",
+      "email": "info@tillsonburgdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Woodstock North Dental",
+      "city": "Woodstock",
+      "email": "info@woodstockdentist.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Ingersoll Dental",
+      "city": "Ingersoll",
+      "email": "info@ingersolldentalcentre.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Paris Dental",
+      "city": "Paris",
+      "email": "smiles@parisdentalcentre.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Byron Dental",
+      "city": "London",
+      "email": "office@byronwooddental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Komoka Dental",
+      "city": "Komoka",
+      "email": "info@komokafamilydentistry.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Erin Dental",
+      "city": "Erin",
+      "email": "smile@erindental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Grand Valley Dental",
+      "city": "Grand Valley",
+      "email": "info@grandvalleydental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Elora Dental",
+      "city": "Elora",
+      "email": "contact@centrewellingtondental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Fergus Dental",
+      "city": "Fergus",
+      "email": "fergusreception@countrydental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Alton Dental",
+      "city": "Burlington",
+      "email": "smile@altondental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Georgetown East Dental",
+      "city": "Georgetown",
+      "email": "info@georgetowndental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Eramosa Dental",
+      "city": "Guelph",
+      "email": "[email protected]",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Ottawa Central Dental",
+      "city": "Ottawa",
+      "email": "[email protected]",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Ottawa East Dental",
+      "city": "Ottawa",
+      "email": "admin@eastottawadental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Kanata Dental",
+      "city": "Kanata",
+      "email": "office@kanatafamilydentistry.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Nepean Dental",
+      "city": "Nepean",
+      "email": "info@dentalhaven.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Orleans Dental",
+      "city": "Orleans",
+      "email": "info@orleansdentalcentre.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Stittsville Dental",
+      "city": "Stittsville",
+      "email": "info@stittsvilledental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Gloucester Dental",
+      "city": "Gloucester",
+      "email": "info@gloucesterdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Vanier Dental",
+      "city": "Vanier",
+      "email": "info@connexiondental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Barrhaven Dental",
+      "city": "Nepean",
+      "email": "smiledr@barrhavendentalcare.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Osgoode Dental",
+      "city": "Osgoode",
+      "email": "info@metcalfefamilydental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Manotick Dental",
+      "city": "Manotick",
+      "email": "info@manotickmaindental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Kemptville Dental",
+      "city": "Kemptville",
+      "email": "info@creeksidedentalcentre.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "North Gower Dental",
+      "city": "North Gower",
+      "email": "reception@coliseumdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "East Nepean Dental",
+      "city": "Nepean",
+      "email": "info@dentalhaven.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "West Nepean Dental",
+      "city": "Nepean",
+      "email": "info@baselinedental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "South Orleans Dental",
+      "city": "Orleans",
+      "email": "orleans@trilliumdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "North Orleans Dental",
+      "city": "Orleans",
+      "email": "info@orleansdentalcentre.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Central Orleans Dental",
+      "city": "Orleans",
+      "email": "clinic@merbleuedental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Stittsville West Dental",
+      "city": "Stittsville",
+      "email": "info@stittsvilledentalstudio.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Kanata East Dental",
+      "city": "Kanata",
+      "email": "infokanata@yazdanidental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Nepean Central Dental",
+      "city": "Nepean",
+      "email": "info@dentalhaven.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "West Vanier Dental",
+      "city": "Vanier",
+      "email": "info@connexiondental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Kanata Dental Hygiene",
+      "city": "Kanata",
+      "email": "kanatadentalhygiene@bellnet.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Kanata Highlands Dental",
+      "city": "Kanata",
+      "email": "info@kanatahighlandsdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Orleanswood Dental",
+      "city": "Orleans",
+      "email": "admin@orleanswooddental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Trillium Dental Stittsville",
+      "city": "Stittsville",
+      "email": "stittsville@trilliumdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Red Barn Dental",
+      "city": "Stittsville",
+      "email": "info@redbarndental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "McArthur Dental",
+      "city": "Vanier",
+      "email": "info@mcarthurdental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Barrhaven Dental Studio",
+      "city": "Nepean",
+      "email": "info@barrhavendentalstudio.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Evergreen Dental Care",
+      "city": "Ottawa",
+      "email": "referral@evergreendentalcare.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Osgoode Family Dental",
+      "city": "Osgoode",
+      "email": "info@metcalfefamilydental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Bobier-Joseph Dentistry",
+      "city": "Manotick",
+      "email": "[email protected]",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Dental Clinic Ottawa",
+      "city": "Nepean",
+      "email": "info@dentalclinicottawa.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Centre Wellington Dental",
+      "city": "Elora",
+      "email": "contact@centrewellingtondental.com",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    },
+    {
+      "practice_name": "Country Dental Fergus",
+      "city": "Fergus",
+      "email": "fergusreception@countrydental.ca",
+      "reason": "no matching row in the vetted Ottawa+GTA prospect CSV"
+    }
+  ]
+}
