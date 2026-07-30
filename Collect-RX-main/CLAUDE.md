@@ -102,6 +102,8 @@ feature/* → dev (CI gate: typecheck + tests) → prd (strict gate: all checks 
 - **`dev`** — integration branch. Feature branches merge here. CI must pass.
 - **`prd`** — production. Only receives merges from `dev`. Every item below must be true before touching prd-bound code.
 
+**Enforcement:** these rules aren't just documentation. `.githooks/pre-push` (installed automatically via `npm install`'s `prepare` script) runs the same audit/typecheck/lint/test/build sequence as CI's `verify` job before every push — a violation should never reach GitHub in the first place. CI's `verify` job is the backstop of record if the local hook is bypassed (`git push --no-verify`) or its checks drift out of sync with CI's.
+
 ### PRD is the standard of perfection — non-negotiable rules for all coding agents
 
 These rules apply to **any code that will be merged to `prd`**. As a coding agent (Claude, Cursor, or any other), you must not generate or accept code that violates them, regardless of what the user asks for in the moment.
