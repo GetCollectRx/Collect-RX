@@ -80,7 +80,9 @@
     "abeldent:discover": "node scripts/discover-schema.cjs",
     "abeldent:validate-queries": "node scripts/sync-query-builder.cjs --discovery schema-discovery.json --map schema-map.json --validate",
     "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json",
-    "ivr-research:call": "node scripts/ivr-research/research-call.cjs"
+    "ivr-research:call": "node scripts/ivr-research/research-call.cjs",
+    "vapi:squad-check": "tsx scripts/sync-vapi-squad.ts",
+    "vapi:squad-push": "tsx scripts/sync-vapi-squad.ts --push"
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.1035.0",
