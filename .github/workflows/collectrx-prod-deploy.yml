@@ -16,6 +16,9 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Copy root package-lock.json to workspace
+        run: cp package-lock.json Collect-RX-main/
+
       - name: Deploy to collect-rx (production)
         working-directory: Collect-RX-main
         env:
