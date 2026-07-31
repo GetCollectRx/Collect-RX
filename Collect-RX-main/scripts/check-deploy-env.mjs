@@ -102,6 +102,11 @@ if (prod) {
     Boolean((process.env.SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY || '').trim()),
     'required — unsigned webhooks get 401',
   ) ? 1 : 0;
+  bad += !ok(
+    'AGENT_RUNTIME_SECRET',
+    Boolean((process.env.AGENT_RUNTIME_SECRET || '').trim()),
+    'required — requireAgentSecret() 401s all of /api/agent-runs/* (including /digest) without it in production',
+  ) ? 1 : 0;
   const sk = (process.env.STRIPE_SECRET_KEY || '').trim();
   if (sk.startsWith('sk_live_')) {
     bad += !ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').trim()), 'required with live Stripe key') ? 1 : 0;
@@ -124,6 +129,11 @@ if (prod) {
     'SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY',
     Boolean((process.env.SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY || '').trim()),
     'optional in dev',
+  );
+  ok(
+    'AGENT_RUNTIME_SECRET',
+    Boolean((process.env.AGENT_RUNTIME_SECRET || '').trim()),
+    'optional in dev (requireAgentSecret lets requests through unauthenticated if unset outside production)',
   );
 }
 
