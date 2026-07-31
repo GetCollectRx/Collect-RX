@@ -1,5 +1,7 @@
 # Outstanding Work for a Production-Ready Product
 
+> **Status source note:** The phase "Status" lines below are point-in-time snapshots (oldest from 2026-04-22) and do not reflect work done since — including the Stripe Billing/trial-tier system and the marketing/growth-engine (email campaigns, prospect harvesting) under `Collect-RX-main/src/server/marketing/`, neither of which has phase entries here. For **current** launch-readiness status, use [`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md) — it's kept live. Treat this file as a ticket backlog for reference, not a status report.
+
 **Product intent:** The target is a **complete, deployable** CollectRx—something you can run in **staging and production** with a supported database, CI, secrets, monitoring, and compliance work appropriate to handling healthcare-adjacent data. This backlog is **not** “how to stay a demo”; it is the ordered work to get from the current codebase to that bar. (Some copy in older READMEs may still say “POC”; treat this document as the north star.)
 
 **Launch order (A→G):** [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md) — Practice → Insurance only; no patient/client payment collection.

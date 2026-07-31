@@ -48,7 +48,7 @@ If you rotate the webhook secret, update it in **one place** (your host’s secr
 | Variable | Purpose | After |
 |----------|---------|--------|
 | `COLLECTRX_API_KEY` | Optional; protects mutating API routes | Regenerate a long random string; update any client (scripts, Postman) |
-| `RAILWAY_API_TOKEN` | Desktop sync → backend (if used) | Regenerate on the server; update practice machine env |
+| `FLY_API_TOKEN` | Deploy/CI → Fly.io (if used) | Regenerate on Fly; update CI secret |
 
 ### Database
 
@@ -62,7 +62,7 @@ If you rotate the webhook secret, update it in **one place** (your host’s secr
 | Variable | Notes |
 |----------|--------|
 | `COLLECTRX_DASHBOARD_URL` | Not a secret; point to your deployed app URL |
-| `RAILWAY_API_URL` + token | Rotate token on server; update each installed practice env |
+| Desktop sync target URL (Fly.io API) | Not a secret; no separate token — Fly app credentials cover this |
 
 ## Definition of done
 

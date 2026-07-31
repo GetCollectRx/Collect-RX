@@ -1,9 +1,13 @@
-# Campaign Execution State — Ready for Immediate Action
+> **ARCHIVED — this doc is not live and describes a missed deadline.** The July 31, 2026 deadline below passed with 0 practices onboarded and 0 emails sent; the blockers (no real prospect emails, CASL mailing-address gap) were never resolved and no further work happened against this plan. Do not follow the deploy target or execution steps below — `fly ssh console -a collectrx-platform` referenced elsewhere in this doc's history was already wrong (prod app is `collect-rx`). If this campaign is revived, write a new plan against current state; don't resume this one. Current product status lives in [`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md). Kept below for historical record only.
+
+---
+
+# Campaign Execution State — Ready for Immediate Action (historical)
 
 **Date:** July 22, 2026  
 **Deadline:** July 31, 2026 (9 days)  
 **Goal:** 10 dental practices onboarded  
-**Current Status:** 0 practices onboarded, 0 emails sent
+**Final Status:** 0 practices onboarded, 0 emails sent — deadline missed
 
 ## What's Done (Don't Redo)
 - ✅ Campaign system built (scheduler, templates, API, dashboard)

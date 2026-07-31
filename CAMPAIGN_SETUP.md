@@ -4,7 +4,7 @@
 
 CollectRx now has a complete automated email campaign system for cold outreach to Canadian dental practices. The system sends personalized emails, tracks engagement, manages follow-ups, and requires zero manual intervention after setup.
 
-**Goal: 10+ practice onboardings by July 31, 2026** ✓
+**Goal: 10+ practice onboardings by July 31, 2026 — not achieved.** The campaign never actually sent (0 real prospect emails, CASL compliance unresolved); see `EXECUTION_STATE.md` (archived) for what happened. This doc still describes the built system accurately if it's revived.
 
 ## What's Been Built
 
@@ -64,7 +64,7 @@ The migration file has been created. To apply it to your Fly.io database:
 
 ```bash
 cd Collect-RX-main
-fly ssh console -a collectrx-platform
+fly ssh console -a collect-rx
 # Inside the console:
 psql -d $DATABASE_URL -f prisma/migrations/20260721_add_email_campaign_fields/migration.sql
 # Exit console: type 'exit'
@@ -100,7 +100,7 @@ After deployment completes:
 
 ```bash
 # SSH into Fly.io container
-fly ssh console -a collectrx-platform
+fly ssh console -a collect-rx
 
 # Inside the container:
 cd /app
@@ -249,7 +249,7 @@ Tracking in Campaign Manager dashboard:
 
 ### Emails not sending
 - Check `SENDGRID_API_KEY` is set in Fly.io secrets
-- Check scheduler is running: `fly logs -a collectrx-platform | grep emailCampaignScheduler`
+- Check scheduler is running: `fly logs -a collect-rx | grep emailCampaignScheduler`
 - Check prospect has valid email and campaign is active
 
 ### No emails opened
