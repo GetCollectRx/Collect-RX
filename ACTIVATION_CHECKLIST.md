@@ -1,6 +1,10 @@
-# 🚀 Email Campaign System - Activation Checklist
+> **ARCHIVED — do not follow this checklist.** It claimed "ready for deployment" but the campaign never actually launched: the prospect CSV had 0 real emails and CASL compliance was unresolved (see `EXECUTION_STATE.md`, archived). It also names the wrong Fly app (`collectrx-platform` — production is `collect-rx`) and a stale migration path. Current, maintained status lives in [`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md). Kept below for historical record only.
 
-## Status: READY FOR DEPLOYMENT
+---
+
+# 🚀 Email Campaign System - Activation Checklist (historical)
+
+## Status at time of writing: claimed "READY FOR DEPLOYMENT" — never actually launched
 All code complete. 150 prospects loaded. Zero manual work required post-launch.
 
 ## Pre-Launch Verification (July 21)

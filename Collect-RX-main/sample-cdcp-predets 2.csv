@@ -1,6 +1,0 @@
-claim_ref,patient_token,procedure_code,denial_date,clinical_evidence_summary
-PD-IMPORT-001,00000000-0000-4000-8000-000000000001,D2750,2026-04-30,Denied — missing periapical radiograph (F-010). Crown predet.
-PD-IMPORT-002,00000000-0000-4000-8000-000000000002,D2740,2026-05-10,Denied — insufficient clinical narrative for crown (F-010).
-PD-IMPORT-003,00000000-0000-4000-8000-000000000003,D5110,2026-05-17,Denied — complete denture predet; treatment plan not on file (F-010).
-PD-IMPORT-004,00000000-0000-4000-8000-000000000004,D4341,2026-05-26,Denied — periodontal charting required for scaling (F-010).
-PD-IMPORT-005,00000000-0000-4000-8000-000000000005,D6010,2026-06-08,Denied — implant surgical predet; missing bitewing radiograph (F-010).

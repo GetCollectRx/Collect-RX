@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**This package is nested inside a larger npm workspace.** The repo root has its own [`CLAUDE.md`](../CLAUDE.md) covering the monorepo layout, the deprecated root prototype (`src/api`/`src/frontend` — not this directory), and which doc wins when docs disagree. Read it too, especially if you arrived here via the root. Commands below assume your cwd is this directory (`Collect-RX-main/`); from repo root, use the namespaced forms (`npm run dev:collectrx`, etc.) documented there.
+
 ## What this is
 
 CollectRx automates dental insurance accounts-receivable follow-up for Canadian dental practices. AI voice agents call insurance carriers on behalf of dental offices, check claim status, and handle resolutions — eliminating hours of manual phone work per week.
@@ -153,7 +155,7 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 ```
 Electron shell (thin wrapper — no business logic)
     ↓
-React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Patient AR, Estimate, Analytics, Outbox, Admin). The old `Collect-RX-main/frontend/` app was removed; one surface only.
+React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Estimate, Analytics, Outbox, Billing, Admin). This is the one canonical frontend; the repo-root `src/frontend/` is a deprecated prototype, not this app.
     ↓
 Express backend  src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
     ↓
@@ -229,9 +231,9 @@ CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure 
 
 ## Database
 
-PostgreSQL on Fly.io, accessed via Prisma. Schema migrations for the eligibility engine are in `migrations/eligibility-schema.sql` — run directly against the database via `fly postgres connect` or `psql $DATABASE_URL -f migrations/eligibility-schema.sql`.
+PostgreSQL on Fly.io, accessed via Prisma. Migrations live in `prisma/migrations/` and are applied with `prisma migrate deploy` (`npm run db:migrate` from this directory, or `npm run db:migrate:collectrx` from repo root) — not ad-hoc `psql -f`.
 
-Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`.
+Key eligibility tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`. Billing tables: `UsagePeriod` and the `billingTier` field on the practice model.
 
 ---
 
@@ -248,4 +250,4 @@ Never ship an unsigned build to the pilot site.
 1. Add an entry to `src/services/eligibility/rules/carrier-configs.json` following the existing structure
 2. Add the carrier ID to the `Carrier` enum in `src/services/eligibility/types.ts`
 3. Add test cases to `tests/eligibility.test.ts` covering the new carrier's deductible, annual max, and coverage tiers
-4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.js` if the carrier name appears in Abeldent data
+4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.cjs` if the carrier name appears in Abeldent data

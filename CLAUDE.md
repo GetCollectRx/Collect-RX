@@ -2,11 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation source of truth (read this first)
+
+This repo has more than one doc claiming to describe "current state." When they conflict, this is the order of authority:
+
+1. **This file** — repo-root overview, monorepo layout, standing rules that apply everywhere.
+2. **[`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md)** — authoritative for anything under `Collect-RX-main/` (commands run from that directory, PRD coding/merge-gate standards, CRTC disclosure rule). If you're working inside `Collect-RX-main/`, that file's rules apply in addition to this one.
+3. **[`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md)** — the single live launch-readiness tracker. It is kept current. `OUTSTANDING-FIXES-PRODUCT-READY.md` is a **ticket backlog for reference**, not a status source — its phase-status stamps are historical snapshots and may lag reality; PATH-TO-DELIVERY wins on anything both describe.
+4. **Dated documents** (filenames or headers with a specific date, e.g. `*-2026-05-29.md`, `ENGINEERING-AUDIT-*`, `EMAIL_VALIDATION_REPORT.md`) are **point-in-time records**, not living docs. Treat them as history, not instructions — don't follow setup/deploy steps from them without checking they still match this file and PATH-TO-DELIVERY.
+5. `EXECUTION_STATE.md` and `ACTIVATION_CHECKLIST.md` are **retired/archived** (see notices at the top of each) — they described a specific July 2026 campaign push that is over. Do not follow their deploy targets or "ready" claims.
+
+If you find this file itself out of date, fix it in the same change — don't leave a second stale copy of the truth.
+
 ## What this is
 
 CollectRx automates dental insurance accounts-receivable follow-up for Canadian dental practices. AI voice agents call insurance carriers on behalf of dental offices, check claim status, and handle resolutions — eliminating hours of manual phone work per week.
 
 Six Canadian carriers are supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare (~78% of the Canadian private dental market).
+
+Product boundary: **Practice → Insurance AR recovery + practice SaaS Billing only.** Patient/client payment collection (Stripe Connect, pay links) is retired/out of scope — see `docs/operations/PATH-TO-DELIVERY.md`.
+
+---
+
+## Which codebase is canonical
+
+**`Collect-RX-main/` is the canonical, shipping application** (Vite + React frontend, Express + Prisma backend, PostgreSQL). See [ADR 0001](docs/adr/0001-primary-application-stack.md).
+
+The **repository-root** `src/api` + `src/frontend` is a **deprecated prototype** with an in-memory database — not what ships, not the target for new product work. See [`docs/DEPRECATION.md`](docs/DEPRECATION.md). Don't build features there; if you have an idea worth keeping, port it into `Collect-RX-main/`.
+
+This repo is an **npm workspace**: root `package.json` wraps the `Collect-RX-main` workspace. Root-level commands are namespaced (`*:collectrx` or `-w dental-ar-system`); the unnamespaced short forms (`npm run dev`, `npm test`, `npm run lint`, `npm run abeldent:*`, etc.) only exist when you `cd Collect-RX-main` first — see that package's own `CLAUDE.md` for the direct forms.
 
 ---
 
@@ -17,53 +41,37 @@ CollectRx is a **generic platform for any Canadian dental practice**, not a sing
 **Standing rules:**
 - **No hardcoded practice names, emails, or credentials in code** — this includes seed scripts, demos, defaults, and documentation examples
 - **Seeds create generic test practices** — practice name is configurable via `SEED_PRACTICE_NAME` env var (default: "CollectRx Demo Practice"); email uses `SEED_PRACTICE_EMAIL` (default: "demo@collectrx-test.local")
-- **Real onboarding flow:** user signs up → creates their own practice via UI → imports patient data (CSV or PMS connector)
+- **Real onboarding flow:** user signs up → creates their own practice via UI → 30-day trial (500 min/month, 50 min/day, no card) → imports patient data (CSV or PMS connector) → upgrades to a paid tier via Stripe Billing when ready
 - **Fixtures and seeds are for testing system logic**, not for branding a specific practice or pilot demo
 
-This applies retroactively: references to "Hasan Family Dental", "Tenth Line Family Dentistry", "Dr. Hasan's machine", or other specific-practice language in code should be treated as technical debt and removed or generalized.
+This applies retroactively: references to specific-practice language in code (a named clinic, a named owner's machine) should be treated as technical debt and removed or generalized.
 
 ---
 
-## Commands
+## Commands (from repo root)
 
 ```bash
-# Install
+# Install (root — links the Collect-RX-main workspace)
 npm ci
 
-# Run the backend server (Express on port 3000)
+# API + Vite (+ worker + Redis when REDIS_URL is set) — the canonical app
 npm run dev
 
-# Run all tests
-npm test
+# Typecheck, lint, test, production build — run before PRs
+npm run ci:collectrx
 
-# Run a single test file
-npx vitest run tests/eligibility.test.ts
+# Prisma migrations against Collect-RX-main
+npm run db:migrate:collectrx        # deploy
+npm run db:migrate:dev:collectrx    # dev
+npm run db:seed:collectrx
 
-# Lint
-npm run lint
-
-# Build React frontend (Vite → dist-renderer/)
-npm run build:renderer
-
-# Build Electron main process (→ dist-electron/)
-npm run build:main
-
-# Package Windows .exe installer (requires Windows or CI)
-npx electron-builder --windows --x64 --config electron-builder.config.js
-
-# Abeldent schema discovery (run once on a practice Windows machine with AbelDent; requires `npm install mssql`)
-npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
-
-# After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
-npm run abeldent:validate-queries
-# (script uses: --discovery schema-discovery.json --map schema-map.json — adjust paths as needed)
-
-# Emit SQL the sync service will run (for review or docs):
-npm run abeldent:emit-queries
-# Point the desktop sync at a map file: ABELDENT_SCHEMA_MAP=./schema-map.json
+# Package the Electron desktop app (AbelDent-connected practices only)
+npm run build:electron:win
 ```
 
 CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
+
+For direct/unnamespaced commands (`npm run dev`, `npm test`, `npm run lint`, `npm run abeldent:discover`, etc.), run them from inside `Collect-RX-main/` — see [`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md).
 
 ---
 
@@ -74,16 +82,20 @@ CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
 ```
 Electron shell (thin wrapper — no business logic)
     ↓
-React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Patient AR, Estimate, Analytics, Outbox, Admin). The old `Collect-RX-main/frontend/` app was removed; one surface only.
+React/Vite/Tailwind frontend (Collect-RX-main/src — Dashboard, How it works, Balances, Estimate, Analytics, Outbox, Billing, Admin)
     ↓
-Express backend  src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
+Express backend  Collect-RX-main/src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
     ↓
-Prisma ORM → PostgreSQL (Fly.io)
+Prisma ORM → PostgreSQL (Fly.io)  +  Redis-backed worker queue (BullMQ) for background jobs
     ↓
 Vapi.ai voice agents (4-agent squad via Vapi API)
     ↓
 Twilio (telephony — calls to carriers)
 ```
+
+Two subsystems live alongside the core AR flow and aren't captured above:
+- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Core/Growth/Scale tiers via Stripe Billing, overage handling, COGS breaker. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
+- **Marketing/growth engine** (`Collect-RX-main/src/server/marketing/`) — prospect harvesting, email campaign scheduler, AI outreach calls, reply intelligence, referral engine. Self-serve acquisition, separate from the carrier-calling product itself.
 
 ### Vapi Voice Squad
 
@@ -98,7 +110,7 @@ The squad receives UUID tokens in metadata — never real patient names, DOBs, o
 
 ### Eligibility Engine (Phase 3)
 
-Lives in `src/services/eligibility/`. Generates pre-treatment cost estimates and reconciles them against actual insurance adjudication (EOB).
+Lives in `Collect-RX-main/src/services/eligibility/`. Generates pre-treatment cost estimates and reconciles them against actual insurance adjudication (EOB).
 
 ```
 engine.ts              — orchestrates the estimate pipeline
@@ -122,9 +134,7 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 AbelDent is one supported PMS connector. It is optional. New practices onboard via CSV (see CSV Import below). The AbelDent connector is only active when `ABELDENT_SCHEMA_MAP` is set. The server starts and runs fully without it.
 
-Schema discovery is deferred until access to a Windows AbelDent installation is available. Do not block any work on this.
-
-When AbelDent access is available:
+When AbelDent access is available (run from `Collect-RX-main/`):
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
 3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
@@ -145,7 +155,7 @@ A practice can be fully onboarded via CSV with no desktop app required. The Elec
 ## Critical safety rules
 
 ### PHI Boundary
-PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata**. UUID tokens only in metadata. Ephemeral PHI in call `variables` at dispatch time only (see `docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens server-side before the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
+PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata**. UUID tokens only in metadata. Ephemeral PHI in call `variables` at dispatch time only (see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens server-side before the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
 If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
@@ -155,14 +165,15 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 - Maximum 3 call attempts per claim
 - Claims under 30 days old: do not enter queue
 - Claims over 90 days old: skip AI, escalate to human immediately
+- Billing/usage limits (trial caps, overage-pending, payment failure) also pause calling — see the Billing lifecycle section in `docs/operations/PATH-TO-DELIVERY.md`
 
 ---
 
 ## Database
 
-PostgreSQL on Fly.io, accessed via Prisma. Schema migrations for the eligibility engine are in `migrations/eligibility-schema.sql` — run directly against the database via `fly postgres connect` or `psql $DATABASE_URL -f migrations/eligibility-schema.sql`.
+PostgreSQL on Fly.io, accessed via Prisma. Migrations live in `Collect-RX-main/prisma/migrations/` and are applied with `npm run db:migrate:collectrx` (`prisma migrate deploy`) — not ad-hoc `psql -f`.
 
-Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`.
+Key eligibility tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`. Billing tables: `UsagePeriod` and the `billingTier` field on the practice model.
 
 ---
 
@@ -170,13 +181,13 @@ Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedur
 
 The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
-Never ship an unsigned build to the pilot site.
+Never ship an unsigned build to a pilot practice.
 
 ---
 
 ## Adding a new carrier
 
-1. Add an entry to `src/services/eligibility/rules/carrier-configs.json` following the existing structure
-2. Add the carrier ID to the `Carrier` enum in `src/services/eligibility/types.ts`
+1. Add an entry to `Collect-RX-main/src/services/eligibility/rules/carrier-configs.json` following the existing structure
+2. Add the carrier ID to the `Carrier` enum in `Collect-RX-main/src/services/eligibility/types.ts`
 3. Add test cases to `tests/eligibility.test.ts` covering the new carrier's deductible, annual max, and coverage tiers
-4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.js` if the carrier name appears in Abeldent data
+4. Update `CARRIER_NAME_MAP` in `Collect-RX-main/scripts/sync-query-builder.cjs` if the carrier name appears in Abeldent data
