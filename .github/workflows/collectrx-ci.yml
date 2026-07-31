@@ -48,8 +48,11 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      # Plain `npm audit` has no per-advisory allowlist, so a single confirmed-inapplicable
+      # high finding blocks every PR with no escape but --force (which can mean an
+      # unplanned major bump). audit-ci.jsonc documents each exception with a reason.
       - name: npm audit (production dependencies)
-        run: npm audit --omit=dev --audit-level=high
+        run: npx audit-ci --config audit-ci.jsonc
 
       # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
