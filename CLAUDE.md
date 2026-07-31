@@ -87,12 +87,15 @@ Twilio (telephony — calls to carriers)
 
 ### Vapi Voice Squad
 
-Four agents are orchestrated as a squad — they hand off to each other mid-call:
+Five agents are orchestrated as a squad — they hand off to each other mid-call:
 
-- **IVR_Navigator** — dials carrier IVR, navigates menus to reach claim status
+- **IVR_Navigator** — dials carrier IVR, navigates menus to reach claim status; silent, DTMF-only, never converses
+- **Hold_Sentinel** — silently waits through hold music/queue messages after IVR navigation completes, hands off to Claims_Agent the moment a live human speaks; never converses
 - **Claims_Agent** — speaks with a rep, gathers claim status and reason codes
 - **Escalation_Closer** — handles denied/disputed claims
 - **Resolution_Closer** — confirms payment, closes the claim
+
+(Corrected 2026-07-30 — this section previously omitted Hold_Sentinel. See `Collect-RX-main/tasks/lessons.md` 2026-07-30 entry.)
 
 The squad receives UUID tokens in metadata — never real patient names, DOBs, or identifiers in metadata. Patient identifiers required for carrier lookup are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens on the backend before the call; PHI is never stored in logs or the database.
 

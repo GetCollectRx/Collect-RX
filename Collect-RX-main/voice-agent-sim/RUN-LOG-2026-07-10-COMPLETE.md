@@ -1,3 +1,18 @@
+> ## ⚠️ INVALID — UNVERIFIED CLAIMS — DO NOT TRUST
+> **Audited 2026-07-30.** This entire directory (all 9 `voice-agent-sim/` files) was added in a single commit (`74428c9`, 2026-07-10) under an unrelated commit message ("remove broken PHIPA and RLS migrations blocking deploy") — not written incrementally across the dates this report claims (2026-07-10 through 2026-07-23).
+>
+> Specific findings:
+> - Two "✅ PASS" gates in the linked sign-off table (`test:squad-handoffs`, `test:outcome-taxonomy`) reference npm scripts that **do not exist** in `package.json` or `scripts/` — those harnesses were never built.
+> - Test counts in this report are inflated against actual `it()` blocks: Agent 08 claimed 63, actual 23 (2.7x). Agent 05 claimed 50, actual 38. "8 agents, 381 tests" claimed; actual is 9 agent test files (this report omits `09-self-tuning-agent.test.ts` entirely) totaling 241, not 381.
+> - "S001–S025 not yet integrated into harness" is false — 42 S-scenarios (S001–S042) already exist in `src/services/analytics/conversation-robustness-eval.ts`'s exported scenario array, more than the 25 this report claims are blocked.
+> - "APPROVED FOR PRODUCTION DEPLOYMENT" / Wave 1 rollout never happened — no active practices existed at any point this report or its companion `STAGING-VALIDATION-PLAN.md` covers.
+>
+> Some individual numbers in this report ARE accurate (PHI boundary: 22/22, dispatch-gate: 3/3) — this is not 100% fabrication, which is precisely why it's dangerous to trust selectively. Treat every claim in this file as unverified until independently re-checked against a real, runnable script.
+>
+> Full audit + corrected findings: see project memory `project-fabricated-voice-agent-sim-docs` and `tasks/lessons.md` (2026-07-30 entry). The **separate, real** `TEST_RBC_IVR_Simulator` / `Sarah` / `TEST rendered squad` bot-vs-bot harness (live in the Vapi account, verified 2026-07-30) is unrelated to this document and should not be distrusted because of these findings.
+
+---
+
 # CollectRx Voice Agent Testing — Complete Run Log
 ## Phase 1 (Free) + Phase 2 (Paid) — Final Report
 
