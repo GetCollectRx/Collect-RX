@@ -1,10 +1,57 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { builtinModules } from 'node:module'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(workspaceDir, '..')
+
+// Backstop for the eslint.config.js path-based rule: walks the actual Rollup
+// module graph (so it can't be fooled by re-exports or barrel files) and fails
+// `vite build` if the client bundle pulls in src/server/** or a Node builtin.
+// This is the class of bug that crash-looped Railway — CI's typecheck and
+// tests don't touch the Vite build, so this only surfaced in production.
+// Errors are raised as soon as the offending module/specifier is seen (rather
+// than collected for buildEnd) because Rollup's own native handling of a bare
+// Node builtin (e.g. plain `crypto`) can abort the build first with a far more
+// cryptic message ("X is not exported by __vite-browser-external:crypto").
+function guardServerOnlyImports() {
+  const serverDir = path.join(workspaceDir, 'src', 'server') + path.sep
+  const workspacePrefix = workspaceDir + path.sep
+  const NODE_BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)])
+
+  const describe = (id) => (id.startsWith(workspacePrefix) ? path.relative(workspaceDir, id) : id)
+
+  return {
+    name: 'crx-guard-server-only-imports',
+    apply: 'build',
+    resolveId(source, importer) {
+      if (!importer) return null
+      const importerIsFirstParty = importer.startsWith(workspacePrefix) && !importer.includes('node_modules')
+      if (!importerIsFirstParty || importer.startsWith(serverDir)) return null
+
+      if (NODE_BUILTINS.has(source)) {
+        this.error(
+          `[guard-server-only-imports] "${describe(importer)}" imports the Node builtin "${source}". ` +
+            'Node builtins do not exist in the browser — this is the class of bug that crash-looped Railway. ' +
+            'Remove the import, or move this code under src/server/** if it is genuinely server-only.',
+        )
+      }
+      return null
+    },
+    moduleParsed(info) {
+      if (info.id.startsWith(serverDir)) {
+        const importer = info.importers[0] ? describe(info.importers[0]) : '(entry)'
+        this.error(
+          `[guard-server-only-imports] Client bundle graph pulled in "${describe(info.id)}" from src/server/** ` +
+            `(imported by ${importer}). Server-only code (Node crypto, Prisma, PHI vault) does not exist in the ` +
+            'browser. Move shared logic to a client-safe module, or remove the import.',
+        )
+      }
+    },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -45,6 +92,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      guardServerOnlyImports(),
       {
         name: 'crx-inject-api-origin-meta',
         transformIndexHtml(html) {

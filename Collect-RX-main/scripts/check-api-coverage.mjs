@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 /**
- * Static check: API path strings referenced from UI / desktop exist on the server.
+ * Static check, both directions:
+ *   1. API path strings referenced from UI / desktop exist on the server
+ *      (SERVER_PREFIXES / SERVER_EXTRA are a hand-maintained allowlist).
+ *   2. Every `app.use('/api/...', ...)` mount in src/server/index.ts has a
+ *      matching allowlist entry, so a newly mounted route can't silently drift
+ *      out of sync with the allowlist above (this is exactly how /api/pre-visit
+ *      shipped mounted on the server but missing from the allowlist).
  * Run: node scripts/check-api-coverage.mjs (from Collect-RX-main)
  */
 
@@ -63,6 +69,8 @@ const SERVER_PREFIXES = [
   '/api/twilio/',
   '/api/health',
   '/api/group/',
+  '/api/compliance/',
+  '/api/agent-runs/',
 ];
 
 /** Exact paths or prefix patterns not covered by SERVER_PREFIXES alone. */
@@ -143,12 +151,41 @@ for (const f of files) {
 
 const missing = [...clientPaths].filter((p) => !isCovered(p)).sort();
 
-if (missing.length) {
-  console.error('[check-api-coverage] Client calls paths with no known server mount:\n');
-  for (const p of missing) console.error('  ', p);
+/**
+ * Mounts like `app.use('/api', someRouter)` delegate their own path structure
+ * to the router and can't be reduced to a single checkable prefix, so they're
+ * intentionally excluded from the drift check below (any path they actually
+ * serve is still verified by the forward, client-side check above once a
+ * client calls it).
+ */
+const serverIndexSrc = readFileSync(join(ROOT, 'src/server/index.ts'), 'utf8');
+const mountedPrefixes = new Set();
+for (const m of serverIndexSrc.matchAll(/app\.use\(\s*['"](\/api\/[a-zA-Z0-9_-]+)['"]/g)) {
+  mountedPrefixes.add(m[1]);
+}
+
+const driftedMounts = [...mountedPrefixes]
+  .filter((p) => !isCovered(p) && !isCovered(`${p}/`))
+  .sort();
+
+if (missing.length || driftedMounts.length) {
+  if (missing.length) {
+    console.error('[check-api-coverage] Client calls paths with no known server mount:\n');
+    for (const p of missing) console.error('  ', p);
+  }
+  if (driftedMounts.length) {
+    console.error(
+      '\n[check-api-coverage] Server mounts these API prefixes but SERVER_PREFIXES/SERVER_EXTRA in this file has no matching entry:\n',
+    );
+    for (const p of driftedMounts) console.error('  ', p);
+    console.error(
+      '\nAdd the missing prefix to SERVER_PREFIXES (or SERVER_EXTRA for an exact-path pattern) in scripts/check-api-coverage.mjs.',
+    );
+  }
   process.exit(1);
 }
 
 console.log(
-  `[check-api-coverage] OK — ${clientPaths.size} distinct /api paths from UI/desktop are covered.`,
+  `[check-api-coverage] OK — ${clientPaths.size} distinct /api paths from UI/desktop are covered, ` +
+    `${mountedPrefixes.size} server mounts match the allowlist.`,
 );
