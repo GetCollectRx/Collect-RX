@@ -8,6 +8,7 @@
     "Collect-RX-main"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "start": "npm run start -w dental-ar-system",
     "dev": "npm run dev:collectrx",
     "dev:collectrx": "npm run dev -w dental-ar-system",
