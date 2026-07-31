@@ -70,6 +70,8 @@ export default tseslint.config(
       'src/services/pii-vault.ts',
       'src/services/guardrails/**',
       'src/services/analytics/**',
+      'src/lib/prisma.ts',
+      'src/lib/prismaRls.ts',
       '**/*.test.{ts,tsx}',
       '**/*.spec.{ts,tsx}',
     ],
