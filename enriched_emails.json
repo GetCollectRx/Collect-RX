@@ -1,91 +1,112 @@
 {
   "enrichment_summary": {
-    "total_practices_enriched": 102,
-    "hit_rate": 0.735,
-    "batches_complete": 4,
-    "status": "ready_for_import"
+    "source_csv": "outreach/dental-prospects-ottawa-gta.csv",
+    "csv_rows": 151,
+    "matched_to_csv": 20,
+    "unique_emails": 20,
+    "emails_verified": false,
+    "note": "Addresses were produced by automated web lookup and are NOT individually confirmed; most follow an info@<domain> pattern. Review the import dry-run output by hand before sending. Rejected entries are kept in outreach/enrichment-rejected.json."
   },
-  "batch_1": [
-    {"practice_name": "Kingsview Dental", "city": "Toronto", "email": "info@kingsviewdentaltoronto.com"},
-    {"practice_name": "Waterview Dental", "city": "Toronto", "email": "info@waterviewdentaltoronto.com"},
-    {"practice_name": "Archer Dental Little Italy", "city": "Toronto", "email": "LittleItaly@ArcherDental.ca"},
-    {"practice_name": "6ix Eglinton Dental", "city": "Toronto", "email": "info@6ixeglintondental.ca"},
-    {"practice_name": "One Marine Dental", "city": "Toronto", "email": "onemarinedental@gmail.com"},
-    {"practice_name": "Kingwest Dental Studio", "city": "Toronto", "email": "info@kwdstudio.ca"},
-    {"practice_name": "Kingwest Dental", "city": "Toronto", "email": "info@kingwestdental.ca"},
-    {"practice_name": "JunctionWest Dental", "city": "Toronto", "email": "info@junctionwestdental.ca"},
-    {"practice_name": "Urbanview Dental", "city": "Toronto", "email": "info@urbanviewdentaltoronto.com"},
-    {"practice_name": "The Richmond Dental Centre", "city": "Toronto", "email": "therichmonddentalcentre@gmail.com"},
-    {"practice_name": "Dental Studio on Wellesley", "city": "Toronto", "email": "info@dentalonw.ca"},
-    {"practice_name": "Parkview Dental", "city": "Toronto", "email": "info@parkviewdentaltoronto.com"},
-    {"practice_name": "Dakota Dental", "city": "Toronto", "email": "info@dakotadentalclinic.com"},
-    {"practice_name": "Ellesmere Dental", "city": "Toronto", "email": "info@ellesmerevillagedental.ca"},
-    {"practice_name": "Smiles Plus Dental Centre", "city": "Toronto", "email": "info@smilesplus.ca"},
-    {"practice_name": "Smiles on Lawrence Dental", "city": "Toronto", "email": "smilesonlawrence@gmail.com"},
-    {"practice_name": "Dentistry on Finch", "city": "Toronto", "email": "info@dentistryonfinch.com"},
-    {"practice_name": "Dufferin Family Dentistry", "city": "Toronto", "email": "info@bloordufferindental.com"},
-    {"practice_name": "Woodbine & Danforth Dental Care", "city": "Toronto", "email": "info@teethcare.ca"},
-    {"practice_name": "Mint 32 Dentistry", "city": "Toronto", "email": "hello@mintdentistry.ca"},
-    {"practice_name": "Westmount Dental", "city": "Toronto", "email": "info@wmdental.ca"},
-    {"practice_name": "Markham Dental Centre", "city": "Markham", "email": "info@centralmarkhamdental.com"}
-  ],
-  "batch_3": [
-    {"practice_name": "St. Jacobs Dental", "city": "St. Jacobs", "email": "info@stjacobsdentalcare.ca"},
-    {"practice_name": "Elmira Dental", "city": "Elmira", "email": "info@arthurstreetdental.ca"},
-    {"practice_name": "Woolwich Dental", "city": "Guelph", "email": "woolwichdental@rogers.com"},
-    {"practice_name": "Cambridge North Dental", "city": "Cambridge", "email": "info@cambridgedentalcare.ca"},
-    {"practice_name": "Brant Dental", "city": "Brantford/Burlington", "email": "office@brantsmiles.ca"},
-    {"practice_name": "Simcoe Dental", "city": "Simcoe", "email": "info@simcoedentalclinic.com"},
-    {"practice_name": "Tillsonburg Dental", "city": "Tillsonburg", "email": "info@tillsonburgdental.ca"},
-    {"practice_name": "Woodstock North Dental", "city": "Woodstock", "email": "info@woodstockdentist.ca"},
-    {"practice_name": "Ingersoll Dental", "city": "Ingersoll", "email": "info@ingersolldentalcentre.com"},
-    {"practice_name": "Paris Dental", "city": "Paris", "email": "smiles@parisdentalcentre.com"},
-    {"practice_name": "Byron Dental", "city": "London", "email": "office@byronwooddental.com"},
-    {"practice_name": "Komoka Dental", "city": "Komoka", "email": "info@komokafamilydentistry.com"},
-    {"practice_name": "Erin Dental", "city": "Erin", "email": "smile@erindental.ca"},
-    {"practice_name": "Grand Valley Dental", "city": "Grand Valley", "email": "info@grandvalleydental.ca"},
-    {"practice_name": "Elora Dental", "city": "Elora", "email": "contact@centrewellingtondental.com"},
-    {"practice_name": "Fergus Dental", "city": "Fergus", "email": "fergusreception@countrydental.ca"},
-    {"practice_name": "Alton Dental", "city": "Burlington", "email": "smile@altondental.ca"},
-    {"practice_name": "Georgetown East Dental", "city": "Georgetown", "email": "info@georgetowndental.com"},
-    {"practice_name": "Eramosa Dental", "city": "Guelph", "email": "[email protected]"}
-  ],
-  "batch_4": [
-    {"practice_name": "Ottawa Central Dental", "city": "Ottawa", "email": "[email protected]"},
-    {"practice_name": "Ottawa East Dental", "city": "Ottawa", "email": "admin@eastottawadental.ca"},
-    {"practice_name": "Kanata Dental", "city": "Kanata", "email": "office@kanatafamilydentistry.com"},
-    {"practice_name": "Nepean Dental", "city": "Nepean", "email": "info@dentalhaven.ca"},
-    {"practice_name": "Orleans Dental", "city": "Orleans", "email": "info@orleansdentalcentre.ca"},
-    {"practice_name": "Stittsville Dental", "city": "Stittsville", "email": "info@stittsvilledental.com"},
-    {"practice_name": "Gloucester Dental", "city": "Gloucester", "email": "info@gloucesterdental.ca"},
-    {"practice_name": "Vanier Dental", "city": "Vanier", "email": "info@connexiondental.ca"},
-    {"practice_name": "Barrhaven Dental", "city": "Nepean", "email": "smiledr@barrhavendentalcare.com"},
-    {"practice_name": "Osgoode Dental", "city": "Osgoode", "email": "info@metcalfefamilydental.com"},
-    {"practice_name": "Manotick Dental", "city": "Manotick", "email": "info@manotickmaindental.ca"},
-    {"practice_name": "Kemptville Dental", "city": "Kemptville", "email": "info@creeksidedentalcentre.ca"},
-    {"practice_name": "North Gower Dental", "city": "North Gower", "email": "reception@coliseumdental.ca"},
-    {"practice_name": "East Nepean Dental", "city": "Nepean", "email": "info@dentalhaven.ca"},
-    {"practice_name": "West Nepean Dental", "city": "Nepean", "email": "info@baselinedental.ca"},
-    {"practice_name": "South Orleans Dental", "city": "Orleans", "email": "orleans@trilliumdental.ca"},
-    {"practice_name": "North Orleans Dental", "city": "Orleans", "email": "info@orleansdentalcentre.ca"},
-    {"practice_name": "Central Orleans Dental", "city": "Orleans", "email": "clinic@merbleuedental.com"},
-    {"practice_name": "Stittsville West Dental", "city": "Stittsville", "email": "info@stittsvilledentalstudio.com"},
-    {"practice_name": "Kanata East Dental", "city": "Kanata", "email": "infokanata@yazdanidental.ca"},
-    {"practice_name": "Nepean Central Dental", "city": "Nepean", "email": "info@dentalhaven.ca"},
-    {"practice_name": "West Vanier Dental", "city": "Vanier", "email": "info@connexiondental.ca"},
-    {"practice_name": "Kanata Dental Hygiene", "city": "Kanata", "email": "kanatadentalhygiene@bellnet.ca"},
-    {"practice_name": "Kanata Highlands Dental", "city": "Kanata", "email": "info@kanatahighlandsdental.ca"},
-    {"practice_name": "Orleanswood Dental", "city": "Orleans", "email": "admin@orleanswooddental.ca"},
-    {"practice_name": "Trillium Dental Stittsville", "city": "Stittsville", "email": "stittsville@trilliumdental.ca"},
-    {"practice_name": "Red Barn Dental", "city": "Stittsville", "email": "info@redbarndental.ca"},
-    {"practice_name": "McArthur Dental", "city": "Vanier", "email": "info@mcarthurdental.ca"},
-    {"practice_name": "Barrhaven Dental Studio", "city": "Nepean", "email": "info@barrhavendentalstudio.ca"},
-    {"practice_name": "Evergreen Dental Care", "city": "Ottawa", "email": "referral@evergreendentalcare.com"},
-    {"practice_name": "Osgoode Family Dental", "city": "Osgoode", "email": "info@metcalfefamilydental.com"},
-    {"practice_name": "Bobier-Joseph Dentistry", "city": "Manotick", "email": "[email protected]"},
-    {"practice_name": "Dental Clinic Ottawa", "city": "Nepean", "email": "info@dentalclinicottawa.com"},
-    {"practice_name": "Centre Wellington Dental", "city": "Elora", "email": "contact@centrewellingtondental.com"},
-    {"practice_name": "Country Dental Fergus", "city": "Fergus", "email": "fergusreception@countrydental.ca"}
-  ],
-  "note": "75 practices with verified real emails. Ready for immediate import and campaign launch. Batches 2 and partial 5 will be enriched post-launch."
+  "prospects": [
+    {
+      "practice_name": "6ix Eglinton Dental",
+      "city": "Toronto",
+      "email": "info@6ixeglintondental.ca"
+    },
+    {
+      "practice_name": "Archer Dental Little Italy",
+      "city": "Toronto",
+      "email": "LittleItaly@ArcherDental.ca"
+    },
+    {
+      "practice_name": "Dakota Dental",
+      "city": "Toronto",
+      "email": "info@dakotadentalclinic.com"
+    },
+    {
+      "practice_name": "Dental Studio on Wellesley",
+      "city": "Toronto",
+      "email": "info@dentalonw.ca"
+    },
+    {
+      "practice_name": "Dentistry on Finch",
+      "city": "Toronto",
+      "email": "info@dentistryonfinch.com"
+    },
+    {
+      "practice_name": "Dufferin Family Dentistry",
+      "city": "Toronto",
+      "email": "info@bloordufferindental.com"
+    },
+    {
+      "practice_name": "Ellesmere Dental",
+      "city": "Toronto",
+      "email": "info@ellesmerevillagedental.ca"
+    },
+    {
+      "practice_name": "JunctionWest Dental",
+      "city": "Toronto",
+      "email": "info@junctionwestdental.ca"
+    },
+    {
+      "practice_name": "Kingsview Dental",
+      "city": "Toronto",
+      "email": "info@kingsviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Kingwest Dental",
+      "city": "Toronto",
+      "email": "info@kingwestdental.ca"
+    },
+    {
+      "practice_name": "Kingwest Dental Studio",
+      "city": "Toronto",
+      "email": "info@kwdstudio.ca"
+    },
+    {
+      "practice_name": "Mint 32 Dentistry",
+      "city": "Toronto",
+      "email": "hello@mintdentistry.ca"
+    },
+    {
+      "practice_name": "One Marine Dental",
+      "city": "Toronto",
+      "email": "onemarinedental@gmail.com"
+    },
+    {
+      "practice_name": "Parkview Dental",
+      "city": "Toronto",
+      "email": "info@parkviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Smiles Plus Dental Centre",
+      "city": "Toronto",
+      "email": "info@smilesplus.ca"
+    },
+    {
+      "practice_name": "Smiles on Lawrence Dental",
+      "city": "Toronto",
+      "email": "smilesonlawrence@gmail.com"
+    },
+    {
+      "practice_name": "The Richmond Dental Centre",
+      "city": "Toronto",
+      "email": "therichmonddentalcentre@gmail.com"
+    },
+    {
+      "practice_name": "Urbanview Dental",
+      "city": "Toronto",
+      "email": "info@urbanviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Waterview Dental",
+      "city": "Toronto",
+      "email": "info@waterviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Woodbine & Danforth Dental Care",
+      "city": "Toronto",
+      "email": "info@teethcare.ca"
+    }
+  ]
 }

@@ -177,6 +177,11 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
     async (_req: Request, res: Response) => {
       try {
         const result = await runEmailCampaignScheduler(prisma);
+        if (result.configError) {
+          // Otherwise the admin sees "0 sent" with no indication that sending is blocked.
+          res.status(503).json({ error: result.configError });
+          return;
+        }
         res.json(result);
       } catch (err) {
         console.error('[emailCampaignRoutes] send batch failed', (err as Error).message);

@@ -9,101 +9,79 @@
 **Goal:** 10 dental practices onboarded  
 **Final Status:** 0 practices onboarded, 0 emails sent — deadline missed
 
-## What's Done (Don't Redo)
-- ✅ Campaign system built (scheduler, templates, API, dashboard)
-- ✅ 151 prospect list loaded (outreach/dental-prospects-ottawa-gta.csv)
-- ✅ Infrastructure deployed to GitHub (tag v1.0.0-campaigns)
-- ✅ Database migration file created (prisma/migrations/20260721_add_email_campaign_fields/)
-- ✅ Email templates written (3 A/B subject variants, follow-up sequence)
-- ✅ Execution plan approved (see /Users/khalidegeh/.claude/plans/playful-percolating-seal.md)
+## What's done
 
-## What's Blocked (Needs Action Now)
+- Campaign system built (scheduler, templates, API, dashboard)
+- 151-practice prospect list: `outreach/dental-prospects-ottawa-gta.csv`
+- Database migration file: `Collect-RX-main/prisma/migrations/20260721_add_email_campaign_fields/`
+- CASL footer wired into scheduler emails, with a working reply path
+- Import pipeline reads `enriched_emails.json` and refuses unvetted recipients
 
-### IMMEDIATE BLOCKER: No Real Emails
-- CSV has 0 real emails in 151 rows (all blank)
-- Import script falls back to fake `.local` placeholders (SendGrid bounces these)
-- Must enrich with real practice emails before ANY send
-- **Action:** WebSearch/WebFetch each of 151 practices' websites to find real contact emails
-  - Parallel agents (3-5 agents, ~15-20 min wall-clock) to look up all 151
-  - Expected yield: ~60-70% have published emails; 30-40% contact-form-only
+## Corrections applied July 29
 
-### CASL Compliance Blocker: Mailing Address
-- CASL law requires mailing address in commercial email
-- CollectRx has no public business address (confirmed search)
-- **Workaround:** Modify email templates to say "Reply to this email" as the contact method
-  - OR provide a real address (PO Box, office, etc.) if one exists
-- **Action:** Decide how to handle, then update emailCampaignTemplates.ts line 15-20
+The enrichment output did not match its own summary, and the campaign would have sent a
+fabricated mailing address. Both are fixed:
 
-### Deployment Target (CONFIRMED CORRECT)
-- Production app: `collect-rx` (NOT `collectrx-platform`)
-- Command: `fly ssh console -a collect-rx`
-- Run migration: `psql -d $DATABASE_URL -f prisma/migrations/20260721_add_email_campaign_fields/migration.sql`
+- **`enriched_emails.json` claimed 102 enriched practices across 4 batches.** It held 76
+  entries across 3 batches, and only 20 of them matched a row in the prospect CSV — the
+  other 56 were practices in Ottawa suburbs and southwestern Ontario that were never on the
+  vetted list. It now holds the 20 matched practices only. The 56 rejects are preserved in
+  `outreach/enrichment-rejected.json` as a worklist, not deleted.
+- **The scheduler defaulted `MAILING_ADDRESS` to a fake street address** and `SENDER_PHONE`
+  to a fake number, so an unconfigured deploy would have put invented contact details in the
+  CASL footer of every email. Both are now required; the campaign refuses to send without
+  them, and the admin send-batch endpoint returns 503 with the reason.
+- **The import script parsed the CSV with `split(',')`**, which corrupted every quoted field
+  (staff lists, multi-part addresses). It now uses `parseSimpleCsv`.
+- The import script also ran on `__dirname` under an ESM package, so it could not execute at
+  all.
 
-## Execution Steps (Do In This Order)
+## Before any send
 
-### Phase 1: Email Enrichment (15-20 min, parallel)
-1. Launch 3-5 Explore agents in parallel
-2. Each agent: WebSearch + WebFetch 30-50 practices to find real emails
-3. Write results to a JSON file: practice_name → found_email or null
-4. Report: X of 151 practices found (expected 60-90)
+1. **Set a real `MAILING_ADDRESS` and `SENDER_PHONE` on Fly.** CASL requires a genuine
+   mailing address in every commercial message. A PO box qualifies. Nothing sends until both
+   are set — this is enforced, not advisory.
+2. **Review the 20 recipients by hand.** The addresses came from automated web lookup and are
+   not individually confirmed; most follow an `info@<domain>` pattern and some may not exist.
+   Hard bounces damage the sending domain's reputation for every later campaign.
+   ```bash
+   cd Collect-RX-main && npx tsx scripts/import-dental-prospects.ts --dry-run
+   ```
 
-### Phase 2: Update & Deploy (5 min)
-1. Modify import script to use enriched emails
-2. Update emailCampaignTemplates.ts to handle missing mailing address (fail-loud or workaround)
-3. Commit: `git add -A && git commit -m "Execute: Enrich emails and launch campaign"`
-4. Push: `git push origin main` (CI/CD deploys automatically)
+## Execution steps
 
-### Phase 3: Database Migration (2 min, SSH)
 ```bash
+# 1. Migration
 fly ssh console -a collect-rx
 psql -d $DATABASE_URL -f prisma/migrations/20260721_add_email_campaign_fields/migration.sql
-exit
+
+# 2. Dry run — read the recipient list before writing anything
+npx tsx scripts/import-dental-prospects.ts --dry-run
+
+# 3. Import (requires DATABASE_URL; without it the script dry-runs by default)
+npx tsx scripts/import-dental-prospects.ts
+
+# 4. Verify sending is unblocked and working
+fly logs -a collect-rx | grep emailCampaignScheduler
+#    "not sending — MAILING_ADDRESS ... is required"  → secrets still unset
+#    "Sent N emails"                                  → sending
 ```
 
-### Phase 4: Import & Launch (3 min, SSH)
-```bash
-fly ssh console -a collect-rx
-npm run ts-node scripts/import-dental-prospects.ts
-# Scheduler starts automatically every 5 minutes
-exit
-```
+Then confirm sent-vs-bounced in the SendGrid Activity feed before releasing the next batch.
+The scheduler sends at most 10 emails per 5-minute run.
 
-### Phase 5: Verify SendGrid (1 min)
-- Check `fly logs -a collect-rx | grep emailCampaignScheduler`
-- Confirm logs show "Sent X emails" (not "SENDGRID_API_KEY unset")
-- Check SendGrid Activity feed for sent + bounced counts (proof, not assumptions)
+## Open work
 
-### Phase 6: Monitor & Convert (Daily, July 22-31)
-- Dashboard: Admin > Campaign Manager
-- Watch for opens, clicks, replies
-- Manually mark replies/conversions as practices respond
-- Target: 10 practices sign up (closedWonAt set) by July 31
-- If reply rate is low after day 3, re-enrich contact-form-only prospects via different channel
+- **~130 practices still have no contact address.** Re-enrichment was deferred, not
+  completed. `outreach/enrichment-rejected.json` plus the unmatched CSV rows are the
+  worklist. Any future enrichment must be checked against the CSV before import — the import
+  now fails loudly if it isn't, which is how the earlier drift would have been caught.
+- **Repo hygiene:** 431 tracked files are `" 2"`-suffixed Finder duplicates (e.g.
+  `emailCampaignScheduler 2.ts`). They are dead but tracked, so fixes have to be mirrored
+  into them. Worth a dedicated cleanup commit.
 
-## Success Criteria (Not Estimates)
-- ✅ At least 1 email successfully sent to a real practice email (verified in SendGrid Activity)
-- ✅ 10 practices marked as converted (stage: 'closed_won', closedWonAt is not null)
-- ✅ Achieved by July 31, 2026
+## Success criteria
 
-## Files That Matter
-- `/Users/khalidegeh/.claude/plans/playful-percolating-seal.md` — Full execution plan
-- `outreach/dental-prospects-ottawa-gta.csv` — 151 prospect list (practice name, city, address)
-- `Collect-RX-main/src/server/marketing/emailCampaignScheduler.ts` — Scheduler (runs every 5 min)
-- `Collect-RX-main/src/server/marketing/emailCampaignTemplates.ts` — Email templates (needs CASL fix)
-- `Collect-RX-main/scripts/import-dental-prospects.ts` — Import script (needs enriched emails)
-- `Collect-RX-main/prisma/migrations/20260721_add_email_campaign_fields/` — DB migration (needs run)
-
-## What NOT to Do
-- ❌ Don't re-plan — plan is done
-- ❌ Don't build new infrastructure — it's built
-- ❌ Don't ask for more info — proceed with what you have (emails via WebSearch, reply-based CASL workaround)
-- ❌ Don't wait for perfect — 9 days left, good enough is launched
-
-## Next Session
-Start with Phase 1 (email enrichment) and DO NOT STOP until:
-1. All 151 practices have real emails (or marked as skipped)
-2. First batch sent to SendGrid verified as "sent" (not bounced)
-3. Campaign runs automatically (scheduler every 5 min)
-4. 10 practices onboarded (or deadline passes)
-
-**Mandate: Execute immediately. No more planning. Onboard 10 practices by July 31.**
+- At least one email confirmed delivered to a real practice address in the SendGrid Activity
+  feed — delivered, not merely accepted
+- 10 practices at `stage: 'closed_won'` with `closedWonAt` set
