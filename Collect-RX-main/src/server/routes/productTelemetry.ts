@@ -1,29 +1,53 @@
 /**
  * Product telemetry API — ClickHouse-backed (distinct from /api/analytics KPI routes).
  *
- * POST /api/telemetry/events      Ingest a batch of events from the SDK
- * GET  /api/telemetry/summary     Headline numbers
+ * POST /api/telemetry/events      Ingest a batch of events from the SDK (unauthenticated)
+ * GET  /api/telemetry/summary     Headline numbers (auth: platform_admin | practice_owner)
  * GET  /api/telemetry/pages       Time-on-page per route
  * GET  /api/telemetry/clicks      Top clicked elements (optionally ?path=)
  * GET  /api/telemetry/funnels     Funnel step completion + drop-off (?name=)
  * GET  /api/telemetry/sessions    Recent session path traces (?limit=)
  *
- * All read endpoints query either the raw analytics_events table or the
- * pre-aggregated materialized views (faster for high-volume deployments).
- *
- * Auth: event ingestion is unauthenticated (blocking analytics on auth
- * failures creates blind spots). Read endpoints are open too — add the
- * authenticate middleware if you want to restrict to platform_admin.
+ * Read endpoints require auth. platform_admin sees cross-tenant aggregates;
+ * practice_owner is scoped to their session practice_id.
  */
 
 import { Router, Request, Response } from 'express';
 import { safeInsert, safeQuery } from '../productAnalytics/clickhouse.js';
 import type { AnalyticsEvent } from '../../types/productAnalytics.js';
+import { authenticate } from '../middleware/authenticate.js';
+import { requireUserRoles } from '../middleware/requireUserRole.js';
+import { practiceIdFromSession } from '../middleware/requirePracticeSession.js';
+import { isPlatformAdmin } from '../accessControl/types.js';
 
 const router = Router();
 
+type TelemetryScope =
+  | { mode: 'all' }
+  | { mode: 'practice'; practiceId: string };
+
+function resolveTelemetryScope(req: Request): TelemetryScope {
+  const auth = req.auth ?? req.practiceAuth;
+  if (isPlatformAdmin(auth)) {
+    return { mode: 'all' };
+  }
+  return { mode: 'practice', practiceId: practiceIdFromSession(req) };
+}
+
+function scopeParams(scope: TelemetryScope): Record<string, string> | undefined {
+  return scope.mode === 'practice' ? { practiceId: scope.practiceId } : undefined;
+}
+
+function scopeFilter(scope: TelemetryScope, column = 'practice_id'): string {
+  return scope.mode === 'practice' ? `AND ${column} = {practiceId:String}` : '';
+}
+
+const readRouter = Router();
+readRouter.use(authenticate);
+readRouter.use(requireUserRoles('platform_admin', 'practice_owner'));
+
 // ---------------------------------------------------------------------------
-// POST /api/analytics/events
+// POST /api/telemetry/events — ingestion stays open so auth failures don't blind analytics
 // ---------------------------------------------------------------------------
 
 router.post('/events', async (req: Request, res: Response) => {
@@ -88,7 +112,11 @@ interface RoleRow {
   cnt: string;
 }
 
-router.get('/summary', async (_req: Request, res: Response) => {
+readRouter.get('/summary', async (req: Request, res: Response) => {
+  const scope = resolveTelemetryScope(req);
+  const params = scopeParams(scope);
+  const pf = scopeFilter(scope);
+
   const [summaryRows, roleRows] = await Promise.all([
     safeQuery<SummaryRow>(`
       SELECT
@@ -98,7 +126,8 @@ router.get('/summary', async (_req: Request, res: Response) => {
         countIf(toDate(timestamp) = today())                           AS events_today,
         countIf(toDate(timestamp) >= today() - INTERVAL 7 DAY)        AS events_this_week
       FROM analytics_events
-    `),
+      WHERE 1=1 ${pf}
+    `, params),
     safeQuery<RoleRow>(`
       SELECT
         role,
@@ -106,8 +135,9 @@ router.get('/summary', async (_req: Request, res: Response) => {
       FROM analytics_events
       WHERE toDate(timestamp) >= today() - INTERVAL 7 DAY
         AND role != ''
+        ${pf}
       GROUP BY role
-    `),
+    `, params),
   ]);
 
   const s = summaryRows[0] ?? {
@@ -145,22 +175,41 @@ interface PageRow {
   avg_duration_ms: string;
 }
 
-router.get('/pages', async (_req: Request, res: Response) => {
-  // Try materialised view first
-  let rows = await safeQuery<PageRow>(`
-    SELECT
-      path,
-      countMerge(visit_count)                  AS visits,
-      toUInt64(sumMerge(total_duration)
-        / greatest(countMerge(visit_count), 1)) AS avg_duration_ms
-    FROM analytics_page_stats
-    GROUP BY path
-    ORDER BY avg_duration_ms DESC
-    LIMIT 20
-  `);
+readRouter.get('/pages', async (req: Request, res: Response) => {
+  const scope = resolveTelemetryScope(req);
+  const params = scopeParams(scope);
+  const pf = scopeFilter(scope);
 
-  // Fall back to raw table if MV hasn't populated yet
-  if (rows.length === 0) {
+  let rows: PageRow[];
+
+  if (scope.mode === 'all') {
+    rows = await safeQuery<PageRow>(`
+      SELECT
+        path,
+        countMerge(visit_count)                  AS visits,
+        toUInt64(sumMerge(total_duration)
+          / greatest(countMerge(visit_count), 1)) AS avg_duration_ms
+      FROM analytics_page_stats
+      GROUP BY path
+      ORDER BY avg_duration_ms DESC
+      LIMIT 20
+    `);
+
+    if (rows.length === 0) {
+      rows = await safeQuery<PageRow>(`
+        SELECT
+          path,
+          count()          AS visits,
+          avg(duration_ms) AS avg_duration_ms
+        FROM analytics_events
+        WHERE type = 'page_exit'
+          AND duration_ms IS NOT NULL
+        GROUP BY path
+        ORDER BY avg_duration_ms DESC
+        LIMIT 20
+      `);
+    }
+  } else {
     rows = await safeQuery<PageRow>(`
       SELECT
         path,
@@ -169,10 +218,11 @@ router.get('/pages', async (_req: Request, res: Response) => {
       FROM analytics_events
       WHERE type = 'page_exit'
         AND duration_ms IS NOT NULL
+        ${pf}
       GROUP BY path
       ORDER BY avg_duration_ms DESC
       LIMIT 20
-    `);
+    `, params);
   }
 
   const pages = rows.map((r) => ({
@@ -194,13 +244,15 @@ interface ClickRow {
   count: string;
 }
 
-router.get('/clicks', async (req: Request, res: Response) => {
+readRouter.get('/clicks', async (req: Request, res: Response) => {
   const pathFilter = req.query.path as string | undefined;
+  const scope = resolveTelemetryScope(req);
+  const params = scopeParams(scope);
+  const pf = scopeFilter(scope);
 
-  // Use the SummingMergeTree view when no path filter is requested
   let rows: ClickRow[];
 
-  if (!pathFilter) {
+  if (!pathFilter && scope.mode === 'all') {
     rows = await safeQuery<ClickRow>(`
       SELECT
         element_label AS label,
@@ -211,7 +263,6 @@ router.get('/clicks', async (req: Request, res: Response) => {
       LIMIT 50
     `);
 
-    // Fall back if view empty
     if (rows.length === 0) {
       rows = await safeQuery<ClickRow>(`
         SELECT
@@ -224,8 +275,19 @@ router.get('/clicks', async (req: Request, res: Response) => {
         LIMIT 50
       `);
     }
+  } else if (!pathFilter) {
+    rows = await safeQuery<ClickRow>(`
+      SELECT
+        ifNull(element_label, 'unknown') AS label,
+        count() AS count
+      FROM analytics_events
+      WHERE type = 'click'
+        ${pf}
+      GROUP BY label
+      ORDER BY count DESC
+      LIMIT 50
+    `, params);
   } else {
-    // Path-filtered query always hits the raw table
     rows = await safeQuery<ClickRow>(`
       SELECT
         ifNull(element_label, 'unknown') AS label,
@@ -233,10 +295,11 @@ router.get('/clicks', async (req: Request, res: Response) => {
       FROM analytics_events
       WHERE type = 'click'
         AND path = {path:String}
+        ${pf}
       GROUP BY label
       ORDER BY count DESC
       LIMIT 50
-    `, { path: pathFilter });
+    `, { ...params, path: pathFilter });
   }
 
   const total = rows.reduce((s, r) => s + Number(r.count), 0);
@@ -257,24 +320,43 @@ interface FunnelRow {
   sessions: string;
 }
 
-router.get('/funnels', async (req: Request, res: Response) => {
+readRouter.get('/funnels', async (req: Request, res: Response) => {
   const nameFilter = req.query.name as string | undefined;
+  const scope = resolveTelemetryScope(req);
+  const params = scopeParams(scope);
+  const pf = scopeFilter(scope);
 
-  // Query the AggregatingMergeTree view
-  let rows = await safeQuery<FunnelRow>(`
-    SELECT
-      funnel_name,
-      funnel_step,
-      funnel_step_idx,
-      uniqMerge(unique_sessions) AS sessions
-    FROM analytics_funnel_steps
-    ${nameFilter ? 'WHERE funnel_name = {name:String}' : ''}
-    GROUP BY funnel_name, funnel_step, funnel_step_idx
-    ORDER BY funnel_name, funnel_step_idx
-  `, nameFilter ? { name: nameFilter } : undefined);
+  let rows: FunnelRow[];
 
-  // Fall back to raw table
-  if (rows.length === 0) {
+  if (scope.mode === 'all') {
+    rows = await safeQuery<FunnelRow>(`
+      SELECT
+        funnel_name,
+        funnel_step,
+        funnel_step_idx,
+        uniqMerge(unique_sessions) AS sessions
+      FROM analytics_funnel_steps
+      ${nameFilter ? 'WHERE funnel_name = {name:String}' : ''}
+      GROUP BY funnel_name, funnel_step, funnel_step_idx
+      ORDER BY funnel_name, funnel_step_idx
+    `, nameFilter ? { name: nameFilter } : undefined);
+
+    if (rows.length === 0) {
+      rows = await safeQuery<FunnelRow>(`
+        SELECT
+          funnel_name,
+          funnel_step,
+          funnel_step_idx,
+          uniq(session_id) AS sessions
+        FROM analytics_events
+        WHERE type = 'funnel_step'
+          AND funnel_name != ''
+          ${nameFilter ? "AND funnel_name = {name:String}" : ''}
+        GROUP BY funnel_name, funnel_step, funnel_step_idx
+        ORDER BY funnel_name, funnel_step_idx
+      `, nameFilter ? { name: nameFilter } : undefined);
+    }
+  } else {
     rows = await safeQuery<FunnelRow>(`
       SELECT
         funnel_name,
@@ -285,9 +367,10 @@ router.get('/funnels', async (req: Request, res: Response) => {
       WHERE type = 'funnel_step'
         AND funnel_name != ''
         ${nameFilter ? "AND funnel_name = {name:String}" : ''}
+        ${pf}
       GROUP BY funnel_name, funnel_step, funnel_step_idx
       ORDER BY funnel_name, funnel_step_idx
-    `, nameFilter ? { name: nameFilter } : undefined);
+    `, nameFilter ? { ...params, name: nameFilter } : params);
   }
 
   // Group rows by funnel name and compute drop-off
@@ -335,8 +418,11 @@ interface SessionRow {
   paths: string; // comma-separated from groupArray
 }
 
-router.get('/sessions', async (req: Request, res: Response) => {
+readRouter.get('/sessions', async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  const scope = resolveTelemetryScope(req);
+  const params = scopeParams(scope);
+  const pf = scopeFilter(scope);
 
   const rows = await safeQuery<SessionRow>(`
     SELECT
@@ -349,7 +435,6 @@ router.get('/sessions', async (req: Request, res: Response) => {
         toDateTime(min(timestamp)),
         toDateTime(max(timestamp))) AS duration_ms,
       count()                      AS event_count,
-      -- Ordered, deduplicated path sequence from page_view events
       arrayStringConcat(
         arrayDistinct(
           arraySort(
@@ -361,10 +446,11 @@ router.get('/sessions', async (req: Request, res: Response) => {
       ) AS paths
     FROM analytics_events
     WHERE type = 'page_view'
+      ${pf}
     GROUP BY session_id
     ORDER BY start_time DESC
     LIMIT {limit:UInt32}
-  `, { limit });
+  `, { ...params, limit });
 
   const sessions = rows.map((r) => ({
     sessionId:    r.session_id,
@@ -379,5 +465,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
 
   return res.json({ sessions });
 });
+
+router.use(readRouter);
 
 export default router;

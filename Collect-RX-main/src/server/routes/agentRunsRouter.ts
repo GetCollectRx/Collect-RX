@@ -31,7 +31,12 @@ const AgentRunInputSchema = z.object({
 
 function requireAgentSecret(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {
   const secret = process.env.AGENT_RUNTIME_SECRET;
-  if (!secret) return next();
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(401).json({ error: 'AGENT_RUNTIME_SECRET not configured' });
+    }
+    return next();
+  }
   const auth = req.headers['authorization'] ?? '';
   if (auth !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'Unauthorized' });

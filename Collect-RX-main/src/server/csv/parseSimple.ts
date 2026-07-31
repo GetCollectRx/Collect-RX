@@ -1,6 +1,6 @@
 /**
- * CSV → row objects. Header row → snake_case keys, then optional alias → canonical field names
- * for `upsertBalances` in patients/balances.
+ * CSV → row objects for insurance claim imports.
+ * Header row → snake_case keys, then optional alias → canonical field names.
  *
  * P3-30: common export column names map to the same internal fields (lightweight “column mapping”
  * without a per-upload UI).

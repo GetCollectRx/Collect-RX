@@ -57,6 +57,9 @@ export interface DeskQueueEntry {
   attemptsMade: number;
   heldForCarrierBlock: boolean;
   heldReason: string | null;
+  dispatchDeferralCode: string | null;
+  dispatchDeferralNextAction: string | null;
+  dispatchDeferredAt: string | null;
   scheduledAfter: string;
   addedAt: string;
 }

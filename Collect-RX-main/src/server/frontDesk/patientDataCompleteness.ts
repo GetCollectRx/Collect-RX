@@ -15,6 +15,7 @@
 // Called in queueEngine between PHI resolution and initiateCall().
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { PrismaClient } from '@prisma/client';
 import type { PatientPHI } from '../../pii-vault.js';
 
 export interface PatientDataCompletenessResult {
@@ -68,4 +69,67 @@ export function checkPatientDataCompleteness(
   }
 
   return { ok: missing.length === 0, missing, warnings };
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  patientName: 'patient name',
+  dateOfBirth: 'date of birth',
+  subscriberId: 'subscriber ID',
+};
+
+function labelFields(missing: string[]): string {
+  return missing.map((f) => FIELD_LABELS[f] ?? f).join(', ');
+}
+
+/**
+ * Raise a BLOCKING recovery gate for a claim whose required patient data is
+ * missing, so the practice sees exactly which funds are stuck and why —
+ * on the dashboard action list, with the dollar amount — instead of the claim
+ * silently deferring in the call queue.
+ *
+ * Idempotent: if an uncleared MISSING_PATIENT_DATA gate already exists for the
+ * claim, nothing is written (the queue retries every few hours; the practice
+ * must not be re-alerted each pass).
+ *
+ * PHI note: the gate stores field NAMES, the claim number, and the dollar
+ * amount — never the patient's identity. Gates render on the dashboard.
+ */
+export async function raiseMissingPatientDataGate(
+  prisma: PrismaClient,
+  params: {
+    practiceId: string;
+    claimId: string;
+    claimNumber: string;
+    outstandingAmount: number;
+    missing: string[];
+  },
+): Promise<{ raised: boolean }> {
+  const existing = await prisma.claimRecoveryAction.findFirst({
+    where: {
+      claimId: params.claimId,
+      actionType: 'MISSING_PATIENT_DATA',
+      clearedAt: null,
+    },
+    select: { id: true },
+  });
+  if (existing) return { raised: false };
+
+  const fields = labelFields(params.missing);
+  const amount = params.outstandingAmount.toFixed(2);
+  await prisma.claimRecoveryAction.create({
+    data: {
+      practiceId: params.practiceId,
+      claimId: params.claimId,
+      actionType: 'MISSING_PATIENT_DATA',
+      status: 'BLOCKING',
+      route: 'PRACTICE_GATE',
+      title: `Missing ${fields} — $${amount} blocked from collection`,
+      detail:
+        `CollectRx cannot call the carrier about claim ${params.claimNumber} because the ` +
+        `patient record is missing: ${fields}. Add the missing information, then clear ` +
+        `this gate to resume automated collection of the $${amount} outstanding.`,
+      metadata: { missing: params.missing },
+    },
+  });
+  return { raised: true };
 }

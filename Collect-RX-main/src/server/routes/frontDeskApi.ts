@@ -28,6 +28,8 @@ import { requireFrontDeskOnly, blockAuditorWrites } from '../middleware/requireU
 import { assertPlatformAdminClaimGrant } from '../middleware/grantChecks.js';
 import { listEscalations, resolveEscalation } from '../services/escalationService.js';
 import type { EscalationResolution } from '../../types/practiceSettings.js';
+import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
+import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -121,6 +123,32 @@ router.get('/:practiceId/queue', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[desk/queue]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/queue/reviews', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+
+    const data = await listMaxAttemptFailureReviews(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[desk/queue/reviews]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/hold-ledger', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+
+    const data = await getPracticeHoldLedger(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[desk/hold-ledger]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -451,6 +479,30 @@ router.post('/:practiceId/carriers/:carrierId/unblock', requireFrontDeskOnly, as
       return res.status(404).json({ success: false, error: 'No active block for carrier' });
     }
     return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/ar-inbox', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { buildArCommandCenterInbox } = await import('../arCommandCenter/inboxService.js');
+    const data = await buildArCommandCenterInbox(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/managed-recovery', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { listManagedRecoveryQueue } = await import('../arCommandCenter/inboxService.js');
+    const data = await listManagedRecoveryQueue(prisma, practiceId);
+    return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }

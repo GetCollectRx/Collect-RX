@@ -1,4 +1,5 @@
-import type { PrismaClient } from '@prisma/client';
+import type { BillingTier, PrismaClient } from '@prisma/client';
+import { TIERS } from '../../billing/tiers.js';
 
 export type SubscriptionPlanSnapshot = {
   id: string;
@@ -32,77 +33,9 @@ type PracticeSubscriptionFields = {
   subscriptionCurrentPeriodEnd?: Date | null;
 };
 
-type RawPlan = {
-  priceId?: unknown;
-  planId?: unknown;
-  id?: unknown;
-  name?: unknown;
-  displayName?: unknown;
-  monthlyClaimLimit?: unknown;
-  claimLimit?: unknown;
-};
-
-function readPositiveInt(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  if (typeof value !== 'string') return null;
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function readEnvLimit(name: string, fallback: number): number {
-  return readPositiveInt(process.env[name]) ?? fallback;
-}
-
-function parseRawPlan(raw: RawPlan, fallbackPriceId?: string): SubscriptionPlanSnapshot | null {
-  const priceId = typeof raw.priceId === 'string' && raw.priceId.trim()
-    ? raw.priceId.trim()
-    : fallbackPriceId?.trim() || null;
-  const idSource = raw.planId ?? raw.id;
-  const id = typeof idSource === 'string' && idSource.trim()
-    ? idSource.trim()
-    : priceId
-      ? `price_${priceId.slice(-8)}`
-      : null;
-  if (!id) return null;
-  const displayName = typeof raw.displayName === 'string' && raw.displayName.trim()
-    ? raw.displayName.trim()
-    : typeof raw.name === 'string' && raw.name.trim()
-      ? raw.name.trim()
-      : id.replace(/[-_]/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
-  const rawLimit = raw.monthlyClaimLimit ?? raw.claimLimit;
-  const monthlyClaimLimit = rawLimit === null ? null : readPositiveInt(rawLimit);
-  return {
-    id,
-    displayName,
-    priceId,
-    monthlyClaimLimit,
-  };
-}
-
-function parseJsonPlanCatalog(): SubscriptionPlanSnapshot[] {
-  const raw = process.env.SUBSCRIPTION_PLAN_CONFIG?.trim();
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const rows: SubscriptionPlanSnapshot[] = [];
-    if (Array.isArray(parsed)) {
-      for (const entry of parsed) {
-        const plan = parseRawPlan(entry as RawPlan);
-        if (plan) rows.push(plan);
-      }
-      return rows;
-    }
-    if (parsed && typeof parsed === 'object') {
-      for (const [priceId, entry] of Object.entries(parsed as Record<string, RawPlan>)) {
-        const plan = parseRawPlan(entry, priceId);
-        if (plan) rows.push(plan);
-      }
-    }
-    return rows;
-  } catch (e) {
-    console.warn('[subscription-plans] Ignoring invalid SUBSCRIPTION_PLAN_CONFIG JSON:', e);
-    return [];
-  }
+/** When true and a subscription price is configured, practices must be active/trialing (or skip-listed). */
+export function subscriptionEnforceEnabled(): boolean {
+  return process.env.SUBSCRIPTION_ENFORCE === '1' || process.env.SUBSCRIPTION_ENFORCE === 'true';
 }
 
 export function billingSkipPracticeIds(): Set<string> {
@@ -121,51 +54,36 @@ export function subscriptionClaimLimitEnforceEnabled(): boolean {
   return raw === '1' || raw.toLowerCase() === 'true';
 }
 
+const PAID_TIER_IDS: BillingTier[] = ['core', 'growth', 'scale'];
+
+let warnedLegacyPlanConfig = false;
+
+/**
+ * The sellable catalog is exactly the paid tiers in src/billing/tiers.ts with
+ * a configured Stripe price. Plan ids equal BillingTier values, so a Checkout
+ * price ID always maps back to the minute pool that price sells — a stale
+ * plan name can never unlock the wrong allowance. Claim-count limits are
+ * retired: minutes (UsagePeriod) are the meter.
+ */
 export function subscriptionPlanCatalog(): SubscriptionPlanSnapshot[] {
-  const configured = parseJsonPlanCatalog();
-  if (configured.length > 0) return configured;
-
-  const plans: SubscriptionPlanSnapshot[] = [];
-  const starter = process.env.STRIPE_PRACTICE_STARTER_PRICE_ID?.trim();
-  const professional = process.env.STRIPE_PRACTICE_PROFESSIONAL_PRICE_ID?.trim();
-  const enterprise = process.env.STRIPE_PRACTICE_ENTERPRISE_PRICE_ID?.trim();
-
-  if (starter) {
-    plans.push({
-      id: 'starter',
-      displayName: 'Starter',
-      priceId: starter,
-      monthlyClaimLimit: readEnvLimit('SUBSCRIPTION_STARTER_MONTHLY_CLAIM_LIMIT', 50),
-    });
+  if (process.env.SUBSCRIPTION_PLAN_CONFIG?.trim() && !warnedLegacyPlanConfig) {
+    warnedLegacyPlanConfig = true;
+    console.warn(
+      '[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).',
+    );
   }
-  if (professional) {
-    plans.push({
-      id: 'professional',
-      displayName: 'Professional',
-      priceId: professional,
-      monthlyClaimLimit: readEnvLimit('SUBSCRIPTION_PROFESSIONAL_MONTHLY_CLAIM_LIMIT', 200),
-    });
-  }
-  if (enterprise) {
-    plans.push({
-      id: 'enterprise',
-      displayName: 'Enterprise',
-      priceId: enterprise,
-      monthlyClaimLimit: readPositiveInt(process.env.SUBSCRIPTION_ENTERPRISE_MONTHLY_CLAIM_LIMIT) ?? null,
-    });
-  }
-
-  const legacyPrice = process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID?.trim();
-  if (legacyPrice && !plans.some((plan) => plan.priceId === legacyPrice)) {
-    plans.push({
-      id: 'standard',
-      displayName: process.env.SUBSCRIPTION_DEFAULT_PLAN_NAME?.trim() || 'CollectRx Standard',
-      priceId: legacyPrice,
-      monthlyClaimLimit: readEnvLimit('SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT', 100),
-    });
-  }
-
-  return plans;
+  return PAID_TIER_IDS.flatMap((id) => {
+    const tier = TIERS[id];
+    if (!tier.stripePriceId) return [];
+    return [
+      {
+        id,
+        displayName: tier.name,
+        priceId: tier.stripePriceId,
+        monthlyClaimLimit: null,
+      },
+    ];
+  });
 }
 
 export function defaultSubscriptionPlan(): SubscriptionPlanSnapshot | null {
@@ -175,12 +93,7 @@ export function defaultSubscriptionPlan(): SubscriptionPlanSnapshot | null {
     const configuredDefault = catalog.find((plan) => plan.id === defaultId);
     if (configuredDefault) return configuredDefault;
   }
-  const legacyPrice = process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID?.trim();
-  if (legacyPrice) {
-    const legacyPlan = catalog.find((plan) => plan.priceId === legacyPrice);
-    if (legacyPlan) return legacyPlan;
-  }
-  return catalog[0] ?? null;
+  return catalog.find((plan) => plan.id === 'core') ?? catalog[0] ?? null;
 }
 
 export function subscriptionPlanById(planId: string | null | undefined): SubscriptionPlanSnapshot | null {

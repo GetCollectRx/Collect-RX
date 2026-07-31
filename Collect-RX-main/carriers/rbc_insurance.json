@@ -201,12 +201,12 @@
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 72,
-    "notes": "RBC Insurance migrated from Green Shield Canada carrier ID to their own ID (000124) in October 2016. Some older practices may still have the wrong carrier configured. providerConnect.ca is the portal. RBC Insurance is one of Tenth Line Family Dentistry's top carriers by outstanding balance \u2014 high priority.",
+    "notes": "RBC Insurance migrated from Green Shield Canada carrier ID to their own ID (000124) in October 2016. Some older practices may still have the wrong carrier configured. providerConnect.ca is the portal.",
     "change_log": [
       {
         "date": "2025-02-26",
         "change": "Initial configuration created",
-        "reason": "Top carrier by outstanding balance in Tenth Line Family Dentistry aging report"
+        "reason": "Initial carrier configuration for Canadian dental AR follow-up"
       },
       {
         "date": "2026-06-23",

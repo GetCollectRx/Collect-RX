@@ -1,10 +1,9 @@
 /**
  * Stripe webhook handler for CollectRx platform billing.
  * Handles practice subscription events (Stripe Billing) only.
- * Stripe Connect (patient payment collection) has been removed —
- * CollectRx is a Practice → Insurance carrier recovery product.
+ * CollectRx is Practice → Insurance; no patient/client payment collection.
  */
-import { Router, type Request, type Response } from 'express';
+import type { Request, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import { getStripe, handlePlatformBillingWebhook } from '../stripe/billing.js';
@@ -44,12 +43,4 @@ export function stripeWebhookHandler(prisma: PrismaClient) {
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   };
-}
-
-// No-op export kept so any future imports don't hard-fail at module resolution.
-// Stripe Connect (patient payment collection) is permanently removed.
-export function createStripeConnectRouter(_prisma: PrismaClient): Router {
-  const r = Router();
-  r.all('*', (_req, res) => res.status(410).json({ error: 'Stripe Connect is not supported' }));
-  return r;
 }

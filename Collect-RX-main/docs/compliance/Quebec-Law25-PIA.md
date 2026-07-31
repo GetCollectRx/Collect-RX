@@ -52,7 +52,7 @@ This Privacy Impact Assessment (PIA) is prepared pursuant to **Section 3.3 of Qu
 ## 3. Data Residency (Quebec Law 25 — Key Requirement)
 
 ### 3.1 Current Architecture
-All CollectRx data is hosted on **Railway (PostgreSQL)**, which may use infrastructure outside Quebec or Canada.
+All CollectRx data is hosted on **Fly.io PostgreSQL**, in the **`yyz` (Toronto, Canada)** region — confirmed via `fly status` on 2026-07-05. CollectRx previously ran on Railway; that deployment has been fully decommissioned.
 
 ### 3.2 Quebec Law 25 Requirement
 Quebec Law 25 (Section 17) requires that any communication of personal information outside Quebec must be:
@@ -62,12 +62,8 @@ Quebec Law 25 (Section 17) requires that any communication of personal informati
 
 ### 3.3 Compliance Actions Required
 
-**Action 1 — Data Residency Declaration:**
-Before operating in Quebec, CollectRx must either:
-- (a) Confirm that Railway's PostgreSQL instance is hosted in Canada (Railway supports `us-west1`, `us-east1`, `eu-west4` — **Canadian region not yet available**), OR
-- (b) Implement a Quebec-specific database instance on a Canadian-hosted provider (e.g., AWS `ca-central-1`, Google Cloud `northamerica-northeast1`)
-
-**Recommended Path:** Deploy a dedicated `ca-central-1` (AWS Montreal) PostgreSQL instance for Quebec practices. All Quebec patient records must reside in this instance.
+**Action 1 — Data Residency Declaration: RESOLVED (2026-07-05).**
+CollectRx's Postgres instance is hosted on Fly.io in `yyz` (Toronto, Canada) — confirmed via `fly postgres list` / `fly status`. All practice and patient data, including Quebec practices, resides in this single Canadian instance. No separate Quebec-specific instance is required.
 
 **Action 2 — Data Transfer Agreement:**
 If any Quebec PHI transits to US infrastructure (e.g., Vapi.ai voice processing, OpenAI/Anthropic inference), a written **Cross-Border Data Transfer Agreement** must be executed with each vendor, confirming:
@@ -114,7 +110,7 @@ Quebec Law 25 (Section 3.1) requires every enterprise to designate a **Privacy O
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | PHI transmitted to voice agent without tokenization | Low | Critical | PIIVault tokenization enforced in all code paths; unit tested |
-| Data hosted outside Canada without consent | Medium | High | Deploy `ca-central-1` instance before Quebec launch |
+| Data hosted outside Canada without consent | Low | High | Resolved — Postgres confirmed hosted in `yyz` (Toronto, Canada) as of 2026-07-05 |
 | Patient consent not obtained for AI processing | Medium | High | Model consent clause provided to practices |
 | Privacy incident not reported within 72 hours | Low | High | Implement automated incident detection and CAI notification workflow |
 | Vapi.ai retains call transcripts containing PHI tokens | Low | Medium | All Vapi transmissions use UUID tokens only; Vapi DPA reviewed |

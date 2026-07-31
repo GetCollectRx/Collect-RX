@@ -38,7 +38,7 @@ DSOs are the highest-leverage target: one conversation, multiple locations, recu
 - [ ] **Google Maps "dental office" + Ontario cities** — Systematically work through: Hamilton, London, Kitchener-Waterloo, Ottawa, Barrie, Sudbury, Windsor. These markets have practices that feel admin pain more acutely.
 - [ ] **LinkedIn dental practice owners and office managers** — Search "dental office manager Ontario", "practice administrator Ontario dental". These are the actual decision-makers.
 - [ ] **Dental billing forums and Facebook groups** — "Canadian Dental Billing" groups. These people are talking about the exact problem CollectRx solves.
-- [ ] **Referrals from AbelDent users** — Even if Dr. Hasan is unresponsive, other AbelDent users exist. Search for "AbelDent" in dental admin communities.
+- [ ] **Referrals from AbelDent users** — Search for "AbelDent" in dental admin communities and partner with PMS consultants.
 - [ ] **Dental practice brokers** — Practices being sold often have AR cleanup as part of the transition. These owners are primed for a solution.
 
 ### Lead Scoring

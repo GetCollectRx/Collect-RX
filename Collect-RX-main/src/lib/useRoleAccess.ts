@@ -6,11 +6,7 @@ export interface RoleAccess {
   canViewDashboard: boolean
   canViewWorkQueue: boolean
   canViewInsurance: boolean
-  canViewBalances: boolean
-  canViewPatientAR: boolean
-  canViewEstimate: boolean
   canViewAnalytics: boolean
-  canViewOutbox: boolean
   canViewCdcp: boolean
   canViewAdmin: boolean
   canViewGuide: boolean
@@ -19,7 +15,6 @@ export interface RoleAccess {
   // Action capabilities
   canInitiateCalls: boolean
   canEscalateCalls: boolean
-  canSendReminders: boolean
   canEditCarrierConfig: boolean
   canManageUsers: boolean
   canEditAdmin: boolean
@@ -31,8 +26,7 @@ export interface RoleAccess {
   /** See live call strip + queue stats on dashboard (read-only loop). */
   canViewLiveLoop: boolean
   // Special modes
-  isPatientLookupOnly: boolean  // front_desk
-  isReadOnly: boolean           // practice_owner, accountant — blocks settings edits & manual dials
+  isReadOnly: boolean // practice_owner, accountant — blocks settings edits & manual dials
   // Default landing route after login
   homeRoute: string
 }
@@ -64,131 +58,122 @@ function accessForRole(role: AuthRole | null): RoleAccess {
     case 'platform_dev':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: true, canViewCdcp: false,
         canViewAdmin: true, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: true,
-        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
+        canInitiateCalls: true, canEscalateCalls: true,
         canEditCarrierConfig: true, canManageUsers: false, canEditAdmin: true,
         ...noDeskOps,
         ...gateOperator,
-        isPatientLookupOnly: false, isReadOnly: false,
+        isReadOnly: false,
         homeRoute: '/admin',
       }
 
     case 'practice_owner':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
+        canViewAnalytics: true, canViewCdcp: true,
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: false,
         canEditCarrierConfig: false, canManageUsers: true, canEditAdmin: false,
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
-        isPatientLookupOnly: false, isReadOnly: true,
+        isReadOnly: true,
         homeRoute: '/dashboard',
       }
 
     case 'office_manager':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
+        canViewAnalytics: true, canViewCdcp: true,
         canViewAdmin: true, canViewGuide: true, canViewBilling: true, canViewGroupDashboard: false,
-        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
+        canInitiateCalls: true, canEscalateCalls: true,
         canEditCarrierConfig: true, canManageUsers: true, canEditAdmin: true,
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
-        isPatientLookupOnly: false, isReadOnly: false,
+        isReadOnly: false,
         homeRoute: '/dashboard',
       }
 
     case 'billing_coordinator':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: true,
+        canViewAnalytics: true, canViewCdcp: true,
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: true, canEscalateCalls: true, canSendReminders: false,
+        canInitiateCalls: true, canEscalateCalls: true,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
-        isPatientLookupOnly: false, isReadOnly: false,
+        isReadOnly: false,
         homeRoute: '/dashboard',
       }
 
     case 'associate_dentist':
       return {
         canViewDashboard: true, canViewWorkQueue: true, canViewInsurance: true,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: true,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: true, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: true, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         canClearGates: false,
         canViewLiveLoop: true,
-        isPatientLookupOnly: false, isReadOnly: true,
+        isReadOnly: true,
         homeRoute: '/dashboard',
       }
 
     case 'accountant':
       return {
         canViewDashboard: true, canViewWorkQueue: false, canViewInsurance: false,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: true, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: true, canViewGroupDashboard: true,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         ...noGateOps,
-        isPatientLookupOnly: false, isReadOnly: true,
+        isReadOnly: true,
         homeRoute: '/reports/aging',
       }
 
     case 'front_desk':
       return {
         canViewDashboard: false, canViewWorkQueue: false, canViewInsurance: false,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
-        canViewAnalytics: false, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: false, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: true, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: true,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...deskOperator,
         ...gateOperator,
-        isPatientLookupOnly: false, isReadOnly: false,
+        isReadOnly: false,
         homeRoute: '/console',
       }
 
     case 'group_admin':
       return {
         canViewDashboard: true, canViewWorkQueue: false, canViewInsurance: false,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
-        canViewAnalytics: true, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: true, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: true, canViewGroupDashboard: true,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         canResolveEscalations: true,
         ...noGateOps,
-        isPatientLookupOnly: false, isReadOnly: true,
-        homeRoute: '/portfolio',
+        isReadOnly: true,
+        homeRoute: '/group-dashboard',
       }
 
     default:
       return {
         canViewDashboard: false, canViewWorkQueue: false, canViewInsurance: false,
-        canViewBalances: false, canViewPatientAR: false, canViewEstimate: false,
-        canViewAnalytics: false, canViewOutbox: false, canViewCdcp: false,
+        canViewAnalytics: false, canViewCdcp: false,
         canViewAdmin: false, canViewGuide: false, canViewBilling: false, canViewGroupDashboard: false,
-        canInitiateCalls: false, canEscalateCalls: false, canSendReminders: false,
+        canInitiateCalls: false, canEscalateCalls: false,
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         ...noGateOps,
-        isPatientLookupOnly: false, isReadOnly: true,
+        isReadOnly: true,
         homeRoute: '/login',
       }
   }

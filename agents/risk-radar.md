@@ -79,7 +79,7 @@ WHERE EXTRACT(HOUR FROM createdAt) NOT BETWEEN 7 AND 22
 
 **Red flags:**
 - Queue engine heartbeat gap >2 hours during call window
-- Railway deployment failure
+- Fly deployment failure
 - Vapi API downtime
 - Stripe webhook failure (practice upgrades/downgrades not processing)
 - Database connection errors

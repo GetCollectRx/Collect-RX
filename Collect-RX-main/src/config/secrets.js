@@ -21,7 +21,7 @@
  *   /collectrx/<env>/VAPI_PHONE_NUMBER_ID  (String)
  *   /collectrx/<env>/ALLOWED_ORIGINS       (String)
  *
- * PERMISSIONS (Railway IAM role needs):
+ * PERMISSIONS (host IAM role needs):
  *   ssm:GetParametersByPath on /collectrx/<env>/*
  *   kms:Decrypt on the KMS key used for SecureString parameters
  *
@@ -68,7 +68,7 @@ async function loadSecrets() {
       source: "env",
       env:    env || "development",
     });
-    return; // process.env already has values from .env / Railway config
+    return; // process.env already has values from .env / host config
   }
 
   logger.info("Secrets loader: fetching credentials from AWS Parameter Store", {

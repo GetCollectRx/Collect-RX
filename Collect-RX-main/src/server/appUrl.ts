@@ -1,4 +1,4 @@
-import { readPublicAppUrl } from './envRailway.js';
+import { readPublicAppUrl } from './envAliases.js';
 
 /** Base URL for patient-facing links (emails, SMS, printed letters). No trailing slash. */
 export function getPublicAppBaseUrl(): string {

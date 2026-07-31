@@ -414,9 +414,11 @@ describe('Agent 09-G — Learned phrase integration with carrier block detection
 
   it('before loading: only baseline phrases active', () => {
     const phrases = getActiveBlockPhrases();
-    expect(phrases).toContain('automated');
-    expect(phrases).toContain('bot');
+    expect(phrases).toContain('automated calling is not permitted');
+    expect(phrases).toContain('this sounds like a bot call');
     expect(phrases).toContain('fraud detection');
+    expect(phrases).not.toContain('automated');
+    expect(phrases).not.toContain('bot');
   });
 
   it('after loading learned phrase: new phrase is detected', () => {
@@ -432,8 +434,8 @@ describe('Agent 09-G — Learned phrase integration with carrier block detection
   it('loaded learned phrases are merged, not replacing baseline', () => {
     loadLearnedBlockPhrasesIntoRuntime(['new learned phrase']);
     const phrases = getActiveBlockPhrases();
-    expect(phrases).toContain('automated');     // baseline preserved
-    expect(phrases).toContain('bot');            // baseline preserved
+    expect(phrases).toContain('automated calling is not permitted'); // baseline preserved
+    expect(phrases).toContain('this sounds like a bot call'); // baseline preserved
     expect(phrases).toContain('new learned phrase'); // learned added
   });
 
@@ -445,16 +447,18 @@ describe('Agent 09-G — Learned phrase integration with carrier block detection
   });
 
   it('loading same phrase twice does not create duplicate', () => {
-    loadLearnedBlockPhrasesIntoRuntime(['automated']); // Already in baseline
+    loadLearnedBlockPhrasesIntoRuntime(['fraud detection']); // Already in baseline
     const phrases = getActiveBlockPhrases();
-    const automatedCount = phrases.filter((p) => p === 'automated').length;
-    expect(automatedCount).toBe(1);
+    const fraudDetectionCount = phrases.filter((p) => p === 'fraud detection').length;
+    expect(fraudDetectionCount).toBe(1);
   });
 
   it('baseline phrases still work after loading learned phrases', () => {
     loadLearnedBlockPhrasesIntoRuntime(['some new phrase']);
-    expect(transcriptSignalsCarrierBlock('This is an automated call')).toBe(true);
-    expect(transcriptSignalsCarrierBlock('This sounds like a bot')).toBe(true);
+    expect(transcriptSignalsCarrierBlock('This is an automated call')).toBe(false);
+    expect(transcriptSignalsCarrierBlock('This sounds like a bot')).toBe(false);
+    expect(transcriptSignalsCarrierBlock('Automated calling is not permitted')).toBe(true);
+    expect(transcriptSignalsCarrierBlock('This sounds like a bot call')).toBe(true);
     expect(transcriptSignalsCarrierBlock('Fraud detection triggered')).toBe(true);
   });
 

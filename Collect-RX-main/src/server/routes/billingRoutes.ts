@@ -81,6 +81,14 @@ export function createBillingRouter(prisma: PrismaClient): Router {
     try {
       const practiceId = practiceIdFromSession(req);
       const result = await confirmOverage(practiceId);
+      if (result.status === 'expired') {
+        return res.status(409).json({
+          success: false,
+          status: 'expired',
+          error:
+            'The overage confirmation window has expired. Upgrade your plan or wait for the next billing cycle to resume calling.',
+        });
+      }
       res.json({ success: true, ...result });
     } catch (e) {
       console.error('[billing/usage/confirm-overage]', e);

@@ -101,16 +101,6 @@ export function signPlatformDevToken(): string {
   return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '8h' });
 }
 
-/** @deprecated Use signUserToken — kept for any callers that referenced the old practice token. */
-export function signPracticeToken(practiceId: string): string {
-  // Issues a dummy owner token for backward compat during migration.
-  return signUserToken({
-    userId: `legacy-${practiceId}`,
-    practiceId,
-    role: 'practice_owner',
-  });
-}
-
 // ─── Verify ──────────────────────────────────────────────────────────────────
 
 export function verifyAuthToken(token: string): AuthJwtPayload {

@@ -16,6 +16,7 @@ import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
+import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,71 +66,56 @@ export interface DispatchGuard {
 
 // ---------------------------------------------------------------------------
 // Per-carrier configuration
+//
+// Carrier rules are data, not code: dispatch behavior (wait days, hold times,
+// IVR hints) lives in rules/carrier-configs.json so mid-pilot carrier tweaks
+// need no deploy. This module only assembles the typed view of that data.
 // ---------------------------------------------------------------------------
 
-export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = {
-  sun_life: {
-    carrierId: 'sun_life',
-    displayName: 'Sun Life Financial',
-    phone: CARRIER_PHONE_MAP.sun_life,
-    minWaitDays: 32,
-    avgHoldMinutes: 18,
-    isClearinghouse: false,
-    // Updated 2026: electronic claim age limit extended from 30 to 365 days (carrier ID 000016)
-    maxRecoverableAgeDays: 365,
-    ivrHints: ['Press 2 for dental claims', 'Enter group number, then member ID'],
-  },
-  canada_life: {
-    carrierId: 'canada_life',
-    displayName: 'Canada Life',
-    phone: CARRIER_PHONE_MAP.canada_life,
-    minWaitDays: 32,
-    avgHoldMinutes: 22,
-    isClearinghouse: false,
-    // Portal-first: attempt providerConnect EOB/status lookup before Vapi dispatch (carrier ID 000011)
-    portalFirstDispatch: true,
-    ivrHints: ['Press 3 for claim status', 'Enter plan number followed by pound'],
-  },
-  manulife: {
-    carrierId: 'manulife',
-    displayName: 'Manulife',
-    phone: CARRIER_PHONE_MAP.manulife,
-    minWaitDays: 32,
-    avgHoldMinutes: 15,
-    isClearinghouse: false,
-    ivrHints: ['Press 1 for English', 'Press 2 for benefits inquiries'],
-  },
-  green_shield: {
-    carrierId: 'green_shield',
-    displayName: 'Green Shield Canada',
-    phone: CARRIER_PHONE_MAP.green_shield,
-    minWaitDays: 32,
-    avgHoldMinutes: 20,
-    isClearinghouse: false,
-    ivrHints: ['Press 2 for provider inquiries', 'Provide certificate number'],
-  },
-  rbc: {
-    carrierId: 'rbc',
-    displayName: 'RBC Insurance',
-    phone: CARRIER_PHONE_MAP.rbc,
-    minWaitDays: 32,
-    avgHoldMinutes: 16,
-    isClearinghouse: false,
-    ivrHints: ['Press 3 for group benefits', 'Enter policy number when prompted'],
-  },
-  telus_adjudicare: {
-    carrierId: 'telus_adjudicare',
-    displayName: 'TELUS AdjudiCare',
-    phone: CARRIER_PHONE_MAP.telus_adjudicare,
-    minWaitDays: 21,           // TELUS minimum is day 21, not day 32
-    avgHoldMinutes: 12,
-    isClearinghouse: true,     // Routes to underlying TPA — identify TPA first
-    ivrHints: [
-      'TELUS is a clearinghouse — identify TPA from group number prefix first',
-      'TPA identification required before IVR navigation',
-    ],
-  },
-};
+interface CarrierDispatchRules {
+  displayName: string;
+  avgHoldMinutes: number;
+  ivrHints: string[];
+  maxRecoverableAgeDays?: number;
+  ivrAlias?: string;
+  supportsTransaction23?: boolean;
+  portalFirstDispatch?: boolean;
+}
+
+interface CarrierRulesEntry {
+  isClearinghouse: boolean;
+  minWaitDayForClaims: number;
+  dispatch: CarrierDispatchRules;
+}
+
+function buildCarrierConfigs(): Record<CarrierId, CarrierConfig> {
+  const rules = carrierRulesJson.carriers as Record<string, Partial<CarrierRulesEntry>>;
+  const configs = {} as Record<CarrierId, CarrierConfig>;
+
+  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as CarrierId[]) {
+    const entry = rules[carrierId];
+    if (!entry?.dispatch || entry.isClearinghouse === undefined || entry.minWaitDayForClaims === undefined) {
+      throw new Error(`carrier-configs.json is missing dispatch rules for carrier "${carrierId}"`);
+    }
+    configs[carrierId] = {
+      carrierId,
+      displayName: entry.dispatch.displayName,
+      phone: CARRIER_PHONE_MAP[carrierId],
+      minWaitDays: entry.minWaitDayForClaims,
+      avgHoldMinutes: entry.dispatch.avgHoldMinutes,
+      isClearinghouse: entry.isClearinghouse,
+      ivrHints: entry.dispatch.ivrHints,
+      maxRecoverableAgeDays: entry.dispatch.maxRecoverableAgeDays,
+      ivrAlias: entry.dispatch.ivrAlias,
+      supportsTransaction23: entry.dispatch.supportsTransaction23,
+      portalFirstDispatch: entry.dispatch.portalFirstDispatch,
+    };
+  }
+
+  return configs;
+}
+
+export const CARRIER_CONFIGS: Record<CarrierId, CarrierConfig> = buildCarrierConfigs();
 
 // ---------------------------------------------------------------------------
 // TELUS TPA supplementary configs
@@ -233,6 +219,7 @@ export async function checkCarrierBlock(
   if (activeBlock) {
     return {
       allowed: false,
+      code: 'CARRIER_BLOCK',
       reason: `CARRIER_BLOCK active for ${carrierId} since ${activeBlock.blockedAt.toISOString()}. ` +
               `Resume via POST /api/carriers/${carrierId}/unblock after investigation.`,
     };
@@ -260,6 +247,7 @@ export async function checkCarrierAuthorizationGate(
   if (!settings.voiceAgentEnabled) {
     return {
       allowed: false,
+      code: 'VOICE_AGENT_DISABLED',
       reason:
         'Voice agent is disabled for this practice. Enable it in Practice Settings before placing carrier calls.',
     };
@@ -269,6 +257,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason: `${displayName} is not configured for this practice. Add carrier settings before calling.`,
     };
   }
@@ -276,6 +265,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig.enabled) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason: `${displayName} is disabled in Practice Settings. Enable the carrier before calling.`,
     };
   }
@@ -283,6 +273,7 @@ export async function checkCarrierAuthorizationGate(
   if (!carrierConfig.authorizationSubmitted) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason:
         `Billing Agent Authorization Letter (BAAL) not on file for ${displayName}. ` +
         'Submit authorization in Practice Settings before calling this carrier.',
@@ -293,6 +284,7 @@ export async function checkCarrierAuthorizationGate(
   if (!providerNumber) {
     return {
       allowed: false,
+      code: 'CARRIER_NOT_AUTHORIZED',
       reason:
         `Provider number not configured for ${displayName}. ` +
         'Add your carrier provider number in Practice Settings before calling.',
@@ -336,6 +328,7 @@ export async function validateDispatch(
   if (claimStatus === 'APPROVED_PENDING_PAYMENT') {
     return {
       allowed: false,
+      code: 'APPROVED_PENDING_PAYMENT',
       reason:
         'Claim is APPROVED_PENDING_PAYMENT — payment follow-up belongs in practice AR, not another carrier call.',
     };
@@ -344,7 +337,7 @@ export async function validateDispatch(
   const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
   const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
   if (!recoveryGate.allowed) {
-    return recoveryGate;
+    return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
@@ -355,22 +348,22 @@ export async function validateDispatch(
   // 4. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
-    return { allowed: false, reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
   // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
-    return { allowed: false, reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
   // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
-    return { allowed: false, reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
+    return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
   // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
-    return { allowed: false, reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
+    return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
   // 7. Subscription monthly claim limit
@@ -389,13 +382,13 @@ export async function validateDispatch(
 
   // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
-  const easternHour = getEasternHour(callTime);
-  const dayOfWeek = getEasternDayOfWeek(callTime);
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
-    return { allowed: false, reason: 'Calls only permitted Mon–Fri (Eastern time)' };
-  }
-  if (easternHour < 8 || easternHour >= 17) {
-    return { allowed: false, reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
+  if (!isWithinCallWindow(callTime)) {
+    const easternHour = getEasternHour(callTime);
+    const dayOfWeek = getEasternDayOfWeek(callTime);
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: 'Calls only permitted Mon–Fri (Eastern time)' };
+    }
+    return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
   }
 
   return { allowed: true };
@@ -440,10 +433,42 @@ function getEasternDayOfWeek(date: Date): number {
   return days[dayStr] ?? date.getDay();
 }
 
+/**
+ * Test/staging escape hatch ONLY — refuses to activate in production, where
+ * the Mon–Fri 08:00–17:00 Eastern window is a hard compliance rule.
+ */
+export function callWindowForced(): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.COLLECTRX_FORCE_CALL_WINDOW === '1'
+  );
+}
+
 export function isWithinCallWindow(date = new Date()): boolean {
+  if (callWindowForced()) return true;
   const hour = getEasternHour(date);
   const day = getEasternDayOfWeek(date);
   return day >= 1 && day <= 5 && hour >= 8 && hour < 17;
+}
+
+/**
+ * Returns the first top-of-hour instant inside the shared carrier call window.
+ * The scan uses isWithinCallWindow so its DST and test-mode behavior cannot
+ * drift from the dispatch gate.
+ */
+export function nextCallWindowStart(date = new Date()): Date {
+  if (isWithinCallWindow(date)) return date;
+
+  const candidate = new Date(date);
+  candidate.setMinutes(0, 0, 0);
+  candidate.setHours(candidate.getHours() + 1);
+
+  for (let hoursAhead = 0; hoursAhead <= 8 * 24; hoursAhead += 1) {
+    if (isWithinCallWindow(candidate)) return candidate;
+    candidate.setHours(candidate.getHours() + 1);
+  }
+
+  throw new Error('Unable to determine the next carrier call window');
 }
 
 export const carrierAdapter = {
@@ -456,6 +481,7 @@ export const carrierAdapter = {
   getTpaDisplayName,
   tpaSupportsTransaction23,
   isWithinCallWindow,
+  nextCallWindowStart,
 } as const;
 
 export default carrierAdapter;

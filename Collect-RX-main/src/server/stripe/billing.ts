@@ -1,21 +1,24 @@
 /**
  * CollectRx platform subscription (Stripe Billing).
- * Charges the dental practice for using CollectRx — separate from Stripe Connect (patient → practice).
+ * Charges the dental practice for using CollectRx (SaaS plan).
+ * Patient/client payment collection is out of product scope.
  */
 
 import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
-import { readPublicAppUrl } from '../envRailway.js';
+import { readPublicAppUrl } from '../envAliases.js';
 import {
   billingSkipPracticeIds,
   defaultSubscriptionPlan,
   getSubscriptionUsageState,
   resolvePracticeSubscriptionPlan,
+  subscriptionEnforceEnabled,
   subscriptionPlanById,
   subscriptionPlanByPriceId,
   type SubscriptionPlanSnapshot,
   type SubscriptionUsageState,
 } from './subscriptionPlans.js';
+import { billingTierForStripePrice } from '../../billing/tiers.js';
 import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
 
 export function getStripe(): Stripe {
@@ -33,10 +36,7 @@ export function frontendBaseUrl(): string {
   return 'http://localhost:5173';
 }
 
-/** When true and a subscription price is configured, practices must be active/trialing (or skip-listed). */
-export function subscriptionEnforceEnabled(): boolean {
-  return process.env.SUBSCRIPTION_ENFORCE === '1' || process.env.SUBSCRIPTION_ENFORCE === 'true';
-}
+export { subscriptionEnforceEnabled };
 
 function subscriptionPriceId(): string | undefined {
   return defaultSubscriptionPlan()?.priceId ?? (process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID?.trim() || undefined);
@@ -193,6 +193,9 @@ export async function createBillingCheckoutSession(
   requestedPlanId?: string
 ): Promise<{ url: string }> {
   const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
+  if (requestedPlanId && !plan) {
+    throw new Error(`Unknown plan "${requestedPlanId}" — valid plans are core, growth, scale`);
+  }
   const price = plan?.priceId ?? subscriptionPriceId();
   if (!price) {
     throw new Error('Stripe subscription price is not configured');
@@ -223,9 +226,9 @@ export async function createBillingCheckoutSession(
     line_items: [{ price, quantity: 1 }],
     success_url: `${base}/billing?subscribed=1`,
     cancel_url: `${base}/billing?canceled=1`,
-    metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'standard' },
+    metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'core' },
     subscription_data: {
-      metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'standard' },
+      metadata: { practice_id: practiceId, collectrx_plan_id: plan?.id ?? 'core' },
     },
     allow_promotion_codes: true,
   });
@@ -254,7 +257,7 @@ export async function createBillingPortalSession(practiceId: string, db: PrismaC
 }
 
 /**
- * Platform Billing webhook branch — call after `constructEvent`, before Connect patient-pay logic.
+ * Platform Billing webhook branch — call after `constructEvent`.
  * Marks the event processed when returning handled: true.
  */
 export async function handlePlatformBillingWebhook(
@@ -278,6 +281,15 @@ export async function handlePlatformBillingWebhook(
       const sub = await stripe.subscriptions.retrieve(subId, { expand: ['items.data'] });
       const priceId = subscriptionPrimaryPriceId(sub);
       const plan = subscriptionPlanSnapshot(sub);
+      const billingTier = billingTierForStripePrice(priceId);
+      if (priceId && !billingTier) {
+        // Fail closed: the practice keeps its current tier (trial for new
+        // signups) rather than guessing a minute pool from an unmapped price.
+        console.error(
+          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
+            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Practice tier left unchanged.',
+        );
+      }
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -290,6 +302,7 @@ export async function handlePlatformBillingWebhook(
             subscriptionPlanId: plan?.id ?? null,
             subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+            ...(billingTier ? { billingTier } : {}),
           },
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
@@ -330,6 +343,15 @@ export async function handlePlatformBillingWebhook(
       }
       const priceId = subscriptionPrimaryPriceId(sub);
       const plan = subscriptionPlanSnapshot(sub);
+      const billingTier = billingTierForStripePrice(priceId);
+      if (priceId && !billingTier) {
+        // Fail closed: the practice keeps its current tier (trial for new
+        // signups) rather than guessing a minute pool from an unmapped price.
+        console.error(
+          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
+            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Practice tier left unchanged.',
+        );
+      }
       await db.$transaction([
         db.practice.update({
           where: { id: practiceId },
@@ -342,6 +364,7 @@ export async function handlePlatformBillingWebhook(
             subscriptionPlanId: plan?.id ?? null,
             subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
             subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+            ...(billingTier ? { billingTier } : {}),
           },
         }),
         db.processedStripeEvent.create({ data: { id: event.id } }),

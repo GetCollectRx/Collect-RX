@@ -48,24 +48,40 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
       # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
-        working-directory: Collect-RX-main
-        run: npm run db:generate
+        run: npm run db:generate:collectrx
 
       - name: Prisma migrate deploy
-        working-directory: Collect-RX-main
-        run: npm run db:migrate
+        run: npm run db:migrate:collectrx
+
+      - name: Grant CI test role RLS bypass (integration tests use platform-level DB access)
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
 
       - name: Typecheck
-        working-directory: Collect-RX-main
-        run: npm run typecheck
+        run: npm run typecheck:collectrx
+
+      - name: Lint
+        run: npm run lint:collectrx
+
+      - name: Semgrep SAST
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" returntocorp/semgrep \
+            semgrep --config=p/typescript --config=p/owasp-top-ten --error \
+            /src/Collect-RX-main/src
+
+      - name: Production build
+        env:
+          NODE_ENV: production
+        run: npm run build:collectrx
 
       - name: Unit & integration tests
-        working-directory: Collect-RX-main
         env:
           CI: "true"
-        run: npm test
+        run: npm run test:collectrx
 
       # Runs the exact command Railway runs on deploy (db:generate && tsc && check:api && vite build).
       # Typecheck above uses `tsc --noEmit` and never touches Vite, so a server-only import (Node
@@ -85,7 +101,6 @@ jobs:
 
       - name: Notify ops (CI failure)
         if: failure() && env.OPS_ALERT_WEBHOOK_URL != ''
-        working-directory: Collect-RX-main
         env:
           OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
@@ -93,4 +108,256 @@ jobs:
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: node scripts/ci-notify-failure.mjs
+        run: node Collect-RX-main/scripts/ci-notify-failure.mjs
+
+  queue-redis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: github-actions-ci-placeholder-not-for-production
+      VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+      NODE_OPTIONS: --max-old-space-size=6144
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+
+      - name: Grant CI test role RLS bypass
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
+
+      - name: Tests with Redis (BullMQ queue paths)
+        run: npm run test:collectrx
+        env:
+          # Override vitest env to enable Redis for this job only
+          REDIS_URL: redis://127.0.0.1:6379
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+
+      - name: Grant CI test role RLS bypass
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
+
+      - name: Build frontend
+        env:
+          NODE_ENV: production
+        run: npm run build:collectrx
+
+      - name: Install Playwright Chromium
+        run: npm exec --workspace=dental-ar-system -- playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        env:
+          CI: "true"
+          DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+          JWT_SECRET: github-actions-ci-placeholder-not-for-production
+          VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+        run: npm exec --workspace=dental-ar-system -- playwright test
+
+  perf-smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - uses: grafana/setup-k6-action@v1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+
+      - name: Grant CI test role RLS bypass
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
+
+      - name: Build frontend
+        env:
+          NODE_ENV: production
+        run: npm run build:collectrx
+
+      - name: Start API and run k6 read-heavy smoke
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+          JWT_SECRET: github-actions-ci-placeholder-not-for-production
+          VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+          PORT: "3000"
+        run: |
+          npm run start &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/api/health && break
+            sleep 2
+          done
+          k6 run Collect-RX-main/perf/k6-read-heavy.js
+
+  rls-strict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prisma generate + migrate
+        run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+      - name: Create non-superuser DB role for RLS enforcement
+        run: |
+          psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'collectrx_rls_tester') THEN
+              CREATE ROLE collectrx_rls_tester LOGIN PASSWORD 'rls_test_ci' NOSUPERUSER NOBYPASSRLS;
+            END IF;
+          END
+          $$;
+          GRANT USAGE ON SCHEMA public TO collectrx_rls_tester;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO collectrx_rls_tester;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO collectrx_rls_tester;
+          GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO collectrx_rls_tester;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO collectrx_rls_tester;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO collectrx_rls_tester;
+          SQL
+      - name: Enforce tenant RLS isolation
+        env:
+          CI: "true"
+          COLLECTRX_RLS_TEST_STRICT: "1"
+          RLS_SETUP_DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+          DATABASE_URL: postgresql://collectrx_rls_tester:rls_test_ci@127.0.0.1:5432/prisma?schema=public
+        run: npm exec --workspace=dental-ar-system -- vitest run tests/rls.strict.test.ts
+
+  carrier-whitelist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prisma generate + migrate
+        run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+      - name: Grant isolated validation role RLS bypass
+        run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
+      - name: Validate carrier whitelist dispatch gates
+        run: npm run test:carrier-whitelist --workspace=dental-ar-system

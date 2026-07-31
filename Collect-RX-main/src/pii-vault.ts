@@ -56,8 +56,10 @@ function encryptPhi(phi: PatientPHI): { ciphertext: string; iv: string; authTag:
 
 function decryptPhi(ciphertext: string, iv: string, authTag: string): PatientPHI {
   const key = getPhiKey();
-  const decipher = createDecipheriv(GCM_ALGO, key, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(authTag, 'hex').slice(0, TAG_BYTES));
+  const decipher = createDecipheriv(GCM_ALGO, key, Buffer.from(iv, 'hex'), {
+    authTagLength: TAG_BYTES,
+  });
+  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
   const dec = Buffer.concat([
     decipher.update(Buffer.from(ciphertext, 'hex')),
     decipher.final(),
@@ -90,6 +92,7 @@ export interface PatientToken {
 
 interface VaultEntry {
   token: string;
+  practiceId: string;
   phi: PatientPHI;
   createdAt: Date;
   expiresAt: Date;
@@ -109,6 +112,11 @@ export interface DetokenizeResult {
   error?: string;
 }
 
+export type DetokenizeOptions = {
+  practiceId: string;
+  ipAddress?: string;
+};
+
 export interface VaultStats {
   activeTokens: number;
   expiredTokens: number;
@@ -116,8 +124,20 @@ export interface VaultStats {
   oldestActiveToken: Date | null;
 }
 
-const TOKEN_TTL_MS = 4 * 60 * 60 * 1000;
-const MAX_VAULT_SIZE = 10_000;
+// PHI must outlive the claim it belongs to, not a wall-clock guess: claims
+// legally wait 30+ days before their first call and automated recovery runs
+// to day 90. A short TTL silently strands every claim whose token expires
+// before its call — detokenize fails at dispatch forever. Entries are
+// AES-256-GCM encrypted at rest (PhiVaultEntry) and purged by GC at expiry,
+// so retention length does not change the storage security posture.
+const TOKEN_TTL_MS =
+  Math.max(1, Number(process.env.PHI_VAULT_TTL_DAYS || 120)) * 24 * 60 * 60 * 1000;
+// With claim-lifecycle retention nothing expires quickly, so the cap must fit
+// every active claim across all practices — at the cap, tokenize() throws.
+const MAX_VAULT_SIZE = Math.max(1_000, Number(process.env.PHI_VAULT_MAX_TOKENS || 100_000));
+// In-memory access log per token — the durable audit trail is logger.audit;
+// this is a debugging aid and must not grow unboundedly over a token's life.
+const MAX_ACCESS_LOG_ENTRIES = 50;
 
 export class PIIVault {
   private readonly vault = new Map<string, VaultEntry>();
@@ -132,13 +152,19 @@ export class PIIVault {
     this.db = prisma;
   }
 
-  tokenize(phi: PatientPHI, callerContext: string): string {
+  tokenize(phi: PatientPHI, callerContext: string, practiceId: string): string {
+    const tenantId = practiceId.trim();
+    if (!tenantId) {
+      throw new Error('[PIIVault] tokenize requires a non-empty practiceId');
+    }
     this.enforceVaultLimit();
     const token = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + TOKEN_TTL_MS);
     this.vault.set(token, {
-      token, phi,
+      token,
+      practiceId: tenantId,
+      phi,
       createdAt: now,
       expiresAt,
       accessLog: [{ action: 'tokenize', timestamp: now, callerContext }],
@@ -146,21 +172,40 @@ export class PIIVault {
     this.totalIssued++;
     // Persist to encrypted DB store (non-blocking — in-memory vault is the fast path)
     if (this.db) {
-      this.persistToken(token, phi, expiresAt).catch((err) => {
+      this.persistToken(token, tenantId, phi, expiresAt).catch((err) => {
         console.error('[PIIVault] persist failed (non-fatal — token lives in memory):', err);
       });
     }
     return token;
   }
 
-  detokenize(token: string, callerContext: string, ipAddress?: string): DetokenizeResult {
+  /**
+   * Resolve a token to PHI. Requires the caller's practiceId — tokens are
+   * tenant-bound in memory and in phi_vault_entries.
+   */
+  detokenize(token: string, callerContext: string, options: DetokenizeOptions): DetokenizeResult {
+    const practiceId = options.practiceId.trim();
+    if (!practiceId) {
+      return { success: false, error: 'PRACTICE_ID_REQUIRED' };
+    }
     const entry = this.vault.get(token);
     if (!entry) return { success: false, error: 'TOKEN_NOT_FOUND' };
+    if (entry.practiceId !== practiceId) {
+      return { success: false, error: 'PRACTICE_MISMATCH' };
+    }
     if (new Date() > entry.expiresAt) {
       this.expireToken(token, callerContext);
       return { success: false, error: 'TOKEN_EXPIRED' };
     }
-    entry.accessLog.push({ action: 'detokenize', timestamp: new Date(), callerContext, ipAddress });
+    entry.accessLog.push({
+      action: 'detokenize',
+      timestamp: new Date(),
+      callerContext,
+      ipAddress: options.ipAddress,
+    });
+    if (entry.accessLog.length > MAX_ACCESS_LOG_ENTRIES) {
+      entry.accessLog.splice(0, entry.accessLog.length - MAX_ACCESS_LOG_ENTRIES);
+    }
     return { success: true, phi: entry.phi };
   }
 
@@ -183,13 +228,13 @@ export class PIIVault {
    * Encrypt and write a token to the PhiVaultEntry table.
    * Called automatically by tokenize() when a store is attached.
    */
-  async persistToken(token: string, phi: PatientPHI, expiresAt: Date): Promise<void> {
+  async persistToken(token: string, practiceId: string, phi: PatientPHI, expiresAt: Date): Promise<void> {
     if (!this.db) throw new Error('[PIIVault] persistToken called without a store');
     const { ciphertext, iv, authTag } = encryptPhi(phi);
     await this.db.phiVaultEntry.upsert({
       where: { token },
-      create: { token, ciphertext, iv, authTag, expiresAt },
-      update: { ciphertext, iv, authTag, expiresAt },
+      create: { token, practiceId, ciphertext, iv, authTag, expiresAt },
+      update: { practiceId, ciphertext, iv, authTag, expiresAt },
     });
   }
 
@@ -207,8 +252,9 @@ export class PIIVault {
    * the in-memory vault. Returns the number of tokens loaded.
    *
    * Call this on server boot, before startDeskQueueEngine(). Must have called
-   * useStore(prisma) first. Any rows where decryption fails are skipped with
-   * a warning (key rotation scenario) and deleted from the store.
+   * useStore(prisma) first. A decryption failure aborts startup so production
+   * never serves claims with an incomplete vault; persisted ciphertext is left
+   * intact for operator-led recovery.
    */
   async rehydrate(): Promise<number> {
     if (!this.db) throw new Error('[PIIVault] rehydrate called without a store');
@@ -226,6 +272,7 @@ export class PIIVault {
         const phi = decryptPhi(row.ciphertext, row.iv, row.authTag);
         this.vault.set(row.token, {
           token: row.token,
+          practiceId: row.practiceId,
           phi,
           createdAt: row.createdAt,
           expiresAt: row.expiresAt,
@@ -233,11 +280,12 @@ export class PIIVault {
         });
         loaded++;
       } catch (err) {
-        console.error(
-          `[PIIVault] rehydrate: failed to decrypt token ${row.token} — skipping + deleting.`,
-          err,
+        throw new Error(
+          `[PIIVault] rehydrate failed for persisted token ${row.token}; ` +
+            `refusing to continue with a partially restored vault: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
         );
-        await this.deleteFromStore(row.token).catch(() => {});
       }
     }
     return loaded;

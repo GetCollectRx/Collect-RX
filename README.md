@@ -1,8 +1,8 @@
 # CollectRx platform
 
-Monorepo-style workspace for **CollectRx** — dental practice accounts receivable (A/R) workflows, messaging, and payment-related flows.
+Monorepo-style workspace for **CollectRx** — dental **insurance** accounts receivable (A/R) recovery (Practice → Insurance). Practice SaaS Billing is supported; patient/client payment collection is out of scope.
 
-**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. The phased engineering backlog is [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
+**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. Launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md). Phased backlog: [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
 
 ## Monorepo commands (canonical app)
 

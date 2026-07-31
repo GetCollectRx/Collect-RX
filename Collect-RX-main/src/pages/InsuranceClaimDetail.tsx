@@ -13,7 +13,9 @@ import {
   claimStatusLabel,
   isDemoVapiCall,
 } from '../lib/recoveryDisplay'
+import { ClaimStatusStrip } from '../components/claims/ClaimStatusStrip'
 import { SimulatedCallBadge } from '../components/claims/SimulatedCallBadge'
+import { useAppToast } from '../context/ToastContext'
 import { useRoleAccess } from '../lib/useRoleAccess'
 
 interface CallAttempt {
@@ -27,6 +29,8 @@ interface CallAttempt {
   repName: string | null
   referenceNumber: string | null
   transcriptUrl: string | null
+  validationPassed?: boolean | null
+  validationResult?: { escalationReason?: string; safetyScore?: number } | null
 }
 
 interface ClaimDetail {
@@ -91,11 +95,27 @@ interface WorkItemLite {
   followUpAt: string | null
 }
 
+interface EvidenceItem {
+  id: string
+  evidenceType: string
+  status: string
+  attestedAt: string | null
+  note: string | null
+}
+
+interface ClaimSubmission {
+  id: string
+  method: string
+  referenceNumber: string | null
+  submittedAt: string
+}
+
 const NEXT_ACTIONS = ['appeal', 'write-off', 'resubmit', 'escalate'] as const
 
 export default function InsuranceClaimDetail() {
   const { id } = useParams()
   const { isReadOnly, canInitiateCalls, canClearGates, canResolveEscalations } = useRoleAccess()
+  const { showToast } = useAppToast()
   const [claim, setClaim] = useState<ClaimDetail | null>(null)
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null)
   const [recoveryLoadError, setRecoveryLoadError] = useState<string | null>(null)
@@ -115,6 +135,11 @@ export default function InsuranceClaimDetail() {
     notes: string
     legacyOutcome: string | null
   } | null>(null)
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([])
+  const [submissions, setSubmissions] = useState<ClaimSubmission[]>([])
+  const [submissionMethod, setSubmissionMethod] = useState('')
+  const [submissionRef, setSubmissionRef] = useState('')
+  const [exportingPack, setExportingPack] = useState(false)
 
   const load = () => {
     if (!id) {
@@ -137,12 +162,17 @@ export default function InsuranceClaimDetail() {
       apiFetchJson<{ success: boolean; data: { matchedRule: string; notes: string; legacyOutcome: string | null } }>(
         `/api/insurance/claims/${id}/route-explanation`,
       ).catch(() => null),
+      apiFetchJson<{ success: boolean; data: { items: EvidenceItem[]; submissions: ClaimSubmission[] } }>(
+        `/api/insurance/claims/${id}/evidence`,
+      ).catch(() => null),
     ])
-      .then(([claimRes, recoveryRes, wiRes, routeRes]) => {
+      .then(([claimRes, recoveryRes, wiRes, routeRes, evidenceRes]) => {
         setClaim(claimRes.data)
         setRecovery(recoveryRes?.data ?? null)
         if (recoveryRes?.success) setRecoveryLoadError(null)
         setRouteExplanation(routeRes?.data ?? null)
+        setEvidenceItems(evidenceRes?.data?.items ?? [])
+        setSubmissions(evidenceRes?.data?.submissions ?? [])
         const wi = wiRes.data
         setWorkItem(wi)
         setAssignedRep(wi?.assignedRep ?? '')
@@ -183,6 +213,7 @@ export default function InsuranceClaimDetail() {
       body: JSON.stringify({ assignedRep: assignedRep || null, notes: noteText || null }),
     })
     setActionMsg('Assignment saved')
+    showToast('ok', 'Assignment saved')
     load()
   }
 
@@ -197,9 +228,12 @@ export default function InsuranceClaimDetail() {
         throw new Error(mapTriggerCallError(j.error ?? ''))
       }
       setActionMsg('Call queued')
+      showToast('ok', 'Call queued')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setTriggering(false)
     }
@@ -218,10 +252,13 @@ export default function InsuranceClaimDetail() {
       const j = await r.json().catch(() => ({})) as { error?: string; success?: boolean }
       if (!r.ok) throw new Error(j.error ?? 'Could not resolve claim')
       setActionMsg('Claim marked resolved')
+      showToast('ok', 'Claim marked resolved')
       setResolveNotes('')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setResolving(false)
     }
@@ -255,9 +292,12 @@ export default function InsuranceClaimDetail() {
           ? `Gate cleared, follow-up call scheduled for ${new Date(j.scheduledRecallAt).toLocaleString()}`
           : 'Gate cleared',
       )
+      showToast('ok', 'Gate cleared')
       load()
     } catch (e) {
-      setActionMsg((e as Error).message)
+      const msg = (e as Error).message
+      setActionMsg(msg)
+      showToast('err', msg)
     } finally {
       setClearingGateId(null)
     }
@@ -285,6 +325,18 @@ export default function InsuranceClaimDetail() {
               </span>
             )}
           </div>
+
+          <ClaimStatusStrip
+            claimNumber={claim.claimNumber}
+            carrierId={claim.carrierId}
+            status={claim.status}
+            daysOutstanding={claim.daysOutstanding}
+            outstandingAmount={claim.outstandingAmount}
+            recoveryRoute={recovery?.recoveryRoute ?? claim.recoveryRoute}
+            dollarsRecoveredSyncVerified={recovery?.dollarsRecoveredSyncVerified}
+            hasOpenBlockingGate={recovery?.openActions?.some((a) => a.blocking) ?? false}
+            paymentExpectedBy={recovery?.paymentExpectedBy ?? claim.paymentExpectedBy}
+          />
 
           {/* ── Escalation banner ── */}
           {isEscalated && (
@@ -450,6 +502,98 @@ export default function InsuranceClaimDetail() {
           )}
 
           <Card>
+            <CardHeader
+              title="Denial & documentation"
+              subtitle="Staff attestations and carrier submission references — clinical files stay in your PMS"
+            />
+            <div className="px-4 pb-4 space-y-4">
+              {evidenceItems.length === 0 ? (
+                <p className="text-sm text-gray-500">No evidence checklist items yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {evidenceItems.map((item) => (
+                    <li key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium">{item.evidenceType.replace(/_/g, ' ')}</p>
+                        {item.note && <p className="text-xs text-gray-500">{item.note}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{item.status}</Badge>
+                        {!isReadOnly && item.status !== 'ATTESTED' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={async () => {
+                              await apiFetch(`/api/insurance/claims/${id}/evidence/${encodeURIComponent(item.evidenceType)}/attest`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ note: 'Attested in PMS' }),
+                              })
+                              load()
+                            }}
+                          >
+                            Attest
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {!isReadOnly && (
+                <div className="grid sm:grid-cols-3 gap-2 items-end">
+                  <Input label="Submission method" value={submissionMethod} onChange={(e) => setSubmissionMethod(e.target.value)} placeholder="Portal / fax / mail" />
+                  <Input label="Reference #" value={submissionRef} onChange={(e) => setSubmissionRef(e.target.value)} placeholder="Carrier reference" />
+                  <Button
+                    disabled={!submissionMethod.trim()}
+                    onClick={async () => {
+                      await apiFetch(`/api/insurance/claims/${id}/submissions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ method: submissionMethod, referenceNumber: submissionRef || undefined }),
+                      })
+                      setSubmissionMethod('')
+                      setSubmissionRef('')
+                      load()
+                    }}
+                  >
+                    Log submission
+                  </Button>
+                </div>
+              )}
+
+              {submissions.length > 0 && (
+                <div className="text-xs text-gray-600 space-y-1">
+                  {submissions.map((s) => (
+                    <p key={s.id}>
+                      {s.method} · {s.referenceNumber ?? 'no ref'} · {new Date(s.submittedAt).toLocaleString()}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                variant="secondary"
+                disabled={exportingPack}
+                onClick={async () => {
+                  setExportingPack(true)
+                  try {
+                    const res = await apiFetchJson<{ success: boolean; checksum: string }>(
+                      `/api/insurance/claims/${id}/evidence-pack`,
+                    )
+                    setActionMsg(`Evidence pack exported (checksum ${res.checksum.slice(0, 12)}…)`)
+                  } finally {
+                    setExportingPack(false)
+                  }
+                }}
+              >
+                {exportingPack ? 'Exporting…' : 'Export evidence pack (JSON)'}
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
             <CardHeader title="Amounts" />
             <dl className="grid grid-cols-2 gap-4 text-sm px-4 pb-4">
               <div><dt className="text-gray-500">Billed</dt><dd className="font-medium">${Number(claim.billedAmount).toFixed(2)}</dd></div>
@@ -509,6 +653,19 @@ export default function InsuranceClaimDetail() {
                       {/* Non-escalation outcome detail */}
                       {!isEscalatedAttempt && a.outcomeDetail && (
                         <p className="text-xs text-gray-600 dark:text-gray-400">{a.outcomeDetail}</p>
+                      )}
+
+                      {/* Async validation verdict */}
+                      {a.validationPassed === false && (
+                        <div className="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 leading-relaxed">
+                          <strong>Validation escalated:</strong>{' '}
+                          {a.validationResult?.escalationReason ?? 'The post-call validator flagged this call for manual review.'}
+                        </div>
+                      )}
+                      {a.validationPassed === true && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          Post-call validation passed
+                        </p>
                       )}
 
                       {/* Rep + reference */}

@@ -27,16 +27,15 @@ import {
 describe('Agent 05-A — CARRIER_BLOCK phrase detection', () => {
   // transcriptSignalsCarrierBlock just checks for ANY match.
   // matchedCarrierBlockPhrase returns the FIRST matched phrase from the array in order.
-  // Phrase array order: automated, bot, system detected, not a live agent,
-  //                     cannot process automated, fraud detection, call flagged
-  // Important: "automated" appears before "cannot process automated", so any transcript
-  // containing both will return "automated" as the matched phrase.
+  // Generic IVR wording alone is deliberately not a block signal. A carrier action
+  // or detection statement is required to avoid suspending an entire carrier from
+  // normal "automated system" or "bot menu" wording.
   const SIGNAL_TRANSCRIPTS = [
-    'This appears to be an automated call',
+    'Automated calling is not permitted',
     'This sounds like a bot call',
-    'Our system detected unusual call patterns',
+    'Our system detected automation',
     'We cannot verify this is not a live agent',
-    'We cannot process automated requests',
+    'We cannot process automated calls',
     'Fraud detection has flagged this call',
     'The call flagged our security system',
   ];
@@ -47,16 +46,16 @@ describe('Agent 05-A — CARRIER_BLOCK phrase detection', () => {
     });
   }
 
-  it('matchedCarrierBlockPhrase returns "automated" for automated transcript', () => {
-    expect(matchedCarrierBlockPhrase('This is an automated call')).toBe('automated');
+  it('matchedCarrierBlockPhrase returns the complete automation prohibition', () => {
+    expect(matchedCarrierBlockPhrase('Automated calling is not permitted')).toBe('automated calling is not permitted');
   });
 
-  it('matchedCarrierBlockPhrase returns "bot" for bot transcript', () => {
-    expect(matchedCarrierBlockPhrase('This sounds like a bot')).toBe('bot');
+  it('matchedCarrierBlockPhrase returns the complete bot-call detection', () => {
+    expect(matchedCarrierBlockPhrase('This sounds like a bot call')).toBe('this sounds like a bot call');
   });
 
-  it('matchedCarrierBlockPhrase returns "system detected" for that specific phrase', () => {
-    expect(matchedCarrierBlockPhrase('Our system detected an issue')).toBe('system detected');
+  it('matchedCarrierBlockPhrase returns the specific automation detection', () => {
+    expect(matchedCarrierBlockPhrase('Our system detected automation')).toBe('system detected automation');
   });
 
   it('matchedCarrierBlockPhrase returns "fraud detection" for fraud transcript', () => {
@@ -67,9 +66,8 @@ describe('Agent 05-A — CARRIER_BLOCK phrase detection', () => {
     expect(matchedCarrierBlockPhrase('The call flagged our system')).toBe('call flagged');
   });
 
-  it('matchedCarrierBlockPhrase returns "automated" (not "cannot process automated") due to array order', () => {
-    // "automated" is first in the CARRIER_BLOCK_PHRASES array, so it matches first
-    expect(matchedCarrierBlockPhrase('We cannot process automated requests')).toBe('automated');
+  it('matchedCarrierBlockPhrase returns the complete automated-call prohibition', () => {
+    expect(matchedCarrierBlockPhrase('We cannot process automated calls')).toBe('cannot process automated calls');
   });
 
   it('matchedCarrierBlockPhrase returns null for safe transcript', () => {
@@ -78,17 +76,31 @@ describe('Agent 05-A — CARRIER_BLOCK phrase detection', () => {
 });
 
 describe('Agent 05-A2 — Transcript detection is case-insensitive', () => {
-  it('detects "AUTOMATED" (uppercase) as a block signal', () => {
-    expect(transcriptSignalsCarrierBlock('This is an AUTOMATED system call')).toBe(true);
+  it('detects an automation prohibition in uppercase', () => {
+    expect(transcriptSignalsCarrierBlock('AUTOMATED CALLING IS NOT PERMITTED')).toBe(true);
   });
 
-  it('detects "BOT" (mixed case) as a block signal', () => {
-    expect(transcriptSignalsCarrierBlock('We think you are a BOT')).toBe(true);
+  it('detects a bot-call determination in mixed case', () => {
+    expect(transcriptSignalsCarrierBlock('This sounds like a BOT CALL')).toBe(true);
   });
 
   it('detects "Fraud Detection" (title case) as a block signal', () => {
     expect(transcriptSignalsCarrierBlock('Fraud Detection system activated')).toBe(true);
   });
+});
+
+describe('Agent 05-A3 — Generic IVR terms do NOT trigger block', () => {
+  for (const transcript of [
+    'This is an automated call',
+    'This sounds like a bot',
+    'Our system detected an issue',
+    'We cannot process automated requests',
+  ]) {
+    it(`does not block incomplete detection language: "${transcript}"`, () => {
+      expect(transcriptSignalsCarrierBlock(transcript)).toBe(false);
+      expect(matchedCarrierBlockPhrase(transcript)).toBeNull();
+    });
+  }
 });
 
 describe('Agent 05-A3 — Normal carrier speech does NOT trigger block', () => {

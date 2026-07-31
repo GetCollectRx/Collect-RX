@@ -5,9 +5,17 @@ import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
+import { CALL_TIMEOUTS } from '../../billing/tiers.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
-import { checkPatientDataCompleteness } from './patientDataCompleteness.js';
+import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
+import { probeClaimStatus } from '../triage/claimStatusProbe.js';
+import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
+import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
+import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
+import { createEscalation } from '../services/escalationService.js';
+import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import logger from '../../logger.cjs';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -62,18 +70,260 @@ export async function setPracticeQueuePaused(
   await refreshDeskQueueBroadcast(prisma, practiceId);
 }
 
-async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
+// How many queue entries to consider per practice per tick. A blocked or
+// deferred head-of-queue claim must never starve dispatchable claims behind it.
+const CANDIDATE_BATCH_SIZE = 10;
+
+// Deferral windows for claims that cannot dispatch right now. Pushing
+// scheduledFor forward takes the claim out of the candidate window so the
+// rest of the queue keeps moving; it re-enters automatically when due.
+const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is automatic
+const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
+const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
+const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+
+// A call attempt whose end-of-call webhook never arrived would hold the M-7
+// single-call lock forever, freezing the practice's entire queue. Anything
+// older than the worst plausible call (multi-hour carrier hold) is dead.
+const STALE_ATTEMPT_MS = 3 * 60 * 60 * 1000;
+
+// Fleet-wide concurrency: the Vapi plan allows a fixed number of simultaneous
+// calls. Long carrier holds occupy a slot for their full duration, so a few
+// slots are always held back for staff-initiated and pre-visit calls — the
+// queue must never consume the entire allowance.
+function vapiSlotBudget(): number {
+  const limit = parseInt(process.env.VAPI_MAX_CONCURRENT_CALLS ?? '10', 10);
+  const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
+  if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
+  return Math.max(0, limit - Math.max(0, reserve));
+}
+
+async function deferQueueEntry(
+  prisma: PrismaClient,
+  queueEntryId: string,
+  deferMs: number,
+  dispatchDeferralCode: string,
+  dispatchDeferralNextAction: string,
+): Promise<void> {
+  await prisma.callQueue.update({
+    where: { id: queueEntryId },
+    data: {
+      scheduledFor: new Date(Date.now() + deferMs),
+      dispatchDeferralCode,
+      dispatchDeferralNextAction,
+      dispatchDeferredAt: new Date(),
+    },
+  });
+}
+
+type BlockedDisposition = 'skip' | 'stop';
+
+// Settle a queue entry the dispatch guard rejected so it cannot sit PENDING at
+// the head of the queue forever: terminal causes leave the PENDING pool,
+// retryable causes are deferred, practice-wide causes stop this practice's tick.
+async function settleBlockedCandidate(
+  prisma: PrismaClient,
+  entry: {
+    id: string;
+    practiceId: string;
+    claimId: string;
+    claim: {
+      claimNumber: string;
+      carrierId: keyof typeof CARRIER_CONFIGS;
+      outstandingAmount: unknown;
+    };
+  },
+  guardCode: string | undefined,
+): Promise<BlockedDisposition> {
+  switch (guardCode) {
+    case 'ESCALATE_OVER_90':
+    case 'MAX_ATTEMPTS':
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: entry.claimId },
+          data: { status: 'ESCALATED' },
+        }),
+        prisma.callQueue.update({
+          where: { id: entry.id },
+          data: { status: 'ESCALATED' },
+        }),
+      ]);
+      if (guardCode === 'MAX_ATTEMPTS') {
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: {
+            practiceId: entry.practiceId,
+            claimId: entry.claimId,
+            status: 'open',
+            reason: 'Maximum automated call attempts reached',
+          },
+          select: { id: true },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId: entry.practiceId,
+            claimId: entry.claimId,
+            claimRef: entry.claim.claimNumber,
+            carrierId: entry.claim.carrierId,
+            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+            reason: 'Maximum automated call attempts reached',
+            attemptNumber: 3,
+          });
+        }
+      }
+      return 'skip';
+    case 'APPROVED_PENDING_PAYMENT':
+      // Payment follow-up happens in practice AR — this entry is done as a carrier call.
+      await prisma.callQueue.update({
+        where: { id: entry.id },
+        data: { status: 'COMPLETED' },
+      });
+      return 'skip';
+    case 'CARRIER_BLOCK':
+      // Mirrors carrierBlockService for entries queued after the block landed.
+      await prisma.$transaction([
+        prisma.callQueue.update({
+          where: { id: entry.id },
+          data: {
+            status: 'BLOCKED',
+            dispatchDeferralCode: 'CARRIER_BLOCK',
+            dispatchDeferralNextAction: 'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
+            dispatchDeferredAt: new Date(),
+          },
+        }),
+        prisma.insuranceClaim.updateMany({
+          where: { id: entry.claimId, status: { in: ['PENDING', 'IN_QUEUE', 'CALLING'] } },
+          data: { status: 'BLOCKED' },
+        }),
+      ]);
+      return 'skip';
+    case 'OUTSIDE_CALL_WINDOW':
+    case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
+    case 'VOICE_AGENT_DISABLED':
+      // Practice-wide (or global) condition — no candidate can dispatch this tick.
+      return 'stop';
+    case 'CLAIM_TOO_YOUNG':
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_CLAIM_AGE_MS,
+        'CLAIM_TOO_YOUNG',
+        'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
+      return 'skip';
+    default:
+      // RECOVERY_GATE, CARRIER_NOT_AUTHORIZED, and any un-coded rejection:
+      // state must change (staff action, route change) before retry makes sense.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        guardCode ?? 'DISPATCH_GUARD_REJECTED',
+        'Resolve the required claim or carrier configuration action before retrying.',
+      );
+      return 'skip';
+  }
+}
+
+export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
-  const practices = await prisma.practice.findMany({ select: { id: true } });
+  const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
+    Promise.all([
+      prisma.practice.findMany({ select: { id: true } }),
+      prisma.callAttempt.count({ where: { completedAt: null } }),
+    ]),
+  );
+
+  let slotsRemaining = vapiSlotBudget() - activeCallsGlobal;
+  if (slotsRemaining <= 0) {
+    logger.warn('[deskQueueEngine] Vapi concurrency budget exhausted — skipping dispatch this tick', {
+      activeCallsGlobal,
+      slotBudget: vapiSlotBudget(),
+    });
+    return;
+  }
 
   for (const { id: practiceId } of practices) {
-    if (await isPracticeQueuePaused(prisma, practiceId)) continue;
+    if (slotsRemaining <= 0) return;
+    // One practice's failure must never starve the practices after it in the
+    // loop — isolate each practice's tick.
+    try {
+    await runWithPracticeRls(practiceId, async () => {
+    if (await isPracticeQueuePaused(prisma, practiceId)) return;
+
+    // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
+    // If Vapi's end-of-call webhook was lost, the open attempt holds the M-7
+    // lock forever and this practice never dials again. Close attempts older
+    // than any plausible call and release their claims back to the queue —
+    // the attempt was already counted at dispatch, so max-3 still holds.
+    const staleBefore = new Date(Date.now() - STALE_ATTEMPT_MS);
+    const staleAttempts = await prisma.callAttempt.findMany({
+      where: {
+        completedAt: null,
+        initiatedAt: { lt: staleBefore },
+        claim: { practiceId, deletedAt: null },
+      },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
+    });
+    // ── OVER-CEILING LIVE CALL TERMINATOR ─────────────────────────────────────
+    // Vapi is told maxDurationSeconds at dispatch, but squad calls have been
+    // observed to outlive it. Any attempt still open past the absolute ceiling
+    // (plus grace for webhook latency) gets its live call ended server-side —
+    // the practice must never be billed for minutes the plan ceiling forbids.
+    const ceilingBefore = new Date(Date.now() - (CALL_TIMEOUTS.absoluteMaxMinutes + 2) * 60 * 1000);
+    const overCeiling = await prisma.callAttempt.findMany({
+      where: {
+        completedAt: null,
+        initiatedAt: { lt: ceilingBefore },
+        claim: { practiceId, deletedAt: null },
+      },
+      select: { id: true, vapiCallId: true, initiatedAt: true },
+    });
+    for (const attempt of overCeiling) {
+      if (!attempt.vapiCallId) continue;
+      logger.error('[deskQueueEngine] call exceeded absolute duration ceiling — ending Vapi call', {
+        callAttemptId: attempt.id,
+        vapiCallId: attempt.vapiCallId,
+        initiatedAt: attempt.initiatedAt.toISOString(),
+        ceilingMinutes: CALL_TIMEOUTS.absoluteMaxMinutes,
+      });
+      try {
+        await endVapiCall(attempt.vapiCallId);
+      } catch (endErr) {
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+          vapiCallId: attempt.vapiCallId,
+          error: endErr,
+        });
+      }
+    }
+
+    for (const staleAttempt of staleAttempts) {
+      logger.error('[deskQueueEngine] stale call attempt — closing (end-of-call webhook never arrived)', {
+        callAttemptId: staleAttempt.id,
+        claimId: staleAttempt.claimId,
+        vapiCallId: staleAttempt.vapiCallId,
+        initiatedAt: staleAttempt.initiatedAt.toISOString(),
+      });
+      await prisma.$transaction([
+        prisma.callAttempt.update({
+          where: { id: staleAttempt.id },
+          data: { completedAt: new Date(), liveState: 'expired_no_webhook' },
+        }),
+        prisma.callQueue.updateMany({
+          where: { claimId: staleAttempt.claimId, status: 'IN_PROGRESS' },
+          data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+        }),
+        prisma.insuranceClaim.updateMany({
+          where: { id: staleAttempt.claimId, status: 'CALLING' },
+          data: { status: 'IN_QUEUE' },
+        }),
+      ]);
+    }
 
     const inProgress = await prisma.callQueue.count({
       where: { practiceId, status: 'IN_PROGRESS' },
     });
-    if (inProgress > 0) continue;
+    if (inProgress > 0) return;
 
     // M-7: architectural constraint — one simultaneous call per practice at a time.
     // Any in-progress call attempt (completedAt = null) blocks dispatch of all other
@@ -83,24 +333,26 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     const activeAttempt = await prisma.callAttempt.findFirst({
       where: {
         completedAt: null,
-        claim: { practiceId },
+        claim: { practiceId, deletedAt: null },
       },
     });
-    if (activeAttempt) continue;
+    if (activeAttempt) return;
 
-    const next = await prisma.callQueue.findFirst({
+    const candidates = await prisma.callQueue.findMany({
       where: {
         practiceId,
         status: 'PENDING',
         scheduledFor: { lte: new Date() },
+        claim: { deletedAt: null },
       },
       orderBy: [{ priority: 'desc' }, { scheduledFor: 'asc' }],
+      take: CANDIDATE_BATCH_SIZE,
       include: {
         claim: true,
       },
     });
 
-    if (!next) continue;
+    if (candidates.length === 0) return;
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
@@ -108,9 +360,22 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         practiceId,
         reason: planGate.reason,
       });
-      continue;
+      return;
     }
 
+    // COGS breaker throttle: spend the remaining budget on the claims worth
+    // the most, not on whatever is next in line.
+    const dispatchable = planGate.essentialOnly
+      ? candidates.filter((c) => c.priority === 'HIGH' || c.priority === 'URGENT')
+      : candidates;
+    if (planGate.essentialOnly && dispatchable.length < candidates.length) {
+      logger.warn('[deskQueueEngine] COGS throttle active — dispatching high-priority claims only', {
+        practiceId,
+        skipped: candidates.length - dispatchable.length,
+      });
+    }
+
+    for (const next of dispatchable) {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
       practiceId,
@@ -123,16 +388,37 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     });
 
     if (!guard.allowed) {
-      if (next.claim.daysOutstanding > 90) {
-        await prisma.insuranceClaim.update({
-          where: { id: next.claimId },
-          data: { status: 'ESCALATED' },
-        });
-        await prisma.callQueue.update({
-          where: { id: next.id },
-          data: { status: 'ESCALATED' },
-        });
-      }
+      logger.warn('[deskQueueEngine] dispatch guard rejected claim — settling queue entry', {
+        claimId: next.claimId,
+        code: guard.code,
+        reason: guard.reason,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, guard.code);
+      if (disposition === 'stop') return;
+      continue;
+    }
+
+    // ── PRE-CALL TRIAGE ────────────────────────────────────────────────────────
+    // Cheapest channel first: if any non-phone channel can already answer this
+    // claim (PMS sync shows it paid; later: carrier portal / CDAnet), close it
+    // here — before PHI is detokenized and before a call is paid for.
+    const triage = await probeClaimStatus(prisma, {
+      id: next.claimId,
+      practiceId,
+    });
+    if (triage) {
+      logger.warn('[deskQueueEngine] triage resolved claim without a call', {
+        claimId: next.claimId,
+        channel: triage.channel,
+        detail: triage.detail,
+      });
+      await transitionClaimRecovery(prisma, {
+        practiceId,
+        claimId: next.claimId,
+        kind: 'TRIAGE_RESOLVED',
+        triageChannel: triage.channel,
+        triageDetail: triage.detail,
+      });
       continue;
     }
 
@@ -148,40 +434,73 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     );
 
     // ── PHI RESOLUTION ─────────────────────────────────────────────────────────
-    // Detokenize the UUID stored in DB to get the real patient PHI.
-    // PHI lives in piiVault (in-memory, 4-hour TTL) only — never in the DB.
-    // If the token has expired (e.g. server restart) we skip this claim and
-    // log the error so a re-tokenization pass can recover it.
+    // Detokenize the UUID stored in DB to get the real patient PHI. Plaintext
+    // PHI lives in piiVault only (claim-lifecycle TTL, encrypted at rest in
+    // PhiVaultEntry, rehydrated on boot). If the token expired we defer this
+    // claim; re-import or PMS re-sync re-tokenizes it.
     const phiResult = piiVault.detokenize(
       next.claim.patientToken,
       'queue-engine',
+      { practiceId },
     );
     if (!phiResult.success || !phiResult.phi) {
-      logger.warn('[deskQueueEngine] PHI token expired or missing — skipping claim', {
+      logger.warn('[deskQueueEngine] PHI token expired or missing — deferring claim', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
         error: phiResult.error,
       });
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_PHI_TOKEN_MS,
+        'CLAIM_DATA_UNAVAILABLE',
+        'Re-import or synchronize the claim data before retrying.',
+      );
       continue;
     }
-    (logger as any).audit?.('PHI_TOKEN_RESOLVED', {
+    const phi = phiResult.phi;
+    logger.audit('PHI_TOKEN_RESOLVED', {
       claimId: next.claimId,
       patientToken: next.claim.patientToken,
       callerContext: 'queue-engine',
       phiBoundary: 'PHI_IN_EPHEMERAL_CALL_VARIABLES_ONLY',
     });
+    await appendPhiAccessEvent(prisma, {
+      practiceId,
+      operation: 'detokenize_for_carrier_call',
+      recordType: 'InsuranceClaim',
+      recordId: next.claimId,
+      purpose: 'queued_carrier_dispatch',
+      correlationId: next.id,
+    });
 
     // ── PHI COMPLETENESS GUARD ─────────────────────────────────────────────────
     // Carriers require patientName, dateOfBirth, and subscriberId at minimum.
     // Missing any of these causes the agent to fail authentication immediately.
-    // Skip the claim now; staff can correct the data and the next tick will retry.
-    const completeness = checkPatientDataCompleteness(phiResult.phi);
+    // Raise a practice-facing gate (dashboard action item with the blocked
+    // dollar amount) and defer the claim; staff add the data, clear the gate,
+    // and GATE_CLEARED requeues the claim.
+    const completeness = checkPatientDataCompleteness(phi);
     if (!completeness.ok) {
-      logger.warn('[deskQueueEngine] patient PHI incomplete — skipping dispatch', {
+      logger.warn('[deskQueueEngine] patient PHI incomplete — raising gate and deferring dispatch', {
         claimId: next.claimId,
         patientToken: next.claim.patientToken,
         missing: completeness.missing,
       });
+      await raiseMissingPatientDataGate(prisma, {
+        practiceId,
+        claimId: next.claimId,
+        claimNumber: next.claim.claimNumber,
+        outstandingAmount: Number(next.claim.outstandingAmount),
+        missing: completeness.missing,
+      });
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_STAFF_ACTION_MS,
+        'MISSING_REQUIRED_CLAIM_DATA',
+        'Complete the required claim data in the PMS, then clear the recovery gate.',
+      );
       continue;
     }
     if (completeness.warnings.length > 0) {
@@ -198,20 +517,27 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
-    // Build IVR instructions from carrier adapter knowledge base.
-    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+    // Only published, human-approved snapshots may augment the static adapter
+    // hints. Proposed discovery output is never exposed to a live call.
+    const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
+    const publishedNavigation = await getPublishedNavigationSteps(prisma, next.claim.carrierId);
+    const carrierIvrInstructions = [
+      ...carrierConfig.ivrHints,
+      ...publishedNavigation,
+      ...(learnedNotes ? [learnedNotes] : []),
+    ].join(' | ');
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
       carrierId: next.claim.carrierId,
       patientToken: next.claim.patientToken,
       // ── PHI — resolved from piiVault.detokenize() above; ephemeral, never stored ──
-      patientName:            phiResult.phi.patientName,
-      patientDob:             phiResult.phi.dateOfBirth,
-      policyNumber:           phiResult.phi.subscriberId,
-      groupNumber:            phiResult.phi.groupPolicyNumber,
-      subscriberName:         phiResult.phi.subscriberName,
-      subscriberDob:          phiResult.phi.subscriberDateOfBirth,
+      patientName:            phi.patientName,
+      patientDob:             phi.dateOfBirth,
+      policyNumber:           phi.subscriberId,
+      groupNumber:            phi.groupPolicyNumber,
+      subscriberName:         phi.subscriberName,
+      subscriberDob:          phi.subscriberDateOfBirth,
       // ── Claim fields ──────────────────────────────────────────────────────────
       carrierPhone:           carrierConfig.phone,
       claimNumber:            next.claim.claimNumber,
@@ -237,7 +563,27 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately
     // cancel the live Vapi call rather than leaving an orphan call with no DB record.
-    const vapiResult = await initiateCall(callParams);
+    // A dispatch failure defers the entry: a payload-specific Vapi rejection must
+    // not hot-loop the same claim at the head of the queue every tick.
+    let vapiResult: Awaited<ReturnType<typeof initiateCall>>;
+    try {
+      vapiResult = await initiateCall(callParams);
+    } catch (dispatchErr) {
+      logger.error('[deskQueueEngine] Vapi dispatch failed — deferring claim', {
+        claimId: next.claimId,
+        carrierId: next.claim.carrierId,
+        error: dispatchErr,
+      });
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        DEFER_DISPATCH_FAILURE_MS,
+        'TRANSIENT_DISPATCH_FAILURE',
+        'The system will retry during the next scheduled dispatch window.',
+      );
+      continue;
+    }
+    slotsRemaining -= 1;
 
     try {
       const attempt = await prisma.callAttempt.create({
@@ -261,6 +607,9 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
             status: 'IN_PROGRESS',
             attempts: { increment: 1 },
             lastAttemptAt: new Date(),
+            dispatchDeferralCode: null,
+            dispatchDeferralNextAction: null,
+            dispatchDeferredAt: null,
           },
         }),
       ]);
@@ -284,6 +633,18 @@ async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           cancelError: cancelErr,
         });
       }
+    }
+
+    // One call per practice per tick — a call was dispatched (or attempted),
+    // so stop scanning candidates for this practice.
+    return;
+    } // candidate loop
+    }); // runWithPracticeRls
+    } catch (practiceErr) {
+      logger.error('[deskQueueEngine] practice tick failed — continuing with next practice', {
+        practiceId,
+        error: practiceErr,
+      });
     }
   }
 }

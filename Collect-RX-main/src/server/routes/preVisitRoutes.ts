@@ -1,8 +1,7 @@
 /**
  * Pre-visit verification API routes.
  */
-import { Router, type Request, type Response } from 'express';
-import express from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import type { CarrierId } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -19,6 +18,7 @@ import {
   parseCdcpPredetCsvRows,
   type CdcpPredetImportRow,
 } from '../preVisit/importCdcpPredetCases.js';
+import { patientTokenBelongsToPractice } from '../accessControl/patientTokenScope.js';
 import { getAdjudicationGraph } from '../adjudication/adjudicationGraph.js';
 import { parseSimpleCsv } from '../csv/parseSimple.js';
 
@@ -82,6 +82,11 @@ router.post('/verify', requirePermission('manage_claims'), async (req: Request, 
     }
 
     const practiceId = practiceIdFromSession(req);
+    const owned = await patientTokenBelongsToPractice(prisma, practiceId, parsed.data.patientToken);
+    if (!owned) {
+      return res.status(403).json({ error: 'patientToken does not belong to this practice' });
+    }
+
     const result = await verifyBeforeAppointment(prisma, {
       practiceId,
       patientToken: parsed.data.patientToken,
@@ -106,6 +111,13 @@ router.post('/appointments/ingest', requirePermission('manage_claims'), async (r
     }
 
     const practiceId = practiceIdFromSession(req);
+    for (const appt of parsed.data.appointments) {
+      const owned = await patientTokenBelongsToPractice(prisma, practiceId, appt.patientToken);
+      if (!owned) {
+        return res.status(403).json({ error: 'patientToken does not belong to this practice' });
+      }
+    }
+
     const result = await ingestScheduledAppointments(
       prisma,
       practiceId,
@@ -240,5 +252,27 @@ router.get('/adjudication-graph', requirePermission('manage_claims'), async (req
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+router.post(
+  '/appointments/import-csv',
+  csvImportBody,
+  requirePermission('manage_claims'),
+  async (req: Request, res: Response) => {
+    try {
+      const practiceId = practiceIdFromSession(req);
+      const text = typeof req.body === 'string' ? req.body : '';
+      if (!text.trim()) {
+        return res.status(400).json({ error: 'CSV body required' });
+      }
+      const records = parseSimpleCsv(text) as Record<string, unknown>[];
+      const { importAppointmentCsvRows } = await import('../preVisit/csvAppointmentImport.js');
+      const result = await importAppointmentCsvRows(prisma, practiceId, records);
+      res.json(result);
+    } catch (err) {
+      console.error('[pre-visit] /appointments/import-csv error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 export default router;

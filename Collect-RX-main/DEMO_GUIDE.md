@@ -72,7 +72,7 @@ This guide walks you through demonstrating the key features of the A/R execution
    - Show the disputed balance now appears here
 
 **What to Say:**
-> "The system provides simulation of patient responses. When a patient pays through the link, the payment is recorded instantly, the balance closes, and the dashboard updates. If they dispute the charge, it automatically routes to staff review. This ensures no disputes fall through the cracks."
+> "CollectRx is Practice → Insurance only — we do not collect payments from patients. This staff-review path is about insurance claim follow-up and escalations, not patient pay links."
 
 ---
 

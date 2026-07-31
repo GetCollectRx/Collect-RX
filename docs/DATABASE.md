@@ -36,23 +36,23 @@ docker compose up -d
 
 Then set `DATABASE_URL` to the compose defaults, e.g. `postgresql://collectrx:collectrx_local_dev_only@localhost:5433/collectrx` (host **5433** maps into the container’s 5432; see [docker-compose.yml](../docker-compose.yml)). The file lives at the repo root, not inside `Collect-RX-main/`.
 
-## Railway PostgreSQL
+## Fly Postgres
 
-If Postgres runs on **[Railway](https://railway.app/)**, you do not run Docker or a local server for that database.
+If Postgres runs on **[Fly.io](https://fly.io/)**, you do not run Docker or a local server for that database.
 
-1. In the Railway project, open the **Postgres** service (or the service that has the database plugin).
-2. Open the **Connect** (or **Variables**) tab. For **running Prisma on your laptop**, copy a connection string whose host is **public** (e.g. `*.rlwy.net`, a proxy host, or `*.railway.app` — exact shape varies by project). **Do not** use a host ending in **`.railway.internal`** for local tools: that hostname only resolves **inside** Railway’s private network (e.g. from your deployed app), not from your Mac.
-3. If **Variables** only show `DATABASE_URL` with an internal host, use the **public** / **external** / **TCP** URL from the **Connect** instructions, or temporarily add a public database URL from Railway’s docs.
-4. Put that value in **`Collect-RX-main/.env`** (only on your machine; never commit it). Include **`?sslmode=require`** if Railway’s URL includes it (Prisma accepts it as part of the URL string).
+1. In Fly, identify your Postgres app (`fly postgres list`).
+2. For **running Prisma on your laptop**, open a local tunnel with `fly proxy 5432 -a <pg-app>` and connect to `localhost:5432`, or use `fly postgres connect`. Hosts ending in **`.flycast`/`.internal`** only resolve **inside** the Fly private network (e.g. from your deployed app), not from your Mac.
+3. If `DATABASE_URL` only shows an internal host, use the `fly proxy` tunnel above and point Prisma at `localhost`.
+4. Put that value in **`Collect-RX-main/.env`** (only on your machine; never commit it). Include **`?sslmode=require`** for a TLS connection (Prisma accepts it as part of the URL string).
 5. From the monorepo root (`collectrx-platform/`), run migrations against that database:
    - `npm run db:generate:collectrx`
    - `npm run db:migrate:dev:collectrx` (when you are creating new migrations), or `npm run db:migrate:collectrx` to apply existing migrations only (e.g. deploy / CI style).
 
-**Practical note:** Pointing a **local** dev app at a **shared** Railway DB means seeds and tests affect that same database. For safer iteration, use a **separate** Railway Postgres (or a separate database on the same instance) for dev vs production, and keep production credentials only in Railway’s environment for the deployed service.
+**Practical note:** Pointing a **local** dev app at a **shared** production DB means seeds and tests affect that same database. For safer iteration, use a **separate** Fly Postgres (or a separate database on the same instance) for dev vs production, and keep production credentials only in Fly secrets for the deployed service.
 
 ## Backups, RPO / RTO (P6-05)
 
-Use your **Postgres host’s** automated backups (e.g. Railway, RDS, Neon). **Test a restore** to a non-prod database on a schedule. Document **RPO** (max acceptable data loss, usually backup interval) and **RTO** (time to be back online) in your internal ops doc. See [PHASE6-OPS.md](operations/PHASE6-OPS.md#database-backups-p6-05).
+Use your **Postgres host’s** automated backups (Fly volume snapshots, or RDS/Neon if applicable). **Test a restore** to a non-prod database on a schedule. Document **RPO** (max acceptable data loss, usually backup interval) and **RTO** (time to be back online) in your internal ops doc. See [PHASE6-OPS.md](operations/PHASE6-OPS.md#database-backups-p6-05).
 
 ## Migrations
 
@@ -62,9 +62,15 @@ Use your **Postgres host’s** automated backups (e.g. Railway, RDS, Neon). **Te
   `npx prisma migrate dev --name describe_change`
 
 - Baseline: `20260422120000_init` (initial create).
+- `20260712020000_insurance_claim_soft_delete` adds `insurance_claims.deleted_at`.
+  Deploy it with `prisma migrate deploy`; application reads and call dispatch
+  exclude deleted claims, while call and recovery history remains retained.
 
 ## Staging / production
 
-- Use a **hosted Postgres** (RDS, Cloud SQL, Neon, Supabase, Railway Postgres, etc.).
+- Use a **hosted Postgres** (Fly Postgres, RDS, Cloud SQL, Neon, Supabase, etc.).
 - Set `DATABASE_URL` in the host’s secret store (not committed).
 - Staging should use **synthetic or anonymized** data only; see [ENVIRONMENT-MATRIX.md](./ENVIRONMENT-MATRIX.md).
+- After deploying RLS migrations, confirm the application database role does
+  not have PostgreSQL `BYPASSRLS`. The CI `rls-strict` job verifies tenant
+  isolation without that privilege.

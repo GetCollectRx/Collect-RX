@@ -80,14 +80,38 @@ router.get('/insurance', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/analytics/assumption-validation?days=30|60|90
+// Day 30/60/90 pilot assumption checks: carrier acceptance rate, resolution
+// rate vs the 60% target, and recovered revenue vs subscription cost.
+// ---------------------------------------------------------------------------
+router.get('/assumption-validation', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const { computeAssumptionValidation, parseValidationWindow } = await import(
+      '../server/services/assumptionValidation.js'
+    );
+    const windowDays = parseValidationWindow(req.query.days);
+    const data = await computeAssumptionValidation(prisma, practiceId, windowDays);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /analytics/assumption-validation]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.get('/collection-rate', async (req: Request, res: Response) => {
   try {
     const qPractice = req.query.practiceId as string | undefined;
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    // Patient AR removed — CollectRx is Practice→Insurance only.
-    return res.json({ totalCount: 0, paidCount: 0, collectionRate: 0, avgDaysToPayment: 0, totalCollected: 0 });
+    // Patient AR billing removed — Practice→Insurance only.
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/collection-rate]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -100,7 +124,7 @@ router.get('/stage-funnel', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ funnel: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/stage-funnel]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -113,7 +137,7 @@ router.get('/priority-balances', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ priorityBalances: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/priority-balances]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -126,7 +150,7 @@ router.get('/message-effectiveness', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ effectiveness: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/message-effectiveness]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -139,7 +163,7 @@ router.get('/payment-trends', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ trends: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/payment-trends]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -152,7 +176,7 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
     if (queryPracticeConflictsSession(req, qPractice)) {
       return res.status(403).json({ error: 'practiceId does not match session' });
     }
-    return res.json({ performance: [] });
+    return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
     console.error('[GET /analytics/carrier-performance]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
@@ -195,7 +219,9 @@ router.get('/practice-performance/export', async (req: Request, res: Response) =
         where: { practiceId, closeDate: { gte: since90 } },
         orderBy: { closeDate: 'asc' },
       }),
-      prisma.insuranceClaim.count({ where: { practiceId, status: { not: 'RESOLVED' } } }),
+      prisma.insuranceClaim.count({
+        where: { practiceId, deletedAt: null, status: { not: 'RESOLVED' } },
+      }),
     ]);
     const lines: string[] = [
       'section,metric,value',
@@ -241,7 +267,7 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
         _count: true,
       }),
       prisma.insuranceClaim.findMany({
-        where: { practiceId },
+        where: { practiceId, deletedAt: null },
         select: { status: true, outstandingAmount: true, billedAmount: true, daysOutstanding: true, updatedAt: true },
       }),
       prisma.arCloseRun.findMany({
@@ -258,8 +284,6 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
             openInsurance.reduce((s, c) => s + c.daysOutstanding, 0) / openInsurance.length,
           )
         : 0;
-
-    const grossCollectionRate = 0; // Patient AR removed — CollectRx is insurance-only
 
     const resolvedClaims = claims.filter((c) => c.status === 'RESOLVED');
     const insuranceRecovered = resolvedClaims.reduce(
@@ -285,7 +309,6 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
         openArTotal: Number(workItems._sum.dollarsAtRisk ?? 0),
         openWorkItemCount: workItems._count,
         daysInAr,
-        grossCollectionRate,
         netCollectionRate,
         agingTrend,
         topDenialReasons: denials.topDenialReasons.slice(0, 5),
@@ -350,12 +373,24 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
       })
       .filter(Boolean);
 
-    // Calls not yet evaluated — process up to 10 per request to respect rate limits.
+    // Calls not yet evaluated — only when live eval is explicitly enabled.
     const needsEval = completedCalls.filter((c) => !c.evalCompletedAt).slice(0, 10);
     const freshResults = [];
 
+    if (needsEval.length > 0) {
+      const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
+      if (!isAnthropicEvalAllowed()) {
+        console.warn(
+          '[eval-scores] Skipping live Anthropic eval (%d pending). Set COLLECTRX_ANTHROPIC_EVAL=1 to enable.',
+          needsEval.length,
+        );
+      }
+    }
+
     for (const call of needsEval) {
       try {
+        const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
+        if (!isAnthropicEvalAllowed()) break;
         const transcriptText = call.transcriptUrl ?? '';
         if (transcriptText.length < 50) continue;
 

@@ -2,7 +2,7 @@
 // AES-256 key material for PHI field encryption.
 //
 // Production: inject from AWS KMS / Azure Key Vault / GCP KMS / host secret manager
-// (e.g. Railway variables populated from a vault). Never commit key material to git.
+// (e.g. fly secrets populated from a vault). Never commit key material to git.
 //
 // Accepted formats for PHI_ENCRYPTION_KEY:
 //   - 64 hex characters (32 bytes), or
@@ -51,12 +51,25 @@ export function isPhiEncryptionAtRestEnabled(): boolean {
 export function assertPhiEncryptionAtRestConfigured(): void {
   if (process.env.NODE_ENV !== 'production') return;
   if (!isPhiEncryptionAtRestEnabled()) return;
-  if (parsePhiEncryptionKeyFromEnv()) return;
+  assertValidPhiEncryptionKey(
+    'PHI_ENCRYPTION_AT_REST is enabled in production',
+  );
+}
 
-  console.error(
-    '[server] FATAL: PHI_ENCRYPTION_AT_REST is enabled in production but PHI_ENCRYPTION_KEY ' +
-      'is missing or invalid. Set a 32-byte key from your KMS / secret manager. ' +
+/**
+ * Persisted vault entries are always encrypted. Production must have a valid
+ * key before attaching the backing store or accepting any traffic.
+ */
+export function assertPersistentPhiVaultConfigured(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  assertValidPhiEncryptionKey('persisted PHI vault is enabled in production');
+}
+
+function assertValidPhiEncryptionKey(configuration: string): void {
+  if (parsePhiEncryptionKeyFromEnv()) return;
+  throw new Error(
+    `[server] FATAL: ${configuration} but PHI_ENCRYPTION_KEY is missing or invalid. ` +
+      'Set a 32-byte key from your KMS / secret manager. ' +
       'See docs/operations/DATA-ENCRYPTION.md.',
   );
-  process.exit(1);
 }

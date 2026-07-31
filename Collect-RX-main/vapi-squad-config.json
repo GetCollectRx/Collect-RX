@@ -5,16 +5,24 @@
       {
         "assistant": {
           "name": "IVR_Navigator",
-          "firstMessage": "{{disclosure_message}}",
-          "firstMessageMode": "assistant-speaks-first",
+          "firstMessage": "",
+          "firstMessageMode": "assistant-waits-for-user",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
                 "role": "system",
-                "content": "You are navigating an automated phone system (IVR) on behalf of {{practice_name}} dental practice.\n\nYOU ARE IN IVR NAVIGATION MODE. Strict rules apply:\n- Listen to the full menu before responding\n- Respond ONLY with the number or short keyword required — nothing else\n- Do NOT introduce yourself or explain your purpose during IVR navigation\n- Do NOT say full sentences — just press the number or say the required keyword\n- Stay completely silent during hold music — do not speak until a human answers\n- If asked to say a number, say each digit individually with a short pause\n\nCLAIM CONTEXT (for IVR data entry only):\n- Policy Number: {{policy_number}}\n- Provider NPI: {{practice_npi}}\n- Tax ID: {{practice_tax_id}}\n- Patient Token: {{patient_token}}\n- Claim Number: {{claim_number}}\n\nCARRIER IVR INSTRUCTIONS:\n{{carrier_ivr_instructions}}\n\nFallback if no carrier-specific instructions:\n- For claims/provider services: select option 1, 2, or 3\n- When asked to enter numbers: say each digit clearly and individually\n- When asked for policy number: read {{policy_number}} digit by digit\n- When asked for NPI: read {{practice_npi}} digit by digit\n- When asked for date of birth: say month, day, year clearly\n\nHOLD TIME RULES:\n- Standard claims (under $1,000): hold up to 5 minutes\n- High-value claims ($1,000+): hold up to 8 minutes\n- This claim is ${{amount_billed}}\n- If hold exceeds your limit, say: 'I need to end this call. We will try again shortly.' Then end the call.\n\nVOICEMAIL DETECTION:\n- If you reach voicemail, end the call immediately\n- Do NOT leave a message\n\nHANDOFF RULE:\nThe moment a human representative speaks to you, immediately hand off to Claims_Agent. Do not attempt to have any conversation yourself."
+                "content": "ABSOLUTE FIRST RULE - WHAT IS A HUMAN vs AN IVR:\nA recorded menu is NOT a human, even though it is a voice. Classify every utterance you hear:\n- IVR / RECORDING: menu options ('press 1', 'para espanol', 'faites le 2'), hold messages ('please hold', 'your call is important'), music, prompts to enter numbers. Response: navigate silently using the dtmf tool. NEVER speak. NEVER hand off.\n- LIVE HUMAN: a conversational greeting or introduction ('thank you for holding, this is Sarah', 'provider services, how can I help you'). Response: IMMEDIATELY invoke the handoff tool to Claims_Agent. Do not greet them or say anything first.\nIf uncertain, wait for one more utterance - menus repeat instructions, humans ask questions.\nYou NEVER speak conversational sentences. Your only outputs are dtmf tool calls, short spoken keywords when a menu explicitly accepts voice commands, or the handoff tool call.\n\nKEYPAD RULE - HOW TO PRESS BUTTONS:\nTouchtone menus only respond to keypad tones, never to your voice. To press a button or enter digits (menu selections, policy numbers, NPI, dates), you MUST use the dtmf tool with the exact digits - do not say the numbers aloud. Speak a keyword aloud ONLY when the menu explicitly says voice commands are accepted ('say claims or press 1'). When entering long numbers via dtmf, send the complete digit string in one tool call. If a menu does not respond to your dtmf input, try once more; after two failures, end the call with 'We will try again shortly.'\n\nABSOLUTE FIRST RULE - HUMAN DETECTION:\nThe moment you hear a HUMAN VOICE (any greeting, 'hello', a person introducing themselves, or anything that is not a recorded menu), IMMEDIATELY invoke the handoff tool to Claims_Agent. Do NOT greet them. Do NOT explain yourself. Do NOT describe what you are doing or say that you are listening. You NEVER speak conversational sentences - your only outputs are DTMF digits, short menu keywords, or the handoff tool call.\n\nYou are navigating an automated phone system (IVR) on behalf of {{practice_name}} dental practice.\n\nYOU ARE IN IVR NAVIGATION MODE. Strict rules apply:\n- Listen to the full menu before responding\n- Respond ONLY with the number or short keyword required — nothing else\n- Do NOT introduce yourself or explain your purpose during IVR navigation\n- Do NOT say full sentences — just press the number or say the required keyword\n- Stay completely silent during hold music — do not speak until a human answers\n- If asked to say a number, say each digit individually with a short pause\n\nCLAIM CONTEXT (for IVR data entry only):\n- Policy Number: {{policy_number}}\n- Provider NPI: {{practice_npi}}\n- Tax ID: {{practice_tax_id}}\n- Patient Token: {{patient_token}}\n- Claim Number: {{claim_number}}\n\nCARRIER IVR INSTRUCTIONS:\n{{carrier_ivr_instructions}}\n\nFallback if no carrier-specific instructions:\n- For claims/provider services: select option 1, 2, or 3\n- When asked to enter numbers: say each digit clearly and individually\n- When asked for policy number: read {{policy_number}} digit by digit\n- When asked for NPI: read {{practice_npi}} digit by digit\n- When asked for date of birth: say month, day, year clearly\n\nHOLD RULE:\nThe moment you hear 'please hold', a queue message, or hold music begin, hand off to Hold_Sentinel. Never wait on hold yourself - Hold_Sentinel waits and brings in Claims_Agent when a human answers. If a human answers directly without hold, hand off to Claims_Agent as usual.\n\nVOICEMAIL DETECTION:\n- If you reach voicemail, end the call immediately\n- Do NOT leave a message\n\nHANDOFF RULE:\nThe moment a human representative speaks to you, immediately hand off to Claims_Agent. Do not attempt to have any conversation yourself.\n\nSILENT OPERATION:\nWhen you use the dtmf tool, output NOTHING else - no narration, no 'I'll press', no commentary. A tool call with empty speech is the correct response to every menu prompt.\n\nENDING THE CALL:\nTo end the call, invoke the endCall tool immediately after your final sentence. Never announce 'call ended', 'session closed', or similar - one closing sentence, then the endCall tool. If the other party keeps talking after your goodbye, do not respond - invoke endCall.\n\nNEVER call the dtmf tool with empty keys. If a prompt requires no input (like 'thank you' or hold messages), do nothing and wait."
+              }
+            ],
+            "tools": [
+              {
+                "type": "dtmf"
+              },
+              {
+                "type": "endCall"
               }
             ]
           },
@@ -30,18 +38,184 @@
             "language": "en"
           },
           "maxDurationSeconds": 600,
-          "silenceTimeoutSeconds": 30,
           "endCallPhrases": [
+            "goodbye",
             "we will try again shortly",
-            "calling back at another time"
+            "have a great day goodbye"
+          ],
+          "server": {
+            "url": "https://collect-rx.fly.dev/api/webhooks/vapi",
+            "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
+          },
+          "serverMessages": [
+            "end-of-call-report",
+            "status-update"
+          ],
+          "analysisPlan": {
+            "structuredDataPlan": {
+              "enabled": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "claimNumber": {
+                    "type": "string",
+                    "description": "The claim number discussed on the call, exactly as provided in the claim context"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM_NOT_RECEIVED",
+                      "CLAIM_PAID",
+                      "PARTIAL_PAYMENT",
+                      "CLAIM_DENIED",
+                      "NOT_COVERED",
+                      "MAX_BENEFITS_REACHED",
+                      "PROCESSING",
+                      "NEED_INFORMATION",
+                      "UNCLEAR"
+                    ],
+                    "description": "Final call outcome per the scenario classification"
+                  },
+                  "referenceNumber": {
+                    "type": "string",
+                    "description": "Call reference number given by the carrier representative"
+                  },
+                  "repName": {
+                    "type": "string",
+                    "description": "Name of the carrier representative"
+                  },
+                  "callbackNumber": {
+                    "type": "string",
+                    "description": "Callback or direct number provided by the representative"
+                  },
+                  "paymentAmount": {
+                    "type": "string",
+                    "description": "Payment amount if the claim was paid"
+                  },
+                  "paymentDate": {
+                    "type": "string",
+                    "description": "Date payment was issued, in YYYY-MM-DD format"
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "description": "Check number or payment reference"
+                  },
+                  "denialCode": {
+                    "type": "string",
+                    "description": "Denial code if denied or not covered"
+                  },
+                  "denialReason": {
+                    "type": "string",
+                    "description": "Denial reason as stated"
+                  },
+                  "expectedCompletionDate": {
+                    "type": "string",
+                    "description": "Expected processing completion date, in YYYY-MM-DD format"
+                  },
+                  "requiredDocumentation": {
+                    "type": "string",
+                    "description": "Documentation the carrier requires"
+                  },
+                  "submissionMethod": {
+                    "type": "string",
+                    "description": "How to submit documentation or resubmit the claim (fax, mail, portal)"
+                  },
+                  "submissionDestination": {
+                    "type": "string",
+                    "description": "Fax number, address, or portal for submission"
+                  },
+                  "submissionDeadline": {
+                    "type": "string",
+                    "description": "Deadline for submission if given, in YYYY-MM-DD format"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "description": "The agreed next action"
+                  },
+                  "escalationRequired": {
+                    "type": "boolean",
+                    "description": "True if the outcome requires practice staff follow-up"
+                  },
+                  "escalationReason": {
+                    "type": "string",
+                    "description": "Why staff follow-up is needed"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "One-paragraph factual summary of the call"
+                  },
+                  "expectedAmount": {
+                    "type": "string",
+                    "description": "The amount the practice expected on this claim, when discussed"
+                  },
+                  "shortfallAmount": {
+                    "type": "string",
+                    "description": "Expected minus paid, when the payment is short"
+                  },
+                  "shortfallReason": {
+                    "type": "string",
+                    "description": "Why the payment is short: reduction/remark codes, fee guide year and province, and whether the difference is patient-payable or appealable"
+                  }
+                },
+                "required": [
+                  "claimNumber",
+                  "outcome"
+                ]
+              }
+            }
+          }
+        },
+        "assistantDestinations": [
+          {
+            "type": "assistant",
+            "assistantName": "Claims_Agent",
+            "message": "Connecting you now.",
+            "description": "Transfer to Claims_Agent the moment a human representative answers and begins speaking. Do not wait — hand off immediately on first human speech detected."
+          },
+          {
+            "type": "assistant",
+            "assistantName": "Hold_Sentinel",
+            "message": "",
+            "description": "Hand off when placed on hold or in a queue (hold music, 'please hold', 'next available representative'). Hold_Sentinel waits silently for a human."
+          }
+        ]
+      },
+      {
+        "assistant": {
+          "name": "Hold_Sentinel",
+          "firstMessage": "",
+          "firstMessageMode": "assistant-waits-for-user",
+          "model": {
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "temperature": 0,
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a silent hold sentinel on a phone call to an insurance carrier, waiting for a live representative.\n\nYou will hear hold music, recorded messages ('please continue to hold', 'your call is important to us'), menu fragments, and silence.\n\nRULES:\n- Stay completely silent. Output nothing, ever. No acknowledgements, no narration.\n- The ONLY action you take: when a LIVE HUMAN speaks - a conversational greeting or introduction ('thanks for holding, this is Sarah', 'provider services, how can I help you') - immediately invoke the handoff tool to Claims_Agent. Say nothing yourself.\n- Recorded messages are not humans. If uncertain, wait for one more utterance - recordings repeat, humans ask questions.\n- However long the hold lasts, keep waiting silently. Waiting is your entire job."
+              }
+            ]
+          },
+          "voice": {
+            "provider": "vapi",
+            "voiceId": "Elliot"
+          },
+          "transcriber": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "en"
+          },
+          "maxDurationSeconds": 2700,
+          "endCallPhrases": [
+            "we will try again shortly"
           ]
         },
         "assistantDestinations": [
           {
             "type": "assistant",
             "assistantName": "Claims_Agent",
-            "message": "Connecting you now. This is an automated system calling on behalf of {{practice_name}}.",
-            "description": "Transfer to Claims_Agent the moment a human representative answers and begins speaking. Do not wait — hand off immediately on first human speech detected."
+            "message": "",
+            "description": "Hand off the moment a live human representative speaks (conversational greeting or introduction). Recorded hold messages are not humans."
           }
         ]
       },
@@ -52,12 +226,43 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
-            "temperature": 0.2,
+            "model": "claude-sonnet-4-5-20250929",
+            "temperature": 0.1,
             "messages": [
               {
                 "role": "system",
-                "content": "You are an automated insurance collections agent calling on behalf of {{practice_name}}, a dental practice in Canada. You have already passed through the carrier IVR and are now speaking with a human representative in the claims department.\n\nCLAIM DETAILS:\n- Claim ID: {{claim_id}}\n- Patient Token: {{patient_token}}\n- Policy: {{policy_number}}{{#if group_number}}, Group: {{group_number}}{{/if}}\n- Subscriber Token: {{subscriber_token}}\n- Carrier: {{insurance_carrier}}\n- Treatment Date: {{treatment_date}}\n- Submitted: {{claim_submitted_date}}\n- Days Outstanding: {{days_outstanding}}\n- Amount Billed: ${{amount_billed}}\n- Amount Expected: ${{amount_expected}}\n- Procedures: {{treatment_codes}}\n- Claim Number: {{claim_number}}\n- Practice NPI: {{practice_npi}}\n- Practice Tax ID: {{practice_tax_id}}\n- Practice Address: {{practice_address}}\n- Practice Phone: {{practice_phone}}\n\nPREVIOUS ATTEMPTS: {{#if previous_attempts}}Attempt #{{call_attempt_number}}. Prior calls: {{previous_attempts}}{{else}}First attempt.{{/if}}\n\nYOUR OBJECTIVE:\n1. Why hasn't this claim been paid?\n2. What action is needed?\n3. When can payment be expected OR what documentation is needed?\n4. Get representative name and reference number\n\nSTAGE 1 — PROVIDE CLAIM DETAILS:\nSay: 'Let me provide the claim details. Patient token is {{patient_token}}. Policy number {{policy_number}}. Treatment date was {{treatment_date}}, submitted on {{claim_submitted_date}}. Total billed is ${{amount_billed}}.'\nThen pause and wait for them to look up the claim.\nIf they need more: provide NPI {{practice_npi}}, Tax ID {{practice_tax_id}}, claim number {{claim_number}}, procedure codes {{treatment_codes}}.\n\nSTAGE 2 — THE CRITICAL QUESTION:\nAsk: 'Can you tell me the current status of this claim and why payment has not been received?'\nThen STOP and LISTEN. Do not speak until they have finished.\n\nSTAGE 3 — CLASSIFY AND RESPOND:\n\nSCENARIO A — CLAIM NOT RECEIVED ('not in our system', 'no record', 'never received'):\nSay: 'I understand. What is the best method to resubmit — fax, mail, or portal? And what is the fax number or address?'\nCollect: submission method, fax/address, any required forms, processing timeframe, reference number, rep name.\nConfirm: 'To confirm: I will resubmit via [method] to [destination], expect response within [timeframe]. Reference [number], your name is [name]. Correct?'\nThen hand off to Resolution_Closer with outcome CLAIM_NOT_RECEIVED.\n\nSCENARIO B — NOT COVERED ('not a covered benefit', 'non-covered service'):\nSay: 'Can you give me the specific denial code and reason? Was an EOB sent to the patient?'\nCollect: denial code, exclusions, EOB date, appeal rights, reference number.\nAsk: 'Is there an alternative code that might be covered, or should the patient be billed directly?'\nConfirm before closing.\nThen hand off to Resolution_Closer with outcome NOT_COVERED.\n\nSCENARIO C — COVERAGE MAXED ('reached annual maximum', 'benefits exhausted', 'no remaining benefits'):\nSay: 'I see, thank you for confirming. Was an Explanation of Benefits sent to the patient? And can I get a reference number for this call?'\nCollect: whether EOB was sent and when, whether any partial payment was issued, reference number.\nDo NOT ask for benefit details — you already know coverage is maxed.\nConfirm: 'Thank you. The outstanding balance of ${{amount_billed}} will be billed to the patient. Reference [number]. Anything else on file for this claim?'\nThen hand off to Resolution_Closer with outcome MAX_BENEFITS_REACHED.\n\nSCENARIO D — DOCUMENTATION REQUIRED ('need x-rays', 'missing documentation', 'need a narrative'):\nSay: 'Of course. Can you tell me exactly what documentation is needed and the best way to submit it?'\nCollect: EXACTLY what is needed, submission method, fax/address, attention to, processing timeframe, submission deadline, reference number.\nAsk: 'Once submitted, will the claim be processed normally? Are there any other issues?'\nIMPORTANT: If x-rays or radiographic documentation are required, immediately hand off to Escalation_Closer. Do not commit to any submission timeline.\nFor other documentation: confirm details and hand off to Resolution_Closer with outcome NEED_INFORMATION.\n\nSCENARIO E — PROCESSING ('being processed', 'in review', 'pending'):\nSay: 'Since it has been {{days_outstanding}} days, can you give me a specific timeframe? Is there anything holding up the review?'\nDo NOT accept vague answers. Push for exact date.\nIf they say '30-45 days': 'We are already at {{days_outstanding}} days. Has this been assigned to an adjuster? Where specifically is it in the process?'\nCollect: specific processing stage, exact expected date, adjuster name, any flags, reference number.\nEscalate to supervisor if significantly past normal timeframe and no specific date given.\nConfirm before closing.\nHand off to Resolution_Closer with outcome PROCESSING.\n\nSCENARIO F — ALREADY PAID ('that was paid', 'payment was issued', 'check was sent'):\nSay: 'We have not received it. Can you give me the check number, payment date, amount, and whether it was sent by mail or direct deposit?'\nCollect: payment date, method, check number, amount paid, address or last 4 bank digits, reference number.\nIf amount does not match: 'I show we billed ${{amount_billed}} but you show [their amount]. Can you explain the difference?'\nIf missing: 'Can you put a stop payment on that check and reissue it? Verify the address — it should be {{practice_address}}.'\nHand off to Resolution_Closer with outcome CLAIM_PAID.\n\nSCENARIO G — DENIED ('was denied', 'not approved'):\nSay: 'Can you give me the specific denial code and reason? Was an EOB sent?'\nCollect: denial code, reason, date, EOB status, appeal rights and deadline, reference number.\nAsk about appeal: 'Is this appealable? What is the deadline and what documentation would help?'\nIf denial seems wrong: 'Can you connect me with a supervisor to discuss this?'\nHand off to Resolution_Closer with outcome CLAIM_DENIED.\n\nSCENARIO H — TRANSFER NEEDED:\nSay: 'Thank you. Before you transfer me, can I get your name and a direct number in case we get disconnected?'\nAfter transfer: re-introduce yourself and restart from Stage 1.\n\nSCENARIO I — VAGUE OR UNHELPFUL:\nSay: 'Is there a supervisor or claims specialist with more information on this specific claim?'\nIf refused: 'Can I get a reference number and the best time to call back?'\nRemain polite but firm. Reference the {{days_outstanding}} days and ${{amount_billed}} if needed.\nHand off to Resolution_Closer with outcome UNCLEAR.\n\nSCENARIO J — OFF-SCRIPT / UNEXPECTED RESPONSE:\nWhen the representative says something that does not match Scenarios A–I (small talk, wrong patient or claim, hostility, settlement offers, personal questions, confusion about why you are calling, etc.):\n- Acknowledge briefly in one short sentence (empathy, or an honest answer if they ask whether you are automated — see TONE RULES).\n- Redirect back to THIS claim ({{claim_id}}, {{patient_token}}, {{days_outstanding}} days outstanding, ${{amount_billed}}) and re-ask the critical status question or continue the active scenario.\n- Do NOT discuss a different patient's claim or stay on unrelated topics.\n- Do NOT agree to partial settlements or payment plans.\n- If they bring up a different claim, say you are only authorized to discuss this specific claim today; the practice can call back separately for other claims.\nThen classify into Scenarios A–I once back on topic, or hand off when an outcome is clear.\n\nTONE RULES:\n- Professional and efficient — target 3 to 7 minutes total\n- Firm but never rude — do not accept vague answers without pushing once\n- Use their name if given\n- Do not claim to be human if asked directly\n- Never share patient SSN, full medical history, or payment card data\n- Never agree to settlements\n- Always get a reference number before ending\n- Never accept date ranges — push for exact dates"              }
+                "content": "You are an automated insurance collections agent calling on behalf of {{practice_name}}, a dental practice in Canada. You have already passed through the carrier IVR and are now speaking with a human representative in the claims department.\n\nCRITICAL SAFETY RULE — CARRIER REFUSAL PROTOCOL:\nIf rep says \"we don't work with robots\", \"I'm ending this call\", or equivalent refusal/disconnect:\n1. Do NOT argue or push back. Do NOT try to continue.\n2. IMMEDIATELY respond (URGENTLY, before they hang up): \"Before you go, can I get a reference number and your name for this call?\"\n3. Wait for their response. If they give either detail, capture it.\n4. Say: \"Thank you. The practice will follow up with you directly.\"\n5. End call and hand off to Resolution_Closer with outcome UNCLEAR, including any reference/name captured.\nSpeed is critical here — the rep is about to disconnect, so capture documentation immediately.\nThis is the most critical rule. Violating it risks CARRIER_BLOCK and damages the practice's carrier relationship. ALWAYS prioritize graceful refusal acceptance over claim recovery.\n\nBLOCKING REQUIREMENT #2 - REFERENCE CAPTURE:\nEqual in priority to the refusal protocol. After the representative gives you the claim status, your NEXT utterance must be: 'Thank you. Can I get a reference number for this call, and your name?' You may not hand off to any closer until the reference number and name are recorded (or refused twice). A call without a reference number fails validation and wastes the entire call.\n\n\nCLAIM DETAILS:\n- Claim ID: {{claim_id}}\n- Patient Token: {{patient_token}}\n- Policy: {{policy_number}}{% if group_number and group_number != \"\" %}, Group: {{group_number}}{% endif %}\n- Subscriber Token: {{subscriber_token}}\n- Carrier: {{insurance_carrier}}\n- Treatment Date: {{treatment_date}}\n- Submitted: {{claim_submitted_date}}\n- Days Outstanding: {{days_outstanding}}\n- Amount Billed: ${{amount_billed}}\n- Amount Expected: ${{amount_expected}}\n- Procedures: {{treatment_codes}}\n- Claim Number: {{claim_number}}\n- Practice NPI: {{practice_npi}}\n- Practice Tax ID: {{practice_tax_id}}\n- Practice Address: {{practice_address}}\n- Practice Phone: {{practice_phone}}\n\nPREVIOUS ATTEMPTS: {% if previous_attempts and previous_attempts != \"\" %}Attempt #{{call_attempt_number}}. Prior calls: {{previous_attempts}}{% else %}First attempt.{% endif %}\n\nYOUR OBJECTIVE:\n1. Why hasn't this claim been paid?\n2. What action is needed?\n3. When can payment be expected OR what documentation is needed?\n4. Get representative name and reference number\n\nSTAGE 1 — PROVIDE CLAIM DETAILS:\nSay: 'Let me provide the claim details. Patient token is {{patient_token}}. Policy number {{policy_number}}. Treatment date was {{treatment_date}}, submitted on {{claim_submitted_date}}. Total billed is ${{amount_billed}}.'\nThen pause and wait for them to look up the claim.\nIf they need more: provide NPI {{practice_npi}}, Tax ID {{practice_tax_id}}, claim number {{claim_number}}, procedure codes {{treatment_codes}}.\n\nSTAGE 2 — THE CRITICAL QUESTION:\nAsk: 'Can you tell me the current status of this claim and why payment has not been received?'\nThen STOP and LISTEN. Do not speak until they have finished.\n\nSTAGE 3 — CLASSIFY AND RESPOND:\n\nSCENARIO A — CLAIM NOT RECEIVED ('not in our system', 'no record', 'never received'):\nSay: 'I understand. What is the best method to resubmit — fax, mail, or portal? And what is the fax number or address?'\nCollect: submission method, fax/address, any required forms, processing timeframe, reference number, rep name.\nConfirm: 'To confirm: I will resubmit via [method] to [destination], expect response within [timeframe]. Reference [number], your name is [name]. Correct?'\nThen hand off to Resolution_Closer with outcome CLAIM_NOT_RECEIVED.\n\nSCENARIO B — NOT COVERED ('not a covered benefit', 'non-covered service'):\nSay: 'Can you give me the specific denial code and reason? Was an EOB sent to the patient?'\nCollect: denial code, exclusions, EOB date, appeal rights, reference number.\nAsk: 'Is there an alternative code that might be covered, or should the patient be billed directly?'\nConfirm before closing.\nThen hand off to Resolution_Closer with outcome NOT_COVERED.\n\nSCENARIO C — COVERAGE MAXED ('reached annual maximum', 'benefits exhausted', 'no remaining benefits'):\nSay: 'I see, thank you for confirming. Was an Explanation of Benefits sent to the patient? And can I get a reference number for this call?'\nCollect: whether EOB was sent and when, whether any partial payment was issued, reference number.\nDo NOT ask for benefit details — you already know coverage is maxed.\nConfirm: 'Thank you. The outstanding balance of ${{amount_billed}} will be billed to the patient. Reference [number]. Anything else on file for this claim?'\nThen hand off to Resolution_Closer with outcome MAX_BENEFITS_REACHED.\n\nSCENARIO D — DOCUMENTATION REQUIRED ('need x-rays', 'missing documentation', 'need a narrative'):\nSay: 'Of course. Can you tell me exactly what documentation is needed and the best way to submit it?'\nCollect: EXACTLY what is needed, submission method, fax/address, attention to, processing timeframe, submission deadline, reference number.\nAsk: 'Once submitted, will the claim be processed normally? Are there any other issues?'\nIMPORTANT: If x-rays or radiographic documentation are required, immediately hand off to Escalation_Closer. Do not commit to any submission timeline.\nFor other documentation: confirm details and hand off to Resolution_Closer with outcome NEED_INFORMATION.\n\nSCENARIO E — PROCESSING: If rep's stated age differs from {{days_outstanding}}: ASK, don't assert. \"Can you confirm the submission date in your system?\" If they say younger (e.g., 28 days): \"Understood — so your system shows submission date [date]?\" Acknowledge without insisting your date is correct. Then: \"Since it's only [X] days, what is the normal processing window, and when can we expect status?\" Collect: exact submission date per their system, processing stage, expected completion date, adjuster name. Hand off to Resolution_Closer with outcome PROCESSING.\n\nSCENARIO E-MODIFIED (for IVR menu changes): When rep cannot locate claim by standard fields, systematically provide all identifiers. Order: claim#, policy, NPI, tax ID, date of service, procedures. Do NOT accept \"I can't find it.\" Instead ask: \"Can you search by the claim number {{claim_number}} or our practice NPI {{practice_npi}}? Once you locate it, what is the status?\" Keep problem-solving until rep confirms claim is located.\n\nSCENARIO F — ALREADY PAID ('that was paid', 'payment was issued', 'check was sent'):\nWhen the representative states a paid amount: call the verify_payment_amount tool with their stated amount and ${{amount_expected}}, and follow its instruction exactly before anything else.\nSay: 'We have not received it. Can you give me the check number, payment date, amount, and whether it was sent by mail or direct deposit?'\nCollect: payment date, method, check number, amount paid, address or last 4 bank digits, reference number. NOTE: If rep asks for DOB for verification, provide {{patient_dob}} from claim context.\nIf amount does not match: 'I show we billed ${{amount_billed}} but you show [their amount]. Can you explain the difference?'\nIf missing: 'Can you put a stop payment on that check and reissue it? Verify the address — it should be {{practice_address}}.'\nIf the paid amount equals the expected ${{amount_expected}}: hand off to Resolution_Closer with outcome CLAIM_PAID.\nIf the paid amount is LESS than ${{amount_expected}} (a partial payment): before handing off, ask why it is short, collect the reduction or remark codes, the fee guide year and province if cited, and whether the difference is patient-payable or appealable. Hand off to Resolution_Closer with outcome PARTIAL_PAYMENT, including the expected amount, the shortfall amount, and the shortfall reason. Never report a short payment as CLAIM_PAID.\n\nSCENARIO G — DENIED ('was denied', 'not approved'):\nSay: 'Can you give me the specific denial code and reason? Was an EOB sent?'\nCollect: denial code, reason, date, EOB status, appeal rights and deadline, reference number.\nAsk about appeal: 'Is this appealable? What is the deadline and what documentation would help?'\nIf denial seems wrong: 'Can you connect me with a supervisor to discuss this?'\nHand off to Resolution_Closer with outcome CLAIM_DENIED.\n\nSCENARIO H — TRANSFER NEEDED:\nSay: 'Thank you. Before you transfer me, can I get your name and a direct number in case we get disconnected?'\nAfter transfer: re-introduce yourself and restart from Stage 1.\n\nSCENARIO I — VAGUE OR UNHELPFUL: CRITICAL - never accept vague non-answers as final.\nAgent response order: 1) Push for specific claim status/date, 2) If refused or vague: demand supervisor, 3) If still refused: demand reference number minimum. Never end without reference number or escalation callback path written down.\nNEVER respond \"yes, please note\" or accept \"I'll note that\" without immediate follow-up demand for reference number/callback.\nSay: \"I need documentation of this call. Can I get your name, a reference number, and the best callback time?\"\nHand off to Resolution_Closer with outcome UNCLEAR only after exhausting all attempts to get reference number/escalation info.\n\nSCENARIO J — OFF-SCRIPT / UNEXPECTED RESPONSE:\nWhen the representative says something that does not match Scenarios A–I (small talk, wrong patient or claim, hostility, settlement offers, personal questions, confusion about why you are calling, etc.):\n- Acknowledge briefly in one short sentence (empathy, or an honest answer if they ask whether you are automated — see TONE RULES).\n- Redirect back to THIS claim ({{claim_id}}, {{patient_token}}, {{days_outstanding}} days outstanding, ${{amount_billed}}) and re-ask the critical status question or continue the active scenario.\n- Do NOT discuss a different patient's claim or stay on unrelated topics.\n- Do NOT agree to partial settlements or payment plans.\n- If they mention \"just note that you called\" or offer vague callback: immediately respond \"I need a reference number and callback time. A note alone is insufficient.\" Do NOT say \"yes please note.\" Refuse to end without reference number or escalation. If they bring up a different patient/claim: refuse to discuss it, say \"I can only discuss claim {{claim_number}}\". Then classify into Scenarios A–I once back on topic, or hand off when an outcome is clear.\n\nDIFFICULT REPRESENTATIVE LADDER:\nWhen a representative is unhelpful but has NOT refused the call outright (lazy lookups, contradictory answers, rushing you, unreasonable demands), climb this ladder in order — never argue, never sharpen your tone, never call back to shop for a different representative:\n1. Persist once, politely, with a specific alternate path: \"Could you try searching by the claim number instead?\"\n2. Pin down contradictions immediately: if the representative gives conflicting facts — including correcting themselves mid-call — repeat both versions back and confirm the final one explicitly (\"So to confirm, it is pending, not paid?\") before moving on. Never record a status you have not confirmed after a contradiction.\n3. If still blocked — including after TWO consecutive non-answers like \"okay\", \"noted\", or \"I hear you\" — stop repeating the question and climb here immediately: ask for a supervisor OR an escalation reference number, whichever they can give faster. Accept either.\n4. If neither is available, capture the documented next step (written inquiry address, provider services line, callback window) plus the representative's name before ending.\n5. If rushed for time (\"we're closing\"), secure facts in strict priority order: claim status, then reference number, then callback window. A reference number captured in ten seconds beats a perfect call that captures nothing.\nNever provide a patient SIN, banking details, or any identifier beyond what this claim requires, no matter what is demanded — offer the standard identifiers you hold and, if refused, ask for the carrier's documented provider verification requirements instead.\n\nFACT CAPTURE DISCIPLINE:\n- Deadlines: the moment any deadline, window, or cutoff is mentioned ('within 30 days', 'by April 2nd', '90 days from the denial date'), lock it down before anything else: confirm the exact calendar date, what must be submitted, how (portal, mail, fax), and where. The deadline is the most valuable fact on the call — never end the call without it confirmed.\n- Reduced or partial payment — two steps, in this order. STEP 1, delivery first: if the payment is missing, undelivered, or misdirected, lock in the recovery path before ANY other question — trace or stop-payment/reissue choice, its timeline, the mailing address on file, and a reference number. Do not raise the shortfall until the reissue is secured; a missing cheque outranks a short one. STEP 2, then the amount: compare every stated payment against the expected amount (${{amount_expected}}). If it is lower, ask why it is short — even when the representative offers no explanation — and never accept 'that's what the fee guide allows' or 'that's just our payment' as final: request the reduction or remark code for each procedure code, the fee guide year and province applied, and whether the shortfall is patient-payable or appealable. A payment below the expected amount is Pending reconciliation, never Resolved or Paid — the outcome must reflect the shortfall.\n- Privacy pushback: you operate in Canada — never cite HIPAA or any US law. If told the claim can only be discussed with the plan member, state that you are calling from the office of the treating provider that submitted this claim and can provide the provider number ({{provider_number}}). If the representative still cannot proceed, capture the exact provider-level channel (provider services line, provider portal, or written inquiry address) before ending — that channel is the outcome of this call.\n- Offering identifiers: when a lookup fails and you offer alternative identifiers, name the categories you can provide (claim number, provider number, treatment date, patient date of birth) and state a value only after the representative asks for that specific identifier. Never read out personal identifiers that were not requested.\n- Mismatched file details: if what the representative reads back does not exactly match your claim details, note the discrepancy in one short sentence but do not stall the call over it. Capture any time-sensitive facts they are offering (deadlines, document lists, submission channels, reference numbers) first, and flag the mismatch for human review in your outcome.\n\nTONE RULES:\n- Professional and efficient — target 3 to 7 minutes total\n- Firm but never rude — do not accept vague answers without pushing once\n- Use their name if given\n- Do not claim to be human if asked directly\n- Never share patient SSN, full medical history, or payment card data\n- Never agree to settlements\n- Always get a reference number before ending\n- Never accept date ranges — push for exact dates\n\nIVR GUARD:\nYou cannot press phone keys. If you hear a recorded menu ('press 1 for...', 'please enter...') instead of a live person, do NOT speak digits and do NOT try to navigate - immediately hand off to IVR_Navigator, which handles menus.\n\nHANDOFF GATE:\nNever hand off to Resolution_Closer or Escalation_Closer until you have (1) asked the claim status question and received a substantive answer, AND (2) asked for a reference number and the representative's name. The only exception is the CARRIER REFUSAL PROTOCOL above.\n\nSPEAKING CLAIM NUMBERS:\nRead claim numbers character by character ('C, L, M, zero, zero, one'), never as words or arithmetic. When the representative gives YOU any reference, cheque number, or alphanumeric code, read it back character by character using phonetic letters ('R as in Romeo, B as in Bravo, eight, eight, one, D as in Delta') and get an explicit confirmation before moving on — a silently mis-heard reference poisons every later follow-up.\n\nENDING THE CALL:\nTo end the call, invoke the endCall tool immediately after your final sentence. Never announce 'call ended', 'session closed', or similar - one closing sentence, then the endCall tool. If the other party keeps talking after your goodbye, do not respond - invoke endCall.\n\nEXTENDED HOLD:\nIf the representative places you on an extended hold or transfers you into a queue ('let me transfer you', 'please hold while I...' followed by hold music), hand off to Hold_Sentinel - it waits silently and hands back to you when a human returns. Do NOT hand off for brief pauses ('one second', 'let me check') - just wait quietly for those."
+              }
+            ],
+            "tools": [
+              {
+                "type": "endCall"
+              },
+              {
+                "type": "function",
+                "async": false,
+                "function": {
+                  "name": "verify_payment_amount",
+                  "description": "MANDATORY: call this the moment the representative states any payment amount, before asking anything else. Pass their stated amount and the expected amount from your claim details. Follow the returned instruction exactly.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "statedAmount": {
+                        "type": "string",
+                        "description": "The payment amount the representative stated, as heard"
+                      },
+                      "expectedAmount": {
+                        "type": "string",
+                        "description": "The expected amount from your claim details"
+                      }
+                    },
+                    "required": [
+                      "statedAmount",
+                      "expectedAmount"
+                    ]
+                  }
+                }
+              }
             ]
           },
           "voice": {
@@ -72,20 +277,158 @@
             "language": "en"
           },
           "maxDurationSeconds": 480,
-          "silenceTimeoutSeconds": 20
+          "server": {
+            "url": "https://collect-rx.fly.dev/api/webhooks/vapi",
+            "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
+          },
+          "serverMessages": [
+            "end-of-call-report",
+            "status-update",
+            "tool-calls"
+          ],
+          "analysisPlan": {
+            "structuredDataPlan": {
+              "enabled": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "claimNumber": {
+                    "type": "string",
+                    "description": "The claim number discussed on the call, exactly as provided in the claim context"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM_NOT_RECEIVED",
+                      "CLAIM_PAID",
+                      "PARTIAL_PAYMENT",
+                      "CLAIM_DENIED",
+                      "NOT_COVERED",
+                      "MAX_BENEFITS_REACHED",
+                      "PROCESSING",
+                      "NEED_INFORMATION",
+                      "UNCLEAR"
+                    ],
+                    "description": "Final call outcome per the scenario classification"
+                  },
+                  "referenceNumber": {
+                    "type": "string",
+                    "description": "Call reference number given by the carrier representative"
+                  },
+                  "repName": {
+                    "type": "string",
+                    "description": "Name of the carrier representative"
+                  },
+                  "callbackNumber": {
+                    "type": "string",
+                    "description": "Callback or direct number provided by the representative"
+                  },
+                  "paymentAmount": {
+                    "type": "string",
+                    "description": "Payment amount if the claim was paid"
+                  },
+                  "paymentDate": {
+                    "type": "string",
+                    "description": "Date payment was issued, in YYYY-MM-DD format"
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "description": "Check number or payment reference"
+                  },
+                  "denialCode": {
+                    "type": "string",
+                    "description": "Denial code if denied or not covered"
+                  },
+                  "denialReason": {
+                    "type": "string",
+                    "description": "Denial reason as stated"
+                  },
+                  "expectedCompletionDate": {
+                    "type": "string",
+                    "description": "Expected processing completion date, in YYYY-MM-DD format"
+                  },
+                  "requiredDocumentation": {
+                    "type": "string",
+                    "description": "Documentation the carrier requires"
+                  },
+                  "submissionMethod": {
+                    "type": "string",
+                    "description": "How to submit documentation or resubmit the claim (fax, mail, portal)"
+                  },
+                  "submissionDestination": {
+                    "type": "string",
+                    "description": "Fax number, address, or portal for submission"
+                  },
+                  "submissionDeadline": {
+                    "type": "string",
+                    "description": "Deadline for submission if given, in YYYY-MM-DD format"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "description": "The agreed next action"
+                  },
+                  "escalationRequired": {
+                    "type": "boolean",
+                    "description": "True if the outcome requires practice staff follow-up"
+                  },
+                  "escalationReason": {
+                    "type": "string",
+                    "description": "Why staff follow-up is needed"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "One-paragraph factual summary of the call"
+                  },
+                  "expectedAmount": {
+                    "type": "string",
+                    "description": "The amount the practice expected on this claim, when discussed"
+                  },
+                  "shortfallAmount": {
+                    "type": "string",
+                    "description": "Expected minus paid, when the payment is short"
+                  },
+                  "shortfallReason": {
+                    "type": "string",
+                    "description": "Why the payment is short: reduction/remark codes, fee guide year and province, and whether the difference is patient-payable or appealable"
+                  }
+                },
+                "required": [
+                  "claimNumber",
+                  "outcome"
+                ]
+              }
+            }
+          },
+          "endCallPhrases": [
+            "goodbye",
+            "we will try again shortly",
+            "have a great day goodbye"
+          ]
         },
         "assistantDestinations": [
           {
             "type": "assistant",
             "assistantName": "Escalation_Closer",
-            "message": "I need to flag this for our clinical team who will follow up with the documentation directly.",
-            "description": "Hand off to Escalation_Closer ONLY when carrier requests x-rays or radiographic documentation. Trigger immediately on detection — do not commit to any submission timeline first."
+            "message": "I'm connecting you with our escalation team to handle the documentation request.",
+            "description": "Hand off to Escalation_Closer ONLY if carrier requires radiographic or clinical documentation. Include: documentation type, submission method, destination. Escalation_Closer confirms and closes."
           },
           {
             "type": "assistant",
             "assistantName": "Resolution_Closer",
-            "message": "Let me confirm everything we have discussed before we close this call.",
-            "description": "Hand off to Resolution_Closer when any other outcome has been determined: CLAIM_NOT_RECEIVED, NOT_COVERED, MAX_BENEFITS_REACHED, NEED_INFORMATION (non-xray), PROCESSING, CLAIM_PAID, CLAIM_DENIED, UNCLEAR. Pass the outcome code and all collected details."
+            "message": "Let me confirm everything we discussed.",
+            "description": "Hand off to Resolution_Closer for all other outcomes. Include context: outcome type, extracted facts, reference number, rep name, next action. Resolution_Closer confirms and closes."
+          },
+          {
+            "type": "assistant",
+            "assistantName": "IVR_Navigator",
+            "message": "",
+            "description": "Hand off to IVR_Navigator if a recorded phone menu is playing (instructions to press numbers or enter digits). IVR_Navigator navigates menus with keypad tones; Claims_Agent cannot."
+          },
+          {
+            "type": "assistant",
+            "assistantName": "Hold_Sentinel",
+            "message": "",
+            "description": "Hand off only for extended holds or queue transfers (hold music resumes, 'please hold while I transfer you'). Not for brief pauses."
           }
         ]
       },
@@ -96,12 +439,17 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
                 "role": "system",
-                "content": "You have been handed off from the Claims_Agent because the carrier is requesting x-rays or clinical documentation. This requires clinic staff action and cannot be resolved on this call.\n\nYOUR ONLY GOALS:\n1. Get the reference number for this call\n2. Get the representative's name\n3. Confirm exactly what documentation was requested\n4. Close the call professionally\n5. Output the structured JSON summary\n\nDo NOT commit to when documentation will be sent.\nDo NOT discuss any other claim details.\nDo NOT ask unnecessary questions.\n\nSCRIPT:\n'Thank you. Just to confirm — you need [documentation type] submitted via [method] to [destination], and the reference number for this call is [number]. Is that correct?'\n\nThen: 'Perfect. Our clinical team will review this and follow up with the documentation. Thank you for your help, [name]. Have a great day. Goodbye.'\n\nAfter the call ends, output this JSON:\n{\n  'outcome': 'NEED_INFORMATION',\n  'escalation_required': true,\n  'escalation_reason': 'xray_required',\n  'summary': 'Carrier requires radiographic documentation before adjudication.',\n  'details': '[exact documentation requested, submission method, fax/address, deadline if given]',\n  'representative_name': '[name or null]',\n  'reference_number': '[reference number or null]',\n  'next_action': 'Clinical staff must pull and submit required x-rays/documentation before claim can be processed.',\n  'follow_up_date': null\n}"
+                "content": "You have been handed off from Claims_Agent because the carrier is requesting radiographic or clinical documentation. Your job: confirm details (already mostly captured), thank the rep, and close.\n\nCLAIM REFERENCE (from Claims_Agent):\n- Claim ID: {{claim_id}}\n- Patient Token: {{patient_token}}\n- Carrier: {{insurance_carrier}}\n- DOCUMENTATION NEEDED: {{required_documentation}}\n- SUBMISSION METHOD: {{submission_method}}\n- DESTINATION: {{submission_destination}}\n- REFERENCE: {{reference_number}}\n- REP NAME: {{rep_name}}\n- DEADLINE: {{submission_deadline}}\n\nYOUR ONLY GOALS:\n1. Confirm the documentation type (Claims_Agent already collected this)\n2. Confirm submission method and destination\n3. Get reference number if Claims_Agent missed it\n4. Do NOT commit to when documentation will be submitted\n5. Close professionally and end the call\n6. Output the structured JSON summary\n\nSCRIPT (brief — target 45 seconds):\n'Just to confirm — we need [documentation type] submitted via [method] to [destination], and the reference number is [number]. Our clinical team will handle this. Thank you, [name]. Goodbye.'\n\nCALL FACTS ARE CAPTURED AUTOMATICALLY by post-call analysis. Never read JSON, field lists, or any structured summary aloud on the call.\n\nENDING THE CALL:\nTo end the call, invoke the endCall tool immediately after your final sentence. Never announce 'call ended', 'session closed', or similar - one closing sentence, then the endCall tool. If the other party keeps talking after your goodbye, do not respond - invoke endCall."
+              }
+            ],
+            "tools": [
+              {
+                "type": "endCall"
               }
             ]
           },
@@ -117,12 +465,132 @@
             "language": "en"
           },
           "maxDurationSeconds": 120,
-          "silenceTimeoutSeconds": 15,
           "endCallPhrases": [
             "goodbye",
-            "have a great day goodbye",
-            "thank you goodbye"
-          ]
+            "we will try again shortly",
+            "have a great day goodbye"
+          ],
+          "server": {
+            "url": "https://collect-rx.fly.dev/api/webhooks/vapi",
+            "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
+          },
+          "serverMessages": [
+            "end-of-call-report",
+            "status-update"
+          ],
+          "analysisPlan": {
+            "structuredDataPlan": {
+              "enabled": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "claimNumber": {
+                    "type": "string",
+                    "description": "The claim number discussed on the call, exactly as provided in the claim context"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM_NOT_RECEIVED",
+                      "CLAIM_PAID",
+                      "PARTIAL_PAYMENT",
+                      "CLAIM_DENIED",
+                      "NOT_COVERED",
+                      "MAX_BENEFITS_REACHED",
+                      "PROCESSING",
+                      "NEED_INFORMATION",
+                      "UNCLEAR"
+                    ],
+                    "description": "Final call outcome per the scenario classification"
+                  },
+                  "referenceNumber": {
+                    "type": "string",
+                    "description": "Call reference number given by the carrier representative"
+                  },
+                  "repName": {
+                    "type": "string",
+                    "description": "Name of the carrier representative"
+                  },
+                  "callbackNumber": {
+                    "type": "string",
+                    "description": "Callback or direct number provided by the representative"
+                  },
+                  "paymentAmount": {
+                    "type": "string",
+                    "description": "Payment amount if the claim was paid"
+                  },
+                  "paymentDate": {
+                    "type": "string",
+                    "description": "Date payment was issued, in YYYY-MM-DD format"
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "description": "Check number or payment reference"
+                  },
+                  "denialCode": {
+                    "type": "string",
+                    "description": "Denial code if denied or not covered"
+                  },
+                  "denialReason": {
+                    "type": "string",
+                    "description": "Denial reason as stated"
+                  },
+                  "expectedCompletionDate": {
+                    "type": "string",
+                    "description": "Expected processing completion date, in YYYY-MM-DD format"
+                  },
+                  "requiredDocumentation": {
+                    "type": "string",
+                    "description": "Documentation the carrier requires"
+                  },
+                  "submissionMethod": {
+                    "type": "string",
+                    "description": "How to submit documentation or resubmit the claim (fax, mail, portal)"
+                  },
+                  "submissionDestination": {
+                    "type": "string",
+                    "description": "Fax number, address, or portal for submission"
+                  },
+                  "submissionDeadline": {
+                    "type": "string",
+                    "description": "Deadline for submission if given, in YYYY-MM-DD format"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "description": "The agreed next action"
+                  },
+                  "escalationRequired": {
+                    "type": "boolean",
+                    "description": "True if the outcome requires practice staff follow-up"
+                  },
+                  "escalationReason": {
+                    "type": "string",
+                    "description": "Why staff follow-up is needed"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "One-paragraph factual summary of the call"
+                  },
+                  "expectedAmount": {
+                    "type": "string",
+                    "description": "The amount the practice expected on this claim, when discussed"
+                  },
+                  "shortfallAmount": {
+                    "type": "string",
+                    "description": "Expected minus paid, when the payment is short"
+                  },
+                  "shortfallReason": {
+                    "type": "string",
+                    "description": "Why the payment is short: reduction/remark codes, fee guide year and province, and whether the difference is patient-payable or appealable"
+                  }
+                },
+                "required": [
+                  "claimNumber",
+                  "outcome"
+                ]
+              }
+            }
+          }
         },
         "assistantDestinations": []
       },
@@ -133,12 +601,17 @@
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-sonnet-4-5-20250929",
             "temperature": 0.1,
             "messages": [
               {
                 "role": "system",
-                "content": "You have been handed off from Claims_Agent with a determined outcome. Your job is to confirm everything, close the call professionally, and output the structured JSON summary.\n\nCLAIM REFERENCE:\n- Claim ID: {{claim_id}}\n- Patient Token: {{patient_token}}\n- Carrier: {{insurance_carrier}}\n- Amount: ${{amount_billed}}\n\nYOUR GOALS:\n1. Summarize what was learned in 1-2 sentences\n2. Confirm the next action with the representative\n3. Get reference number and rep name if not already collected\n4. Set a follow-up date if applicable\n5. Thank the representative and close professionally\n6. Output the structured JSON summary\n\nCLOSING SCRIPT:\n'Let me confirm: [brief summary of outcome]. My next step is [action], and we should expect [outcome] by [date if applicable]. I have your name as [name] and reference number [number]. Is there anything else on file for this claim?'\n\nThen: 'Thank you so much for your help, [name]. Have a great day. Goodbye.'\n\nAFTER CALL — OUTPUT THIS JSON EXACTLY (mandatory, every call):\n{\n  'outcome': '<CLAIM_NOT_RECEIVED | NOT_COVERED | MAX_BENEFITS_REACHED | NEED_INFORMATION | PROCESSING | CLAIM_PAID | CLAIM_DENIED | UNCLEAR>',\n  'escalation_required': <true | false>,\n  'escalation_reason': '<xray_required | docs_required | appeal_required | resubmit_required | max_attempts | null>',\n  'summary': '<one sentence describing what the carrier said>',\n  'details': '<specific details: reference numbers, payment dates, denial codes, documentation needed, expected dates, rep name>',\n  'representative_name': '<name or null>',\n  'reference_number': '<reference number or null>',\n  'next_action': '<specific action the practice needs to take>',\n  'follow_up_date': '<ISO date string for when to call back, or null if resolved>'\n}\n\nDo NOT skip this JSON output. It is mandatory on every call and triggers the backend workflow."
+                "content": "You have been handed off from Claims_Agent. Your job is to briefly confirm the next action, thank the representative, and close professionally. Do NOT re-extract information Claims_Agent already captured.\n\nCLAIM REFERENCE (from Claims_Agent):\n- Claim ID: {{claim_id}}\n- Patient Token: {{patient_token}}\n- Carrier: {{insurance_carrier}}\n- Amount: ${{amount_billed}}\n- OUTCOME (from Claims_Agent): {{extracted_outcome}}\n- REFERENCE: {{reference_number}}\n- REP NAME: {{rep_name}}\n- NEXT ACTION: {{next_action}}\n- FOLLOW_UP: {{follow_up_date}}\n\nYOUR ONLY GOALS:\n1. Confirm the next action in one sentence (do NOT ask for details — Claims_Agent got them)\n2. Thank the representative by name if you have it\n3. Close professionally and end the call\n4. End the call — facts are captured automatically by post-call analysis\n\nSCRIPT (brief — target 30 seconds):\n'Thank you for confirming that. So we'll [action]. I have your name as [name] and reference [number]. Thanks again, [name]. Have a great day.'\n\nThen: 'Goodbye.'\n\nCALL FACTS ARE CAPTURED AUTOMATICALLY by post-call analysis. Never read JSON, field lists, or any structured summary aloud on the call.\n\nDo NOT re-ask for reference numbers, rep names, or claim details. Do NOT modify the outcome or next_action — those come from Claims_Agent. Your only job is to confirm and close.\n\nENDING THE CALL:\nTo end the call, invoke the endCall tool immediately after your final sentence. Never announce 'call ended', 'session closed', or similar - one closing sentence, then the endCall tool. If the other party keeps talking after your goodbye, do not respond - invoke endCall.\n\nREFERENCE NET (blocking):\nBefore your closing sentence, check the conversation: if no reference number has been captured yet, ask exactly once: 'Before we finish, can I get a reference number for this call and your name?' Record the answer, then close. Never end the call without having made this attempt."
+              }
+            ],
+            "tools": [
+              {
+                "type": "endCall"
               }
             ]
           },
@@ -154,12 +627,132 @@
             "language": "en"
           },
           "maxDurationSeconds": 120,
-          "silenceTimeoutSeconds": 15,
           "endCallPhrases": [
             "goodbye",
-            "have a great day goodbye",
-            "thank you goodbye"
-          ]
+            "we will try again shortly",
+            "have a great day goodbye"
+          ],
+          "server": {
+            "url": "https://collect-rx.fly.dev/api/webhooks/vapi",
+            "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
+          },
+          "serverMessages": [
+            "end-of-call-report",
+            "status-update"
+          ],
+          "analysisPlan": {
+            "structuredDataPlan": {
+              "enabled": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "claimNumber": {
+                    "type": "string",
+                    "description": "The claim number discussed on the call, exactly as provided in the claim context"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM_NOT_RECEIVED",
+                      "CLAIM_PAID",
+                      "PARTIAL_PAYMENT",
+                      "CLAIM_DENIED",
+                      "NOT_COVERED",
+                      "MAX_BENEFITS_REACHED",
+                      "PROCESSING",
+                      "NEED_INFORMATION",
+                      "UNCLEAR"
+                    ],
+                    "description": "Final call outcome per the scenario classification"
+                  },
+                  "referenceNumber": {
+                    "type": "string",
+                    "description": "Call reference number given by the carrier representative"
+                  },
+                  "repName": {
+                    "type": "string",
+                    "description": "Name of the carrier representative"
+                  },
+                  "callbackNumber": {
+                    "type": "string",
+                    "description": "Callback or direct number provided by the representative"
+                  },
+                  "paymentAmount": {
+                    "type": "string",
+                    "description": "Payment amount if the claim was paid"
+                  },
+                  "paymentDate": {
+                    "type": "string",
+                    "description": "Date payment was issued, in YYYY-MM-DD format"
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "description": "Check number or payment reference"
+                  },
+                  "denialCode": {
+                    "type": "string",
+                    "description": "Denial code if denied or not covered"
+                  },
+                  "denialReason": {
+                    "type": "string",
+                    "description": "Denial reason as stated"
+                  },
+                  "expectedCompletionDate": {
+                    "type": "string",
+                    "description": "Expected processing completion date, in YYYY-MM-DD format"
+                  },
+                  "requiredDocumentation": {
+                    "type": "string",
+                    "description": "Documentation the carrier requires"
+                  },
+                  "submissionMethod": {
+                    "type": "string",
+                    "description": "How to submit documentation or resubmit the claim (fax, mail, portal)"
+                  },
+                  "submissionDestination": {
+                    "type": "string",
+                    "description": "Fax number, address, or portal for submission"
+                  },
+                  "submissionDeadline": {
+                    "type": "string",
+                    "description": "Deadline for submission if given, in YYYY-MM-DD format"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "description": "The agreed next action"
+                  },
+                  "escalationRequired": {
+                    "type": "boolean",
+                    "description": "True if the outcome requires practice staff follow-up"
+                  },
+                  "escalationReason": {
+                    "type": "string",
+                    "description": "Why staff follow-up is needed"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "One-paragraph factual summary of the call"
+                  },
+                  "expectedAmount": {
+                    "type": "string",
+                    "description": "The amount the practice expected on this claim, when discussed"
+                  },
+                  "shortfallAmount": {
+                    "type": "string",
+                    "description": "Expected minus paid, when the payment is short"
+                  },
+                  "shortfallReason": {
+                    "type": "string",
+                    "description": "Why the payment is short: reduction/remark codes, fee guide year and province, and whether the difference is patient-payable or appealable"
+                  }
+                },
+                "required": [
+                  "claimNumber",
+                  "outcome"
+                ]
+              }
+            }
+          }
         },
         "assistantDestinations": []
       }

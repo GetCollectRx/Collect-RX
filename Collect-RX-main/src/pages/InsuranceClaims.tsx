@@ -19,14 +19,15 @@ import {
   TableContainer, Table, Thead, Tbody, Th, Tr, Td, TableEmpty, Badge,
 } from '../components/ui'
 
-type ClaimsTab = 'all' | 'queue' | 'blocked' | 'human'
+type ClaimsTab = 'all' | 'queue' | 'blocked' | 'human' | 'denials'
 
-const VALID_TABS = new Set<ClaimsTab>(['all', 'queue', 'blocked', 'human'])
+const VALID_TABS = new Set<ClaimsTab>(['all', 'queue', 'blocked', 'human', 'denials'])
 
 const TAB_ITEMS: { id: ClaimsTab; label: string }[] = [
   { id: 'all', label: 'All claims' },
   { id: 'queue', label: 'Priority queue' },
   { id: 'blocked', label: 'Blocked gates' },
+  { id: 'denials', label: 'Denials & docs' },
   { id: 'human', label: 'Needs human' },
 ]
 
@@ -79,6 +80,20 @@ interface GateRow {
   recoveryRoute: string | null
 }
 
+interface DenialInboxRow {
+  id: string
+  title: string
+  detail: string | null
+  claimId: string
+  claim: {
+    claimNumber: string
+    carrierId: string
+    outstandingAmount: string | number
+    denialReasonCode: string | null
+    appealDeadline: string | null
+  }
+}
+
 function fmtMoney(v: string | number) {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(v))
 }
@@ -118,6 +133,7 @@ export default function InsuranceClaims() {
   const [claims, setClaims] = useState<InsuranceClaimRow[]>([])
   const [queueItems, setQueueItems] = useState<WorkItemRow[]>([])
   const [gates, setGates] = useState<GateRow[]>([])
+  const [denialInbox, setDenialInbox] = useState<DenialInboxRow[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -140,6 +156,17 @@ export default function InsuranceClaims() {
       setSearchParams({ tab: next })
     }
   }
+
+  // Shared-axis slide: content enters from the side you're moving toward.
+  // Direction is captured as state at the moment the tab changes (adjust-
+  // during-render pattern) so it survives the loading unmount/remount.
+  const [slide, setSlide] = useState<{ tab: ClaimsTab; dir: 'fwd' | 'back' }>({ tab, dir: 'fwd' })
+  if (slide.tab !== tab) {
+    const prevIndex = TAB_ITEMS.findIndex((t) => t.id === slide.tab)
+    const nextIndex = TAB_ITEMS.findIndex((t) => t.id === tab)
+    setSlide({ tab, dir: nextIndex >= prevIndex ? 'fwd' : 'back' })
+  }
+  const slideDir = slide.dir
 
   const loadClaims = useCallback(() => {
     if (!practiceId) return
@@ -195,12 +222,23 @@ export default function InsuranceClaims() {
       .finally(() => setLoading(false))
   }, [practiceId])
 
+  const loadDenials = useCallback(() => {
+    if (!practiceId) return
+    setLoading(true)
+    setError(null)
+    apiFetchJson<{ success: boolean; data: DenialInboxRow[] }>('/api/insurance/denials')
+      .then((res) => setDenialInbox(res.data ?? []))
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false))
+  }, [practiceId])
+
   useEffect(() => {
     if (!canFetch) return
     if (tab === 'queue') loadQueue()
     else if (tab === 'blocked') loadGates()
+    else if (tab === 'denials') loadDenials()
     else loadClaims()
-  }, [canFetch, tab, loadClaims, loadQueue, loadGates])
+  }, [canFetch, tab, loadClaims, loadQueue, loadGates, loadDenials])
 
   const syncQueue = async () => {
     setSyncing(true)
@@ -285,9 +323,11 @@ export default function InsuranceClaims() {
       ? 'Open claims ranked by dollars at risk, aging, and carrier denial risk.'
       : tab === 'blocked'
         ? 'Practice gates blocking carrier calls — complete in PMS, then mark ready.'
-        : tab === 'human'
-          ? 'Claims escalated for staff review before the next carrier call.'
-          : 'Open carrier claims, recovery routes, and call outcomes — ranked by priority.'
+        : tab === 'denials'
+          ? 'CSV-imported denials and documentation recovery — attest evidence and log carrier submissions.'
+          : tab === 'human'
+            ? 'Claims escalated for staff review before the next carrier call.'
+            : 'Open carrier claims, recovery routes, and call outcomes — ranked by priority.'
 
   return (
     <DataState loading={pageBusy(loading)} error={pageError(error)}>
@@ -320,6 +360,7 @@ export default function InsuranceClaims() {
 
         <div className="p-6 space-y-5 max-w-6xl">
           <SubscriptionUsageCard compact />
+          <div key={tab} className={`crx-tab-panel crx-tab-panel--${slideDir} space-y-5`}>
           {callError && (
             <p className="text-sm text-red-600 dark:text-red-400" role="alert">{callError}</p>
           )}
@@ -413,7 +454,15 @@ export default function InsuranceClaims() {
                   </Thead>
                   <Tbody>
                     {claims.length === 0 ? (
-                      <TableEmpty colSpan={10} message={tab === 'human' ? 'No escalated claims right now.' : 'No claims match these filters.'} />
+                      <TableEmpty
+                        colSpan={10}
+                        message={tab === 'human' ? 'No escalated claims right now.' : 'No claims match these filters.'}
+                        action={
+                          tab === 'all' ? (
+                            <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+                          ) : undefined
+                        }
+                      />
                     ) : (
                       claims.map((c) => (
                         <Tr key={c.id} highlight={c.daysOutstanding > 90}>
@@ -513,7 +562,13 @@ export default function InsuranceClaims() {
                   </Thead>
                   <Tbody>
                     {queueItems.length === 0 ? (
-                      <TableEmpty colSpan={8} message="Queue is empty — run Refresh from sources after a PMS import." />
+                      <TableEmpty
+                        colSpan={8}
+                        message="Queue is empty — import claims to start carrier follow-up."
+                        action={
+                          <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+                        }
+                      />
                     ) : (
                       queueItems.map((row) => {
                         const { label, color } = workQueuePriorityLabel(row.rankScore)
@@ -658,6 +713,57 @@ export default function InsuranceClaims() {
               </TableContainer>
             </>
           )}
+
+          {tab === 'denials' && (
+            <TableContainer>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Claim</Th>
+                    <Th>Carrier</Th>
+                    <Th>Denial</Th>
+                    <Th align="right">Outstanding</Th>
+                    <Th>Appeal deadline</Th>
+                    <Th />
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {denialInbox.length === 0 ? (
+                    <TableEmpty colSpan={6} message="No open denial or documentation recovery items." />
+                  ) : (
+                    denialInbox.map((row) => (
+                      <Tr key={row.id}>
+                        <Td bold>
+                          <Link to={`/insurance/${row.claimId}`} className="text-crx-600 underline font-mono text-xs">
+                            {row.claim.claimNumber}
+                          </Link>
+                        </Td>
+                        <Td>{CARRIER_LABELS[row.claim.carrierId] ?? row.claim.carrierId}</Td>
+                        <Td>
+                          <p className="text-sm font-medium">{row.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {row.claim.denialReasonCode ?? row.detail ?? 'Review required'}
+                          </p>
+                        </Td>
+                        <Td align="right" bold>{fmtMoney(row.claim.outstandingAmount)}</Td>
+                        <Td muted className="text-xs">
+                          {row.claim.appealDeadline
+                            ? new Date(row.claim.appealDeadline).toLocaleDateString()
+                            : '—'}
+                        </Td>
+                        <Td>
+                          <Link to={`/insurance/${row.claimId}`}>
+                            <Button variant="ghost" size="sm">Open</Button>
+                          </Link>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          )}
+          </div>
         </div>
       </div>
     </DataState>

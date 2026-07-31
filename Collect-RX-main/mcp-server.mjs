@@ -65,7 +65,7 @@ async function api(method, path, body = null) {
   const json = await res.json();
 
   if (!res.ok) {
-    throw new Error(json.error || `API error ${res.status}`);
+    throw new Error(json.error || json.message || `API error ${res.status}`);
   }
   return json;
 }
@@ -100,8 +100,8 @@ const TOOLS = [
       type: "object",
       properties: {
         practice_id: {
-          type: "number",
-          description: "Practice ID to run calls for. Omit to use default practice.",
+          type: "string",
+          description: "Practice UUID to run calls for. Omit to use default practice.",
         },
       },
     },
@@ -233,8 +233,8 @@ const TOOLS = [
       required: ["practice_id"],
       properties: {
         practice_id: {
-          type: "number",
-          description: "The practice ID to get carrier stats for",
+          type: "string",
+          description: "Practice UUID (from list_practices) to get carrier stats for",
         },
       },
     },
@@ -257,8 +257,8 @@ const TOOLS = [
       required: ["practice_id"],
       properties: {
         practice_id: {
-          type: "number",
-          description: "The practice ID",
+          type: "string",
+          description: "Practice UUID (from list_practices)",
         },
       },
     },
@@ -272,8 +272,8 @@ const TOOLS = [
       required: ["practice_id", "updates"],
       properties: {
         practice_id: {
-          type: "number",
-          description: "The practice ID",
+          type: "string",
+          description: "Practice UUID (from list_practices)",
         },
         updates: {
           type: "object",
@@ -349,18 +349,22 @@ async function handleTool(name, args) {
       return JSON.stringify(data.data, null, 2);
     }
 
-    // Practices
+    // Practices (platform_dev uses /api/admin/* — /api/practices requires practice context)
     case "list_practices": {
-      const data = await api("GET", "/api/practices");
-      return JSON.stringify(data.practices, null, 2);
+      const data = await api("GET", "/api/admin/practices");
+      return JSON.stringify(data.data, null, 2);
     }
     case "get_practice": {
-      const data = await api("GET", `/api/practices/${args.practice_id}`);
-      return JSON.stringify(data, null, 2);
+      const data = await api("GET", `/api/admin/practices/${args.practice_id}`);
+      return JSON.stringify(data.data, null, 2);
     }
     case "update_practice": {
-      const data = await api("PATCH", `/api/practices/${args.practice_id}`, args.updates);
-      return `Practice updated:\n${JSON.stringify(data.practice, null, 2)}`;
+      const data = await api(
+        "PUT",
+        `/api/admin/practices/${args.practice_id}/settings`,
+        args.updates
+      );
+      return `Practice updated:\n${JSON.stringify(data.data, null, 2)}`;
     }
 
     default:

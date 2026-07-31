@@ -37,6 +37,7 @@ const EXTRA_CLIENT_PATHS = [
 const SERVER_PREFIXES = [
   '/api/auth/',
   '/api/billing/',
+  '/api/gocardless/',
   '/api/stripe/',
   '/api/insurance/',
   '/api/calls/',
@@ -52,6 +53,9 @@ const SERVER_PREFIXES = [
   '/api/queue/',
   '/api/dashboard/',
   '/api/admin/',
+  '/api/connector/',
+  '/api/connector/writeback-pending',
+  '/api/connector/writeback-ack',
   '/api/cdcp/',
   '/api/work-queue/',
   '/api/pms/',
@@ -73,6 +77,8 @@ const SERVER_PREFIXES = [
 const SERVER_EXTRA = [
   /^\/api\/balances$/,
   /^\/api\/balances\//,
+  /^\/api\/campaigns$/,
+  /^\/api\/campaigns\//,
   /^\/api\/outreach$/,
   /^\/api\/outreach\//,
   /^\/api\/pay\/[^/]+$/,

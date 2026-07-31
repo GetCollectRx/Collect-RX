@@ -1,5 +1,7 @@
 # CollectRx — Product Requirements Documents
 
+> **Retired copy (2026-07-14).** Canonical PRDs live in [`Collect-RX-main/docs/prd/`](../Collect-RX-main/docs/prd/README.md). This folder may still name a historical pilot partner; treat those names as obsolete. Product is multi-tenant **Practice→Insurance** only (patients are claim subjects, not payers). See [`docs/product/MVP-SCOPE.md`](../docs/product/MVP-SCOPE.md).
+
 Product requirements for every build phase. These are the source of truth — Notion links here.
 
 ## Phase Index

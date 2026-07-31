@@ -6,16 +6,15 @@
 #
 # Process groups:
 # app - serves HTTP traffic, autostop/autostart, min 1 running.
-# worker - background job/queue worker (parity with Railway's
-# collectrx-worker service / Dockerfile.worker), runs
+# worker - background job/queue worker (Dockerfile.worker), runs
 # `npm run worker` (same BullMQ entrypoint). Always on. Not
 # referenced in [http_service].processes so autostop does not
 # apply to it.
 #
 # Redis: app and worker share one REDIS_URL (BullMQ requires producer and
-# consumer on the same Redis instance). This matches Railway's architecture
-# per docs/adr/0002-background-jobs-bullmq-redis.md. There is no separate
-# dedicated worker Redis on either platform, and none is needed here.
+# consumer on the same Redis instance) per
+# docs/adr/0002-background-jobs-bullmq-redis.md. There is no separate
+# dedicated worker Redis, and none is needed here.
 
 app = 'collect-rx'
 primary_region = 'yyz'
@@ -23,8 +22,8 @@ primary_region = 'yyz'
 [build]
 
 [deploy]
-# Parity with railway.toml's releaseCommand. Runs as a one-off machine
-# before the new release rolls out; a nonzero exit blocks the deploy.
+# Runs as a one-off machine before the new release rolls out; a nonzero
+# exit blocks the deploy.
 release_command = 'npx prisma migrate deploy'
 
 [processes]
@@ -44,7 +43,7 @@ interval = '15s'
 timeout = '10s'
 grace_period = '30s'
 method = 'GET'
-path = '/api/health'
+path = '/api/health/ready'
 
 [[vm]]
 processes = ['app']

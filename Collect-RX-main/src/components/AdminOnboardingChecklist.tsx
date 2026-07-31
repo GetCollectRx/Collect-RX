@@ -4,28 +4,28 @@ import { Card, CardHeader } from './ui'
 const STEPS = [
   {
     id: 'import',
-    title: 'Import balances',
-    body: 'Set your PMS under Practice Settings, then upload a claim export under Admin → Sync ops (or use the AbelDent desktop connector). Fix row errors until validation passes.',
+    title: 'Import outstanding claims',
+    body: 'Go to Import CSV and upload an export from your PMS — any system works. Claims land in Insurance → Queue right away, no agent required.',
+  },
+  {
+    id: 'agent',
+    title: 'Optional: connect a sync agent',
+    body: 'For AbelDent practices that would rather not export manually: mint a connector token in Admin → Sync ops and install the CollectRx desktop agent to push aging/AR on a schedule. Every other PMS uses CSV import as the ongoing path, not a fallback.',
   },
   {
     id: 'verify',
-    title: 'Verify Patient A/R',
-    body: 'Open Patient A/R: confirm amounts, patients, and carrier fields. Adjust Admin carrier blocks if needed.',
+    title: 'Verify insurance queue',
+    body: 'Open Insurance → Queue: confirm outstanding claims imported correctly. Adjust Admin carrier blocks if needed.',
   },
   {
     id: 'integrations',
     title: 'Complete integrations',
-    body: 'In Admin → Integrations, work through SendGrid, Twilio, Stripe Connect, and Vapi until your go-live checklist is green.',
-  },
-  {
-    id: 'pay',
-    title: 'Test a payment link',
-    body: 'From Patient A/R, create a payment link and run a Stripe test card flow in test mode before going live.',
+    body: 'In Admin → Integrations, work through SendGrid, Twilio, Stripe Billing (practice plan), and Vapi until your go-live checklist is green.',
   },
   {
     id: 'live',
     title: 'Go live',
-    body: 'Switch Stripe to live when ready; confirm production webhooks and reminder schedule (see ops runbooks).',
+    body: 'Enable carrier calls when integrations are green. Re-import CSV (or let the sync agent push) on whatever cadence fits your practice.',
   },
 ] as const
 
@@ -67,7 +67,7 @@ export function AdminOnboardingChecklist({ practiceId }: { practiceId: string | 
     <Card>
       <CardHeader
         title="Onboarding checklist"
-        subtitle="New practice path: import → verify → go live. Checked state is stored in this browser only."
+        subtitle="CSV-first path: import claims → verify queue → go live. A sync agent is optional, for AbelDent practices only. Checked state is stored in this browser only."
       />
       <div className="mb-3 text-2xs text-gray-500 dark:text-gray-400">
         {n} / {total} complete

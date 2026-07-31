@@ -47,7 +47,7 @@ export async function runDiagnosis(pkgRoot, opts = {}) {
     detail: envRun.ok
       ? `NODE_ENV=${process.env.NODE_ENV || 'development'}`
       : 'Missing or invalid required env vars',
-    fix: 'npm run check:env — fix ✗ lines in .env or Railway variables',
+    fix: 'npm run check:env — fix ✗ lines in .env or Fly secrets',
   });
 
   if (!hasDatabaseUrl()) {

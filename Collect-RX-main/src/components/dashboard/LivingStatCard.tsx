@@ -1,4 +1,5 @@
 import { useCountUp } from '../../hooks/useCountUp'
+import { RecoveryBadge, type RecoveryVerification } from '../RecoveryBadge'
 
 type Tone = 'green' | 'amber' | 'red' | 'blue'
 
@@ -16,6 +17,7 @@ type Props = {
   formatCount?: (n: number) => string
   sub?: string
   badge?: string
+  recoveryVerification?: RecoveryVerification
   tone?: Tone
   live?: boolean
   delayMs?: number
@@ -28,6 +30,7 @@ export function LivingStatCard({
   formatCount = (n) => String(n),
   sub,
   badge,
+  recoveryVerification,
   tone = 'green',
   live = false,
   delayMs = 0,
@@ -51,13 +54,18 @@ export function LivingStatCard({
         {valueText}
       </p>
       {sub && <p className="crx-sub mt-1 relative z-10">{sub}</p>}
-      {badge && (
-        <span
-          className="living-stat-badge relative z-10 mt-3 inline-block"
-          style={{ borderColor: accent, color: accent }}
-        >
-          {badge}
-        </span>
+      {(recoveryVerification || badge) && (
+        <div className="relative z-10 mt-3 flex flex-wrap items-center gap-2">
+          {recoveryVerification && <RecoveryBadge verification={recoveryVerification} />}
+          {badge && (
+            <span
+              className="living-stat-badge inline-block"
+              style={{ borderColor: accent, color: accent }}
+            >
+              {badge}
+            </span>
+          )}
+        </div>
       )}
     </article>
   )

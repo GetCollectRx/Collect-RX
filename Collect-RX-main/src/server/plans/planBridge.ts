@@ -35,6 +35,7 @@ export type PlanSummary = {
   practiceId: string;
   tier: string;
   tierName: string;
+  tierPrice: number;
   status: string;
   callsPaused: boolean;
   callsPausedReason: string | null;
@@ -86,6 +87,10 @@ export function gateBlockMessage(reason: PlanGateReason, overageRatePerMinute?: 
       return 'Your subscription payment is past due. Update billing to resume calling.';
     case 'SUBSCRIPTION_CANCELED':
       return 'Your subscription is canceled. Resubscribe to resume calling.';
+    case 'COGS_BREAKER_PAUSED':
+      return 'Calling is paused for this billing period — usage far exceeded your plan. Contact support to review or upgrade.';
+    case 'BILLING_MISCONFIGURED':
+      return 'Calling is paused — your billing setup needs attention. Contact support@collectrx.ca.';
     default:
       return '';
   }
@@ -115,6 +120,7 @@ export async function getPlanSummary(practiceId: string, cycleEndsAt?: Date | nu
     practiceId,
     tier: practice.billingTier,
     tierName: tier.name,
+    tierPrice: tier.price,
     status: practice.subscriptionStatus ?? (trialActive ? 'trial' : 'active'),
     callsPaused: practice.callsPaused,
     callsPausedReason: practice.callsPausedReason,
@@ -155,6 +161,16 @@ export function computeUsageAlerts(summary: PlanSummary): UsageAlert[] {
       level: 'critical',
       code: 'subscription_cancelled',
       message: 'Subscription canceled — calls are paused. Subscribe again to resume.',
+    });
+    return alerts;
+  }
+
+  if (summary.callsPausedReason === 'cogs_breaker') {
+    alerts.push({
+      level: 'critical',
+      code: 'cogs_breaker',
+      message:
+        'Calls are paused — usage this period far exceeded your plan. Contact support to review or upgrade.',
     });
     return alerts;
   }
@@ -229,7 +245,9 @@ export async function recordCallUsage(opts: {
 }
 
 /** Practice confirms overage charges from the Usage tab — resumes calling. */
-export async function confirmOverage(practiceId: string): Promise<{ status: 'resumed' | 'not_paused' }> {
+export async function confirmOverage(
+  practiceId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
   return confirmOverageUsage(prisma, practiceId);
 }
 

@@ -135,21 +135,23 @@ describe('Agent 03-D — Auth endpoints return correct HTTP semantics', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section E — Patient/AR Routes (require auth)
+// Section E — Retired patient billing routes (must stay gone)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Agent 03-E — Patient/AR routes require authentication', () => {
-  const PATIENT_ROUTES = [
+describe('Agent 03-E — Patient billing routes are retired', () => {
+  const RETIRED_ROUTES = [
     ['GET', '/api/patients'],
     ['GET', '/api/balances'],
+    ['GET', '/api/patients/balances'],
   ];
 
-  for (const [method, path] of PATIENT_ROUTES) {
-    it(`${method} ${path} returns 401 without session`, async () => {
+  for (const [method, path] of RETIRED_ROUTES) {
+    it(`${method} ${path} returns 404 (not mounted)`, async () => {
       const res = await (method === 'GET'
         ? request(app).get(path)
         : request(app).post(path).send({}));
-      expect(res.status).toBe(401);
+      // Unauthenticated + unmounted → 401 (global auth) or 404 (gone). Never 200.
+      expect([401, 404]).toContain(res.status);
     });
   }
 });

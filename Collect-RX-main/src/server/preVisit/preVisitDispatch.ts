@@ -6,6 +6,8 @@ import {
   checkCarrierAuthorizationGate,
   checkCarrierBlock,
   CARRIER_CONFIGS,
+  isWithinCallWindow,
+  nextCallWindowStart,
 } from '../../carriers/adapter.js';
 import { initiatePreVisitCall } from '../../vapi/client.js';
 import { piiVault } from '../../pii-vault.js';
@@ -16,11 +18,16 @@ import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.j
 
 const MAX_PRE_VISIT_ATTEMPTS = 3;
 
+export type PreVisitDispatchResult =
+  | { vapiCallId: string }
+  | { skipped: true; reason: string }
+  | { deferred: true; reason: 'outside_call_window'; retryAt: Date };
+
 export async function dispatchPreVisitCall(
   prisma: PrismaClient,
   jobType: 'PRE_VISIT_ELIGIBILITY' | 'PRE_VISIT_CDCP_PREDET',
   payload: PreVisitJobPayload,
-): Promise<{ vapiCallId: string } | { skipped: true; reason: string }> {
+): Promise<PreVisitDispatchResult> {
   const verification = await prisma.appointmentVerification.findUnique({
     where: { id: payload.appointmentVerificationId },
   });
@@ -50,13 +57,22 @@ export async function dispatchPreVisitCall(
     return { skipped: true, reason: planGate.reason ?? 'plan_gate' };
   }
 
-  let phi;
-  const phiResult = piiVault.detokenize(payload.patientToken, 'pre-visit-dispatch');
+  if (!isWithinCallWindow()) {
+    return {
+      deferred: true,
+      reason: 'outside_call_window',
+      retryAt: nextCallWindowStart(),
+    };
+  }
+
+  const phiResult = piiVault.detokenize(payload.patientToken, 'pre-visit-dispatch', {
+    practiceId: payload.practiceId,
+  });
   if (!phiResult.success || !phiResult.phi) {
     console.error('[preVisitDispatch] detokenize failed:', phiResult.error ?? 'unknown');
     return { skipped: true, reason: 'detokenize_failed' };
   }
-  phi = phiResult.phi;
+  const phi = phiResult.phi;
 
   const settings = await getPracticeSettings(prisma, payload.practiceId);
   const practice = await prisma.practice.findUnique({

@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { getArQueue } from './arQueue.js';
 
 const RULES_EVERY_MS = 60_000;
+const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
 
 /**
  * Idempotent: clears existing repeatables for this queue, then registers RULES + REMINDER.
@@ -23,6 +24,7 @@ export async function registerArJobSchedulers(): Promise<void> {
   }
 
   await q.add('RULES_TICK', {}, { repeat: { every: RULES_EVERY_MS } });
+  await q.add('TRIAGE_CREDENTIAL_HEALTH', {}, { repeat: { pattern: TRIAGE_CREDENTIAL_HEALTH_CRON } });
 
   // REMINDER_CYCLE (patient SMS/email) intentionally not registered — insurance-only product.
 
@@ -60,7 +62,7 @@ export async function registerArJobSchedulers(): Promise<void> {
   }
 
   console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms` +
+    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, TRIAGE_CREDENTIAL_HEALTH daily` +
       (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
       (process.env.MARKETING_LOOP_ENABLED !== '0'
         ? `, MARKETING every ${marketingEveryMs}ms` +

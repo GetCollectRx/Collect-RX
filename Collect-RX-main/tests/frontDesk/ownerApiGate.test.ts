@@ -42,13 +42,21 @@ describe.skipIf(!dbReady)('front_desk API gate', () => {
       request(app).get('/api/calls').set('Cookie', desk),
       request(app).get('/api/carriers/health').set('Cookie', desk),
       request(app).get('/api/queue/carrier-order').set('Cookie', desk),
-      request(app).get('/api/balances').set('Cookie', desk),
-      request(app).get('/api/patients/balances').set('Cookie', desk),
     ]);
 
     for (const res of blocked) {
       expect(res.status).toBe(403);
       expect(res.body.error).toMatch(/practice owner/i);
+    }
+
+    // Patient billing APIs are retired — may 404/410 if unmounted, or 403 if hit behind the owner gate.
+    const retired = await Promise.all([
+      request(app).get('/api/balances').set('Cookie', desk),
+      request(app).get('/api/patients/balances').set('Cookie', desk),
+    ]);
+    for (const res of retired) {
+      expect([403, 404, 405, 410]).toContain(res.status);
+      expect(res.status).not.toBe(200);
     }
 
     const deskQueue = await request(app)

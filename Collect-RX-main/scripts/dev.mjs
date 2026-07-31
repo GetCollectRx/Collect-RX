@@ -2,7 +2,7 @@
 /**
  * Dev orchestrator:
  * - DEV_API_TARGET=local (default): free ports, local Express + Vite (aligned proxy).
- * - DEV_API_TARGET=remote: Vite only; /api proxied to production (collectrx.ca / Railway).
+ * - DEV_API_TARGET=remote: Vite only; /api proxied to production (collectrx.ca / Fly).
  */
 import { spawn } from 'node:child_process';
 import {
@@ -14,7 +14,7 @@ import {
 } from './free-dev-ports.mjs';
 import { ensureLocalRedis } from './ensure-dev-services.mjs';
 
-const COLLECTRX_DEFAULT_REMOTE_API = 'https://www.collectrx.ca';
+const COLLECTRX_DEFAULT_REMOTE_API = 'https://collect-rx.fly.dev';
 
 function normalizeOrigin(raw) {
   const t = String(raw || '').trim().replace(/\/$/, '');
@@ -71,7 +71,7 @@ async function main() {
 
   console.log('');
   console.log('[dev] ─────────────────────────────────────────');
-  console.log('[dev] Mode: production API (collectrx.ca stack)');
+  console.log('[dev] Mode: production API (Fly — collect-rx.fly.dev)');
   console.log(`[dev] App (local UI):         http://localhost:${vitePort}/`);
   console.log(`[dev] Public site (patients): ${publicSite}`);
   console.log(`[dev] Vite /api proxy →         ${remoteApi}`);

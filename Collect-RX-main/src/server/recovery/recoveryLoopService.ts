@@ -14,6 +14,7 @@ import {
   routeForPaymentTraceRecall,
 } from './claimRouter.js';
 import { shouldSupersedeBlockingGate, shouldSupersedeOpenAction, isPracticeGateHoldDecision } from './gateSupersession.js';
+import { getCarrierHoldStats } from './holdLedger.js';
 import type { RecoveryDecision } from './types.js';
 
 export interface ApplyRecoveryAfterCallParams {
@@ -170,7 +171,7 @@ export async function applyRecoveryAfterCall(
 
   const procedureCode = primaryProcedureFromTreatmentCodes(claim.treatmentCodes);
 
-  const [blockingGate, cdcpOpen] = await Promise.all([
+  const [blockingGate, cdcpOpen, priorEngagedAttempts, carrierHoldStats] = await Promise.all([
     hasBlockingPracticeGate(prisma, claim.id),
     hasOpenCdcpCaseForClaim(prisma, {
       practiceId: claim.practiceId,
@@ -178,7 +179,19 @@ export async function applyRecoveryAfterCall(
       claimRef: claim.claimNumber,
       procedureCode,
     }),
+    prisma.callAttempt.count({
+      where: {
+        claimId: claim.id,
+        OR: [{ referenceNumber: { not: null } }, { repName: { not: null } }],
+      },
+    }),
+    getCarrierHoldStats(prisma, claim.practiceId, claim.carrierId),
   ]);
+
+  const hasEngagementEvidence =
+    Boolean(processed.referenceNumber) ||
+    Boolean(processed.repName) ||
+    priorEngagedAttempts > 0;
 
   const decision = routeClaimRecovery({
     callOutcome: processed.outcome,
@@ -192,6 +205,8 @@ export async function applyRecoveryAfterCall(
     hasBlockingPracticeGate: blockingGate,
     hasOpenCdcpCase: cdcpOpen,
     paymentCorroborated: params.paymentCorroborated,
+    hasEngagementEvidence,
+    carrierHoldDumpRate: carrierHoldStats.dumpRate,
   });
 
   let cdcpCaseId: string | undefined;
@@ -340,16 +355,23 @@ export async function processPaymentTraceDue(prisma: PrismaClient): Promise<numb
   const _openStatus: import('@prisma/client').RecoveryActionStatus = 'OPEN';
   void _openStatus; // used only for type-checking
 
-  const lockedIds = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM claim_recovery_actions
-    WHERE action_type = 'PAYMENT_VERIFY_SYNC'
-      AND status = 'OPEN'
-      AND scheduled_recall_at <= ${now}
-      AND cleared_at IS NULL
-    ORDER BY scheduled_recall_at ASC
-    LIMIT 50
-    FOR UPDATE SKIP LOCKED
-  `;
+  // Raw SQL never receives the RLS extension's set_config (it only wraps model
+  // operations), so under FORCE RLS a bare $queryRaw silently returns zero rows.
+  // This worker legitimately crosses tenants: set the bypass flag in the same
+  // transaction as the query — set_config(..., true) is transaction-scoped.
+  const lockedIds = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`;
+    return tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM claim_recovery_actions
+      WHERE action_type = 'PAYMENT_VERIFY_SYNC'
+        AND status = 'OPEN'
+        AND scheduled_recall_at <= ${now}
+        AND cleared_at IS NULL
+      ORDER BY scheduled_recall_at ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    `;
+  });
 
   if (lockedIds.length === 0) return 0;
 

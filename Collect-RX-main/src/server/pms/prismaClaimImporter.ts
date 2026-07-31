@@ -7,6 +7,12 @@ import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportR
 // simple tokenizer that stores only a patientId string and cannot provide PHI
 // to the queue engine at call dispatch time.
 import { piiVault, type PatientPHI } from '../../pii-vault.js';
+import { runPaymentVerificationBatch } from '../recovery/paymentVerification.js';
+import { syncDenialEvidenceItems } from '../recovery/denialEvidenceService.js';
+import { detectUnderpayment, upsertUnderpaymentCase } from '../reconciliation/underpaymentDetector.js';
+import { evaluateSubmissionQuality } from '../reconciliation/submissionQualityGate.js';
+import { buildPmsT11DenialSignal, linkRecoveryActionToCdcpCase } from '../recovery/cdcpRecoveryBridge.js';
+import { upsertReconsiderationFromSignal } from '../canadianExpansion/autoReconsideration.js';
 
 export interface PrismaImportResult {
   imported: number;
@@ -35,11 +41,11 @@ function buildPatientPHI(row: NormalizedPmsClaimRow): PatientPHI {
   };
 }
 
-function patientTokenForRow(_practiceId: string, row: NormalizedPmsClaimRow): string {
+function patientTokenForRow(practiceId: string, row: NormalizedPmsClaimRow): string {
   // Tokenize full PatientPHI into the main AES-256-GCM vault so the queue engine
   // can detokenize at call dispatch time. The old services/pii-vault.ts stored only
   // a string ID and was disconnected from the queue engine — that path is removed.
-  return piiVault.tokenize(buildPatientPHI(row), 'pms-import');
+  return piiVault.tokenize(buildPatientPHI(row), 'pms-import', practiceId);
 }
 
 async function upsertInsuranceClaim(
@@ -99,6 +105,8 @@ async function upsertInsuranceClaim(
       billedAmount: row.billedAmount,
       outstandingAmount: row.outstandingAmount,
       expectedAmount: row.expectedAmount ?? undefined,
+      denialReasonCode: row.denialReasonCode ?? undefined,
+      denialDate: row.denialReasonCode ? new Date() : undefined,
       daysOutstanding,
       servicedAt: row.servicedAt,
       submittedAt: row.submittedAt,
@@ -111,11 +119,19 @@ async function upsertInsuranceClaim(
       daysOutstanding,
       billedAmount: row.billedAmount,
       carrierId,
+      // Refresh the PHI token on every re-import: staff fix missing patient
+      // data by re-importing, and the corrected PHI only reaches dispatch if
+      // the claim points at the newly tokenized entry.
+      patientToken,
       servicedAt: row.servicedAt ?? undefined,
       // Update submittedAt and treatmentCodes if the new import has them and current row doesn't
       ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
       ...(row.treatmentCodes ? { treatmentCodes: row.treatmentCodes } : {}),
       ...(row.expectedAmount != null ? { expectedAmount: row.expectedAmount } : {}),
+      ...(row.denialReasonCode ? {
+        denialReasonCode: row.denialReasonCode,
+        denialDate: new Date(),
+      } : {}),
     },
   });
 
@@ -143,13 +159,6 @@ export async function importPmsClaimsToPrisma(
     dollarsRecoveredSyncVerified: 0,
   };
 
-  const { runPaymentVerificationBatch } = await import('../recovery/paymentVerification.js');
-  const { buildPmsT11DenialSignal, linkRecoveryActionToCdcpCase } = await import(
-    '../recovery/cdcpRecoveryBridge.js'
-  );
-  const { upsertReconsiderationFromSignal } = await import(
-    '../canadianExpansion/autoReconsideration.js'
-  );
   const syncUpdates: Array<{
     claimId: string;
     previousOutstanding: number;
@@ -160,6 +169,16 @@ export async function importPmsClaimsToPrisma(
     try {
       const row = normalizePmsClaimRow(raw, importFamily);
       const carrierId = mapToCarrierId(row.carrierName);
+      if (!carrierId) {
+        result.failed += 1;
+        result.errors.push({
+          claimNumber: row.claimNumber,
+          error:
+            `Unrecognized insurance carrier ${row.carrierName ? `"${row.carrierName}"` : '(blank)'} — ` +
+            'claim not imported. Supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare.',
+        });
+        continue;
+      }
       const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId);
       if (outcome.outcome === 'skipped') {
         result.skipped += 1;
@@ -175,6 +194,64 @@ export async function importPmsClaimsToPrisma(
         const isT11 =
           row.transactionType?.toUpperCase() === 'T11' ||
           Boolean(row.denialReasonCode?.trim());
+        if (isT11) {
+          const existingAction = await prisma.claimRecoveryAction.findFirst({
+            where: {
+              claimId: outcome.claimId,
+              actionType: 'DENIAL_REVIEW',
+              status: { in: ['OPEN', 'BLOCKING'] },
+            },
+          });
+          let denialActionId = existingAction?.id ?? null;
+          if (!existingAction) {
+            const created = await prisma.claimRecoveryAction.create({
+              data: {
+                practiceId,
+                claimId: outcome.claimId,
+                actionType: 'DENIAL_REVIEW',
+                status: 'BLOCKING',
+                route: 'PRACTICE_GATE',
+                title: 'Review insurer denial',
+                detail: row.denialReasonCode ?? 'Imported denial requires practice review.',
+                metadata: {
+                  source: 'csv_import',
+                  denialReasonCode: row.denialReasonCode ?? null,
+                },
+              },
+            });
+            denialActionId = created.id;
+            await prisma.claimRecoveryEvent.create({
+              data: {
+                practiceId,
+                claimId: outcome.claimId,
+                eventType: 'DENIAL_IMPORTED_FROM_CSV',
+                metadata: { denialReasonCode: row.denialReasonCode ?? null },
+              },
+            });
+          }
+          await syncDenialEvidenceItems(prisma, {
+            practiceId,
+            claimId: outcome.claimId,
+            recoveryActionId: denialActionId,
+            denialReasonCode: row.denialReasonCode,
+            carrierId,
+            treatmentCodes: row.treatmentCodes,
+          });
+        }
+
+        if (row.insurancePaidAmount != null && row.expectedAmount != null) {
+          const candidate = detectUnderpayment({
+            expectedAmount: row.expectedAmount,
+            paidAmount: row.insurancePaidAmount,
+            reasonCode: row.denialReasonCode,
+          });
+          if (candidate) {
+            candidate.claimId = outcome.claimId;
+            await upsertUnderpaymentCase(prisma, practiceId, outcome.claimId, candidate);
+          }
+        }
+
+        await evaluateSubmissionQuality(prisma, practiceId, outcome.claimId);
         const isCdcpCarrier =
           row.carrierName.toLowerCase().includes('cdcp') ||
           row.carrierName.toLowerCase().includes('canadian dental care');

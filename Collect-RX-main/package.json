@@ -1,17 +1,17 @@
 {
   "name": "dental-ar-system",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "CollectRx — dental practice A/R execution (canonical app)",
   "author": "CollectRx",
   "repository": {
     "type": "git",
-    "url": "https://github.com/khalidegeh/Collect-RX.git"
+    "url": "https://github.com/GetCollectRx/Collect-RX.git"
   },
   "engines": {
     "node": ">=20.10.0"
   },
   "type": "module",
-  "main": "electron/main.js",
+  "main": "electron-shell/main.js",
   "scripts": {
     "postinstall": "node scripts/ensure-electron-symlink.cjs",
     "dev": "node scripts/dev.mjs",
@@ -19,12 +19,16 @@
     "dev:backend": "tsx watch src/server/index.ts",
     "dev:frontend": "vite",
     "electron": "npm run dev:electron",
-    "dev:electron": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:electron": "concurrently \"COLLECTRX_DEV_LOCAL=1 npm run dev:backend\" \"COLLECTRX_DEV_LOCAL=1 npm run dev:frontend\" \"wait-on http://localhost:5173 && env -u ELECTRON_RUN_AS_NODE COLLECTRX_DEV_LOCAL=1 electron .\"",
     "check:api": "node scripts/check-api-coverage.mjs",
     "build": "npm run db:generate && tsc && npm run check:api && vite build",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac",
-    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run build && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
+    "build:renderer:desktop": "VITE_APP_SURFACE=desktop vite build",
+    "build:win": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --win",
+    "build:mac:swift": "bash scripts/build-macos-swift.sh",
+    "install:mac:swift": "bash scripts/install-macos-swift.sh",
+    "build:mac:arm64": "env COPYFILE_DISABLE=1 npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && env COPYFILE_DISABLE=1 electron-builder --mac --arm64",
+    "build:linux": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --linux",
+    "build:desktop": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --mac --win --linux",
     "start": "tsx src/server/index.ts",
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
@@ -37,6 +41,7 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:carrier-whitelist": "tsx tests/carrier-whitelist-validation.test.ts",
     "test:agents": "vitest run tests/agents/",
     "agents": "node scripts/run-agents.mjs",
     "agents:report": "node scripts/run-agents.mjs --report",
@@ -47,6 +52,9 @@
     "diagnose:alert": "node scripts/diagnose-breakage.mjs -- --alert",
     "alert:diagnosis": "tsx scripts/send-ops-alerts.ts",
     "smoke:live": "node scripts/smoke-live.mjs",
+    "smoke:staging": "bash scripts/staging-smoke.sh",
+    "smoke:staging:product": "node scripts/staging-browser-smoke.mjs",
+    "go-live:verify": "node scripts/go-live-verify.mjs",
     "startup-scan": "node scripts/startup-scan.mjs",
     "test:smoke-map": "vitest run tests/smoke/breakage-map.smoke.test.ts",
     "e2e": "playwright test",
@@ -55,7 +63,6 @@
     "db:generate": "prisma generate",
     "db:generate:collectrx": "prisma generate",
     "db:verify-tables": "tsx scripts/verify-db-tables.ts",
-    "db:baseline-railway": "node scripts/baseline-railway-migrations.mjs",
     "db:apply-schema-drift": "node scripts/apply-schema-drift-if-needed.mjs",
     "db:inspect-schema": "tsx scripts/inspect-db-schema.ts",
     "db:migrate": "prisma migrate deploy",
@@ -64,6 +71,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx src/server/seed.ts",
     "demo:seed": "tsx scripts/seed-demo.ts",
+    "validate:logins": "node scripts/validate-logins.mjs",
     "personas:reset-passwords": "node scripts/set-persona-test-passwords.mjs",
     "db:reset": "prisma migrate reset",
     "check:env": "node scripts/check-deploy-env.mjs",
@@ -72,12 +80,15 @@
     "abeldent:discover": "node scripts/discover-schema.cjs",
     "abeldent:validate-queries": "node scripts/sync-query-builder.cjs --discovery schema-discovery.json --map schema-map.json --validate",
     "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json",
-    "ivr-research:call": "node scripts/ivr-research/research-call.cjs"
+    "ivr-research:call": "node scripts/ivr-research/research-call.cjs",
+    "vapi:squad-check": "tsx scripts/sync-vapi-squad.ts",
+    "vapi:squad-push": "tsx scripts/sync-vapi-squad.ts --push"
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@clickhouse/client": "^1.19.0",
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.3.0",
     "@prisma/client": "^5.8.0",
     "@sendgrid/eventwebhook": "^8.0.0",
@@ -87,6 +98,7 @@
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.48.0",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
@@ -99,7 +111,7 @@
     "lucide-react": "^1.17.0",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.3",
     "notebooklm-sdk": "^0.3.4",
     "pg": "^8.11.3",
     "rate-limit-redis": "^5.0.0",
@@ -107,7 +119,7 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.1",
     "stripe": "^21.0.1",
-    "tsx": "^4.7.0",
+    "tsx": "^4.23.1",
     "twilio": "^5.13.1",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0",
@@ -115,6 +127,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^9.15.0",
     "@playwright/test": "^1.51.0",
     "@storybook/addon-essentials": "^8.0.0",
@@ -122,6 +135,7 @@
     "@storybook/react-vite": "^8.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
@@ -157,16 +171,30 @@
   "build": {
     "appId": "com.collectrx.app",
     "productName": "CollectRx",
-    "afterPack": "./electron/afterPack.cjs",
-    "afterAllArtifactBuild": "./electron/afterAllArtifactBuild.cjs",
+    "icon": "electron-shell/icon.png",
+    "afterPack": "./electron-shell/afterPack.cjs",
+    "afterAllArtifactBuild": "./electron-shell/afterAllArtifactBuild.cjs",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
-      "electron/**/*",
+      "electron-shell/**/*",
       "desktop/**/*",
       "dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/config/agent-config.example.json",
+        "to": "desktop/config/agent-config.example.json"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GetCollectRx",
+        "repo": "Collect-RX"
+      }
     ],
     "mac": {
       "target": [
@@ -203,7 +231,15 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CollectRx",
-      "include": "electron/installer.nsh"
+      "include": "electron-shell/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "CollectRx <billing@collectrx.ca>"
     }
   }
 }

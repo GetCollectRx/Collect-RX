@@ -2,21 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   isDatabaseUnavailableError,
   isReasonableUnsubscribeEmail,
-  isValidPatientBalanceId,
-  isValidPublicPayToken,
-  publicPayJsonError,
+  isValidPublicUuid,
+  publicJsonError,
 } from '../src/server/publicApiHelpers.js';
 
 describe('publicApiHelpers', () => {
-  it('accepts 32-char hex pay tokens only', () => {
-    expect(isValidPublicPayToken('a'.repeat(32))).toBe(true);
-    expect(isValidPublicPayToken('nonexistent-token-for-tests')).toBe(false);
-    expect(isValidPublicPayToken('')).toBe(false);
-  });
-
-  it('validates patient balance UUID for unsubscribe', () => {
-    expect(isValidPatientBalanceId('00000000-0000-4000-8000-000000000000')).toBe(true);
-    expect(isValidPatientBalanceId('not-a-uuid')).toBe(false);
+  it('validates public UUIDs', () => {
+    expect(isValidPublicUuid('00000000-0000-4000-8000-000000000000')).toBe(true);
+    expect(isValidPublicUuid('not-a-uuid')).toBe(false);
   });
 
   it('rejects unreasonable unsubscribe emails', () => {
@@ -30,13 +23,14 @@ describe('publicApiHelpers', () => {
       name: 'PrismaClientInitializationError',
     });
     expect(isDatabaseUnavailableError(err)).toBe(true);
-    const mapped = publicPayJsonError(err);
+    const mapped = publicJsonError(err, 'Service is temporarily unavailable', 'Failed');
     expect(mapped.status).toBe(503);
     expect(mapped.body.error).toMatch(/temporarily unavailable/i);
   });
 
   it('maps other errors to 500', () => {
-    const mapped = publicPayJsonError(new Error('unexpected'));
+    const mapped = publicJsonError(new Error('unexpected'), 'unavailable', 'Failed');
     expect(mapped.status).toBe(500);
+    expect(mapped.body.error).toBe('Failed');
   });
 });

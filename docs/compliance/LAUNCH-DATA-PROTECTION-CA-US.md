@@ -24,7 +24,7 @@ Use these as your **evidence anchors** in questionnaires:
 | Topic | Where it lives |
 |-------|----------------|
 | **Encryption in transit** | TLS to Postgres enforced in prod (`databaseTls.ts`); HTTPS/HSTS/Helmet on API (`src/server/index.ts`); optional strict Node HTTPS (`tls/nodeHttpsSettings.ts`). Doc: `Collect-RX-main/docs/operations/DATA-ENCRYPTION.md`. |
-| **Encryption at rest (host)** | Your **Postgres host** (e.g. Railway) volume / TDE settings — **enable and screenshot** in vendor console; reference in DPA. |
+| **Encryption at rest (host)** | Your **Postgres host** volume / TDE settings — **enable and screenshot** in vendor console; reference in DPA. |
 | **Secrets / key separation** | Env + optional AWS SSM `SecureString` (`src/config/secrets.js`); never commit `.env`. PHI field key: `PHI_ENCRYPTION_KEY` from KMS when using `phiAtRest`. |
 | **Application-layer PHI encryption (optional)** | AES-256-GCM + audit (`src/server/crypto/phiAesGcm.ts`, `phiAtRest.ts`, `phiCryptoAudit.ts`). |
 | **PHI minimization for voice** | PII vault tokenization (`src/services/pii-vault.ts`); security audit Phase 0 (`Collect-RX-main/docs/audit/security-audit.md`). |

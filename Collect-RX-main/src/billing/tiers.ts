@@ -2,9 +2,9 @@
  * CollectRx Billing — Tier Definitions
  *
  * Real cost per minute delivered: ~$0.115
- * (Vapi $0.05 + GPT-5 Mini $0.02 + Deepgram Nova 3 $0.01 + Tara TTS $0.02 + Twilio $0.015 + Railway $0.01)
+ * (Vapi $0.05 + GPT-5 Mini $0.02 + Deepgram Nova 3 $0.01 + Tara TTS $0.02 + Twilio $0.015 + hosting $0.01)
  *
- * Pricing targets 50%+ gross margin on all paid tiers.
+ * Pricing targets ~78%+ gross margin on paid tiers at realistic usage.
  * Overage priced at $0.25/min (Core/Growth) and $0.20/min (Scale) — profitable above cost.
  *
  * Single source of truth for tier limits and pricing. Never hardcode these
@@ -46,52 +46,74 @@ export const TIERS: Record<BillingTier, TierConfig> = {
 
   core: {
     name: 'Core',
-    price: 599,
-    includedMinutes: 800,
+    price: 799,
+    includedMinutes: 1200,
     overageRatePerMinute: 0.25, // Cost $0.115 — $0.135 margin per overage min
     dailyCapMinutes: 100,
     hardStopAtLimit: false,
-    stripePriceId: process.env.STRIPE_PRICE_CORE,
+    // Legacy deployments configured STARTER/standard price envs before the
+    // core/growth/scale rename — honor them so an old env never produces a
+    // price ID that fails to map back to a minute pool.
+    stripePriceId:
+      process.env.STRIPE_PRICE_CORE ||
+      process.env.STRIPE_PRACTICE_STARTER_PRICE_ID ||
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
     stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_CORE,
-    infraCostPerMonth: 92, // 800 min x $0.115
-    stripeFeePerMonth: 17, // 0.7% Stripe Billing + 2.9% card
-    grossMargin: '82%',
+    infraCostPerMonth: 138, // 1,200 min x $0.115
+    stripeFeePerMonth: 29, // 0.7% Stripe Billing + 2.9% card
+    grossMargin: '79%',
     targetCustomer: 'Solo dentist, 1 location',
-    description: '800 minutes/month. Best for practices with 20-40 outstanding claims.',
+    description: '1,200 minutes/month. Best for practices with 20–40 outstanding claims.',
   },
 
   growth: {
     name: 'Growth',
-    price: 1299,
-    includedMinutes: 2000,
+    price: 1999,
+    includedMinutes: 2800,
     overageRatePerMinute: 0.25, // Cost $0.115 — $0.135 margin per overage min
     dailyCapMinutes: 300,
     hardStopAtLimit: false,
-    stripePriceId: process.env.STRIPE_PRICE_GROWTH,
+    stripePriceId:
+      process.env.STRIPE_PRICE_GROWTH || process.env.STRIPE_PRACTICE_PROFESSIONAL_PRICE_ID,
     stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_GROWTH,
-    infraCostPerMonth: 230, // 2000 min x $0.115
-    stripeFeePerMonth: 36,
+    infraCostPerMonth: 322, // 2,800 min x $0.115
+    stripeFeePerMonth: 72,
     grossMargin: '80%',
-    targetCustomer: '2-3 dentist practice',
-    description: '2,000 minutes/month. Best for practices with 50-100 outstanding claims.',
+    targetCustomer: '2–3 dentist practice',
+    description: '2,800 minutes/month. Best for practices with 50–100 outstanding claims.',
   },
 
   scale: {
     name: 'Scale',
-    price: 1499,
-    includedMinutes: 7000,
+    price: 2499,
+    includedMinutes: 4000,
     overageRatePerMinute: 0.20, // Slight discount for top tier. Still profitable.
     dailyCapMinutes: null, // No daily cap on Scale
     hardStopAtLimit: false,
-    stripePriceId: process.env.STRIPE_PRICE_SCALE,
+    stripePriceId:
+      process.env.STRIPE_PRICE_SCALE || process.env.STRIPE_PRACTICE_ENTERPRISE_PRICE_ID,
     stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_SCALE,
-    infraCostPerMonth: 805, // 7000 min x $0.115
-    stripeFeePerMonth: 42,
-    grossMargin: '43%',
+    infraCostPerMonth: 460, // 4,000 min x $0.115
+    stripeFeePerMonth: 90,
+    grossMargin: '78%',
     targetCustomer: 'Group practice, DSO',
-    description: '7,000 minutes/month. Best for multi-location or high-volume practices.',
+    description: '4,000 minutes/month. Best for multi-location or high-volume practices.',
   },
 };
+
+/** Trial expiry for a practice created now — every new signup must get one or the trial never ends. */
+export function trialEndDate(from = new Date()): Date {
+  return new Date(from.getTime() + (TIERS.trial.trialDays ?? 30) * 24 * 60 * 60 * 1000);
+}
+
+/** Resolve which paid tier a Stripe price ID belongs to, for syncing `practice.billingTier` from a webhook. */
+export function billingTierForStripePrice(priceId: string | null | undefined): BillingTier | null {
+  if (!priceId) return null;
+  for (const [tier, config] of Object.entries(TIERS) as [BillingTier, TierConfig][]) {
+    if (config.stripePriceId && config.stripePriceId === priceId) return tier;
+  }
+  return null;
+}
 
 // Warning thresholds — both fire, whichever comes first.
 export const WARNINGS = {
@@ -116,6 +138,16 @@ export const CARRIER_TIMEOUTS: Record<string, number> = {
   default: 30,
 };
 
+// Per-practice COGS circuit breaker. Delivery cost is metered minutes ×
+// UNIT_ECONOMICS.costPerMinute; crossing these fractions of the subscription
+// price throttles, then pauses, so losing money on a practice is structurally
+// impossible rather than statistically unlikely. Paid tiers only — trial has
+// its own hard stop.
+export const COGS_BREAKER = {
+  throttleAtPctOfPrice: 0.40, // dispatch only HIGH/URGENT priority claims
+  pauseAtPctOfPrice: 0.60, // pause all calls and alert
+};
+
 // Soft stop behavior on limit reached.
 export const OVERAGE = {
   pauseOnSoftStop: true,
@@ -132,7 +164,7 @@ export const UNIT_ECONOMICS = {
     deepgramNova3: 0.01,
     taraVoice: 0.02,
     twilio: 0.015,
-    railway: 0.01,
+    hosting: 0.01,
   },
   overageMinMargin: 0.085, // $0.20 overage (Scale) - $0.115 cost
   overageMaxMargin: 0.135, // $0.25 overage (Core/Growth) - $0.115 cost

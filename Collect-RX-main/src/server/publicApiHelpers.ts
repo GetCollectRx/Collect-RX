@@ -1,20 +1,14 @@
 /**
- * Shared guards for unauthenticated `/api/public/*` routes.
+ * Shared guards for unauthenticated `/api/public/*` routes (e.g. email unsubscribe).
+ * Patient pay / public payment-token helpers were removed with Practice→Insurance scope.
  */
-
-/** 32 hex chars — matches `randomBytes(16).toString('hex')` in balances.ts */
-export const PUBLIC_PAY_TOKEN_RE = /^[a-f0-9]{32}$/i;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function isValidPublicPayToken(token: string): boolean {
-  return PUBLIC_PAY_TOKEN_RE.test(token);
-}
-
-export function isValidPatientBalanceId(id: string): boolean {
+export function isValidPublicUuid(id: string): boolean {
   return UUID_RE.test(id);
 }
 
@@ -39,9 +33,9 @@ export function isDatabaseUnavailableError(err: unknown): boolean {
 
 export type PublicJsonError = { status: number; body: { error: string } };
 
-export function publicPayJsonError(err: unknown): PublicJsonError {
+export function publicJsonError(err: unknown, unavailableMessage: string, fallbackMessage: string): PublicJsonError {
   if (isDatabaseUnavailableError(err)) {
-    return { status: 503, body: { error: 'Payment service is temporarily unavailable' } };
+    return { status: 503, body: { error: unavailableMessage } };
   }
-  return { status: 500, body: { error: 'Failed to load payment' } };
+  return { status: 500, body: { error: fallbackMessage } };
 }

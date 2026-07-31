@@ -44,8 +44,15 @@ describe('initiateCall', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
 
-    expect(body.variables.practice_name).toBe('Downtown Dental');
-    expect(body.variables.provider_number).toBe('ON-123456');
+    // CreateCallDTO has no top-level variables/metadata/recordingEnabled —
+    // everything call-scoped must ride in assistantOverrides.
+    expect(body.variables).toBeUndefined();
+    expect(body.metadata).toBeUndefined();
+    expect(body.recordingEnabled).toBeUndefined();
+    expect(body.assistantOverrides.variableValues.practice_name).toBe('Downtown Dental');
+    expect(body.assistantOverrides.variableValues.provider_number).toBe('ON-123456');
+    expect(body.assistantOverrides.metadata.practiceId).toBeDefined();
+    expect(body.assistantOverrides.artifactPlan.recordingEnabled).toBe(false);
   });
 
   it('refuses to dial a number that is not a known carrier claims line', async () => {

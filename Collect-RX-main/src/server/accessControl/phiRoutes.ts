@@ -3,9 +3,7 @@ import { isPlatformDev, isUserSession, type AuthJwtPayload, type UserAuthPayload
 
 /** Paths (pathname only) that must never be served to `platform_dev` sessions. */
 const PHI_PATH_PREFIXES = [
-  '/api/patients',
   '/api/benefits',
-  '/api/balances',
   '/api/eligibility',
   '/api/cdcp',
   '/api/canadian',
@@ -14,7 +12,6 @@ const PHI_PATH_PREFIXES = [
 
 /**
  * Paths blocked for roles without PHI access (accountant, group_admin).
- * The slim /api/patients/lookup endpoint is exempted separately per the RBAC spec.
  */
 const NO_PHI_ROLES = new Set<string>(['accountant', 'group_admin']);
 
@@ -47,8 +44,6 @@ export function assertPhiRouteAllowed(auth: AuthJwtPayload | undefined, req: Req
   if (isUserSession(auth)) {
     const user = auth as UserAuthPayload;
     if (NO_PHI_ROLES.has(user.role) && isPhiApiRoute(req)) {
-      // Slim patient lookup is exempt for front_desk (handled by its own route).
-      // Accountants/group_admin are blocked from all PHI paths.
       return `Role '${user.role}' does not have access to patient PHI endpoints.`;
     }
   }

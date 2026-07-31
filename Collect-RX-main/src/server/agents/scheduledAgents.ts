@@ -1,7 +1,7 @@
 /**
  * Scheduled Agents — Cron-based registration for CollectRx's autonomous agents.
  *
- * Trigger map (all times ET / Railway TZ):
+ * Trigger map (all times ET):
  *
  * DAILY
  *   05:00  analytics-pipeline, database-health
@@ -25,6 +25,7 @@
 import cron from 'node-cron';
 import type { PrismaClient } from '@prisma/client';
 import { runAgent } from './agentRunner.js';
+import { sendWeeklyPilotReports, weeklyPilotReportEnabled } from '../reports/weeklyPilotReport.js';
 
 type AgentContextBuilder = (prisma: PrismaClient) => Promise<Record<string, unknown>>;
 
@@ -334,13 +335,36 @@ const SCHEDULED_AGENTS: ScheduledAgent[] = [
 // ── Scheduler boot ────────────────────────────────────────────────────────────
 
 function isAgentSystemEnabled(): boolean {
-  // Disabled by default — set AGENTS_ENABLED=true in Railway to activate
+  // Disabled by default — set AGENTS_ENABLED=true in the host env to activate
   return ['1', 'true', 'yes'].includes(
     String(process.env.AGENTS_ENABLED ?? '').toLowerCase(),
   );
 }
 
+// Monday 07:00 ET — before the practice's day starts, after the weekend's data settles.
+const WEEKLY_PILOT_REPORT_CRON = '0 7 * * 1';
+
+function registerWeeklyPilotReport(prisma: PrismaClient): void {
+  if (!weeklyPilotReportEnabled()) {
+    console.warn('[ScheduledAgents] WEEKLY_PILOT_REPORT_ENABLED is not set — weekly report cron skipped');
+    return;
+  }
+  cron.schedule(WEEKLY_PILOT_REPORT_CRON, () => {
+    sendWeeklyPilotReports(prisma)
+      .then((r) => {
+        console.warn(
+          `[ScheduledAgents] weekly pilot report: ${r.sent} sent, ${r.skippedNoOwner} skipped (no owner), ${r.failed} failed`,
+        );
+      })
+      .catch((err) => {
+        console.error('[ScheduledAgents] weekly pilot report run failed:', err);
+      });
+  });
+}
+
 export function startScheduledAgents(prisma: PrismaClient): void {
+  registerWeeklyPilotReport(prisma);
+
   if (!isAgentSystemEnabled()) {
     console.log('[ScheduledAgents] AGENTS_ENABLED is not set — skipping cron registration');
     return;

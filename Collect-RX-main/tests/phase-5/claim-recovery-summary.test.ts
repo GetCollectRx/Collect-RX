@@ -5,6 +5,9 @@ import { getClaimRecoverySummary } from '../../src/server/recovery/claimRecovery
 describe('getClaimRecoverySummary', () => {
   it('returns route and open actions for a claim', async () => {
     const prisma = {
+      practice: {
+        findUnique: vi.fn(async () => ({ recoveryMode: 'CSV_FIRST' })),
+      },
       insuranceClaim: {
         findFirst: vi.fn(async () => ({
           id: 'c1',

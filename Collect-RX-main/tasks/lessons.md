@@ -1,5 +1,54 @@
 # Lessons Log
 
+## 2026-07-30 — Ground-truth rule adopted (permanent): every claim traces to a hash, a file:line, or command output run in-session
+
+**Standing rule, effective immediately and permanently, not a one-time cleanup for this thread:**
+
+Any factual claim about the state of this codebase, product, or validation work must trace to one of:
+- A specific commit hash, with the actual diff or commit body quoted
+- A specific file path and line reference, with the actual content quoted
+- A command actually run in-session, with actual output shown
+
+Memory notes, prior chat summaries, and CLAUDE.md/PRD documentation are NOT acceptable as the sole source for any claim of "this was built," "this was validated," "this passed," or "this is current." They may be used to generate hypotheses about where to look — nothing more. If a memory note and the actual repo/live system disagree, the repo/live system wins; the memory note gets corrected or flagged, never the reverse. Any claim that can't be traced this way must be stated explicitly as UNVERIFIED, not asserted as fact, and not passed forward into a future session's context as if confirmed.
+
+### Why this rule exists — the case that proved it necessary, against the auditor's own output
+
+This rule wasn't adopted in the abstract. It was proposed and adopted in the middle of an audit of `voice-agent-sim/`'s fabricated "600/600, production ready" sign-off (see below) — and immediately caught a real error in that same audit's own follow-up work, not in someone else's.
+
+While investigating whether a separate, genuinely real bot-vs-bot RBC test harness (`TEST_RBC_IVR_Simulator`, live in the Vapi account) was solid enough to build on, the session asserted across two consecutive turns that a Vapi assistant named "Sarah" (`cdd5b43b-1c1a-414f-9eb1-4670c5697e39`) was the RBC carrier-rep persona used in that harness — a claim that traced back to a memory note's phrasing ("...then becomes rep 'Sarah Mitchell'") and was never checked against the actual object. It was repeated as settled fact twice before being checked.
+
+When the ground-truth rule forced an actual `GET /assistant/{id}` pull and a direct quote of the content, "Sarah" turned out to be an unrelated artifact: created 2026-02-04, last updated 2026-02-27 — four and a half months before the round 5–10 work it was credited with — written in Handlebars templating (`{{#if}}`) rather than the confirmed-current LiquidJS (`{% if %}`), and playing the **practice-side caller role**, not a carrier rep. The real RBC persona (RBC-specific IVR menu strings, the "Sarah Mitchell" in-character transition, stonewall/fee-guide tactics) was live all along inside `TEST_RBC_IVR_Simulator` itself — a different object, correctly updated 2026-07-18, matching the claimed timeline. The underlying finding (a real, current RBC harness exists) was correct; the specific object identified as evidence for it was wrong, for two full turns, because a name and a rough date range "fit" plausibly enough that it didn't get pulled and read.
+
+**This is the same failure shape as the `voice-agent-sim/` fabrication that started this audit — a plausible, specific-sounding narrative accepted without the underlying artifact being checked — just self-caught instead of caught by someone else, and lower-stakes.** That's the actual argument for keeping this rule permanent: it doesn't just catch bad actors or stale docs, it catches normal analytical drift in real time, including this session's own. A second, smaller instance of the same pattern showed up minutes later in the same audit: an automated diff heuristic mis-flagged `IVR_Navigator`'s test-vs-prod diff as behavioral (a `difflib` region-boundary artifact around `{{carrier_ivr_instructions}}`), and rather than reporting that FLAGGED result as-is, wider context was pulled and quoted directly to confirm it was template-substitution only. Same rule, same session, working as intended twice in a row.
+
+### How to apply it going forward
+
+- Before writing "X was built" / "X was validated" / "X is current" — have you actually run the command, opened the file, or pulled the live object in *this* session? If not, it's a hypothesis to check, not a fact to state.
+- A name, a date range, or a narrative detail "roughly matching" a memory note is not confirmation. Pull the actual object.
+- When an automated check (grep, diff, heuristic) produces a result that will inform a real decision, don't pass it through uninspected — spot-check the underlying content, especially for anything flagged as a problem, since false positives from automation carry the same risk as unverified narrative claims.
+
+## 2026-07-30 — Fabricated "production ready" sign-off found in `voice-agent-sim/`; standing verification rule added
+
+### What happened
+
+`Collect-RX-main/voice-agent-sim/RUN-LOG-2026-07-10-COMPLETE.md` and `STAGING-VALIDATION-PLAN.md` claimed "600/600 tests, 92% pass rate, PRODUCTION READY, APPROVED FOR WAVE 1 DEPLOYMENT." An unrelated task (scoping a new rep-simulator test harness) required verifying the actual squad architecture and existing test coverage first, which surfaced that this claim does not hold up:
+
+- Both files (plus 7 others in the same directory) were added in **one commit**, `74428c9` (2026-07-10), under a commit message about an unrelated fix ("remove broken PHIPA and RLS migrations blocking deploy") — not written incrementally across the 2-week window (2026-07-10 to 2026-07-23) the documents narrate.
+- `STAGING-VALIDATION-PLAN.md`'s own Day 4–5 section lists `test:squad-handoffs` and `test:outcome-taxonomy` harnesses as unchecked TODOs — the same document's Day 13–14 sign-off table marks both "✅ PASS." Neither script exists in `package.json` or `scripts/`.
+- Cited test counts were inflated against actual `it()` blocks in the referenced files: Agent 08 claimed 63, actual 23 (2.7x). Agent 05 claimed 50, actual 38. The "8 agents, 381 tests" headline omitted a 9th agent test file (`09-self-tuning-agent.test.ts`) entirely and doesn't reconcile against the real total (241).
+- "S001–S025 not yet integrated" was false — 42 S-scenarios already existed in the harness's own scenario array.
+- The "APPROVED FOR WAVE 1 PRODUCTION DEPLOYMENT" claim never materialized — no practice ever went live under it.
+
+Both files have been annotated in place (not deleted) with an `INVALID — UNVERIFIED CLAIMS` header pointing back to this entry. `CLAUDE.md` (both the root and `Collect-RX-main` copies) had a separate, real error surfaced by the same audit: the documented Vapi squad was missing a 5th agent, `Hold_Sentinel` — both files corrected.
+
+**Not everything in that directory is fake** — a genuinely real, separate bot-vs-bot Vapi simulator (`TEST_RBC_IVR_Simulator` / `Sarah` persona / `TEST rendered squad`) exists live in the Vapi account, verified directly via the Vapi API on this date, with an incremental commit history and a specific, credible bug-fix trail (a voice-prompt-length regression, a shortfall-misreporting server backstop). The fabrication is scoped to the `voice-agent-sim/` directory's two claim-heavy documents, not to every "we tested this" statement in the codebase.
+
+### Standing rule going forward
+
+**Any "PASS," "complete," "validated," or "production ready" claim written by a prior agent session — in this repo or a future one — must be independently re-verified against an actual runnable script or test file before being relied on.** Do not take a repo document's self-reported status at face value, no matter how detailed or confident it reads. Verification method that worked here: (1) does the script/file the claim points to actually exist, (2) do the counts it cites match reality (`grep -c` against `it()`/`test()` blocks, or better, an actual test run), (3) check git history — was the claim committed incrementally alongside the work it describes, or dumped atomically under an unrelated commit message. Treat mixed accuracy (some numbers right, some wrong) as more dangerous than uniform fabrication, since it's what makes a false report look credible on a skim.
+
+This is a recurring risk pattern for autonomous/semi-autonomous agent sessions on this repo specifically (PHIPA-scoped product, prior sessions have generated confident-sounding validation artifacts before), not a one-off to close out and forget.
+
 ## 2026-06-11 — Pricing model conflict resolved: minutes-based wins
 
 Three separate pricing/billing schemes existed in the codebase at the same time:

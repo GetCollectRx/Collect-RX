@@ -83,7 +83,7 @@ manager to understand.
    targets (best efforts), support
 4. Fees, billing, trial terms (30-day trial, 500 minutes, no card required)
 5. Data ownership: practice owns patient/practice data; CollectRx owns software and anonymized analytics
-6. PHI handling: tokenization, subprocessors (Vapi, Twilio, SendGrid, Stripe, Railway/hosting),
+6. PHI handling: tokenization, subprocessors (Vapi, Twilio, SendGrid, Stripe, Fly.io/hosting),
    breach notification timeline
 7. Limitation of liability (cap at fees paid in prior 12 months — propose reasonable cap)
 8. No guarantee of claim outcomes or recovery amounts
@@ -102,7 +102,7 @@ manager to understand.
 2. What personal information and PHI we collect and why
 3. Lawful basis / consent framework under PIPEDA and PHIPA
 4. How PHI is protected (encryption, tokenization, access controls, audit logs)
-5. Subprocessors and cross-border transfer (flag if any US hosting — Railway, Vapi, Twilio)
+5. Subprocessors and cross-border transfer (flag if any US hosting — Fly.io, Vapi, Twilio)
 6. Retention periods (calls, transcripts, audit logs, account data)
 7. Individual rights (access, correction, withdrawal of consent where applicable)
 8. Breach notification commitment
@@ -138,7 +138,7 @@ List each vendor and the clauses to confirm in writing:
 - Twilio (telephony transit)
 - SendGrid (email — patient reminders, no PHI in subject lines)
 - Stripe (payments — PCI scope)
-- Railway or hosting provider (database hosting, region)
+- Fly.io hosting provider (database hosting, region yyz)
 - Sentry (if enabled — no PHI in error payloads)
 
 For each: data processed, retention, encryption, breach notification, Canadian data residency options.

@@ -13,3 +13,10 @@ desktop
 docs
 *.db
 *.db-journal
+
+# Desktop build artifacts — 1.3 GB that must never ride to the Fly builder
+dist-electron
+dist-macos
+macos
+electron-shell
+test-results

@@ -2,7 +2,7 @@ import type { LearningBucket } from '@prisma/client';
 import type { NotionLearningItem, RankedItem, ResearchResult } from './types.js';
 
 const COMPLIANCE_KW = ['phipa', 'hipaa', 'phi', 'consent', 'privacy', 'compliance', 'audit'];
-const OPS_KW = ['deploy', 'railway', 'sentry', 'cron', 'backup', 'on-call', 'ops', 'monitor'];
+const OPS_KW = ['deploy', 'fly', 'railway', 'sentry', 'cron', 'backup', 'on-call', 'ops', 'monitor'];
 const GROWTH_KW = ['pricing', 'pilot', 'sales', 'marketing', 'onboarding', 'demo'];
 const PRODUCT_KW = ['ux', 'dashboard', 'workflow', 'feature', 'user', 'practice', 'front desk'];
 

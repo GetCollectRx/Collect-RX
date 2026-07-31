@@ -16,6 +16,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { apiFetchJson } from '../lib/apiFetch';
 import {
   BarChart2,
   MousePointer,
@@ -42,9 +43,7 @@ import type {
 const BASE = '/api/telemetry';
 
 async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`Analytics API error: ${res.status}`);
-  return res.json() as Promise<T>;
+  return apiFetchJson<T>(`${BASE}${path}`);
 }
 
 // ---------------------------------------------------------------------------

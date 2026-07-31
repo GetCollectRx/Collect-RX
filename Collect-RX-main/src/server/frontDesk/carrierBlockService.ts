@@ -4,6 +4,10 @@ import { endVapiCall } from '../../vapi/client.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapCarrierBlock } from './deskMappers.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
+import {
+  isCarrierDiscoveryEnabled,
+  requestCarrierRediscovery,
+} from '../discovery/carrierDiscoveryService.js';
 
 export async function applyCarrierBlock(
   prisma: PrismaClient,
@@ -17,15 +21,8 @@ export async function applyCarrierBlock(
 ): Promise<{ heldQueueCount: number }> {
   const { practiceId, carrierId, vapiCallId, reason, hangVapi = true } = params;
 
-  if (hangVapi) {
-    try {
-      await endVapiCall(vapiCallId);
-    } catch (err) {
-      console.error('[carrierBlock] Vapi hang failed:', err);
-    }
-  }
-
   let heldQueueCount = 0;
+  let openVapiCallIds: string[] = [];
 
   await prisma.$transaction(async (tx) => {
     await tx.carrierBlockEvent.create({
@@ -36,10 +33,19 @@ export async function applyCarrierBlock(
       },
     });
 
+    const openAttempts = await tx.callAttempt.findMany({
+      where: {
+        completedAt: null,
+        claim: { practiceId, carrierId },
+      },
+      select: { id: true, vapiCallId: true },
+    });
+    openVapiCallIds = openAttempts.map((attempt) => attempt.vapiCallId);
+
     const held = await tx.callQueue.updateMany({
       where: {
         practiceId,
-        status: 'PENDING',
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
         claim: { carrierId },
       },
       data: { status: 'BLOCKED' },
@@ -52,10 +58,34 @@ export async function applyCarrierBlock(
     });
 
     await tx.callAttempt.updateMany({
-      where: { vapiCallId, completedAt: null },
-      data: { liveState: 'carrier_blocked', carrierBlockDetected: true },
+      where: { id: { in: openAttempts.map((attempt) => attempt.id) }, completedAt: null },
+      data: {
+        completedAt: new Date(),
+        outcome: 'BLOCK_DETECTED',
+        outcomeDetail: 'Carrier block detected; call terminated',
+        liveState: 'carrier_blocked',
+        carrierBlockDetected: true,
+      },
     });
   });
+
+  const callsToTerminate = [
+    ...new Set([
+      ...openVapiCallIds.filter((id) => id !== vapiCallId),
+      ...(hangVapi ? [vapiCallId] : []),
+    ]),
+  ];
+  const terminationResults = await Promise.allSettled(
+    callsToTerminate.map(async (callId) => {
+      await endVapiCall(callId);
+      return callId;
+    }),
+  );
+  for (const result of terminationResults) {
+    if (result.status === 'rejected') {
+      console.error('[carrierBlock] Vapi hang failed:', result.reason);
+    }
+  }
 
   try {
     await sendCarrierBlockAlert({
@@ -81,6 +111,16 @@ export async function applyCarrierBlock(
   }
 
   await refreshDeskQueueBroadcast(prisma, practiceId);
+
+  // A block can request human rediscovery when explicitly enabled, but it never
+  // clears the block or dispatches a discovery call.
+  if (isCarrierDiscoveryEnabled()) {
+    try {
+      await requestCarrierRediscovery(prisma, carrierId, 'CARRIER_ISSUE', `CARRIER_BLOCK: ${reason}`);
+    } catch (err) {
+      console.error('[carrierBlock] discovery request failed:', err);
+    }
+  }
 
   return { heldQueueCount };
 }
