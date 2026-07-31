@@ -4,7 +4,7 @@ import { usePractice } from '../context/PracticeContext'
 import { apiFetch } from '../lib/apiFetch'
 import { parseApiJson } from '../lib/parseApiJson'
 import {
-  Card, CardHeader, Button, Input, Select, Badge, InlineToast, useToast,
+  Card, CardHeader, Button, Input, Badge, InlineToast, useToast,
 } from '../components/ui'
 import { AdminOnboardingChecklist } from '../components/AdminOnboardingChecklist'
 
@@ -29,7 +29,6 @@ type IntegrationsPayload = {
   twilio: { apiAndFrom: boolean; inboundUrlForSignature: boolean }
   escalation: { staffPhone: boolean; immediateStaffNotify: boolean; voiceRing: string }
   stripe: { secretKey: boolean; testMode: boolean }
-  stripeConnect: { account: boolean; onboardingComplete: boolean; chargesEnabled: boolean }
   vapi: { webhookSecret: boolean }
   email: { unsubscribeHmac: boolean; publicApiBase: string }
 }
@@ -45,18 +44,9 @@ type AuditEntry = {
 }
 
 export default function Admin() {
-  const { practices, practiceId, setPracticeId } = usePractice()
-  const [balanceCount, setBalanceCount] = useState('50')
-  const [loading,      setLoading]      = useState(false)
+  const { practiceId } = usePractice()
   const [savingCarriers, setSavingCarriers] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
-  const [csvBusy,        setCsvBusy]        = useState(false)
-  const [csvResult,      setCsvResult]      = useState<{
-    imported: number
-    updated: number
-    skipped: number
-    errors: { patient: string; error: string }[]
-  } | null>(null)
   const [carriers, setCarriers] = useState<Record<string, CarrierFlags>>(defaultFlags)
   const [integrations, setIntegrations] = useState<IntegrationsPayload | null>(null)
   const [integrationsLoading, setIntegrationsLoading] = useState(true)
@@ -64,6 +54,50 @@ export default function Admin() {
   const [auditLoading, setAuditLoading] = useState(true)
   const [auditTick, setAuditTick] = useState(0)
   const { toast, showToast }            = useToast()
+
+  // ── Practice Identity (direct Practice model fields, not settings JSON) ──────
+  const [identity, setIdentity] = useState({
+    billingPhone: '',
+    faxNumber: '',
+    practiceAddress: '',
+    npi: '',
+    taxId: '',
+  })
+  const [identityLoading, setIdentityLoading] = useState(true)
+  const [identitySaving, setIdentitySaving] = useState(false)
+
+  useEffect(() => {
+    if (!practiceId) { setIdentityLoading(false); return }
+    setIdentityLoading(true)
+    apiFetch('/api/admin/practice-identity')
+      .then(async (r) =>
+        r.ok
+          ? parseApiJson<typeof identity>(r)
+          : { billingPhone: '', faxNumber: '', practiceAddress: '', npi: '', taxId: '' },
+      )
+      .then((d) => setIdentity(d))
+      .catch(() => {})
+      .finally(() => setIdentityLoading(false))
+  }, [practiceId])
+
+  const saveIdentity = async () => {
+    if (!practiceId) return
+    setIdentitySaving(true)
+    try {
+      const res = await apiFetch('/api/admin/practice-identity', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(identity),
+      })
+      const data = await parseApiJson<{ ok?: boolean; error?: string }>(res)
+      if (res.ok) showToast('ok', 'Practice identity saved.')
+      else showToast('err', data.error || 'Save failed')
+    } catch {
+      showToast('err', 'Save failed')
+    } finally {
+      setIdentitySaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!practiceId) { setSettingsLoading(false); return }
@@ -138,65 +172,6 @@ export default function Admin() {
     }
   }
 
-  const generateBalances = async () => {
-    if (!practiceId) return
-    setLoading(true)
-    try {
-      const res  = await apiFetch('/api/admin/generate-balances', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: parseInt(balanceCount) }),
-      })
-      const data = await parseApiJson<{ message?: string; error?: string }>(res)
-      if (res.ok) showToast('ok', data.message ?? 'Balances generated')
-      else showToast('err', data.error ?? 'Generate failed')
-    } catch {
-      showToast('err', 'Failed to generate balances')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const importPatientCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !practiceId) return
-    setCsvBusy(true)
-    const fd = new FormData()
-    fd.append('file', file)
-    try {
-      const res  = await apiFetch('/api/admin/import-patient-csv', { method: 'POST', body: fd })
-      const data = await parseApiJson<{
-        imported?: number
-        updated?: number
-        skipped?: number
-        errors?: { patient: string; error: string }[]
-        error?: string
-      }>(res)
-      if (res.ok) {
-        setCsvResult({
-          imported: data.imported ?? 0,
-          updated: data.updated ?? 0,
-          skipped: data.skipped ?? 0,
-          errors: data.errors ?? [],
-        })
-        const errN = data.errors?.length ?? 0
-        showToast(
-          'ok',
-          `Import: ${data.imported ?? 0} new, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped${errN ? `, ${errN} row issue(s)` : '.'}`,
-        )
-      } else {
-        setCsvResult(null)
-        showToast('err', data.error || 'Import failed')
-      }
-    } catch {
-      setCsvResult(null)
-      showToast('err', 'Import failed')
-    } finally {
-      setCsvBusy(false)
-      e.target.value = ''
-    }
-  }
-
   return (
     <div className="page-enter p-6 space-y-6 max-w-3xl">
       {/* Header */}
@@ -204,6 +179,8 @@ export default function Admin() {
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Practice settings, carrier configuration, and test data tools.{' '}
+          <Link to="/import" className="text-crx-600 hover:underline">Import CSV →</Link>
+          {' · '}
           <Link to="/admin/sync" className="text-crx-600 hover:underline">PMS sync ops →</Link>
         </p>
       </div>
@@ -212,11 +189,75 @@ export default function Admin() {
 
       <AdminOnboardingChecklist practiceId={practiceId} />
 
+      {/* Practice Identity — fields read by the voice agent during carrier calls */}
+      <Card>
+        <CardHeader
+          title="Practice Identity"
+          subtitle="Used by the voice agent during carrier calls for identity verification. All fields are non-PHI."
+        />
+        {identityLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Billing phone (E.164)"
+                placeholder="+16135550100"
+                value={identity.billingPhone}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, billingPhone: e.target.value }))}
+                hint="CRTC disclosure number — read aloud at call start. Distinct from escalation line."
+              />
+              <Input
+                label="Fax number (E.164)"
+                placeholder="+16135550101"
+                value={identity.faxNumber}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, faxNumber: e.target.value }))}
+                hint="Required by some carriers for appeal / documentation submissions."
+              />
+            </div>
+            <Input
+              label="Practice address"
+              placeholder="123 Main St, Ottawa ON K1A 0A1"
+              value={identity.practiceAddress}
+              onChange={(e) => setIdentity((prev) => ({ ...prev, practiceAddress: e.target.value }))}
+              hint="Carriers may ask for this during identity verification. Max 200 characters."
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="NPI / billing number"
+                placeholder="123456789"
+                value={identity.npi}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, npi: e.target.value }))}
+                hint="Provincial college registration / billing number (Canadian NPI equivalent)."
+              />
+              <Input
+                label="Tax ID (HST/GST)"
+                placeholder="123456789RT0001"
+                value={identity.taxId}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, taxId: e.target.value }))}
+                hint="HST/GST business registration number — some carriers require for payment processing."
+              />
+            </div>
+            <div className="pt-1">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={saveIdentity}
+                disabled={!practiceId || identitySaving}
+                loading={identitySaving}
+              >
+                Save identity
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* P4, go-live integration health (no secrets shown) */}
       <Card>
         <CardHeader
           title="Integrations (go-live)"
-          subtitle="Confirms env and Stripe Connect for this practice. Set keys in your host (e.g. Railway Variables), not in git."
+          subtitle="Confirms env for this practice. Set keys in your host (e.g. fly secrets), not in git. Stripe Billing is the practice SaaS subscription only."
         />
         {integrationsLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
@@ -254,13 +295,10 @@ export default function Admin() {
               </ul>
             </div>
             <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
-              <p className="font-medium text-gray-800 dark:text-gray-200">Stripe (P4-04)</p>
+              <p className="font-medium text-gray-800 dark:text-gray-200">Stripe Billing (practice plan)</p>
               <ul className="text-gray-600 dark:text-gray-300 list-disc list-inside space-y-0.5">
                 <li>Secret key: {integrations.stripe.secretKey ? 'set' : 'missing'}</li>
                 <li>Mode: {integrations.stripe.testMode ? 'test (sk_test_…)' : integrations.stripe.secretKey ? 'live' : 'N/A'}</li>
-                <li>Connect account: {integrations.stripeConnect.account ? 'present' : 'missing'}</li>
-                <li>Connect onboarding: {integrations.stripeConnect.onboardingComplete ? 'complete' : 'incomplete'}</li>
-                <li>Charges enabled: {integrations.stripeConnect.chargesEnabled ? 'yes' : 'no'}</li>
               </ul>
             </div>
             <div className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 space-y-1.5">
@@ -287,14 +325,13 @@ export default function Admin() {
         />
         <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-3 list-disc list-inside">
           <li>
-            <strong className="text-gray-800 dark:text-gray-200">Stripe / payment links:</strong> Staff see missing links
-            or checkout errors. First check the Stripe rows above; if Connect is incomplete, only an administrator can
-            finish onboarding and webhooks.
+            <strong className="text-gray-800 dark:text-gray-200">Stripe / plan billing:</strong> Staff see checkout or
+            portal errors for the practice SaaS subscription. Check the Stripe Billing rows above.
           </li>
           <li>
-            <strong className="text-gray-800 dark:text-gray-200">Sync / stale balances:</strong> The{' '}
+            <strong className="text-gray-800 dark:text-gray-200">Sync / stale claims:</strong> The{' '}
             <Link to="/" className="text-crx-600 dark:text-crx-400 underline">Dashboard</Link> PMS banner shows your
-            last import time; tray icon errors mean data may not match your PMS, note the message and contact support.
+            last import time; tray icon errors mean claim data may not match your PMS — note the message and contact support.
           </li>
           <li>
             <strong className="text-gray-800 dark:text-gray-200">Carrier block:</strong> The{' '}
@@ -352,93 +389,6 @@ export default function Admin() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </Card>
-
-      {/* Seed data generator */}
-      <Card>
-        <CardHeader
-          title="Abeldent Sync Simulator"
-          subtitle="Generate synthetic patient balances as if imported from Abeldent"
-        />
-
-        <div className="space-y-4">
-          {practices.length > 1 && (
-            <Select
-              label="Practice"
-              value={practiceId}
-              onChange={e => setPracticeId(e.target.value)}
-            >
-              {practices.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </Select>
-          )}
-
-          <Input
-            label="Number of balances"
-            type="number"
-            value={balanceCount}
-            onChange={e => setBalanceCount(e.target.value)}
-            hint="Between 1 and 200"
-            min="1"
-            max="200"
-            className="w-36"
-          />
-
-          <Button
-            variant="primary"
-            loading={loading}
-            disabled={!practiceId}
-            onClick={generateBalances}
-          >
-            Generate Synthetic Balances
-          </Button>
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Patient AR CSV import"
-          subtitle="Required: patient name + patient_owes. Headers normalize to snake_case; common aliases (first_name, balance, dos, …) map automatically. See docs/product/CSV-IMPORT-IDEMPOTENCY.md (P3-30 / P3-31)."
-        />
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-          Re-imports with the same natural key (<code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">abeldent_patient_id</code> + <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">treatment_date</code> + <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">procedure_code</code>) update rows instead of duplicating.
-        </p>
-        <label className="inline-flex items-center gap-2">
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="text-sm text-gray-600 dark:text-gray-300"
-            disabled={!practiceId || csvBusy}
-            onChange={e => void importPatientCsv(e)}
-          />
-          {csvBusy && <span className="text-xs text-gray-500">Uploading…</span>}
-        </label>
-        {csvResult && (
-          <div
-            className="mt-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-sm"
-            role="status"
-            aria-live="polite"
-          >
-            <p className="font-medium text-gray-800 dark:text-gray-200">
-              {csvResult.imported} new, {csvResult.updated} updated, {csvResult.skipped} skipped
-              {csvResult.errors.length > 0
-                ? `, ${csvResult.errors.length} row issue(s) below`
-                : ', no row errors.'}
-            </p>
-            {csvResult.errors.length > 0 && (
-              <ul className="mt-2 max-h-48 overflow-y-auto space-y-1.5 text-gray-700 dark:text-gray-300 list-disc list-inside">
-                {csvResult.errors.map((e, idx) => (
-                  <li key={idx}>
-                    <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{e.patient}</span>
-                    {' '}
-                    <span className="text-red-700 dark:text-red-400">{e.error}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
         )}
       </Card>
@@ -538,8 +488,8 @@ export default function Admin() {
                 Escalations: set ESCALATION_STAFF_PHONE (front desk, E.164) so Twilio SMS + optional voice fire before
                 Slack; see .env.example
               </li>
-              <li className={integrations.stripe.secretKey && !integrations.stripe.testMode && integrations.stripeConnect.chargesEnabled ? 'text-crx-700 dark:text-crx-400' : ''}>
-                Stripe live: sk_live_… + Connect charges enabled (use test mode until ready)
+              <li className={integrations.stripe.secretKey && !integrations.stripe.testMode ? 'text-crx-700 dark:text-crx-400' : ''}>
+                Stripe Billing live: sk_live_… for practice SaaS subscription (use test mode until ready)
               </li>
               <li className={integrations.vapi.webhookSecret ? 'text-crx-700 dark:text-crx-400' : ''}>
                 Vapi: webhook secret + URL /api/webhooks/vapi

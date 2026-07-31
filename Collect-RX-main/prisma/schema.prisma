@@ -19,70 +19,125 @@ enum PracticeRole {
 }
 
 model Practice {
-  id            String    @id @default(uuid())
-  name          String
-  timezone      String    @default("America/New_York")
+  id                             String                    @id @default(uuid())
+  name                           String
+  timezone                       String                    @default("America/New_York")
   /// Legacy single-practice password hash — kept for migration tooling only. Login now uses User.passwordHash.
-  passwordHash  String
+  passwordHash                   String
   /// Optional JSON: admin UI prefs (e.g. carrier toggles) — see /api/admin/settings
-  settings      Json?
+  settings                       Json?
   // ─── Practice identity fields for carrier calls ───────────────────────────
   /// Billing/claims phone line — what the AI agent reads aloud in the CRTC disclosure
   /// and what carriers call back. Distinct from escalationPhoneNumber in settings (staff takeover).
-  billingPhone  String?   @map("billing_phone")
+  billingPhone                   String?                   @map("billing_phone")
   /// Fax number — required by some carriers for documentation / appeal submissions.
-  faxNumber     String?   @map("fax_number")
+  faxNumber                      String?                   @map("fax_number")
   /// Practice mailing address — some carriers ask for this during identity verification.
-  address       String?
+  practiceAddress                String?                   @map("address")
   /// Provincial college registration / billing number (Canadian NPI equivalent).
-  npi           String?
+  npi                            String?
   /// HST/GST business registration number — some carriers require for payment processing.
-  taxId         String?   @map("tax_id")
+  taxId                          String?                   @map("tax_id")
   // ─── Stripe Billing (platform) ────────────────────────────────────────────
   /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
-  stripeCustomerId             String?   @unique
-  stripeSubscriptionId         String?   @unique
+  stripeCustomerId               String?                   @unique
+  stripeSubscriptionId           String?                   @unique
   /// Stripe.Subscription.status: active, trialing, past_due, canceled, unpaid, etc.
-  subscriptionStatus           String?
-  subscriptionCurrentPeriodEnd DateTime?
+  subscriptionStatus             String?
+  /// Stripe Price and CollectRx plan snapshot used for usage limits.
+  subscriptionPriceId            String?
+  subscriptionPlanId             String?
+  subscriptionCurrentPeriodStart DateTime?
+  subscriptionCurrentPeriodEnd   DateTime?
   /// Minutes-based billing (src/billing/tiers.ts) — trial/core/growth/scale.
-  billingTier           BillingTier @default(trial)
-  stripeSubscriptionItemId String?
-  billingPeriodStart    DateTime?
-  trialEndsAt           DateTime?
-  callsPaused           Boolean     @default(false)
-  callsPausedReason     String?
-  callsPausedAt         DateTime?
-  overageConfirmed      Boolean     @default(false)
-  overageConfirmedAt    DateTime?
-  partnershipProspect   Prospect?
-  ruleSets              RuleSet[]
-  eligibilitySnapshots  EligibilitySnapshot[]
-  users                 User[]
-  usagePeriods          UsagePeriod[]
-  featureFlags          FeatureFlag[]
-  inviteTokens          InviteToken[]
+  billingTier                    BillingTier               @default(trial)
+  stripeSubscriptionItemId       String?
+  billingPeriodStart             DateTime?
+  trialEndsAt                    DateTime?
+  callsPaused                    Boolean                   @default(false)
+  callsPausedReason              String?
+  callsPausedAt                  DateTime?
+  overageConfirmed               Boolean                   @default(false)
+  overageConfirmedAt             DateTime?
+  /// CSV-first practices reconcile recovery from imports and never receive PMS writeback events.
+  recoveryMode                   String                    @default("CSV_FIRST") @map("recovery_mode")
+  organizationMemberships        OrganizationPractice[]
+  partnershipProspect            Prospect?
+  ruleSets                       RuleSet[]
+  eligibilitySnapshots           EligibilitySnapshot[]
+  users                          User[]
+  usagePeriods                   UsagePeriod[]
+  featureFlags                   FeatureFlag[]
+  inviteTokens                   InviteToken[]
+  notifications                  PracticeNotification[]
+  deletionRequests               PHIPADeletionRequest[]
+  breachNotifications            PHIPABreachNotification[]
+  phiVaultEntries                PhiVaultEntry[]
+  triageCredential               TriageCredential?
+  triageAudits                   TriageAudit[]
+  padMandate                     PadMandate?
+  padTransactions                PadTransaction[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
 model User {
-  id           String       @id @default(uuid())
-  practiceId   String
-  email        String       @unique
-  passwordHash String
-  role         PracticeRole
-  displayName  String
-  isActive     Boolean      @default(true)
+  id             String       @id @default(uuid())
+  practiceId     String
+  email          String       @unique
+  passwordHash   String
+  role           PracticeRole
+  displayName    String
+  isActive       Boolean      @default(true)
   /// associate_dentist only — all queries scoped to this provider ID server-side.
-  providerId   String?
+  providerId     String?
   /// accountant only — token is invalid after this date; renewable by office_manager.
   tokenExpiresAt DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  practice     Practice     @relation(fields: [practiceId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  practice       Practice     @relation(fields: [practiceId], references: [id])
+  organizationMemberships OrganizationMember[]
 
   @@index([practiceId])
   @@index([email])
+}
+
+/// Customer-owned DSO / multi-location boundary. Platform staff are not members.
+model Organization {
+  id          String                 @id @default(uuid())
+  name        String
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  practices   OrganizationPractice[]
+  members     OrganizationMember[]
+
+  @@map("organizations")
+}
+
+model OrganizationPractice {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  practiceId     String       @map("practice_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  practice       Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, practiceId])
+  @@index([practiceId])
+  @@map("organization_practices")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String       @default("org_admin")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
 }
 
 model RuleSet {
@@ -121,7 +176,7 @@ model QueuePriority {
 model CarrierOrder {
   id         String   @id @default(uuid())
   practiceId String   @unique
-  order      String   // JSON-serialised String[]
+  order      String // JSON-serialised String[]
   updatedAt  DateTime @updatedAt
 }
 
@@ -131,21 +186,106 @@ model ProcessedStripeEvent {
   createdAt DateTime @default(now())
 }
 
+// ─── GoCardless PAD (Pre-Authorized Debit) Billing ───────────────────────────
+// Replaces percentage-based Stripe billing with flat-fee-capped ACSS debit
+// pulls. GoCardless holds the actual bank account/transit numbers (entered
+// on their hosted Billing Request Flow); we only store their billing
+// request/customer/mandate/subscription/payment reference IDs.
+
+model ProcessedGoCardlessEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+enum PadMandateStatus {
+  pending_authorization
+  active
+  suspended
+  canceled
+}
+
+/// Our own internal PAD transaction lifecycle — decoupled from any one processor's
+/// exact vocabulary so the vendor can change without touching call sites. See
+/// gocardless/padService.ts for the GoCardless status mapping.
+enum PadTransactionStatus {
+  future
+  sent_to_bank
+  processed
+  approved
+  declined
+  chargeback
+}
+
+/// One PAD mandate per practice. `gocardless*Id` fields are opaque references into
+/// GoCardless's system — no raw banking credentials live in our database.
+model PadMandate {
+  id                         String           @id @default(uuid())
+  practiceId                 String           @unique @map("practice_id")
+  gocardlessBillingRequestId String           @unique @map("gocardless_billing_request_id")
+  gocardlessCustomerId       String?          @unique @map("gocardless_customer_id")
+  gocardlessMandateId        String?          @unique @map("gocardless_mandate_id")
+  gocardlessSubscriptionId   String?          @unique @map("gocardless_subscription_id")
+  status                     PadMandateStatus @default(pending_authorization)
+  bankAccountLast4           String?          @map("bank_account_last4")
+  /// Monthly SaaS fee this mandate pulls once authorized — the subscription isn't created
+  /// until the practice completes their hosted bank authorization and the mandate is active.
+  monthlyAmountCents         Int              @map("monthly_amount_cents")
+  /// Payments Canada Rule H1 pre-notification window. 10 is the Rule H1 default absent a negotiated
+  /// reduction, but GoCardless's own hosted PAD agreement text (confirmed against their sandbox) already
+  /// discloses a reduced 3-day period as their platform default for the "pad" scheme — 3 is used here to
+  /// match what the payor actually agrees to on GoCardless's page, not our own unconfirmed assumption.
+  preNotificationDays        Int              @default(3) @map("pre_notification_days")
+  authorizedAt               DateTime?        @map("authorized_at")
+  canceledAt                 DateTime?        @map("canceled_at")
+  createdAt                  DateTime         @default(now()) @map("created_at")
+  updatedAt                  DateTime         @updatedAt @map("updated_at")
+
+  practice     Practice         @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  transactions PadTransaction[]
+
+  @@index([status])
+  @@map("pad_mandates")
+}
+
+model PadTransaction {
+  id                    String               @id @default(uuid())
+  mandateId             String               @map("mandate_id")
+  practiceId            String               @map("practice_id")
+  gocardlessPaymentId   String?              @unique @map("gocardless_payment_id")
+  amountCents           Int                  @map("amount_cents")
+  status                PadTransactionStatus @default(future)
+  billingPeriodStart    DateTime             @map("billing_period_start")
+  billingPeriodEnd      DateTime             @map("billing_period_end")
+  preNotificationSentAt DateTime?            @map("pre_notification_sent_at")
+  submittedAt           DateTime?            @map("submitted_at")
+  settledAt             DateTime?            @map("settled_at")
+  failureReason         String?              @map("failure_reason")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  mandate  PadMandate @relation(fields: [mandateId], references: [id], onDelete: Cascade)
+  practice Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([status])
+  @@map("pad_transactions")
+}
+
 // ─── Benefits & Eligibility Models ───────────────────────────────────────────
 
 model PatientBenefits {
-  id              String    @id @default(uuid())
-  patientToken    String
-  carrierCode     String
-  planYear        String
-  annualMax       Float?
-  annualMaxUsed   Float     @default(0)
-  deductible      Float     @default(0)
-  deductibleMet   Float     @default(0)
-  staleFlag       Boolean   @default(false)
-  lastVerifiedAt  DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  patientToken   String
+  carrierCode    String
+  planYear       String
+  annualMax      Float?
+  annualMaxUsed  Float     @default(0)
+  deductible     Float     @default(0)
+  deductibleMet  Float     @default(0)
+  staleFlag      Boolean   @default(false)
+  lastVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([patientToken, carrierCode, planYear])
   @@index([patientToken])
@@ -225,11 +365,50 @@ model EligibilityReconcileLog {
   @@index([createdAt])
 }
 
-/// P4-05: Vapi may retry the same server POST; dedupe by body hash to avoid double-processing.
+/// Vapi delivery ledger. Stores only a SHA-256 body hash and processing state,
+/// never the webhook payload, so failed deliveries can be safely retried.
 model ProcessedVapiWebhook {
+  id                  String    @id @default(cuid())
+  bodyHash            String    @unique
+  status              String    @default("received")
+  attemptCount        Int       @default(0)
+  createdAt           DateTime  @default(now())
+  processingStartedAt DateTime?
+  processedAt         DateTime?
+  failedAt            DateTime?
+
+  @@index([status, createdAt])
+}
+
+/// Async claims validator webhook — idempotent processing via body hash
+model ProcessedValidatorWebhook {
   id        String   @id @default(cuid())
-  bodyHash  String   @unique
-  createdAt DateTime @default(now())
+  bodyHash  String   @unique @map("body_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ProcessedValidatorWebhook")
+}
+
+/// Practice notifications — escalations, carrier blocks, payment updates, etc. Displayed on dashboard.
+model PracticeNotification {
+  id         String    @id @default(cuid())
+  practiceId String    @map("practice_id")
+  type       String // VALIDATION_ESCALATION, CARRIER_BLOCK, PAYMENT_RECEIVED, PAYMENT_FAILED, CLAIM_DENIED
+  subject    String
+  message    String
+  claimId    String?   @map("claim_id")
+  severity   String    @default("info") // info, warning, critical
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  practice Practice        @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  claim    InsuranceClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@index([practiceId])
+  @@index([claimId])
+  @@index([readAt])
+  @@index([createdAt])
+  @@map("PracticeNotification")
 }
 
 /// P8-04: one row per automated reminder *attempt* slot (per balance / nextStatus / UTC day) so queue retries do not double-send the same day.
@@ -242,25 +421,81 @@ model ReminderSendLedger {
 
 /// P5-04: append-only change log (no updates/deletes in app). No PHI in details — summaries only.
 model AuditLog {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  practiceId   String
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  practiceId  String
   /// User who performed the action; null for automated system actions or legacy entries.
-  userId       String?
+  userId      String?
   /// e.g. admin.settings.update, admin.csv.import, patient_ar.write_off
-  action       String
-  subjectType  String?
-  subjectId    String?
-  details      Json?
+  action      String
+  subjectType String?
+  subjectId   String?
+  details     Json?
   /// Request metadata (not body)
-  requestIp     String?
-  userAgent  String?
+  requestIp   String?
+  userAgent   String?
 
   @@index([practiceId, createdAt])
   @@index([userId, createdAt])
   @@index([createdAt])
 }
 
+/// Queryable PHI access trail. Contains identifiers and field categories only,
+/// never PHI values, transcript text, or credential material.
+model PhiAccessEvent {
+  id            String   @id @default(uuid())
+  practiceId    String   @map("practice_id")
+  actorId       String?  @map("actor_id")
+  operation     String
+  recordType    String   @map("record_type")
+  recordId      String   @map("record_id")
+  purpose       String?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([practiceId, createdAt])
+  @@index([recordType, recordId])
+  @@index([actorId, createdAt])
+  @@map("phi_access_events")
+}
+
+/// One encrypted credential payload for the practice's pre-call triage channel.
+/// The plaintext is never persisted; use triageCredentialService to access it.
+model TriageCredential {
+  id         String   @id @default(uuid())
+  practiceId String   @unique @map("practice_id")
+  ciphertext String
+  iv         String
+  authTag    String   @map("auth_tag")
+  lastHealthCheckAt DateTime? @map("last_health_check_at")
+  lastHealthCheckStatus String? @map("last_health_check_status")
+  lastHealthCheckErrorCode String? @map("last_health_check_error_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  practice Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  audits   TriageAudit[]
+
+  @@map("triage_credentials")
+}
+
+/// Append-only security audit for triage credential access. Never stores credential values.
+model TriageAudit {
+  id            String   @id @default(uuid())
+  practiceId    String   @map("practice_id")
+  credentialId  String?  @map("credential_id")
+  action        String
+  actor         String?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  practice   Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  credential TriageCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([credentialId, createdAt(sort: Desc)])
+  @@map("triage_audits")
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 5 — Voice AI backend models (added by Phase 5 build)
@@ -324,6 +559,12 @@ enum RecoveryActionType {
   PRACTICE_DOCS
   CDCP_RECONSIDERATION
   HUMAN_ESCALATION
+  DENIAL_REVIEW
+  UNDERPAYMENT_REVIEW
+  SUBMISSION_QUALITY
+  /// Claim is missing required patient data (name, DOB, subscriber ID) — carrier
+  /// calls are blocked until staff add the data and clear the gate.
+  MISSING_PATIENT_DATA
 
   @@map("recovery_action_type")
 }
@@ -366,44 +607,58 @@ enum QueueStatus {
 /// Core claim record. patientToken is a UUID pointing into PIIVault — never
 /// stores real patient names, DOBs, or health card numbers.
 model InsuranceClaim {
-  id                String        @id @default(uuid())
-  practiceId        String        @map("practice_id")
-  carrierId         CarrierId     @map("carrier_id")
-  claimNumber       String        @map("claim_number")
+  id                String         @id @default(uuid())
+  practiceId        String         @map("practice_id")
+  carrierId         CarrierId      @map("carrier_id")
+  claimNumber       String         @map("claim_number")
   /// UUID issued by PIIVault — the only patient identifier stored here.
-  patientToken      String        @map("patient_token")
-  billedAmount      Decimal       @map("billed_amount") @db.Decimal(10, 2)
-  outstandingAmount Decimal       @map("outstanding_amount") @db.Decimal(10, 2)
+  patientToken      String         @map("patient_token")
+  billedAmount      Decimal        @map("billed_amount") @db.Decimal(10, 2)
+  outstandingAmount Decimal        @map("outstanding_amount") @db.Decimal(10, 2)
   /// What the practice expected the carrier to pay. When set, the voice agent
   /// uses this when discussing the discrepancy — distinct from outstandingAmount.
-  expectedAmount    Decimal?      @map("expected_amount") @db.Decimal(10, 2)
-  daysOutstanding   Int           @map("days_outstanding")
+  expectedAmount    Decimal?       @map("expected_amount") @db.Decimal(10, 2)
+  denialReasonCode String?        @map("denial_reason_code")
+  denialReasonText String?        @map("denial_reason_text")
+  denialDate       DateTime?      @map("denial_date")
+  appealDeadline   DateTime?      @map("appeal_deadline")
+  daysOutstanding   Int            @map("days_outstanding")
   /// Date of service — canonical anchor for carrier appeal deadlines. Prefer PMS backfill over inferred dates.
-  servicedAt        DateTime?     @map("serviced_at")
+  servicedAt        DateTime?      @map("serviced_at")
   /// Date the claim was electronically submitted to the carrier. Carriers ask for this
   /// during calls and it anchors appeal deadline windows.
-  submittedAt       DateTime?     @map("submitted_at")
+  submittedAt       DateTime?      @map("submitted_at")
   /// CDT procedure codes billed on this claim, comma-separated (e.g. "D1110,D0274").
   /// Carriers frequently ask "what procedures were included?" during inquiry calls.
-  treatmentCodes    String?       @map("treatment_codes")
-  status            ClaimStatus   @default(PENDING)
-  priority          ClaimPriority @default(NORMAL)
+  treatmentCodes    String?        @map("treatment_codes")
+  status            ClaimStatus    @default(PENDING)
+  priority          ClaimPriority  @default(NORMAL)
   /// Active recovery routing — set by claim router after calls/sync.
   recoveryRoute     RecoveryRoute? @map("recovery_route")
   /// When carrier confirmed payment but PMS sync has not yet verified balance drop.
-  paymentExpectedBy DateTime?     @map("payment_expected_by")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+  paymentExpectedBy DateTime?      @map("payment_expected_by")
+  /// Soft deletion preserves the claim's immutable recovery and call history.
+  /// Application reads and dispatch paths must always exclude deleted claims.
+  deletedAt         DateTime?      @map("deleted_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  callAttempts     CallAttempt[]
-  queueEntry       CallQueue?
-  recoveryActions  ClaimRecoveryAction[]
-  recoveryEvents   ClaimRecoveryEvent[]
+  callAttempts    CallAttempt[]
+  queueEntry      CallQueue?
+  recoveryActions ClaimRecoveryAction[]
+  recoveryEvents  ClaimRecoveryEvent[]
+  evidenceItems   ClaimEvidenceItem[]
+  submissions     ClaimSubmission[]
+  evidencePacks   EvidencePackExport[]
+  underpaymentCases UnderpaymentCase[]
+  notifications   PracticeNotification[]
 
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
   @@index([practiceId, status])
+  @@index([practiceId, deletedAt])
   @@index([carrierId, daysOutstanding])
+  @@index([practiceId, status, updatedAt])
   @@map("insurance_claims")
 }
 
@@ -418,6 +673,13 @@ model ClaimRecoveryAction {
   title             String
   detail            String?
   scheduledRecallAt DateTime?            @map("scheduled_recall_at")
+  /// Carrier-imposed deadline for this action (e.g. documentation submission date).
+  deadline          DateTime?
+  /// When the overdue job should escalate if the action is still open. Defaults
+  /// to the deadline at creation time; null means never auto-escalate.
+  autoEscalateAt    DateTime?            @map("auto_escalate_at")
+  /// Set once the overdue job has escalated — prevents repeat escalations.
+  escalatedAt       DateTime?            @map("escalated_at")
   callAttemptId     String?              @map("call_attempt_id")
   cdcpCaseId        String?              @map("cdcp_case_id")
   metadata          Json?
@@ -425,12 +687,13 @@ model ClaimRecoveryAction {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  claim InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  claim    InsuranceClaim           @relation(fields: [claimId], references: [id], onDelete: Cascade)
   cdcpCase CdcpReconsiderationCase? @relation(fields: [cdcpCaseId], references: [id], onDelete: SetNull)
 
   @@index([claimId, status])
   @@index([practiceId, status])
   @@index([actionType, status, scheduledRecallAt])
+  @@index([autoEscalateAt], map: "idx_recovery_actions_auto_escalate")
   @@map("claim_recovery_actions")
 }
 
@@ -453,41 +716,125 @@ model ClaimRecoveryEvent {
   @@map("claim_recovery_events")
 }
 
+/// Staff-held evidence status. Clinical files remain in the PMS for v1.
+model ClaimEvidenceItem {
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  claimId          String   @map("claim_id")
+  recoveryActionId String?  @map("recovery_action_id")
+  evidenceType     String   @map("evidence_type")
+  status           String   @default("REQUIRED")
+  attestedAt       DateTime? @map("attested_at")
+  attestedBy       String?  @map("attested_by")
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, recoveryActionId, evidenceType])
+  @@index([practiceId, status])
+  @@map("claim_evidence_items")
+}
+
+/// Practice-entered carrier submission proof; no PMS write is implied.
+model ClaimSubmission {
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  claimId          String   @map("claim_id")
+  recoveryActionId String?  @map("recovery_action_id")
+  method           String
+  referenceNumber  String?  @map("reference_number")
+  submittedAt      DateTime @default(now()) @map("submitted_at")
+  submittedBy      String?  @map("submitted_by")
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, submittedAt])
+  @@index([claimId])
+  @@map("claim_submissions")
+}
+
+/// Immutable metadata-only evidence pack export record.
+model EvidencePackExport {
+  id          String   @id @default(uuid())
+  practiceId  String   @map("practice_id")
+  claimId     String   @map("claim_id")
+  exportedBy  String?  @map("exported_by")
+  checksum    String
+  format      String   @default("JSON")
+  createdAt   DateTime @default(now()) @map("created_at")
+  claim       InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, createdAt])
+  @@index([claimId])
+  @@map("evidence_pack_exports")
+}
+
+model UnderpaymentCase {
+  id              String   @id @default(uuid())
+  practiceId      String   @map("practice_id")
+  claimId         String   @map("claim_id")
+  expectedCents   Int      @map("expected_cents")
+  paidCents       Int      @map("paid_cents")
+  varianceCents   Int      @map("variance_cents")
+  reasonCode      String?  @map("reason_code")
+  status          String   @default("OPEN")
+  createdAt       DateTime @default(now()) @map("created_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  claim           InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, expectedCents, paidCents])
+  @@index([practiceId, status])
+  @@map("underpayment_cases")
+}
+
 /// One row per Vapi call attempt. vapiCallId is unique — used for idempotency.
 model CallAttempt {
-  id                   String      @id @default(uuid())
-  claimId              String      @map("claim_id")
+  id                   String       @id @default(uuid())
+  claimId              String       @map("claim_id")
   /// Unique Vapi call identifier — used for idempotent webhook processing.
-  vapiCallId           String      @unique @map("vapi_call_id")
-  initiatedAt          DateTime    @map("initiated_at")
-  completedAt          DateTime?   @map("completed_at")
-  durationSeconds      Int?        @map("duration_seconds")
+  vapiCallId           String       @unique @map("vapi_call_id")
+  initiatedAt          DateTime     @map("initiated_at")
+  completedAt          DateTime?    @map("completed_at")
+  durationSeconds      Int?         @map("duration_seconds")
   /// ceil(durationSeconds / 60) — the value applied against UsagePeriod.minutesConsumed.
-  minutesBilled        Int?        @map("minutes_billed")
+  minutesBilled        Int?         @map("minutes_billed")
   outcome              CallOutcome?
-  outcomeDetail        String?     @map("outcome_detail")
-  repName              String?     @map("rep_name")
-  referenceNumber      String?     @map("reference_number")
-  transcriptUrl        String?     @map("transcript_url")
+  outcomeDetail        String?      @map("outcome_detail")
+  repName              String?      @map("rep_name")
+  referenceNumber      String?      @map("reference_number")
+  transcriptUrl        String?      @map("transcript_url")
+  /// Full transcript text from Vapi (persisted by guardrails layer)
+  transcriptText       String?      @map("transcript_text")
   /// ISO timestamp set once the 8-dimension automated evaluation has been written.
   /// Null means the call has not yet been evaluated. Used by the zero-retention
   /// audio deletion gate (pii-vault.ts) and the eval-scores analytics endpoint.
-  evalCompletedAt      DateTime?   @map("eval_completed_at")
+  evalCompletedAt      DateTime?    @map("eval_completed_at")
   /// JSON-serialised DimensionScore[] from automated-eval.ts.
   /// Null until evalCompletedAt is set. No PHI — scores and rationale only.
-  evalScores           String?     @map("eval_scores")
+  evalScores           String?      @map("eval_scores")
   /// True if this call triggered the CARRIER_BLOCK protocol.
-  carrierBlockDetected Boolean     @default(false) @map("carrier_block_detected")
+  carrierBlockDetected Boolean      @default(false) @map("carrier_block_detected")
+  /// True when the carrier kept the agent waiting past the hold threshold and
+  /// still ended the call with no engagement (no rep, no reference number).
+  heldThenDumped       Boolean      @default(false) @map("held_then_dumped")
   /// Live console state while call is in progress (cleared on completion).
-  liveState            String?     @map("live_state")
-  activeAgent          String?     @map("active_agent")
-  pausedByStaffAt      DateTime?   @map("paused_by_staff_at")
-  pausedByStaffId      String?     @map("paused_by_staff_id")
-  takenOverByStaffAt   DateTime?   @map("taken_over_by_staff_at")
-  takenOverByStaffId   String?     @map("taken_over_by_staff_id")
-  createdAt            DateTime    @default(now()) @map("created_at")
+  liveState            String?      @map("live_state")
+  activeAgent          String?      @map("active_agent")
+  pausedByStaffAt      DateTime?    @map("paused_by_staff_at")
+  pausedByStaffId      String?      @map("paused_by_staff_id")
+  takenOverByStaffAt   DateTime?    @map("taken_over_by_staff_at")
+  takenOverByStaffId   String?      @map("taken_over_by_staff_id")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  /// Async validator webhook result — true if validation passed, false if escalated
+  validationPassed     Boolean?     @map("validation_passed")
+  /// Full validator output JSON (violations, safety_score, carrier_block_risk, etc.)
+  validationResult     Json?        @map("validation_result")
 
-  claim InsuranceClaim @relation(fields: [claimId], references: [id])
+  claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
+  guardrailAudits GuardrailAudit[]
+  guardrailOutbox GuardrailAuditOutbox?
 
   @@index([claimId])
   @@index([vapiCallId])
@@ -539,35 +886,41 @@ model CarrierBlockEvent {
 
 /// One row per claim in the call queue. Tracks scheduling, retry count, state.
 model CallQueue {
-  id            String      @id @default(uuid())
-  practiceId    String      @map("practice_id")
-  claimId       String      @unique @map("claim_id")
-  scheduledFor  DateTime    @map("scheduled_for")
+  id            String        @id @default(uuid())
+  practiceId    String        @map("practice_id")
+  claimId       String        @unique @map("claim_id")
+  scheduledFor  DateTime      @map("scheduled_for")
   priority      ClaimPriority @default(NORMAL)
   /// Number of attempts made so far. Hard cap: 3 (enforced before dispatch).
-  attempts      Int         @default(0)
-  lastAttemptAt DateTime?   @map("last_attempt_at")
-  status        QueueStatus @default(PENDING)
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
+  attempts      Int           @default(0)
+  lastAttemptAt DateTime?     @map("last_attempt_at")
+  /// Safe, structured reason for the latest dispatch deferral. Never stores PHI or vendor errors.
+  dispatchDeferralCode String? @map("dispatch_deferral_code")
+  /// Staff-facing next step for the latest dispatch deferral. Never stores PHI.
+  dispatchDeferralNextAction String? @map("dispatch_deferral_next_action")
+  dispatchDeferredAt DateTime? @map("dispatch_deferred_at")
+  status        QueueStatus   @default(PENDING)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
 
   @@index([practiceId, status])
   @@index([scheduledFor])
   @@index([practiceId, priority, scheduledFor])
+  @@index([practiceId, status, updatedAt])
   @@map("call_queue")
 }
 
 /// Outbound events for practice EMR / PMS connectors (AbelDent, etc.). Worker drains `processedAt IS NULL`.
 model EmrSyncOutbox {
-  id           String    @id @default(uuid())
-  createdAt    DateTime  @default(now()) @map("created_at")
-  practiceId   String    @map("practice_id")
-  claimId      String    @map("claim_id")
-  eventType    String    @map("event_type")
-  payloadJson  Json      @map("payload_json")
-  processedAt  DateTime? @map("processed_at")
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now()) @map("created_at")
+  practiceId  String    @map("practice_id")
+  claimId     String    @map("claim_id")
+  eventType   String    @map("event_type")
+  payloadJson Json      @map("payload_json")
+  processedAt DateTime? @map("processed_at")
 
   @@index([practiceId, createdAt(sort: Desc)])
   @@index([claimId])
@@ -627,46 +980,120 @@ model InsurancePlan {
 }
 
 model EligibilitySnapshot {
-  snapshotId                String            @id @default(uuid()) @map("snapshot_id")
-  practiceId                String            @map("practice_id")
-  patientId                 String            @map("patient_id")
-  carrier                   CarrierId
-  planId                    String?           @map("plan_id")
-  status                    EligibilityStatus @default(unknown)
-  verifiedAt                DateTime          @map("verified_at")
-  deductibleIndividualMet   Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
-  deductibleFamilyMet       Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
-  annualMaxUsedIndividual   Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
-  annualMaxUsedFamily       Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
-  planYearStart             DateTime          @map("plan_year_start") @db.Date
-  rawCarrierResponse        Json?             @map("raw_carrier_response")
-  createdAt                 DateTime          @default(now()) @map("created_at")
+  snapshotId              String            @id @default(uuid()) @map("snapshot_id")
+  practiceId              String            @map("practice_id")
+  patientId               String            @map("patient_id")
+  /// PIIVault UUID when written by pre-visit pipeline; bridges to patientToken.
+  patientToken            String?           @map("patient_token")
+  carrier                 CarrierId
+  planId                  String?           @map("plan_id")
+  status                  EligibilityStatus @default(unknown)
+  verifiedAt              DateTime          @map("verified_at")
+  deductibleIndividualMet Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
+  deductibleFamilyMet     Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
+  annualMaxUsedIndividual Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
+  annualMaxUsedFamily     Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
+  planYearStart           DateTime          @map("plan_year_start") @db.Date
+  rawCarrierResponse      Json?             @map("raw_carrier_response")
+  createdAt               DateTime          @default(now()) @map("created_at")
 
   practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
   @@index([practiceId, patientId, carrier, verifiedAt(sort: Desc)])
+  @@index([practiceId, patientToken, carrier, verifiedAt(sort: Desc)])
   @@map("eligibility_snapshots")
 }
 
+model AppointmentVerification {
+  id                     String    @id @default(uuid())
+  practiceId             String    @map("practice_id")
+  patientToken           String    @map("patient_token")
+  carrierId              CarrierId @map("carrier_id")
+  procedureCodes         String[]  @map("procedure_codes")
+  appointmentAt          DateTime  @map("appointment_at")
+  status                 String // GREEN | YELLOW | RED
+  reason                 String?
+  cdcpDaysRemaining      Int?      @map("cdcp_days_remaining")
+  enqueuedJobId          String?   @map("enqueued_job_id")
+  vapiCallId             String?   @map("vapi_call_id")
+  attemptCount           Int       @default(0) @map("attempt_count")
+  missingArtifacts       String[]  @default([]) @map("missing_artifacts")
+  portalResolved         Boolean   @default(false) @map("portal_resolved")
+  tx23Resolved           Boolean   @default(false) @map("tx23_resolved")
+  scheduledAppointmentId String?   @map("scheduled_appointment_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, patientToken])
+  @@index([practiceId, appointmentAt])
+  @@index([vapiCallId])
+  @@map("appointment_verifications")
+}
+
+model ScheduledAppointment {
+  id                   String    @id @default(uuid())
+  practiceId           String    @map("practice_id")
+  patientToken         String    @map("patient_token")
+  carrierId            CarrierId @map("carrier_id")
+  procedureCodes       String[]  @map("procedure_codes")
+  appointmentAt        DateTime  @map("appointment_at")
+  pmsSource            String?   @map("pms_source")
+  pmsAppointmentId     String?   @map("pms_appointment_id")
+  verificationId       String?   @map("verification_id")
+  artifactAttestations Json?     @map("artifact_attestations")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([practiceId, pmsSource, pmsAppointmentId])
+  @@index([practiceId, appointmentAt])
+  @@map("scheduled_appointments")
+}
+
+model AdjudicationEvent {
+  id                        String    @id @default(uuid())
+  practiceId                String    @map("practice_id")
+  patientToken              String    @map("patient_token")
+  carrierId                 CarrierId @map("carrier_id")
+  procedureCodes            String[]  @map("procedure_codes")
+  callType                  String    @map("call_type")
+  eligibilityStatus         String?   @map("eligibility_status")
+  predeterminationStatus    String?   @map("predetermination_status")
+  denialReasonCode          String?   @map("denial_reason_code")
+  denialReasonText          String?   @map("denial_reason_text")
+  reconsiderationDeadline   DateTime? @map("reconsideration_deadline")
+  supportingDocsPresent     Boolean?  @map("supporting_docs_present")
+  callDurationMs            Int?      @map("call_duration_ms")
+  vapiCallId                String?   @map("vapi_call_id")
+  outcome                   String
+  appointmentVerificationId String?   @map("appointment_verification_id")
+  claimId                   String?   @map("claim_id")
+  cdcpCaseId                String?   @map("cdcp_case_id")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, carrierId])
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([carrierId, denialReasonCode])
+  @@map("adjudication_events")
+}
+
 model ReconciliationLog {
-  reconciliationId        String             @id @default(uuid()) @map("reconciliation_id")
-  claimId                 String             @map("claim_id")
-  patientId               String             @map("patient_id")
-  estimateId              String?            @map("estimate_id")
-  reconciledAt            DateTime           @default(now()) @map("reconciled_at")
-  estimatedPatientTotal   Decimal            @map("estimated_patient_total") @db.Decimal(10, 2)
-  actualPatientTotal      Decimal            @map("actual_patient_total") @db.Decimal(10, 2)
-  variance                Decimal            @db.Decimal(10, 2)
-  variancePercent         Decimal            @map("variance_percent") @db.Decimal(6, 2)
-  flag                    ReconciliationFlag
-  patientBalanceAdjustment Decimal           @map("patient_balance_adjustment") @db.Decimal(10, 2)
-  varianceReasons         String[]           @map("variance_reasons")
-  requiresHumanReview     Boolean            @default(false) @map("requires_human_review")
-  reviewedBy              String?            @map("reviewed_by")
-  reviewedAt              DateTime?          @map("reviewed_at")
-  reviewNotes             String?            @map("review_notes")
-  rawAdjudicationJson     Json               @map("raw_adjudication_json")
-  createdAt               DateTime           @default(now()) @map("created_at")
+  reconciliationId         String             @id @default(uuid()) @map("reconciliation_id")
+  claimId                  String             @map("claim_id")
+  patientId                String             @map("patient_id")
+  estimateId               String?            @map("estimate_id")
+  reconciledAt             DateTime           @default(now()) @map("reconciled_at")
+  estimatedPatientTotal    Decimal            @map("estimated_patient_total") @db.Decimal(10, 2)
+  actualPatientTotal       Decimal            @map("actual_patient_total") @db.Decimal(10, 2)
+  variance                 Decimal            @db.Decimal(10, 2)
+  variancePercent          Decimal            @map("variance_percent") @db.Decimal(6, 2)
+  flag                     ReconciliationFlag
+  patientBalanceAdjustment Decimal            @map("patient_balance_adjustment") @db.Decimal(10, 2)
+  varianceReasons          String[]           @map("variance_reasons")
+  requiresHumanReview      Boolean            @default(false) @map("requires_human_review")
+  reviewedBy               String?            @map("reviewed_by")
+  reviewedAt               DateTime?          @map("reviewed_at")
+  reviewNotes              String?            @map("review_notes")
+  rawAdjudicationJson      Json               @map("raw_adjudication_json")
+  createdAt                DateTime           @default(now()) @map("created_at")
 
   @@index([patientId, reconciledAt(sort: Desc)])
   @@index([claimId])
@@ -687,8 +1114,6 @@ enum WorkItemType {
 
 enum WorkItemSource {
   insurance_claim
-  patient_balance
-  outreach_balance
 
   @@map("work_item_source")
 }
@@ -716,24 +1141,45 @@ model PmsImportRun {
   @@map("pms_import_runs")
 }
 
+/// Practice desktop agent (Electron) — long-lived API token + heartbeat/sync telemetry.
+model DesktopConnectorAgent {
+  id              String    @id @default(uuid())
+  practiceId      String    @map("practice_id")
+  label           String    @default("Practice PC")
+  tokenHash       String    @map("token_hash")
+  hostname        String?
+  agentVersion    String?   @map("agent_version")
+  platform        String?
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  lastSyncAt      DateTime? @map("last_sync_at")
+  lastSyncStatus  String?   @map("last_sync_status")
+  lastSyncMessage String?   @map("last_sync_message")
+  lastImported    Int?      @map("last_imported")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId])
+  @@map("desktop_connector_agents")
+}
+
 /// Unified AR work queue — merged from insurance claims, patient AR, outreach balances.
 model WorkItem {
-  id               String         @id @default(uuid())
-  practiceId       String         @map("practice_id")
-  sourceType       WorkItemSource @map("source_type")
-  sourceId         String         @map("source_id")
-  itemType         WorkItemType   @map("item_type")
-  dollarsAtRisk    Decimal        @map("dollars_at_risk") @db.Decimal(12, 2)
-  daysOutstanding  Int            @default(0) @map("days_outstanding")
-  carrierId        CarrierId?     @map("carrier_id")
-  title            String?
-  assignedRep      String?        @map("assigned_rep")
-  followUpAt       DateTime?      @map("follow_up_at")
-  notes            String?
-  status           String         @default("open")
-  rankScore        Float          @default(0) @map("rank_score")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
+  id              String         @id @default(uuid())
+  practiceId      String         @map("practice_id")
+  sourceType      WorkItemSource @map("source_type")
+  sourceId        String         @map("source_id")
+  itemType        WorkItemType   @map("item_type")
+  dollarsAtRisk   Decimal        @map("dollars_at_risk") @db.Decimal(12, 2)
+  daysOutstanding Int            @default(0) @map("days_outstanding")
+  carrierId       CarrierId?     @map("carrier_id")
+  title           String?
+  assignedRep     String?        @map("assigned_rep")
+  followUpAt      DateTime?      @map("follow_up_at")
+  notes           String?
+  status          String         @default("open")
+  rankScore       Float          @default(0) @map("rank_score")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   @@unique([practiceId, sourceType, sourceId])
   @@index([practiceId, status, rankScore(sort: Desc)])
@@ -743,16 +1189,16 @@ model WorkItem {
 
 /// End-of-day AR reconciliation vs PMS / queue totals.
 model ArCloseRun {
-  id                 String    @id @default(uuid())
-  practiceId         String    @map("practice_id")
-  closeDate          DateTime  @map("close_date") @db.Date
-  queueOpenTotal     Decimal   @map("queue_open_total") @db.Decimal(14, 2)
-  paymentsReceived   Decimal   @map("payments_received") @db.Decimal(14, 2)
-  pmsLedgerTotal     Decimal?  @map("pms_ledger_total") @db.Decimal(14, 2)
-  variancePct        Float     @map("variance_pct")
-  validationPassed   Boolean   @map("validation_passed")
-  details            Json?
-  createdAt          DateTime  @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  closeDate        DateTime @map("close_date") @db.Date
+  queueOpenTotal   Decimal  @map("queue_open_total") @db.Decimal(14, 2)
+  paymentsReceived Decimal  @map("payments_received") @db.Decimal(14, 2)
+  pmsLedgerTotal   Decimal? @map("pms_ledger_total") @db.Decimal(14, 2)
+  variancePct      Float    @map("variance_pct")
+  validationPassed Boolean  @map("validation_passed")
+  details          Json?
+  createdAt        DateTime @default(now()) @map("created_at")
 
   @@unique([practiceId, closeDate])
   @@index([practiceId, closeDate(sort: Desc)])
@@ -785,18 +1231,18 @@ enum LearningCandidateStatus {
 
 /// One scheduled learning cycle (Notion pull → research → rank → implement → SMS).
 model LearningCycleRun {
-  id                String    @id @default(uuid())
-  startedAt         DateTime  @default(now()) @map("started_at")
-  finishedAt        DateTime? @map("finished_at")
-  status            String    @default("running")
-  pulledCount       Int       @default(0) @map("pulled_count")
-  researchedCount   Int       @default(0) @map("researched_count")
-  rankedCount       Int       @default(0) @map("ranked_count")
-  implementedCount  Int       @default(0) @map("implemented_count")
-  skippedCount      Int       @default(0) @map("skipped_count")
-  smsSent           Boolean   @default(false) @map("sms_sent")
-  summary           Json?
-  error             String?
+  id               String    @id @default(uuid())
+  startedAt        DateTime  @default(now()) @map("started_at")
+  finishedAt       DateTime? @map("finished_at")
+  status           String    @default("running")
+  pulledCount      Int       @default(0) @map("pulled_count")
+  researchedCount  Int       @default(0) @map("researched_count")
+  rankedCount      Int       @default(0) @map("ranked_count")
+  implementedCount Int       @default(0) @map("implemented_count")
+  skippedCount     Int       @default(0) @map("skipped_count")
+  smsSent          Boolean   @default(false) @map("sms_sent")
+  summary          Json?
+  error            String?
 
   candidates LearningCandidate[]
 
@@ -825,14 +1271,50 @@ model LearningCandidate {
   @@map("learning_candidates")
 }
 
+/// Outbox for async guardrail audit jobs (same pattern as EmrSyncOutbox)
+model GuardrailAuditOutbox {
+  id            String    @id @default(uuid())
+  callAttemptId String    @unique @map("call_attempt_id")
+  enqueuedAt    DateTime  @default(now()) @map("enqueued_at")
+  processedAt   DateTime? @map("processed_at")
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@index([enqueuedAt])
+  @@index([processedAt])
+  @@map("guardrail_audit_outbox")
+}
+
+/// Immutable audit results from NeMo Guardrails sidecar
+model GuardrailAudit {
+  id               String   @id @default(uuid())
+  callAttemptId    String   @map("call_attempt_id")
+  rulesVersion     String   @map("rules_version")
+  ranAt            DateTime @default(now()) @map("ran_at")
+  riskScore        Decimal  @map("risk_score") // 0.000..1.000
+  violationsJson   Json     @map("violations_json")
+  signalsJson      Json     @map("signals_json")
+  sidecarLatencyMs Int?     @map("sidecar_latency_ms")
+
+  callAttempt CallAttempt @relation(fields: [callAttemptId], references: [id], onDelete: Cascade)
+
+  @@unique([callAttemptId, rulesVersion])
+  @@index([callAttemptId])
+  @@index([riskScore(sort: Desc)])
+  @@index([ranAt(sort: Desc)])
+  @@map("guardrail_audits")
+}
+
 /// One-time token for password reset. Expires after 1 hour.
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([token])
@@ -924,23 +1406,23 @@ model PmsWritebackLog {
 }
 
 model CdcpReconsiderationCase {
-  id                        String   @id @default(uuid())
-  practiceId                String   @map("practiceId")
-  patientToken              String   @map("patientToken")
-  claimRef                  String   @map("claimRef")
-  carrierCode               String   @default("cdcp_sunlife") @map("carrierCode")
-  procedureCode             String?  @map("procedureCode")
-  denialDate                DateTime @map("denialDate")
-  status                    String   @default("open")
-  exclusionReason           String?  @map("exclusionReason")
-  clinicalEvidenceSummary   String?  @map("clinicalEvidenceSummary")
-  originalAdjudicatorHint   String?  @map("originalAdjudicatorHint")
+  id                      String   @id @default(uuid())
+  practiceId              String   @map("practiceId")
+  patientToken            String   @map("patientToken")
+  claimRef                String   @map("claimRef")
+  carrierCode             String   @default("cdcp_sunlife") @map("carrierCode")
+  procedureCode           String?  @map("procedureCode")
+  denialDate              DateTime @map("denialDate")
+  status                  String   @default("open")
+  exclusionReason         String?  @map("exclusionReason")
+  clinicalEvidenceSummary String?  @map("clinicalEvidenceSummary")
+  originalAdjudicatorHint String?  @map("originalAdjudicatorHint")
   /// Submission details: assignedAdjudicatorId, confirmationNumber, submissionMethod, submittedAt, notes
-  metadata                  Json?
-  createdAt                 DateTime @default(now()) @map("createdAt")
-  updatedAt                 DateTime @updatedAt @map("updatedAt")
+  metadata                Json?
+  createdAt               DateTime @default(now()) @map("createdAt")
+  updatedAt               DateTime @updatedAt @map("updatedAt")
 
-  recoveryActions           ClaimRecoveryAction[]
+  recoveryActions ClaimRecoveryAction[]
 
   @@unique([practiceId, claimRef])
   @@index([practiceId, denialDate])
@@ -964,7 +1446,6 @@ model FeeGuideEntry {
   @@map("FeeGuideEntry")
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Plan / monetization layer  (collectrx-tiering-strategy.md §7 — P0)
 //
@@ -984,18 +1465,18 @@ enum BillingTier {
 /// One row per billing cycle per practice. Tracks minutes consumed against
 /// the practice's BillingTier allotment (src/billing/tiers.ts).
 model UsagePeriod {
-  id                String   @id @default(uuid())
-  practiceId        String   @map("practice_id")
-  periodStart       DateTime @map("period_start")
-  periodEnd         DateTime @map("period_end")
-  minutesConsumed   Int      @default(0) @map("minutes_consumed")
-  callsCompleted    Int      @default(0) @map("calls_completed")
+  id               String   @id @default(uuid())
+  practiceId       String   @map("practice_id")
+  periodStart      DateTime @map("period_start")
+  periodEnd        DateTime @map("period_end")
+  minutesConsumed  Int      @default(0) @map("minutes_consumed")
+  callsCompleted   Int      @default(0) @map("calls_completed")
   /// Set once the 80%-of-allotment warning has been sent for this period.
-  warning80Sent     Boolean  @default(false) @map("warning_80_sent")
+  warning80Sent    Boolean  @default(false) @map("warning_80_sent")
   /// Set once the "period resetting soon" warning has been sent for this period.
-  warningResetSent  Boolean  @default(false) @map("warning_reset_sent")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  warningResetSent Boolean  @default(false) @map("warning_reset_sent")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
@@ -1020,6 +1501,7 @@ model UsagePeriod {
 model PhiVaultEntry {
   /// UUID token — same value stored in InsuranceClaim.patientToken.
   token      String   @id
+  practiceId String   @map("practice_id")
   /// AES-256-GCM ciphertext of JSON.stringify(PatientPHI), hex-encoded.
   ciphertext String
   /// Hex-encoded 12-byte random IV.
@@ -1029,6 +1511,9 @@ model PhiVaultEntry {
   createdAt  DateTime @default(now()) @map("created_at")
   expiresAt  DateTime @map("expires_at")
 
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
   @@index([expiresAt])
   @@map("phi_vault_entries")
 }
@@ -1037,15 +1522,15 @@ model PhiVaultEntry {
 /// e.g. auto-pause on hard usage cap (tiers.ts hardStopAtLimit) or carrier-wide
 /// suspension. Resume requires manual confirmation unless explicitly disabled.
 model FeatureFlag {
-  id                                String    @id @default(uuid())
-  practiceId                        String?   @map("practice_id")
-  feature                           String
-  paused                            Boolean   @default(false)
-  pauseReason                       String?   @map("pause_reason")
-  pausedAt                          DateTime? @map("paused_at")
-  resumeRequiresManualConfirmation  Boolean   @default(true) @map("resume_requires_manual_confirmation")
-  createdAt                         DateTime  @default(now()) @map("created_at")
-  updatedAt                         DateTime  @updatedAt @map("updated_at")
+  id                               String    @id @default(uuid())
+  practiceId                       String?   @map("practice_id")
+  feature                          String
+  paused                           Boolean   @default(false)
+  pauseReason                      String?   @map("pause_reason")
+  pausedAt                         DateTime? @map("paused_at")
+  resumeRequiresManualConfirmation Boolean   @default(true) @map("resume_requires_manual_confirmation")
+  createdAt                        DateTime  @default(now()) @map("created_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
 
   practice Practice? @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
@@ -1097,72 +1582,82 @@ enum ProspectSource {
 }
 
 model MarketingCampaign {
-  id               String     @id @default(uuid())
-  name             String
-  targetProvinces  Json?      @map("target_provinces")
-  harvestQuery     String?    @map("harvest_query")
-  maxProspects     Int?       @map("max_prospects")
-  active           Boolean    @default(true)
-  notes            String?
-  createdAt        DateTime   @default(now()) @map("created_at")
-  updatedAt        DateTime   @updatedAt @map("updated_at")
-  prospects        Prospect[]
+  id              String     @id @default(uuid())
+  name            String
+  targetProvinces Json?      @map("target_provinces")
+  harvestQuery    String?    @map("harvest_query")
+  maxProspects    Int?       @map("max_prospects")
+  active          Boolean    @default(true)
+  notes           String?
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  prospects       Prospect[]
 
   @@map("marketing_campaigns")
 }
 
 model Prospect {
-  id                   String         @id @default(uuid())
-  practiceName         String         @map("practice_name")
-  contactName          String?        @map("contact_name")
-  email                String?
-  phone                String?
-  city                 String?
-  province             String?
-  website              String?
-  googlePlaceId        String?        @map("google_place_id")
-  score                Int            @default(0)
-  stage                ProspectStage  @default(new)
-  source               ProspectSource @default(manual)
-  campaignId           String?        @map("campaign_id")
-  campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  linkedPracticeId     String?        @unique @map("linked_practice_id")
-  linkedPractice       Practice?      @relation(fields: [linkedPracticeId], references: [id], onDelete: SetNull)
-  pmsHint              String?        @map("pms_hint")
-  sequenceStep         Int            @default(0) @map("sequence_step")
-  sequencePausedUntil  DateTime?      @map("sequence_paused_until")
-  sequenceCompleted    Boolean        @default(false) @map("sequence_completed")
-  referralStep         Int            @default(0) @map("referral_step")
-  referralCompleted    Boolean        @default(false) @map("referral_completed")
-  emailOpenCount       Int            @default(0) @map("email_open_count")
-  emailClickCount      Int            @default(0) @map("email_click_count")
-  lastEmailSentAt      DateTime?      @map("last_email_sent_at")
-  lastEngagedAt        DateTime?      @map("last_engaged_at")
-  closedWonAt          DateTime?      @map("closed_won_at")
-  demoScheduledAt      DateTime?      @map("demo_scheduled_at")
-  preDemoEmailSentAt   DateTime?      @map("pre_demo_email_sent_at")
-  dnclCheckedAt        DateTime?      @map("dncl_checked_at")
-  dnclListed           Boolean?       @map("dncl_listed")
-  hubspotDealId        String?        @map("hubspot_deal_id")
-  optOutAt             DateTime?      @map("opt_out_at")
-  callSummary          String?        @map("call_summary") @db.Text
-  replyIntent          String?        @map("reply_intent")
-  suggestedReply       String?        @map("suggested_reply") @db.Text
-  painPoints           Json?          @map("pain_points")
-  metadata             Json?
-  lastVapiCallId       String?        @map("last_vapi_call_id")
+  id                  String             @id @default(uuid())
+  practiceName        String             @map("practice_name")
+  contactName         String?            @map("contact_name")
+  email               String?
+  phone               String?
+  city                String?
+  province            String?
+  website             String?
+  googlePlaceId       String?            @map("google_place_id")
+  score               Int                @default(0)
+  stage               ProspectStage      @default(new)
+  source              ProspectSource     @default(manual)
+  campaignId          String?            @map("campaign_id")
+  campaign            MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  linkedPracticeId    String?            @unique @map("linked_practice_id")
+  linkedPractice      Practice?          @relation(fields: [linkedPracticeId], references: [id], onDelete: SetNull)
+  pmsHint             String?            @map("pms_hint")
+  sequenceStep        Int                @default(0) @map("sequence_step")
+  sequencePausedUntil DateTime?          @map("sequence_paused_until")
+  sequenceCompleted   Boolean            @default(false) @map("sequence_completed")
+  referralStep        Int                @default(0) @map("referral_step")
+  referralCompleted   Boolean            @default(false) @map("referral_completed")
+  emailOpenCount      Int                @default(0) @map("email_open_count")
+  emailClickCount     Int                @default(0) @map("email_click_count")
+  lastEmailSentAt     DateTime?          @map("last_email_sent_at")
+  lastEngagedAt       DateTime?          @map("last_engaged_at")
+  closedWonAt         DateTime?          @map("closed_won_at")
+  demoScheduledAt     DateTime?          @map("demo_scheduled_at")
+  preDemoEmailSentAt  DateTime?          @map("pre_demo_email_sent_at")
+  dnclCheckedAt       DateTime?          @map("dncl_checked_at")
+  dnclListed          Boolean?           @map("dncl_listed")
+  hubspotDealId       String?            @map("hubspot_deal_id")
+  optOutAt            DateTime?          @map("opt_out_at")
+  callSummary         String?            @map("call_summary") @db.Text
+  replyIntent         String?            @map("reply_intent")
+  suggestedReply      String?            @map("suggested_reply") @db.Text
+  painPoints          Json?              @map("pain_points")
+  metadata            Json?
+  lastVapiCallId      String?            @map("last_vapi_call_id")
   /// Set when Khalid manually triggers start-trial. Drives trial onboarding sequence.
-  trialStartedAt       DateTime?      @map("trial_started_at")
+  trialStartedAt      DateTime?          @map("trial_started_at")
   /// Which trial onboarding email has been sent next (0=pre-kickoff through 4=day-60).
-  trialSequenceStep    Int            @default(0) @map("trial_sequence_step")
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
-  activities           ProspectActivity[]
+  trialSequenceStep   Int                @default(0) @map("trial_sequence_step")
+  /// Cold outreach email sequence step (0=not sent, 1=initial sent, 2=follow-up sent, 3=follow-up2, etc.)
+  emailSequenceStep   Int                @default(0) @map("email_sequence_step")
+  initialEmailSentAt  DateTime?          @map("initial_email_sent_at")
+  followUpEmailSentAt DateTime?          @map("follow_up_email_sent_at")
+  followUpScheduledFor DateTime?         @map("follow_up_scheduled_for")
+  emailRepliedAt      DateTime?          @map("email_replied_at")
+  emailBounceReason   String?            @map("email_bounce_reason")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  activities          ProspectActivity[]
+  emailCampaignEvents EmailCampaignEvent[]
 
   @@index([stage])
   @@index([email])
   @@index([createdAt])
   @@index([campaignId])
+  @@index([emailSequenceStep, stage])
+  @@index([followUpScheduledFor])
   @@map("prospects")
 }
 
@@ -1205,16 +1700,16 @@ model MarketingLearningRun {
 }
 
 model AgentRun {
-  id          String   @id @default(cuid())
-  agentName   String   @map("agent_name")
-  runAt       DateTime @default(now()) @map("run_at")
-  severity    String   // CRITICAL | HIGH | MEDIUM | LOW | OK
-  score       Int?     // 0–100 quality/health score where applicable
-  summary     String   @map("summary")
-  findings    Json     @default("[]") // AgentFinding[]
-  downstream  Json     @default("[]") // string[] — agent names this output feeds
-  escalated   Boolean  @default(false)
-  raw         Json?    // full structured output blob
+  id         String   @id @default(cuid())
+  agentName  String   @map("agent_name")
+  runAt      DateTime @default(now()) @map("run_at")
+  severity   String // CRITICAL | HIGH | MEDIUM | LOW | OK
+  score      Int? // 0–100 quality/health score where applicable
+  summary    String   @map("summary")
+  findings   Json     @default("[]") // AgentFinding[]
+  downstream Json     @default("[]") // string[] — agent names this output feeds
+  escalated  Boolean  @default(false)
+  raw        Json? // full structured output blob
 
   @@index([agentName, runAt])
   @@index([severity, runAt])
@@ -1236,4 +1731,212 @@ model InviteToken {
 
   @@index([token])
   @@index([practiceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHIPA Compliance — Deletion Request and Breach Notification
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// PHIPA s.37-39 — Deletion request tracking for regulatory compliance.
+/// Workflow: PENDING → IN_PROGRESS → COMPLETED | FAILED
+model PHIPADeletionRequest {
+  id                    String    @id @default(uuid())
+  practiceId            String    @map("practice_id")
+  patientToken          String    @map("patient_token")
+  status                String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | FAILED
+  requestedAt           DateTime  @default(now()) @map("requested_at")
+  completedAt           DateTime? @map("completed_at")
+  failureReason         String?   @map("failure_reason")
+  purgedClaimsCount     Int       @default(0) @map("purged_claims_count")
+  purgedCallsCount      Int       @default(0) @map("purged_calls_count")
+  purgedRecordingsCount Int       @default(0) @map("purged_recordings_count")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([patientToken])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("phipa_deletion_requests")
+}
+
+/// PHIPA s.65-68 — Breach notification tracking with 14-day compliance deadline.
+model PHIPABreachNotification {
+  id                   String    @id @default(uuid())
+  practiceId           String    @map("practice_id")
+  notificationType     String // DELETION_BREACH | DATA_EXPOSURE | UNAUTHORIZED_ACCESS | SECURITY_INCIDENT | POLICY_VIOLATION
+  description          String
+  notificationDeadline DateTime  @map("notification_deadline")
+  notifiedAt           DateTime? @map("notified_at")
+  affectedPatientToken String?   @map("affected_patient_token")
+  affectedRecordsCount Int       @default(0) @map("affected_records_count")
+  remediationSteps     String?   @map("remediation_steps")
+  remediationCompleted DateTime? @map("remediation_completed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId])
+  @@index([notificationDeadline])
+  @@index([notifiedAt])
+  @@index([createdAt(sort: Desc)])
+  @@map("phipa_breach_notifications")
+}
+
+enum CarrierLessonCategory {
+  IVR_NAVIGATION
+  REP_INTERACTION
+  HOLD_BEHAVIOR
+  REFUSAL
+  EXTRACTION
+
+  @@map("carrier_lesson_category")
+}
+
+enum CarrierLessonStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+
+  @@map("carrier_lesson_status")
+}
+
+/// A lesson extracted from a call transcript by the learning loop.
+/// Platform-wide knowledge (keyed by carrier, shared across practices) and
+/// must never contain PHI or practice-identifying data — the extractor
+/// scrubs, and only human-APPROVED lessons are ever injected into live
+/// call instructions (transcripts are untrusted input).
+model CarrierLesson {
+  id                  String                @id @default(uuid())
+  carrierId           CarrierId             @map("carrier_id")
+  category            CarrierLessonCategory
+  observation         String
+  recommendation      String
+  confidence          Float                 @default(0)
+  status              CarrierLessonStatus   @default(PROPOSED)
+  /// Audit trail only — the lesson content itself is tenant-free.
+  sourceCallAttemptId String?               @map("source_call_attempt_id")
+  reviewedAt          DateTime?             @map("reviewed_at")
+  reviewedBy          String?               @map("reviewed_by")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  @@index([carrierId, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("carrier_lessons")
+}
+
+/// Discovery requests are operator work items only. They never dispatch a call.
+enum CarrierDiscoveryTrigger {
+  MONTHLY
+  CARRIER_ISSUE
+  MANUAL
+
+  @@map("carrier_discovery_trigger")
+}
+
+enum CarrierDiscoveryRunStatus {
+  PENDING
+  READY_FOR_OPERATOR
+  COMPLETED
+  CANCELLED
+
+  @@map("carrier_discovery_run_status")
+}
+
+enum CarrierNavigationProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+
+  @@map("carrier_navigation_proposal_status")
+}
+
+/// A monthly or incident-driven request for an authorized operator to validate
+/// a carrier's IVR. This table intentionally has no call ID or dispatch state.
+model CarrierDiscoveryRun {
+  id          String                    @id @default(uuid())
+  carrierId   CarrierId                 @map("carrier_id")
+  trigger     CarrierDiscoveryTrigger
+  status      CarrierDiscoveryRunStatus @default(PENDING)
+  dueAt       DateTime                  @map("due_at")
+  issueDetail String?                   @map("issue_detail")
+  requestedBy String?                   @map("requested_by")
+  completedAt DateTime?                 @map("completed_at")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  proposals CarrierNavigationProposal[]
+
+  @@index([carrierId, status, dueAt])
+  @@index([trigger, createdAt(sort: Desc)])
+  @@map("carrier_discovery_runs")
+}
+
+/// Immutable, platform-wide IVR/navigation knowledge. Only a reviewed snapshot
+/// may be used as a call instruction source.
+model CarrierNavigationSnapshot {
+  id          String    @id @default(uuid())
+  carrierId   CarrierId @map("carrier_id")
+  version     Int
+  navigation  Json
+  summary     String
+  publishedAt DateTime? @map("published_at")
+  publishedBy String?   @map("published_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  proposalsBase     CarrierNavigationProposal[] @relation("ProposalBaseSnapshot")
+  proposalsPublished CarrierNavigationProposal[] @relation("ProposalPublishedSnapshot")
+
+  @@unique([carrierId, version])
+  @@index([carrierId, publishedAt(sort: Desc)])
+  @@map("carrier_navigation_snapshots")
+}
+
+/// An untrusted, transcript-derived recommendation. Approval creates a new
+/// immutable snapshot; it can never alter an existing published version.
+model CarrierNavigationProposal {
+  id                  String                          @id @default(uuid())
+  carrierId           CarrierId                       @map("carrier_id")
+  discoveryRunId      String?                         @map("discovery_run_id")
+  baseSnapshotId      String?                         @map("base_snapshot_id")
+  proposedNavigation  Json                            @map("proposed_navigation")
+  proposedSummary     String                          @map("proposed_summary")
+  diff                Json
+  evidence            String?                         @map("evidence")
+  confidence          Float                           @default(0)
+  status              CarrierNavigationProposalStatus @default(PROPOSED)
+  reviewedAt          DateTime?                       @map("reviewed_at")
+  reviewedBy          String?                         @map("reviewed_by")
+  reviewNotes         String?                         @map("review_notes")
+  publishedSnapshotId String?                         @unique @map("published_snapshot_id")
+  createdAt           DateTime                        @default(now()) @map("created_at")
+  updatedAt           DateTime                        @updatedAt @map("updated_at")
+
+  discoveryRun      CarrierDiscoveryRun?      @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  baseSnapshot      CarrierNavigationSnapshot? @relation("ProposalBaseSnapshot", fields: [baseSnapshotId], references: [id], onDelete: SetNull)
+  publishedSnapshot CarrierNavigationSnapshot? @relation("ProposalPublishedSnapshot", fields: [publishedSnapshotId], references: [id], onDelete: SetNull)
+
+  @@index([carrierId, status, createdAt(sort: Desc)])
+  @@index([discoveryRunId])
+  @@map("carrier_navigation_proposals")
+}
+
+model EmailCampaignEvent {
+  id             String   @id @default(uuid())
+  prospectId     String   @map("prospect_id")
+  prospect       Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  eventType      String   @map("event_type") // sent, opened, clicked, replied, bounced, unsubscribed
+  eventTimestamp DateTime @default(now()) @map("event_timestamp")
+  emailSubject   String?  @map("email_subject")
+  replyBody      String?  @map("reply_body") @db.Text
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([prospectId])
+  @@index([eventTimestamp])
+  @@index([eventType])
+  @@map("email_campaign_events")
 }

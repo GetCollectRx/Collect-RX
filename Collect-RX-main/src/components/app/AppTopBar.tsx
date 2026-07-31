@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { usePractice } from '../../context/PracticeContext'
 import { CollectRxLogoMark } from '../brand/CollectRxLogo'
+import { NotificationBell } from './NotificationBell'
 
 export function AppTopBar() {
   const { practices, practiceId, setPracticeId, logout, isPlatformDev, practice } = usePractice()
@@ -35,6 +36,7 @@ export function AppTopBar() {
         </div>
 
         <div className="crx-topbar-actions">
+          <NotificationBell />
           <Link to="/changelog" className="crx-topbar-link">
             Changelog
           </Link>

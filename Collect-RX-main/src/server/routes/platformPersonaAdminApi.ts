@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../lib/prisma.js';
@@ -9,16 +9,34 @@ import { getPracticeSettings, updatePracticeSettings } from '../services/practic
 import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
-import { authPracticeId, authUserId, getUserRole } from '../accessControl/types.js';
+import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
+import { TIERS } from '../../billing/tiers.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
   router.use(authenticate);
+  // This router shares the /api/admin mount with the practice-owner admin
+  // router. A hard 403 here would swallow every /api/admin/* request from
+  // practice owners before their router (mounted after this one) is reached —
+  // locking practices out of their own settings. Non-platform users skip this
+  // router entirely and fall through to the practice admin router.
+  router.use((req: Request, _res: Response, next: NextFunction) => {
+    if (!isPlatformAdmin(req.auth ?? req.practiceAuth)) return next('router');
+    next();
+  });
   router.use(requirePlatformAdmin);
 
   router.get('/practices', async (_req, res) => {
     const rows = await prisma.practice.findMany({
-      select: { id: true, name: true, settings: true },
+      select: {
+        id: true,
+        name: true,
+        settings: true,
+        billingTier: true,
+        subscriptionStatus: true,
+        callsPaused: true,
+        callsPausedReason: true,
+      },
       orderBy: { name: 'asc' },
     });
     const data = await Promise.all(
@@ -32,12 +50,28 @@ export function createPlatformPersonaAdminRouter(): Router {
           orderBy: { initiatedAt: 'desc' },
           select: { initiatedAt: true },
         });
+        const tier = TIERS[p.billingTier];
+        const now = new Date();
+        const usage = await prisma.usagePeriod.findFirst({
+          where: { practiceId: p.id, periodStart: { lte: now }, periodEnd: { gte: now } },
+          orderBy: { periodStart: 'desc' },
+          select: { minutesConsumed: true },
+        });
+        const minutesConsumed = usage?.minutesConsumed ?? 0;
         return {
           id: p.id,
           name: p.name,
           voiceAgentEnabled: settings.voiceAgentEnabled,
           openEscalations: openEsc,
           lastCallAt: lastCall?.initiatedAt?.toISOString() ?? null,
+          billingTier: p.billingTier,
+          tierName: tier.name,
+          subscriptionStatus: p.subscriptionStatus ?? null,
+          callsPaused: p.callsPaused,
+          callsPausedReason: p.callsPausedReason,
+          minutesConsumed,
+          minutesIncluded: tier.includedMinutes,
+          minutesRemaining: Math.max(0, tier.includedMinutes - minutesConsumed),
         };
       }),
     );

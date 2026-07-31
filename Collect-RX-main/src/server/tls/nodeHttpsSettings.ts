@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Strict TLS options for Node.js https.createServer (terminating TLS in-process).
 //
-// Typical Railway / reverse-proxy setups terminate TLS at the edge; leave
+// Typical Fly / reverse-proxy setups terminate TLS at the edge; leave
 // TLS_KEY_PATH / TLS_CERT_PATH unset and keep listening on HTTP behind the proxy.
 // Use this when you attach certs directly to Node (on-prem, sidecar, or custom VM).
 // ─────────────────────────────────────────────────────────────────────────────

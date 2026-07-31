@@ -19,6 +19,13 @@ type SettingsResponse = {
   }
 }
 
+type TriageCredentialStatus = {
+  enrolled: boolean
+  lastHealthCheckAt: string | null
+  lastHealthCheckStatus: 'healthy' | 'unhealthy' | null
+  lastHealthCheckErrorCode: string | null
+}
+
 export default function PracticeSettings() {
   const ctx = usePractice()
   const { practiceId, loading: practiceLoading } = ctx
@@ -32,6 +39,9 @@ export default function PracticeSettings() {
   const [telusValue, setTelusValue] = useState('')
   const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
   const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
+  const [triageCredential, setTriageCredential] = useState('')
+  const [triageStatus, setTriageStatus] = useState<TriageCredentialStatus | null>(null)
+  const [triageBusy, setTriageBusy] = useState(false)
 
   const isReadOnly = resolveIsReadOnly(ctx, userRole)
 
@@ -51,6 +61,10 @@ export default function PracticeSettings() {
       const res = await apiFetchJson<SettingsResponse>(`/api/practices/${practiceId}/settings`)
       setSettings(res.data.settings)
       setPmsInfo(res.data.pms ?? null)
+      const triage = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
+        `/api/practices/${practiceId}/triage-credential`,
+      )
+      setTriageStatus(triage.data)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -108,6 +122,49 @@ export default function PracticeSettings() {
     setSettings({ ...settings, telusTpaMappings })
   }
 
+  async function enrollTriageCredential() {
+    if (!practiceId || isReadOnly || !triageCredential.trim()) return
+    setTriageBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const response = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
+        `/api/practices/${practiceId}/triage-credential`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: triageCredential }),
+        },
+      )
+      setTriageCredential('')
+      setTriageStatus(response.data)
+      setMessage('Triage credential encrypted and enrolled')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setTriageBusy(false)
+    }
+  }
+
+  async function testTriageCredential() {
+    if (!practiceId || isReadOnly) return
+    setTriageBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const response = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
+        `/api/practices/${practiceId}/triage-credential/test-connection`,
+        { method: 'POST' },
+      )
+      setTriageStatus(response.data)
+      setMessage(response.data.enrolled ? 'Local credential integrity check completed' : 'No triage credential enrolled')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setTriageBusy(false)
+    }
+  }
+
   const busy = practiceLoading || (loading && !settings)
 
   return (
@@ -137,6 +194,43 @@ export default function PracticeSettings() {
           {isReadOnly && (
             <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
           )}
+
+          <Card>
+            <CardHeader
+              title="CDAnet triage credential"
+              subtitle="Used only by the future claim-status adapter. The current test verifies encrypted local storage and makes no network request."
+            />
+            <div className="space-y-3 max-w-xl">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {triageStatus?.enrolled ? 'Credential enrolled' : 'No credential enrolled'}
+                {triageStatus?.lastHealthCheckStatus
+                  ? ` · Last check: ${triageStatus.lastHealthCheckStatus}`
+                  : ''}
+                {triageStatus?.lastHealthCheckAt
+                  ? ` (${new Date(triageStatus.lastHealthCheckAt).toLocaleString()})`
+                  : ''}
+              </p>
+              {!isReadOnly && (
+                <>
+                  <Input
+                    label="Credential"
+                    type="password"
+                    value={triageCredential}
+                    autoComplete="new-password"
+                    onChange={(e) => setTriageCredential(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" disabled={triageBusy || !triageCredential.trim()} onClick={() => void enrollTriageCredential()}>
+                      {triageBusy ? 'Saving…' : 'Encrypt and enroll'}
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={triageBusy || !triageStatus?.enrolled} onClick={() => void testTriageCredential()}>
+                      Test local connection
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
 
           <Card>
             <CardHeader

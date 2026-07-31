@@ -109,11 +109,33 @@
 .toast { animation: toast-in 0.2s ease-out both; }
 
 /* ── Page enter ──────────────────────────────────────────────────────────── */
+/* Orchestrated load: the page rises in, then its direct children cascade in a
+   stagger on the house curve. One well-timed entrance per route change. */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.page-enter { animation: fade-in 0.2s ease-out both; }
+@keyframes crx-cascade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fade-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-enter > * { animation: crx-cascade-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-enter > *:nth-child(1) { animation-delay: 0.03s; }
+.page-enter > *:nth-child(2) { animation-delay: 0.08s; }
+.page-enter > *:nth-child(3) { animation-delay: 0.13s; }
+.page-enter > *:nth-child(4) { animation-delay: 0.18s; }
+.page-enter > *:nth-child(5) { animation-delay: 0.23s; }
+.page-enter > *:nth-child(6) { animation-delay: 0.28s; }
+.page-enter > *:nth-child(n+7) { animation-delay: 0.32s; }
+/* Nested page-enter (e.g. brief inside dashboard): don't double-cascade */
+.page-enter .page-enter,
+.page-enter .page-enter > * { animation-delay: 0s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .page-enter > * { animation: none; }
+}
 
 /* ── Chart bars ──────────────────────────────────────────────────────────── */
 .chart-bar { transition: opacity 0.15s ease; }

@@ -73,7 +73,7 @@ Dental practice staff need to run CollectRx on a Windows desktop alongside Abeld
 - Backend must remain on Railway (Vapi webhook requires public URL)
 - PHI never crosses to Vapi — UUID tokens only
 - `discover-schema.cjs` must be run on Dr. Hasan's Abeldent instance before production sync
-- Stripe Connect (not standard Stripe) for patient payment collection
+- Stripe Billing for practice SaaS subscription (patient/client payment collection is out of scope)
 
 ---
 

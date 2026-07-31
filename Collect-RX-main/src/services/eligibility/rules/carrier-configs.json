@@ -57,7 +57,16 @@
       ],
       "notes": "Major group insurer. Standard COB. Ortho lifetime max tracked separately.",
       "isClearinghouse": false,
-      "minWaitDayForClaims": 32
+      "minWaitDayForClaims": 32,
+      "dispatch": {
+        "displayName": "Sun Life Financial",
+        "avgHoldMinutes": 18,
+        "maxRecoverableAgeDays": 365,
+        "ivrHints": [
+          "Press 2 for dental claims",
+          "Enter group number, then member ID"
+        ]
+      }
     },
     "canada_life": {
       "carrierId": "canada_life",
@@ -116,7 +125,16 @@
       ],
       "notes": "Standard COB. No ortho coverage on most plans. Higher deductible than Sun Life.",
       "isClearinghouse": false,
-      "minWaitDayForClaims": 32
+      "minWaitDayForClaims": 32,
+      "dispatch": {
+        "displayName": "Canada Life",
+        "avgHoldMinutes": 22,
+        "portalFirstDispatch": true,
+        "ivrHints": [
+          "Press 3 for claim status",
+          "Enter plan number followed by pound"
+        ]
+      }
     },
     "manulife": {
       "carrierId": "manulife",
@@ -172,7 +190,15 @@
       ],
       "notes": "No deductible \u2014 industry differentiator. Higher basic/major coverage. Family annual max is tracked per individual and per household.",
       "isClearinghouse": false,
-      "minWaitDayForClaims": 32
+      "minWaitDayForClaims": 32,
+      "dispatch": {
+        "displayName": "Manulife",
+        "avgHoldMinutes": 15,
+        "ivrHints": [
+          "Press 1 for English",
+          "Press 2 for benefits inquiries"
+        ]
+      }
     },
     "green_shield": {
       "carrierId": "green_shield",
@@ -236,7 +262,15 @@
       ],
       "notes": "Known for strict frequency limit enforcement. Automated adjudication rejects duplicates quickly. No ortho on standard plans.",
       "isClearinghouse": false,
-      "minWaitDayForClaims": 32
+      "minWaitDayForClaims": 32,
+      "dispatch": {
+        "displayName": "Green Shield Canada",
+        "avgHoldMinutes": 20,
+        "ivrHints": [
+          "Press 2 for provider inquiries",
+          "Provide certificate number"
+        ]
+      }
     },
     "rbc": {
       "carrierId": "rbc",
@@ -300,7 +334,15 @@
       ],
       "notes": "Higher deductible. Ortho coverage included. Higher annual max offset by deductible.",
       "isClearinghouse": false,
-      "minWaitDayForClaims": 32
+      "minWaitDayForClaims": 32,
+      "dispatch": {
+        "displayName": "RBC Insurance",
+        "avgHoldMinutes": 16,
+        "ivrHints": [
+          "Press 3 for group benefits",
+          "Enter policy number when prompted"
+        ]
+      }
     },
     "telus_adjudicare": {
       "carrierId": "telus_adjudicare",
@@ -360,6 +402,14 @@
       "notes": "TELUS AdjudiCare is a clearinghouse/TPA platform \u2014 not a single insurer. Must identify underlying TPA from member card before IVR navigation. Benefits shown are defaults; actual plan varies by employer group.",
       "isClearinghouse": true,
       "minWaitDayForClaims": 21,
+      "dispatch": {
+        "displayName": "TELUS AdjudiCare",
+        "avgHoldMinutes": 12,
+        "ivrHints": [
+          "TELUS is a clearinghouse — identify TPA from group number prefix first",
+          "TPA identification required before IVR navigation"
+        ]
+      },
       "telusTpaProfiles": {
         "group_prefix_ranges": {
           "A": "Alberta Blue Cross",

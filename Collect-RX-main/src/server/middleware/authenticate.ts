@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
+import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { runWithRlsContext } from '../db/rlsContext.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 import { prisma } from '../../lib/prisma.js';
 
@@ -15,6 +17,25 @@ declare global {
       practiceAuth?: UserAuthPayload;
     }
   }
+}
+
+function continueWithRls(req: Request, next: NextFunction): void {
+  const auth = req.auth;
+  if (!auth) {
+    next();
+    return;
+  }
+  const hinted = practiceIdFromRequestHints(req);
+  const sessionPracticeId =
+    auth.role !== 'platform_dev' && 'practiceId' in auth
+      ? (auth as UserAuthPayload).practiceId
+      : undefined;
+  const practiceId = sessionPracticeId ?? hinted;
+  if (practiceId) {
+    runWithRlsContext({ practiceId }, () => next());
+    return;
+  }
+  runWithRlsContext({ bypass: true }, () => next());
 }
 
 /**
@@ -68,7 +89,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
             res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
             return;
           }
-          next();
+          continueWithRls(req, next);
         })
         .catch(() => {
           // Fail CLOSED: if we cannot confirm the accountant's access is still valid
@@ -78,7 +99,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    next();
+    continueWithRls(req, next);
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });
   }

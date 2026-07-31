@@ -3,7 +3,9 @@ import type { ProcessedOutcome } from '../../outcome/processor.js';
 import { enqueueEmrClaimEvent } from '../emrSyncOutbox.js';
 import {
   ensureCdcpCaseForClaim,
+  hasOpenCdcpCaseForClaim,
   linkRecoveryActionToCdcpCase,
+  primaryProcedureFromTreatmentCodes,
 } from './cdcpRecoveryBridge.js';
 import { claimStatusFromCallOutcome } from '../claimStatusFromCallOutcome.js';
 import { hasFinancialCorroboration } from '../outcomeConfidence.js';
@@ -12,6 +14,7 @@ import {
   routeForPaymentTraceRecall,
 } from './claimRouter.js';
 import { shouldSupersedeBlockingGate, shouldSupersedeOpenAction, isPracticeGateHoldDecision } from './gateSupersession.js';
+import { getCarrierHoldStats } from './holdLedger.js';
 import type { RecoveryDecision } from './types.js';
 
 export interface ApplyRecoveryAfterCallParams {
@@ -21,6 +24,7 @@ export interface ApplyRecoveryAfterCallParams {
     carrierId: string;
     claimNumber: string;
     patientToken: string;
+    treatmentCodes?: string | null;
     outstandingAmount: { toString(): string } | number;
     daysOutstanding: number;
     status: import('@prisma/client').ClaimStatus;
@@ -43,18 +47,6 @@ async function hasBlockingPracticeGate(prisma: PrismaClient, claimId: string): P
     },
   });
   return n > 0;
-}
-
-async function hasOpenCdcpCase(
-  prisma: PrismaClient,
-  practiceId: string,
-  claimRef: string,
-): Promise<boolean> {
-  const row = await prisma.cdcpReconsiderationCase.findFirst({
-    where: { practiceId, claimRef, status: { notIn: ['approved', 'denied_final', 'expired'] } },
-    select: { id: true },
-  });
-  return Boolean(row);
 }
 
 async function supersedeRecoveryActions(
@@ -103,17 +95,18 @@ async function persistRecoveryAction(
   attemptId: string,
   decision: RecoveryDecision,
   outcomeDetail: string | null,
-): Promise<void> {
+): Promise<{ id: string; blocking: boolean; title: string; detail: string | null } | null> {
   await supersedeRecoveryActions(prisma, claim.id, decision, outcomeDetail);
 
-  if (!decision.recoveryActionType || !decision.actionTitle) return;
+  if (!decision.recoveryActionType || !decision.actionTitle) return null;
 
-  await prisma.claimRecoveryAction.create({
+  const blocking = decision.route === 'PRACTICE_GATE';
+  const created = await prisma.claimRecoveryAction.create({
     data: {
       practiceId: claim.practiceId,
       claimId: claim.id,
       actionType: decision.recoveryActionType,
-      status: decision.route === 'PRACTICE_GATE' ? 'BLOCKING' : 'OPEN',
+      status: blocking ? 'BLOCKING' : 'OPEN',
       route: decision.route,
       title: decision.actionTitle,
       detail: decision.actionDetail,
@@ -122,6 +115,13 @@ async function persistRecoveryAction(
       metadata: { reason: decision.reason },
     },
   });
+
+  return {
+    id: created.id,
+    blocking,
+    title: created.title,
+    detail: created.detail,
+  };
 }
 
 async function upsertCallQueue(
@@ -169,10 +169,29 @@ export async function applyRecoveryAfterCall(
   const queueEntry = await prisma.callQueue.findUnique({ where: { claimId: claim.id } });
   const attemptCount = queueEntry?.attempts ?? 0;
 
-  const [blockingGate, cdcpOpen] = await Promise.all([
+  const procedureCode = primaryProcedureFromTreatmentCodes(claim.treatmentCodes);
+
+  const [blockingGate, cdcpOpen, priorEngagedAttempts, carrierHoldStats] = await Promise.all([
     hasBlockingPracticeGate(prisma, claim.id),
-    hasOpenCdcpCase(prisma, claim.practiceId, claim.claimNumber),
+    hasOpenCdcpCaseForClaim(prisma, {
+      practiceId: claim.practiceId,
+      patientToken: claim.patientToken,
+      claimRef: claim.claimNumber,
+      procedureCode,
+    }),
+    prisma.callAttempt.count({
+      where: {
+        claimId: claim.id,
+        OR: [{ referenceNumber: { not: null } }, { repName: { not: null } }],
+      },
+    }),
+    getCarrierHoldStats(prisma, claim.practiceId, claim.carrierId),
   ]);
+
+  const hasEngagementEvidence =
+    Boolean(processed.referenceNumber) ||
+    Boolean(processed.repName) ||
+    priorEngagedAttempts > 0;
 
   const decision = routeClaimRecovery({
     callOutcome: processed.outcome,
@@ -186,6 +205,8 @@ export async function applyRecoveryAfterCall(
     hasBlockingPracticeGate: blockingGate,
     hasOpenCdcpCase: cdcpOpen,
     paymentCorroborated: params.paymentCorroborated,
+    hasEngagementEvidence,
+    carrierHoldDumpRate: carrierHoldStats.dumpRate,
   });
 
   let cdcpCaseId: string | undefined;
@@ -194,12 +215,13 @@ export async function applyRecoveryAfterCall(
       practiceId: claim.practiceId,
       patientToken: claim.patientToken,
       claimRef: claim.claimNumber,
+      procedureCode,
       clinicalSummary: processed.outcomeDetail,
     });
     if (cdcp) cdcpCaseId = cdcp.caseId;
   }
 
-  await prisma.$transaction(async (tx) => {
+  const gateToNotify = await prisma.$transaction(async (tx) => {
     await tx.insuranceClaim.update({
       where: { id: claim.id },
       data: {
@@ -217,7 +239,13 @@ export async function applyRecoveryAfterCall(
       attemptCount,
       params.completedAt,
     );
-    await persistRecoveryAction(tx as unknown as PrismaClient, claim, attemptId, decision, processed.outcomeDetail);
+    const createdGate = await persistRecoveryAction(
+      tx as unknown as PrismaClient,
+      claim,
+      attemptId,
+      decision,
+      processed.outcomeDetail,
+    );
 
     await tx.claimRecoveryEvent.create({
       data: {
@@ -235,7 +263,23 @@ export async function applyRecoveryAfterCall(
         },
       },
     });
+
+    return createdGate;
   });
+
+  if (gateToNotify?.blocking) {
+    const { notifyPracticeOnBlockingGate } = await import('./recoveryNotifications.js');
+    void notifyPracticeOnBlockingGate(prisma, {
+      practiceId: claim.practiceId,
+      gateId: gateToNotify.id,
+      claimId: claim.id,
+      claimNumber: claim.claimNumber,
+      title: gateToNotify.title,
+      detail: gateToNotify.detail,
+    }).catch((e) => {
+      console.error('[recoveryLoop] gate alert failed (non-fatal):', e);
+    });
+  }
 
   if (cdcpCaseId) {
     await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpCaseId);
@@ -311,16 +355,23 @@ export async function processPaymentTraceDue(prisma: PrismaClient): Promise<numb
   const _openStatus: import('@prisma/client').RecoveryActionStatus = 'OPEN';
   void _openStatus; // used only for type-checking
 
-  const lockedIds = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM claim_recovery_actions
-    WHERE action_type = 'PAYMENT_VERIFY_SYNC'
-      AND status = 'OPEN'
-      AND scheduled_recall_at <= ${now}
-      AND cleared_at IS NULL
-    ORDER BY scheduled_recall_at ASC
-    LIMIT 50
-    FOR UPDATE SKIP LOCKED
-  `;
+  // Raw SQL never receives the RLS extension's set_config (it only wraps model
+  // operations), so under FORCE RLS a bare $queryRaw silently returns zero rows.
+  // This worker legitimately crosses tenants: set the bypass flag in the same
+  // transaction as the query — set_config(..., true) is transaction-scoped.
+  const lockedIds = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`;
+    return tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM claim_recovery_actions
+      WHERE action_type = 'PAYMENT_VERIFY_SYNC'
+        AND status = 'OPEN'
+        AND scheduled_recall_at <= ${now}
+        AND cleared_at IS NULL
+      ORDER BY scheduled_recall_at ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    `;
+  });
 
   if (lockedIds.length === 0) return 0;
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { usePractice } from '../context/PracticeContext'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { resolveWsUrl } from '../lib/resolveWsUrl'
+import { getDesktopSessionToken } from '../lib/desktopAuth'
 import { parseApiJson } from '../lib/parseApiJson'
 import type { DeskActiveCall, DeskCarrierBlock, DeskQueueEntry, DeskTranscriptLine } from '../types/frontDesk'
 import type { WsEvent } from '../types/ws'
@@ -31,6 +32,31 @@ type CarrierRow = {
   displayName: string
   status: 'open' | 'on_call' | 'blocked'
   block: { id: string; blockedAt: string; reason: string | null } | null
+}
+
+type FailureReview = {
+  claimId: string
+  claimRef: string
+  carrierId: string
+  attempts: Array<{
+    attemptNumber: number
+    initiatedAt: string
+    completedAt: string | null
+    outcome: string | null
+    transcriptAvailable: boolean
+    validationPassed: boolean | null
+    carrierBlockDetected: boolean
+  }>
+  summary: string
+  recommendation: string
+  approvedCarrierLessons: string[]
+}
+
+type CarrierHoldLedgerEntry = {
+  carrierId: string
+  completedCalls: number
+  dumpedHolds: number
+  dumpRate: number | null
 }
 
 function formatMoney(cents: number): string {
@@ -89,11 +115,92 @@ function Waveform({ active }: { active: boolean }) {
   )
 }
 
+function FailureReviewPanel({ reviews }: { reviews: FailureReview[] }) {
+  if (reviews.length === 0) return null
+
+  return (
+    <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4 shadow-card">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Human review required</h3>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+            Automated calling is complete for these claims. No additional carrier calls will be scheduled.
+          </p>
+        </div>
+        <span className="text-2xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-2 py-1 rounded-full">
+          {reviews.length}
+        </span>
+      </div>
+      <div className="mt-3 space-y-3">
+        {reviews.map((review) => (
+          <div key={review.claimId} className="rounded-lg bg-white/80 dark:bg-gray-900/70 border border-amber-100 dark:border-amber-900/50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{review.claimRef}</p>
+              <p className="text-2xs text-gray-500 dark:text-gray-400">
+                {CARRIER_LABELS[review.carrierId] ?? review.carrierId}
+              </p>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-gray-700 dark:text-gray-300">{review.summary}</p>
+            <p className="mt-2 text-xs font-medium leading-relaxed text-amber-900 dark:text-amber-200">
+              Next action: {review.recommendation}
+            </p>
+            {review.approvedCarrierLessons.length > 0 && (
+              <div className="mt-2 border-t border-amber-100 dark:border-amber-900/40 pt-2">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                  Approved carrier guidance
+                </p>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5 text-2xs leading-relaxed text-gray-600 dark:text-gray-400">
+                  {review.approvedCarrierLessons.map((lesson) => <li key={lesson}>{lesson}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function HoldLedgerPanel({ entries }: { entries: CarrierHoldLedgerEntry[] }) {
+  if (entries.length === 0) return null
+
+  return (
+    <section className="p-4 border-b border-gray-100 dark:border-gray-800/60">
+      <h2 className="text-2xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-600">
+        Carrier hold reliability
+      </h2>
+      <p className="mt-1 text-2xs leading-relaxed text-gray-500 dark:text-gray-500">
+        Last 30 days. A dumped hold is a 10+ minute call with no representative engagement.
+      </p>
+      <div className="mt-2 space-y-1.5">
+        {entries.map((entry) => {
+          const elevated = entry.dumpRate != null && entry.dumpRate >= 0.3
+          const rateLabel = entry.dumpRate == null
+            ? `${entry.dumpedHolds}/${entry.completedCalls} · building sample`
+            : `${Math.round(entry.dumpRate * 100)}% · ${entry.dumpedHolds}/${entry.completedCalls}`
+          return (
+            <div key={entry.carrierId} className="flex items-center justify-between gap-2 text-2xs">
+              <span className="truncate text-gray-600 dark:text-gray-300">
+                {CARRIER_LABELS[entry.carrierId] ?? entry.carrierId}
+              </span>
+              <span className={elevated ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}>
+                {rateLabel}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 export default function LiveConsole() {
   const { practiceId, isFrontDesk } = usePractice()
   const [carriers, setCarriers] = useState<CarrierRow[]>([])
   const [queue, setQueue] = useState<DeskQueueEntry[]>([])
+  const [failureReviews, setFailureReviews] = useState<FailureReview[]>([])
+  const [holdLedger, setHoldLedger] = useState<CarrierHoldLedgerEntry[]>([])
   const [queuePaused, setQueuePaused] = useState(false)
   const [activeCall, setActiveCall] = useState<DeskActiveCall | null>(null)
   const [transcript, setTranscript] = useState<DeskTranscriptLine[]>([])
@@ -110,19 +217,25 @@ export default function LiveConsole() {
 
   const loadSnapshot = useCallback(async () => {
     if (!practiceId) return
-    const [activeRes, queueRes, carriersRes] = await Promise.all([
+    const [activeRes, queueRes, carriersRes, reviewsRes, holdLedgerRes] = await Promise.all([
       fetch(resolveApiUrl(`${deskBase}/active`), { credentials: 'include' }),
       fetch(resolveApiUrl(`${deskBase}/queue`), { credentials: 'include' }),
       fetch(resolveApiUrl(`${deskBase}/carriers/status`), { credentials: 'include' }),
+      fetch(resolveApiUrl(`${deskBase}/queue/reviews`), { credentials: 'include' }),
+      fetch(resolveApiUrl(`${deskBase}/hold-ledger`), { credentials: 'include' }),
     ])
     const activeJson = await parseApiJson<{ data: { call: DeskActiveCall | null; transcript: DeskTranscriptLine[] } }>(activeRes)
     const queueJson = await parseApiJson<{ data: { queue: DeskQueueEntry[]; paused: boolean } }>(queueRes)
     const carriersJson = await parseApiJson<{ data: CarrierRow[] }>(carriersRes)
+    const reviewsJson = await parseApiJson<{ data: FailureReview[] }>(reviewsRes)
+    const holdLedgerJson = await parseApiJson<{ data: CarrierHoldLedgerEntry[] }>(holdLedgerRes)
     setActiveCall(activeJson.data.call)
     setTranscript(activeJson.data.transcript)
     setQueue(queueJson.data.queue)
     setQueuePaused(queueJson.data.paused)
     setCarriers(carriersJson.data)
+    setFailureReviews(reviewsJson.data)
+    setHoldLedger(holdLedgerJson.data)
     const blocked = carriersJson.data.find((c) => c.status === 'blocked')
     if (blocked?.block) {
       setBlockAlert({
@@ -156,7 +269,10 @@ export default function LiveConsole() {
     let closed = false
 
     function connect() {
-      ws = new WebSocket(resolveWsUrl('/ws/desk'))
+      const token = getDesktopSessionToken()
+      ws = token
+        ? new WebSocket(resolveWsUrl('/ws/desk'), token)
+        : new WebSocket(resolveWsUrl('/ws/desk'))
       ws.onopen = () => { wsBackoff.current = 500 }
       ws.onmessage = (ev) => {
         const msg = JSON.parse(ev.data as string) as WsEvent | { type: 'connected' }
@@ -348,6 +464,7 @@ export default function LiveConsole() {
               ))}
             </ul>
           </div>
+          <HoldLedgerPanel entries={holdLedger} />
 
           {/* Queue */}
           <div className="flex-1 min-h-0 flex flex-col p-4">
@@ -377,7 +494,12 @@ export default function LiveConsole() {
 
             <div className="space-y-1.5 overflow-y-auto flex-1">
               {queue.length === 0 && (
-                <p className="text-xs text-gray-400 dark:text-gray-600 text-center py-6">Queue is empty</p>
+                <div className="text-xs text-gray-400 dark:text-gray-600 text-center py-6 space-y-2">
+                  <p>Queue is empty</p>
+                  <Link to="/import" className="underline" style={{ color: 'var(--crx-green)' }}>
+                    Import claims CSV
+                  </Link>
+                </div>
               )}
               {queue.map((e, idx) => (
                 <div
@@ -403,6 +525,18 @@ export default function LiveConsole() {
                       <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{e.claimRef}</p>
                       <p className="text-2xs text-gray-500 dark:text-gray-500 mt-0.5">{CARRIER_LABELS[e.carrierId] ?? e.carrierId}</p>
                       <p className="text-2xs font-semibold text-emerald-700 dark:text-emerald-400 font-mono mt-0.5">{formatMoney(e.amountClaimedCents)}</p>
+                      {e.dispatchDeferralCode && (
+                        <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5">
+                          <p className="text-2xs font-semibold text-amber-800 dark:text-amber-300">
+                            {e.dispatchDeferralCode.replace(/_/g, ' ')}
+                          </p>
+                          {e.dispatchDeferralNextAction && (
+                            <p className="mt-0.5 text-2xs leading-snug text-amber-700 dark:text-amber-400">
+                              {e.dispatchDeferralNextAction}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className="text-2xs text-gray-300 dark:text-gray-700 font-mono flex-shrink-0">#{idx + 1}</span>
                   </div>
@@ -438,6 +572,8 @@ export default function LiveConsole() {
 
             // ── Active call ──
             <div className="max-w-2xl mx-auto p-6 space-y-4 page-enter">
+
+              <FailureReviewPanel reviews={failureReviews} />
 
               {/* Call identity bar */}
               <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800/60 rounded-xl px-4 py-3 shadow-card">
@@ -616,6 +752,9 @@ export default function LiveConsole() {
 
             // ── Idle / no active call ──
             <div className="flex flex-col items-center justify-center h-full min-h-[420px] text-center p-8 page-enter">
+              <div className="w-full max-w-2xl mb-6 text-left">
+                <FailureReviewPanel reviews={failureReviews} />
+              </div>
               <div className="mb-5 opacity-60">
                 <Waveform active={false} />
               </div>

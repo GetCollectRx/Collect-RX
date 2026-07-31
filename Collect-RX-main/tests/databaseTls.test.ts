@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isFlyPrivateNetworkHost,
   isPostgresConnectionString,
   postgresUrlUsesStrictSsl,
   withPostgresTlsDefault,
@@ -49,5 +50,30 @@ describe('databaseTls', () => {
     const base = 'postgresql://u:p@switchyard.proxy.rlwy.net:57765/railway';
     expect(withPostgresTlsDefault(base)).toBe(`${base}?sslmode=require`);
     expect(withPostgresTlsDefault(`${base}?sslmode=require`)).toBe(`${base}?sslmode=require`);
+  });
+
+  it('withPostgresTlsDefault overrides an explicit weak sslmode instead of appending a duplicate key', () => {
+    // Regression: URLSearchParams.get() returns the first match on a repeated
+    // key, so appending "&sslmode=require" after an existing "sslmode=disable"
+    // left the connection non-TLS forever — the guard would loop and still
+    // reject the URL as non-strict. Must replace, not append.
+    const base = 'postgres://u:p@some-public-host:5432/collect_rx';
+    const result = withPostgresTlsDefault(`${base}?sslmode=disable`);
+    expect(result).toBe(`${base}?sslmode=require`);
+    expect(postgresUrlUsesStrictSsl(result)).toBe(true);
+  });
+
+  it('isFlyPrivateNetworkHost recognizes .flycast and .internal, not public hosts', () => {
+    expect(isFlyPrivateNetworkHost('postgres://u:p@collect-rx-db.flycast:5432/db')).toBe(true);
+    expect(isFlyPrivateNetworkHost('postgres://u:p@collect-rx-db.internal:5432/db')).toBe(true);
+    expect(isFlyPrivateNetworkHost('postgres://u:p@switchyard.proxy.rlwy.net:5432/db')).toBe(false);
+  });
+
+  it('withPostgresTlsDefault leaves Fly private-network URLs untouched even without sslmode', () => {
+    // Fly Postgres does not enable SSL on .flycast by default, and that hop is
+    // already encrypted by Fly's WireGuard mesh — forcing sslmode=require here
+    // breaks the connection ("server does not support SSL") for no security gain.
+    const url = 'postgres://collect_rx:pw@collect-rx-db.flycast:5432/collect_rx?sslmode=disable';
+    expect(withPostgresTlsDefault(url)).toBe(url);
   });
 });

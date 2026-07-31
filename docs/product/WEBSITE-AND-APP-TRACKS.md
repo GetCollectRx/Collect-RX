@@ -12,9 +12,9 @@ CollectRx is **two products** that share a monorepo and API today, but they have
 | **Contains PHI?** | No | Yes |
 | **Git branch** | `website/marketing` | `app/practice-home` |
 | **Merge target** | `main` when marketing is ready | `main` when portal changes are ready |
-| **Railway (today)** | Same `collectrx-web` service* | Same `collectrx-web` service* |
+| **Host (today)** | Same `collectrx-web` service* | Same `collectrx-web` service* |
 
-\*One Docker image still serves both route groups. Branches separate **what you ship**, not separate hosts yet. Longer term you can split `www.collectrx.ca` (marketing) and `app.collectrx.ca` (portal) into two Railway services.
+\*One Docker image still serves both route groups. Branches separate **what you ship**, not separate hosts yet. Longer term you can split `www.collectrx.ca` (marketing) and `app.collectrx.ca` (portal) into two services.
 
 ## Code ownership
 
@@ -46,10 +46,10 @@ Deprecated: `feature/website-brand-updates` was stacked on the app branch. Use `
 
 ## Deploy (current setup)
 
-- **Production** deploys from `main` on push (Railway `collectrx-web`).
-- To preview **app only**: Railway → Source → branch `app/practice-home` → redeploy.
-- To preview **website only**: Railway → Source → branch `website/marketing` → redeploy.
-- **Desktop app** loads the hosted URL; it follows whichever branch Railway is building.
+- **Production** deploys from `main` on push (`collectrx-web`).
+- To preview **app only**: host → Source → branch `app/practice-home` → redeploy.
+- To preview **website only**: host → Source → branch `website/marketing` → redeploy.
+- **Desktop app** loads the hosted URL; it follows whichever branch the host is building.
 
 ## Local dev
 
@@ -62,7 +62,7 @@ Same repo, same `npm run dev`. Routes decide what you see:
 
 If marketing and app deploy schedules diverge heavily:
 
-1. Second Railway service for static/marketing (`website/` Vite entry or static export)
+1. Second service for static/marketing (`website/` Vite entry or static export)
 2. Custom domain: `www.collectrx.ca` → website, `app.collectrx.ca` → portal
 3. Electron `dashboard-url.txt` points at `app.collectrx.ca` only
 

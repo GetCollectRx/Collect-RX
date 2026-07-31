@@ -4,7 +4,6 @@
   "carrier_type": "PRIVATE",
   "active": true,
   "market_share": 22,
-  
   "contact_info": {
     "provider_phone": "1-877-786-5433",
     "provider_phone_alternate": null,
@@ -14,7 +13,6 @@
     "hours_of_operation": "Mon-Fri 8:00am-8:00pm ET, Sat 9:00am-1:00pm ET",
     "timezone": "ET"
   },
-  
   "authentication": {
     "required_fields": [
       "provider_id",
@@ -33,13 +31,12 @@
     ],
     "notes": "Sun Life provider ID is different from CDCP provider number. Make sure to use the correct one based on plan type."
   },
-  
   "ivr_navigation": {
     "ivr_type": "hybrid",
     "steps": [
       {
         "step_number": 1,
-        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le français, faites le 2.",
+        "expected_prompt": "Welcome to Sun Life. For English, press 1. Pour le fran\u00e7ais, faites le 2.",
         "action": "Press 1",
         "wait_time": 2
       },
@@ -60,7 +57,9 @@
         "step_number": 4,
         "expected_prompt": "For claim inquiries, press 1. For eligibility verification, press 2. For predeterminations, press 3. To speak with a representative, press 0.",
         "action": "Press 1",
-        "alternative_actions": ["Press 0 for direct rep access"],
+        "alternative_actions": [
+          "Press 0 for direct rep access"
+        ],
         "wait_time": 1
       },
       {
@@ -88,15 +87,22 @@
     ],
     "last_verified": "2025-02-15"
   },
-  
   "call_metrics": {
     "average_hold_time_minutes": 27,
-    "peak_hours": ["10am-12pm ET", "2pm-4pm ET"],
-    "best_times_to_call": ["8am-9am ET", "6pm-8pm ET"],
+    "peak_hours": [
+      "10am-12pm ET",
+      "2pm-4pm ET"
+    ],
+    "best_times_to_call": [
+      "8am-9am ET",
+      "6pm-8pm ET"
+    ],
     "success_rate": 85,
-    "average_call_duration_minutes": 38
+    "average_call_duration_minutes": 38,
+    "max_hold_minutes": 30,
+    "cost_per_minute_usd": 0.1315,
+    "max_cost_per_claim_usd": 11.84
   },
-  
   "claim_processing": {
     "typical_processing_time_days": 15,
     "follow_up_threshold_days": 30,
@@ -152,17 +158,17 @@
     "accepts_electronic_claims": true,
     "clearinghouse": "CDAnet, ITRANS"
   },
-  
   "cdcp_specific": null,
-  
   "special_requirements": {
     "requires_cob_verification": true,
     "accepts_ai_callers": "unknown",
     "has_antibot_detection": false,
     "requires_human_voice_verification": false,
-    "language_options": ["English", "French"]
+    "language_options": [
+      "English",
+      "French"
+    ]
   },
-  
   "ai_agent_guidance": {
     "tone": "professional",
     "key_phrases": [
@@ -187,10 +193,9 @@
     ],
     "representative_script_hints": "Sun Life private reps are generally well-trained and efficient. They can usually look up claim status quickly. If they say 'still processing' for a claim over 45 days old, ask for escalation."
   },
-  
   "metadata": {
     "created_date": "2025-02-15T10:30:00Z",
-    "last_updated": "2025-02-15T10:30:00Z",
+    "last_updated": "2026-06-23",
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 75,
@@ -200,7 +205,13 @@
         "date": "2025-02-15",
         "change": "Initial configuration created",
         "reason": "Core carrier research"
+      },
+      {
+        "date": "2026-06-23",
+        "change": "Added schema_version, cost fields (max_hold_minutes, cost_per_minute_usd, max_cost_per_claim_usd). Every future change to ivr_navigation, authentication, or ai_agent_guidance must increment schema_version and add a changelog entry.",
+        "reason": "P1-2 carrier KB versioning + P2-5 call duration cost controls"
       }
-    ]
+    ],
+    "schema_version": "1.0.0"
   }
 }

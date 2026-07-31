@@ -10,7 +10,7 @@
 |-------|-----------------------------------------------------------|--------------|------------------------------------|
 | **PHI / PII** | Patient name, email, phone, treatment/procedure, balances, benefits estimates | PostgreSQL via Prisma (`PatientBalance`, `Patient`, `Balance`, …) | Until practice delete / legal hold; not auto-deleted in v1 |
 | **PHI-minimal outbound** | First name + amount in SendGrid/SMS (by design) | Third-party in transit only | Per vendor retention |
-| **Secrets** | API keys, `JWT_SECRET`, webhook secrets | Host env (Railway, etc.) | Rotate per [SECRETS-GO-LIVE.md](../operations/SECRETS-GO-LIVE.md) |
+| **Secrets** | API keys, `JWT_SECRET`, webhook secrets | Host env | Rotate per [SECRETS-GO-LIVE.md](../operations/SECRETS-GO-LIVE.md) |
 | **Non-PHI ops** | Stripe account ids, event ids, rule JSON | Same DB | Same as above |
 
 Program-level notes: [PHI_DATA_CLASSIFICATION.md](../PHI_DATA_CLASSIFICATION.md) (may reference Click; align naming with this app for audits).
@@ -19,7 +19,7 @@ Program-level notes: [PHI_DATA_CLASSIFICATION.md](../PHI_DATA_CLASSIFICATION.md)
 
 ## P5-02 — Encryption at rest
 
-- **PostgreSQL:** Rely on **hosting provider** disk/DB encryption (e.g. Railway/managed Postgres). Document in your **Data Processing Agreement** with the host.
+- **PostgreSQL:** Rely on **hosting provider** disk/DB encryption (managed Postgres). Document in your **Data Processing Agreement** with the host.
 - **Application:** TLS for HTTPS in front of the API; secrets not on disk in prod images except env injection.
 - **Optional app-layer PHI:** AES-256-GCM helpers + PHIPA-style crypto audit lines — `Collect-RX-main/src/server/crypto/` and [DATA-ENCRYPTION.md](../../Collect-RX-main/docs/operations/DATA-ENCRYPTION.md). Enable per field with migrations + KMS-backed `PHI_ENCRYPTION_KEY` when a customer or regulator requires it.
 
@@ -69,7 +69,7 @@ If Canadian patients: document **jurisdiction** (federal PIPEDA vs provincial pr
 
 ## P5-09 — PCI scope
 
-- **Model:** Stripe-hosted **Payment Links**; CollectRx does **not** process or store PAN/CVC.  
+- **Model:** Stripe-hosted **Checkout / Customer Portal** for the **practice SaaS subscription** only; CollectRx does **not** process or store PAN/CVC. Patient/client payments are out of scope.  
 - **Doc:** [PCI-SCOPE-COLLECTRX.md](PCI-SCOPE-COLLECTRX.md) and [PCI-BAA-STRIPE.md](PCI-BAA-STRIPE.md). Formal SAQ/ROC is for your org with your acquirer.
 
 ---

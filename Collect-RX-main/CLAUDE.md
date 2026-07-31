@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**This package is nested inside a larger npm workspace.** The repo root has its own [`CLAUDE.md`](../CLAUDE.md) covering the monorepo layout, the deprecated root prototype (`src/api`/`src/frontend` — not this directory), and which doc wins when docs disagree. Read it too, especially if you arrived here via the root. Commands below assume your cwd is this directory (`Collect-RX-main/`); from repo root, use the namespaced forms (`npm run dev:collectrx`, etc.) documented there.
+
 ## What this is
 
 CollectRx automates dental insurance accounts-receivable follow-up for Canadian dental practices. AI voice agents call insurance carriers on behalf of dental offices, check claim status, and handle resolutions — eliminating hours of manual phone work per week.
@@ -16,7 +18,7 @@ Six Canadian carriers are supported: Sun Life, Canada Life, Manulife, Green Shie
 # Install
 npm ci
 
-# Run the backend server (Express on port 3001)
+# Run the backend server (Express on port 3000)
 npm run dev
 
 # Run all tests
@@ -37,7 +39,7 @@ npm run build:main
 # Package Windows .exe installer (requires Windows or CI)
 npx electron-builder --windows --x64 --config electron-builder.config.js
 
-# Abeldent schema discovery (run once on Dr. Hasan's Windows machine; requires `npm install mssql`)
+# Abeldent schema discovery (requires access to AbelDent SQL Server and `npm install mssql`)
 npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
 
 # After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
@@ -53,6 +55,44 @@ CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
 
 ---
 
+## Seeding (Multi-Tenant)
+
+Both `db:seed` and `demo:seed` create generic, reusable test practices — not specific to any pilot or demo.
+
+**Baseline seed (empty practice):**
+```bash
+npm run db:seed
+# Creates "CollectRx Demo Practice" with login only (no claims)
+```
+
+**Demo seed (rich insurance data):**
+```bash
+npm run demo:seed
+# Creates "CollectRx Demo Practice" with 60+ claims across all statuses, carriers, and recovery routes
+```
+
+**Customization via environment variables:**
+```bash
+SEED_PRACTICE_NAME="My Clinic" npm run demo:seed
+SEED_PRACTICE_EMAIL="admin@myclinic.local" npm run demo:seed
+SEED_PRACTICE_PASSWORD="custom_password" npm run demo:seed
+```
+
+**Test call (Vapi agent test script):**
+```bash
+node test-call.js
+# Dials your phone with a dummy claim, using "CollectRx Demo Practice" as the practice name
+```
+
+Customize practice info for test calls:
+```bash
+VAPI_PRACTICE_NAME="My Clinic" node test-call.js
+VAPI_PRACTICE_ADDRESS="123 Main St, Toronto" node test-call.js
+VAPI_PRACTICE_PHONE="416-555-0100" node test-call.js
+```
+
+---
+
 ## Branch strategy & PRD coding standards
 
 ### Branch flow
@@ -63,6 +103,10 @@ feature/* → dev (CI gate: typecheck + tests) → prd (strict gate: all checks 
 
 - **`dev`** — integration branch. Feature branches merge here. CI must pass.
 - **`prd`** — production. Only receives merges from `dev`. Every item below must be true before touching prd-bound code.
+
+**Enforcement:** these rules aren't just documentation. `.githooks/pre-push` (installed automatically via `npm install`'s `prepare` script) runs the same audit/typecheck/lint/test/build sequence as CI's `verify` job before every push — a violation should never reach GitHub in the first place. CI's `verify` job is the backstop of record if the local hook is bypassed (`git push --no-verify`) or its checks drift out of sync with CI's.
+
+**Standing rule for any coding agent working in this repo:** keep `.githooks/pre-push` in lockstep with `.github/workflows/collectrx-ci.yml`'s `verify` job. Whenever that job's steps, env vars, or thresholds change, update the hook in the same PR — a gate out of sync with CI produces false negatives (blocks nothing real) or false positives (blocks pushes CI would accept), and either erodes trust in the gate until `--no-verify` becomes a habit instead of an emergency escape hatch. Before calling the gate "matches CI," prove it against real branch state, not a dry-run summary: run it against a branch with a known-current CI-blocking condition and confirm it fails at the right step for the right reason; run it against that condition's fix and confirm it passes end-to-end, not just the one step that changed. A step that "passes" only because it silently didn't run (wrong working directory, wrong workspace command, a skipped step) is a false pass — confirm the actual reason for green, not just the exit code. If a step needs something the local machine doesn't have (a live Postgres, Docker), don't silently skip it — name it explicitly as "CI still catches this," here and in the hook's own header comment. When the PRD standards above change, check whether the change needs a corresponding automated check or is enforced some other way (code review, a type system guarantee) — a rule that exists only as prose drifts from what's actually enforced.
 
 ### PRD is the standard of perfection — non-negotiable rules for all coding agents
 
@@ -92,8 +136,8 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 - Prisma generate and migrate run cleanly.
 
 **PHI boundary (PHIPA/PIPEDA — never negotiate this)**
-- Patient names, DOBs, health card numbers never leave the backend. Vapi receives UUID tokens only.
-- Detokenization happens server-side after call completion, never in transit.
+- Vapi `metadata` carries UUID tokens only — never patient names, DOBs, or health card numbers.
+- PHI needed for carrier lookup crosses only as ephemeral Vapi call `variables` at dispatch time (Option B — see `docs/compliance/PHI-VAPI-BOUNDARY.md`): detokenized server-side in `initiateCall()`, never stored, never logged, deleted from Vapi post-call.
 - Any code that routes data to an external service must be reviewed against this rule before merging.
 
 **CARRIER_BLOCK**
@@ -115,11 +159,11 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 ```
 Electron shell (thin wrapper — no business logic)
     ↓
-React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Patient AR, Estimate, Analytics, Outbox, Admin). The old `Collect-RX-main/frontend/` app was removed; one surface only.
+React/Vite/Tailwind frontend (`src/` — Dashboard, How it works, Balances, Estimate, Analytics, Outbox, Billing, Admin). This is the one canonical frontend; the repo-root `src/frontend/` is a deprecated prototype, not this app.
     ↓
-Express backend  src/server/index.ts  (Railway, port 3001)
+Express backend  src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
     ↓
-Prisma ORM → PostgreSQL (Railway)
+Prisma ORM → PostgreSQL (Fly.io)
     ↓
 Vapi.ai voice agents (4-agent squad via Vapi API)
     ↓
@@ -128,14 +172,17 @@ Twilio (telephony — calls to carriers)
 
 ### Vapi Voice Squad
 
-Four agents are orchestrated as a squad — they hand off to each other mid-call:
+Five agents are orchestrated as a squad — they hand off to each other mid-call:
 
-- **IVR_Navigator** — dials carrier IVR, navigates menus to reach claim status
-- **Claims_Agent** — speaks with a rep, gathers claim status and reason codes
-- **Escalation_Closer** — handles denied/disputed claims
-- **Resolution_Closer** — confirms payment, closes the claim
+- **IVR_Navigator** — dials carrier IVR, navigates menus to reach claim status; silent, DTMF-only, never converses
+- **Hold_Sentinel** — silently waits through hold music/queue messages after IVR navigation completes, hands off to Claims_Agent the moment a live human speaks; never converses
+- **Claims_Agent** — speaks with a rep, gathers claim status and reason codes, delivers the CRTC disclosure (`docs/compliance/crtc-disclosure-decision.md`)
+- **Escalation_Closer** — handles denied/disputed claims requiring radiographic or clinical documentation
+- **Resolution_Closer** — confirms payment, closes everything else
 
-The squad receives only UUID tokens — never real patient names, DOBs, or identifiers. A PIIVault layer detokenizes on the backend after the call.
+(Corrected 2026-07-30 — this section previously omitted Hold_Sentinel. See `tasks/lessons.md` 2026-07-30 entry for how that was found.)
+
+The squad receives UUID tokens in `metadata` — never PHI there. Patient identifiers required for carrier lookup are injected as ephemeral Vapi call `variables` at dispatch time only (Option B — see `docs/compliance/PHI-VAPI-BOUNDARY.md`); piiVault detokenizes server-side before the call, and nothing PHI-bearing is stored or logged.
 
 ### Eligibility Engine (Phase 3)
 
@@ -161,19 +208,19 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 ### Abeldent Connector (Phase 4)
 
-Abeldent Local Plus is the dental practice management software running on SQL Server on Dr. Hasan's Windows machine.
+Abeldent Local Plus is dental practice management software running on SQL Server at the practice site.
 
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
 3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
-4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Railway API.
+4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
 
 ---
 
 ## Critical safety rules
 
 ### PHI Boundary
-PHI (patient names, DOBs, health card numbers) **never crosses to Vapi**. The backend tokenizes all identifiers before sending anything to the voice agent. The Vapi squad operates entirely on UUID tokens. Detokenization happens on the backend after call completion. Violating this boundary breaks PHIPA/PIPEDA compliance.
+PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata** — UUID tokens only there. Identifiers carriers require to locate a claim are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — decision record in `docs/compliance/PHI-VAPI-BOUNDARY.md`): detokenized server-side in `initiateCall()`, never written to any DB table or log, recording disabled, and deleted from Vapi after the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
 If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
@@ -184,19 +231,22 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 - Claims under 30 days old: do not enter queue
 - Claims over 90 days old: skip AI, escalate to human immediately
 
+### CRTC Compliance — AI Disclosure
+CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure of automated nature, practice name, and callback number is mandatory within 10 seconds of a live representative answering. The compliance decision, canonical disclosure script, and list of invalid Validation Playbook language are recorded in `docs/compliance/crtc-disclosure-decision.md`. Any instruction to sound human or evade identification is invalid for Canadian operations.
+
 ---
 
 ## Database
 
-PostgreSQL on Railway, accessed via Prisma. Schema migrations for the eligibility engine are in `migrations/eligibility-schema.sql` — run directly against the Railway database via the Railway console or `psql $DATABASE_URL -f migrations/eligibility-schema.sql`.
+PostgreSQL on Fly.io, accessed via Prisma. Migrations live in `prisma/migrations/` and are applied with `prisma migrate deploy` (`npm run db:migrate` from this directory, or `npm run db:migrate:collectrx` from repo root) — not ad-hoc `psql -f`.
 
-Key tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`.
+Key eligibility tables: `eligibility_snapshots`, `eligibility_estimates`, `estimate_procedures`, `deductible_tracking`, `annual_max_tracking`, `reconciliation_logs`. Billing tables: `UsagePeriod` and the `billingTier` field on the practice model.
 
 ---
 
 ## Windows build & deployment
 
-The Electron app is packaged as a signed NSIS `.exe` installer for Dr. Hasan's Windows machine. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
+The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
 Never ship an unsigned build to the pilot site.
 
@@ -207,4 +257,4 @@ Never ship an unsigned build to the pilot site.
 1. Add an entry to `src/services/eligibility/rules/carrier-configs.json` following the existing structure
 2. Add the carrier ID to the `Carrier` enum in `src/services/eligibility/types.ts`
 3. Add test cases to `tests/eligibility.test.ts` covering the new carrier's deductible, annual max, and coverage tiers
-4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.js` if the carrier name appears in Abeldent data
+4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.cjs` if the carrier name appears in Abeldent data

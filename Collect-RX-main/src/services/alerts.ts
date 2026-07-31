@@ -39,7 +39,7 @@ async function sendSmsAlert(message: string): Promise<void> {
     return;
   }
 
-  const twilio = require('twilio');
+  const twilio = (await import('twilio')).default;
   const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
   const recipients = ALERT_SMS_TO.split(',').map((n) => n.trim()).filter(Boolean);

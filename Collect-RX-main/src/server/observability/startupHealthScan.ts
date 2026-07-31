@@ -1,6 +1,8 @@
 /**
  * Startup health scan — runs when the API server boots (and via scripts for Electron).
  */
+import { readdirSync } from 'fs';
+import { join } from 'path';
 import type { PrismaClient } from '@prisma/client';
 import { getAlertDefinition } from './alertCatalog.js';
 
@@ -90,7 +92,59 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
     });
   }
 
+  results.push(await checkMigrationDrift(prisma));
+
   return results;
+}
+
+/**
+ * Detect schema drift: every migration bundled with this build must already be
+ * applied in the database. The release_command applies them on normal deploys,
+ * so a mismatch means the process was bypassed (manual deploy, restored DB,
+ * migrations created without deploying) — the running code may then read or
+ * write against tables and columns that do not exist, and it fails silently.
+ */
+export async function checkMigrationDrift(
+  prisma: PrismaClient,
+  migrationsDir: string = join(process.cwd(), 'prisma', 'migrations'),
+): Promise<StartupCheckResult> {
+  let bundled: string[];
+  try {
+    bundled = readdirSync(migrationsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return {
+      id: 'migration_drift',
+      label: 'Schema migrations in sync',
+      ok: true,
+      skipped: true,
+      detail: `no migrations directory at ${migrationsDir}`,
+    };
+  }
+
+  try {
+    const applied = await prisma.$queryRaw<{ migration_name: string }[]>`
+      SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL
+    `;
+    const appliedNames = new Set(applied.map((r) => r.migration_name));
+    const pending = bundled.filter((name) => !appliedNames.has(name));
+    return {
+      id: 'migration_drift',
+      label: 'Schema migrations in sync',
+      ok: pending.length === 0,
+      detail: pending.length
+        ? `${pending.length} bundled migration(s) not applied: ${pending.join(', ')}`
+        : `${bundled.length} bundled, all applied`,
+    };
+  } catch (err) {
+    return {
+      id: 'migration_drift',
+      label: 'Schema migrations in sync',
+      ok: false,
+      detail: (err as Error).message,
+    };
+  }
 }
 
 /** HTTP smoke against this instance (call after listen). */

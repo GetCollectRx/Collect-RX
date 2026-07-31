@@ -27,6 +27,7 @@ export default function CarrierStats() {
   const [timeframe, setTimeframe] = useState<Timeframe>('30d')
   const [stats, setStats] = useState<CarrierStatRow[]>([])
   const [denials, setDenials] = useState<DenialAnalyticsSnapshot | null>(null)
+  const [carrierFeed, setCarrierFeed] = useState<Array<{ id: string; carrierId: string; recommendation: string; category: string }>>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,6 +44,11 @@ export default function CarrierStats() {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
+    apiFetchJson<{ success: boolean; data: Array<{ id: string; carrierId: string; recommendation: string; category: string }> }>(
+      '/api/insurance/carrier-intelligence/feed',
+    )
+      .then((res) => setCarrierFeed(res.data ?? []))
+      .catch(() => setCarrierFeed([]))
   }, [practiceId, timeframe])
 
   const busy = practiceLoading || (loading && stats.length === 0)
@@ -187,6 +193,24 @@ export default function CarrierStats() {
             </Table>
           </TableContainer>
         </Card>
+
+        {carrierFeed.length > 0 && (
+          <Card>
+            <CardHeader
+              title="Carrier intelligence feed"
+              subtitle="Human-approved operational lessons from recent carrier calls (no PHI)"
+            />
+            <ul className="px-5 pb-5 space-y-3 text-sm">
+              {carrierFeed.slice(0, 8).map((item) => (
+                <li key={item.id} className="border-b border-gray-100 dark:border-gray-800 pb-2 last:border-0">
+                  <Badge>{item.category.replace(/_/g, ' ')}</Badge>
+                  <span className="ml-2 text-gray-500">{item.carrierId}</span>
+                  <p className="mt-1 text-gray-800 dark:text-gray-200">{item.recommendation}</p>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
       </div>
     </DataState>
   )

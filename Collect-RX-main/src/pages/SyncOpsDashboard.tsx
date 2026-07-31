@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useDesktopConnector } from '../hooks/useDesktopConnector'
 import { Link } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
@@ -22,8 +23,25 @@ interface ImportRun {
   validationPassed: boolean | null
 }
 
+interface ConnectorAgent {
+  id: string
+  label: string
+  hostname: string | null
+  agentVersion: string | null
+  platform: string | null
+  lastHeartbeatAt: string | null
+  lastSyncAt: string | null
+  lastSyncStatus: string | null
+  lastSyncMessage: string | null
+  lastImported: number | null
+  revokedAt: string | null
+  createdAt: string
+  health: 'healthy' | 'stale' | 'error' | 'revoked' | 'never'
+}
+
 export default function SyncOpsDashboard() {
   const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
+  const desktop = useDesktopConnector()
   const [runs, setRuns] = useState<ImportRun[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +53,9 @@ export default function SyncOpsDashboard() {
     validationMessages: string[]
     rowErrors: { row?: number; message?: string }[]
   } | null>(null)
+  const [agents, setAgents] = useState<ConnectorAgent[]>([])
+  const [minting, setMinting] = useState(false)
+  const [newToken, setNewToken] = useState<string | null>(null)
 
   const load = () => {
     if (!practiceId) return
@@ -43,11 +64,13 @@ export default function SyncOpsDashboard() {
       apiFetchJson<{ success: boolean; data: ImportRun[] }>('/api/admin/sync/runs'),
       apiFetchJson<{ vendors: PmsVendorCatalogEntry[] }>('/api/pms/catalog').catch(() => ({ vendors: [] })),
       apiFetchJson<{ success: boolean; data: PracticePmsInfo }>('/api/pms/context').catch(() => ({ success: false, data: null })),
+      apiFetchJson<{ success: boolean; data: ConnectorAgent[] }>('/api/admin/connector/agents').catch(() => ({ success: false, data: [] })),
     ])
-      .then(([runsRes, catRes, ctxRes]) => {
+      .then(([runsRes, catRes, ctxRes, agentsRes]) => {
         setRuns(runsRes.data ?? [])
         setCatalog(catRes.vendors ?? [])
         setPmsContext(ctxRes.data ?? null)
+        setAgents(agentsRes.data ?? [])
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
@@ -87,6 +110,46 @@ export default function SyncOpsDashboard() {
     }
   }
 
+  const mintConnector = async () => {
+    setMinting(true)
+    setNewToken(null)
+    try {
+      const res = await apiFetchJson<{
+        success: boolean
+        data?: { token: string }
+        error?: string
+      }>('/api/admin/connector/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Practice PC' }),
+      })
+      if (!res.success || !res.data?.token) throw new Error(res.error ?? 'Failed to mint connector token')
+      setNewToken(res.data.token)
+      load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setMinting(false)
+    }
+  }
+
+  const revokeAgent = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/connector/agents/${id}`, { method: 'DELETE' })
+      load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const healthBadge = (h: ConnectorAgent['health']) => {
+    if (h === 'healthy') return <Badge color="green">Online</Badge>
+    if (h === 'stale') return <Badge color="amber">Stale</Badge>
+    if (h === 'error') return <Badge color="red">Sync error</Badge>
+    if (h === 'revoked') return <Badge>Revoked</Badge>
+    return <Badge>Never connected</Badge>
+  }
+
   const vendors =
     catalog.length > 0
       ? catalog
@@ -111,10 +174,90 @@ export default function SyncOpsDashboard() {
           </div>
         </header>
 
+        {desktop.isDesktop && (
+          <Card>
+            <CardHeader title="AbelDent desktop connector" subtitle="Running on this PC" />
+            <div className="px-4 pb-4 text-sm flex flex-wrap items-center gap-3 justify-between">
+              <p className="text-crx-t2">
+                Sync status: <strong>{desktop.sync?.status ?? 'starting'}</strong>
+                {desktop.sync?.message ? ` — ${desktop.sync.message}` : ''}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => void desktop.triggerManualSync()}>
+                  Sync now
+                </Button>
+                <Link to="/download" className="text-sm underline self-center">Desktop downloads</Link>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {!desktop.isDesktop && (pmsContext?.vendorId === 'abeldent' || pmsContext?.ingestMode === 'desktop_connector') && (
+          <Card>
+            <CardHeader title="AbelDent desktop connector" subtitle="Install on the practice PC that can reach SQL Server" />
+            <div className="px-4 pb-4 space-y-3 text-sm text-crx-t2">
+              <p>
+                For live AbelDent sync, install the{' '}
+                <Link to="/download" className="underline text-crx-600">CollectRx desktop app</Link>{' '}
+                on your Windows front-desk machine. Mint a connector token below and set{' '}
+                <code className="text-xs">COLLECTRX_API_TOKEN</code> on that PC (or paste during install).
+              </p>
+              <div className="flex flex-wrap gap-2 items-center">
+                <Button variant="secondary" size="sm" disabled={minting} onClick={() => void mintConnector()}>
+                  {minting ? 'Minting…' : 'Mint connector token'}
+                </Button>
+                {newToken && (
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 break-all select-all">
+                    {newToken}
+                  </code>
+                )}
+              </div>
+              {newToken && (
+                <p className="text-amber-700 text-xs">Copy this token now — it is shown only once.</p>
+              )}
+              {agents.length > 0 && (
+                <TableContainer>
+                  <Table>
+                    <Thead>
+                      <Tr>
+                        <Th>Label</Th>
+                        <Th>Status</Th>
+                        <Th>Last sync</Th>
+                        <Th>Host</Th>
+                        <Th />
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {agents.map((a) => (
+                        <Tr key={a.id}>
+                          <Td>{a.label}</Td>
+                          <Td>{healthBadge(a.health)}</Td>
+                          <Td className="text-xs">
+                            {a.lastSyncAt ? new Date(a.lastSyncAt).toLocaleString() : '—'}
+                            {a.lastSyncMessage ? ` · ${a.lastSyncMessage}` : ''}
+                          </Td>
+                          <Td className="text-xs">{a.hostname ?? '—'}</Td>
+                          <Td>
+                            {!a.revokedAt && (
+                              <Button variant="ghost" size="sm" onClick={() => void revokeAgent(a.id)}>
+                                Revoke
+                              </Button>
+                            )}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </TableContainer>
+              )}
+            </div>
+          </Card>
+        )}
+
         {lastResult && (
           <p className="text-sm text-crx-600 dark:text-crx-400" role="status">
             {lastResult}.{' '}
-            <Link to="/work-queue" className="underline">Open work queue</Link>
+            <Link to="/insurance?tab=queue" className="underline">Open priority queue</Link>
           </p>
         )}
 

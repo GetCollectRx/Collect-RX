@@ -17,10 +17,22 @@ export function createBillingRouter(prisma: PrismaClient): Router {
   r.post('/checkout', authenticate, requirePracticeContext, requirePracticeOwner, async (req: Request, res: Response) => {
     try {
       const practiceId = practiceIdFromSession(req);
-      const { url } = await createBillingCheckoutSession(practiceId, prisma);
+      const requestedPlanId = typeof req.body?.planId === 'string' ? req.body.planId.trim() : undefined;
+      const { url } = await createBillingCheckoutSession(practiceId, prisma, requestedPlanId);
       res.json({ url });
     } catch (e) {
       console.error('[billing/checkout]', e);
+      res.status(400).json({ error: apiClientErrorMessage(e) });
+    }
+  });
+
+  r.get('/usage', authenticate, requirePracticeContext, async (req: Request, res: Response) => {
+    try {
+      const practiceId = practiceIdFromSession(req);
+      const subscription = await getSubscriptionGateState(prisma, practiceId);
+      res.json({ subscription });
+    } catch (e) {
+      console.error('[billing/usage]', e);
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   });
@@ -69,6 +81,14 @@ export function createBillingRouter(prisma: PrismaClient): Router {
     try {
       const practiceId = practiceIdFromSession(req);
       const result = await confirmOverage(practiceId);
+      if (result.status === 'expired') {
+        return res.status(409).json({
+          success: false,
+          status: 'expired',
+          error:
+            'The overage confirmation window has expired. Upgrade your plan or wait for the next billing cycle to resume calling.',
+        });
+      }
       res.json({ success: true, ...result });
     } catch (e) {
       console.error('[billing/usage/confirm-overage]', e);

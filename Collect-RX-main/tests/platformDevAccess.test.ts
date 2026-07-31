@@ -52,9 +52,15 @@ describe.skipIf(!dbReady)('Platform developer access control', () => {
       expect(cookie).toMatch(/crx_access=/);
 
       const blocked = await request(app)
-        .get(`/api/patients/balances?practiceId=${practice.id}`)
+        .get(`/api/eligibility/status/tok-test/sun_life?practiceId=${practice.id}`)
         .set('Cookie', cookie);
       expect(blocked.status).toBe(403);
+
+      // Patient billing routes are retired (not mounted).
+      const retired = await request(app)
+        .get(`/api/patients/balances?practiceId=${practice.id}`)
+        .set('Cookie', cookie);
+      expect([403, 404, 410]).toContain(retired.status);
 
       const claims = await request(app)
         .get(`/api/insurance/claims?practiceId=${practice.id}&limit=5`)

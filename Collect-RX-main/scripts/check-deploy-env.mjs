@@ -40,13 +40,27 @@ function postgresUrlUsesStrictSsl(databaseUrl) {
   }
 }
 
+/**
+ * True for hosts on Fly.io's private network — already encrypted end-to-end
+ * by Fly's WireGuard mesh, never routed over the public internet. Mirrors
+ * isFlyPrivateNetworkHost() in src/server/databaseTls.ts.
+ */
+function isFlyPrivateNetworkHost(databaseUrl) {
+  try {
+    const { hostname } = new URL(databaseUrl.replace(/^postgres:/, 'postgresql:'));
+    return hostname.endsWith('.flycast') || hostname.endsWith('.internal');
+  } catch {
+    return false;
+  }
+}
+
 if (prod) {
   const dbUrl = (process.env.DATABASE_URL || '').trim();
-  if (dbUrl && !postgresUrlUsesStrictSsl(dbUrl)) {
+  if (dbUrl && !postgresUrlUsesStrictSsl(dbUrl) && !isFlyPrivateNetworkHost(dbUrl)) {
     bad += !ok(
       'DATABASE_URL (TLS)',
       false,
-      'PostgreSQL URL must include sslmode=require (or verify-full / verify-ca) or ssl=true — see docs/operations/DATA-ENCRYPTION.md',
+      'PostgreSQL URL must include sslmode=require (or verify-full / verify-ca) or ssl=true, unless it is a Fly .flycast/.internal private-network host — see docs/operations/DATA-ENCRYPTION.md',
     )
       ? 1
       : 0;
@@ -88,6 +102,11 @@ if (prod) {
     Boolean((process.env.SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY || '').trim()),
     'required — unsigned webhooks get 401',
   ) ? 1 : 0;
+  bad += !ok(
+    'AGENT_RUNTIME_SECRET',
+    Boolean((process.env.AGENT_RUNTIME_SECRET || '').trim()),
+    'required — requireAgentSecret() 401s all of /api/agent-runs/* (including /digest) without it in production',
+  ) ? 1 : 0;
   const sk = (process.env.STRIPE_SECRET_KEY || '').trim();
   if (sk.startsWith('sk_live_')) {
     bad += !ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').trim()), 'required with live Stripe key') ? 1 : 0;
@@ -111,13 +130,18 @@ if (prod) {
     Boolean((process.env.SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY || '').trim()),
     'optional in dev',
   );
+  ok(
+    'AGENT_RUNTIME_SECRET',
+    Boolean((process.env.AGENT_RUNTIME_SECRET || '').trim()),
+    'optional in dev (requireAgentSecret lets requests through unauthenticated if unset outside production)',
+  );
 }
 
 const stripe = Boolean((process.env.STRIPE_SECRET_KEY || '').trim());
 ok('STRIPE_SECRET_KEY', stripe, 'optional if no payments');
 ok('STRIPE_WEBHOOK_SECRET', Boolean((process.env.STRIPE_WEBHOOK_SECRET || '').trim()), stripe ? 'set when using Stripe webhooks' : 'optional');
 
-ok('TRUST_PROXY', process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || prod, prod ? 'auto-enabled in production on API' : 'set TRUST_PROXY=1 behind Railway/nginx if needed');
+ok('TRUST_PROXY', process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true' || prod, prod ? 'auto-enabled in production on API' : 'set TRUST_PROXY=1 behind Fly/nginx if needed');
 
 ok(
   'ALLOWED_ORIGINS',
@@ -129,7 +153,7 @@ ok(
       ''
     ).trim(),
   ),
-  'comma list for browser CORS; use variable name ALLOWED_ORIGINS on Railway when possible',
+  'comma list for browser CORS; use variable name ALLOWED_ORIGINS as a Fly secret when possible',
 );
 
 ok('REDIS_URL', Boolean((process.env.REDIS_URL || '').trim()), 'optional — enables shared rate limits + worker');
@@ -138,6 +162,13 @@ ok(
   'PHI_ENCRYPTION_KEY',
   !phiAtRestEnabled || phiEncryptionKeyValid(),
   phiAtRestEnabled ? 'required when PHI_ENCRYPTION_AT_REST is on' : 'optional unless PHI_ENCRYPTION_AT_REST',
+);
+ok(
+  'TRIAGE_ENROLLMENT_ENCRYPTION',
+  phiEncryptionKeyValid(),
+  phiEncryptionKeyValid()
+    ? 'ready for encrypted triage credential enrollment'
+    : 'set a valid PHI_ENCRYPTION_KEY before enabling triage credential enrollment',
 );
 
 ok(

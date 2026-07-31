@@ -30,7 +30,7 @@ function resolveApiOrigin() {
     const t = (raw || '').trim().replace(/\/$/, '');
     if (t && /^https?:\/\//i.test(t)) return t;
   }
-  return 'http://127.0.0.1:3000';
+  return 'https://collect-rx.fly.dev';
 }
 
 if (scanDisabled()) {

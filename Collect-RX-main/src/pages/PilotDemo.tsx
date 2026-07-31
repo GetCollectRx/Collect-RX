@@ -20,7 +20,7 @@ const B = {
   mono:      "'JetBrains Mono', 'Fira Code', monospace",
 }
 
-const PRACTICE = 'Tenth Line Family Dentistry'
+const PRACTICE = 'CollectRx Demo Practice'
 
 /** PMS-agnostic setup copy — AbelDent, Dentrix, ClearDent, etc. use the same connector/export path. */
 const PMS_CONNECT_LINE = 'your practice management software'

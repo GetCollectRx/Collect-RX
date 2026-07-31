@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { AnimatedNumber } from '../ui/AnimatedNumber'
+import { RecoveryBadge } from '../RecoveryBadge'
 import type { DashboardLastPmsImport } from './PmsSyncBanner'
 import type { PracticePmsInfo } from '../../types/pms'
 
@@ -73,7 +75,7 @@ function overallStatus(m: HealthBriefMetrics, actions: HealthActionItem[]): {
     return {
       label: 'Watch aging',
       tone: 'watch',
-      summary: 'A quarter or more of open insurance A/R is over 60 days, worth a quick review.',
+      summary: 'A quarter or more of open insurance A/R is over 60 days — worth a quick review.',
     }
   }
   if (m.totalOpenAR === 0) {
@@ -86,13 +88,13 @@ function overallStatus(m: HealthBriefMetrics, actions: HealthActionItem[]): {
   return {
     label: 'On track',
     tone: 'good',
-    summary: 'Agents are working claims and nothing is blocking collections right now.',
+    summary: 'CollectRx is working claims and nothing is blocking collections right now.',
   }
 }
 
 function syncLabel(lastImport?: DashboardLastPmsImport | null, pms?: PracticePmsInfo | null): string {
-  if (!pms?.vendorId) return 'PMS not connected, connect in Settings'
-  if (!lastImport) return `${pms.displayName ?? 'PMS'} connected, no import yet`
+  if (!pms?.vendorId) return 'PMS not connected — connect in Settings'
+  if (!lastImport) return `${pms.displayName ?? 'PMS'} connected — no import yet`
   const when = new Date(lastImport.at).toLocaleDateString('en-CA', {
     month: 'short',
     day: 'numeric',
@@ -123,7 +125,7 @@ export function PracticeHealthBrief({
     <div className="practice-health-brief page-enter">
       <header className="practice-health-header">
         <div>
-          <p className="crx-section-label">Practice health</p>
+          <p className="crx-section-label">Command center</p>
           <h1 className="crx-h1">{practiceName}</h1>
           <p className="crx-sub mt-1">{today}</p>
         </div>
@@ -133,86 +135,9 @@ export function PracticeHealthBrief({
         </div>
       </header>
 
-      <section className="practice-health-answers" aria-label="Key answers">
-        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">How much insurance money is still outstanding?</h2>
-          <MetricValue loading={loading}>{fmtCurrency(m.totalOpenAR)}</MetricValue>
-          <p className="crx-sub">
-            {loading
-              ? 'Loading…'
-              : m.openWorkItemCount > 0
-                ? `${m.openWorkItemCount} open claim${m.openWorkItemCount === 1 ? '' : 's'} in the queue`
-                : 'No open claims in the work queue'}
-          </p>
-          <Link to="/insurance" className="practice-health-link">
-            View insurance A/R →
-          </Link>
-        </article>
-
-        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">What&apos;s blocking collections?</h2>
-          <MetricValue loading={loading}>{m.blockingGatesOpen + m.openEscalations}</MetricValue>
-          <p className="crx-sub">
-            {loading
-              ? 'Loading…'
-              : m.blockingGatesOpen + m.openEscalations === 0
-                ? 'No gates or escalations waiting on you'
-                : `${m.blockingGatesOpen} gate${m.blockingGatesOpen === 1 ? '' : 's'} · ${m.openEscalations} escalation${m.openEscalations === 1 ? '' : 's'}`}
-          </p>
-          <div className="practice-health-link-row">
-            {m.blockingGatesOpen > 0 && (
-              <Link to="/insurance/gates" className="practice-health-link">
-                Gate inbox →
-              </Link>
-            )}
-            {m.openEscalations > 0 && (
-              <Link to="/escalations" className="practice-health-link">
-                Escalations →
-              </Link>
-            )}
-            {!loading && m.blockingGatesOpen === 0 && m.openEscalations === 0 && (
-              <Link to="/work-queue" className="practice-health-link">
-                Work queue →
-              </Link>
-            )}
-          </div>
-        </article>
-
-        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">What did we recover this month?</h2>
-          <MetricValue loading={loading}>{fmtCurrency(m.recovered30d)}</MetricValue>
-          <p className="crx-sub">
-            {loading
-              ? 'Loading…'
-              : m.recoveredAllTime > 0
-                ? `${fmtCurrency(m.recoveredAllTime)} all-time · confirmed when PMS sync clears the balance`
-                : 'Recovery shows here after carrier pay + PMS sync verification'}
-          </p>
-          <Link to="/reports/aging" className="practice-health-link">
-            Aging report →
-          </Link>
-        </article>
-
-        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
-          <h2 className="practice-health-q">Are agents and sync running?</h2>
-          <MetricValue loading={loading}>
-            {m.activeCalls > 0 ? `${m.activeCalls} live` : `${m.callsToday} calls today`}
-          </MetricValue>
-          <p className="crx-sub">
-            {loading ? 'Loading…' : syncLabel(lastImport, pms)}
-          </p>
-          {m.awaitingSync > 0 && !loading && (
-            <p className="practice-health-note">{m.awaitingSync} approved, waiting on PMS sync</p>
-          )}
-          <Link to="/settings" className="practice-health-link">
-            Settings & integrations →
-          </Link>
-        </article>
-      </section>
-
       {actions.length > 0 && (
-        <section className="practice-health-actions" aria-label="Needs your attention">
-          <h2 className="practice-health-actions-title">Needs your attention</h2>
+        <section className="practice-health-actions mb-6" aria-label="Needs you">
+          <h2 className="practice-health-actions-title">Needs you</h2>
           <ul className="practice-health-action-list">
             {actions.slice(0, 6).map((item) => (
               <li key={item.id}>
@@ -226,27 +151,128 @@ export function PracticeHealthBrief({
         </section>
       )}
 
+      <section className="practice-health-answers" aria-label="Key metrics">
+        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">What did we recover this month?</h2>
+            {!loading && (
+              <RecoveryBadge
+                verification={m.recovered30d > 0 ? 'sync_verified' : 'in_progress'}
+              />
+            )}
+          </div>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.recovered30d} format={fmtCurrency} />
+          </MetricValue>
+          <p className="crx-sub">
+            {loading
+              ? 'Loading…'
+              : m.recoveredAllTime > 0
+                ? `${fmtCurrency(m.recoveredAllTime)} all-time · confirmed when PMS sync clears the balance`
+                : 'Recovery shows here after carrier pay + PMS sync verification'}
+          </p>
+          <Link to="/reports/aging" className="practice-health-link">
+            Aging & recovery report →
+          </Link>
+        </article>
+
+        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">How much is at risk over 60 days?</h2>
+            {!loading && m.agingOver60 > 0 && <RecoveryBadge verification="at_risk" />}
+          </div>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.agingOver60} format={fmtCurrency} />
+          </MetricValue>
+          <p className="crx-sub">
+            {loading
+              ? 'Loading…'
+              : m.totalOpenAR > 0
+                ? `${fmtCurrency(m.totalOpenAR)} total open insurance A/R · ${m.openWorkItemCount} in priority queue`
+                : 'No open claims in queue'}
+          </p>
+          <Link to="/insurance?tab=queue" className="practice-health-link">
+            Priority queue →
+          </Link>
+        </article>
+
+        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">What&apos;s blocking the next calls?</h2>
+            {!loading && m.blockingGatesOpen + m.openEscalations > 0 && (
+              <RecoveryBadge verification="at_risk" />
+            )}
+          </div>
+          <MetricValue loading={loading}>
+            <AnimatedNumber value={m.blockingGatesOpen + m.openEscalations} />
+          </MetricValue>
+          <p className="crx-sub">
+            {loading
+              ? 'Loading…'
+              : m.blockingGatesOpen + m.openEscalations === 0
+                ? 'No blocked gates or human-review claims'
+                : `${m.blockingGatesOpen} blocked gate${m.blockingGatesOpen === 1 ? '' : 's'} · ${m.openEscalations} needs human`}
+          </p>
+          <div className="practice-health-link-row">
+            {m.blockingGatesOpen > 0 && (
+              <Link to="/insurance?tab=blocked" className="practice-health-link">
+                Blocked gates →
+              </Link>
+            )}
+            {m.openEscalations > 0 && (
+              <Link to="/insurance?tab=human" className="practice-health-link">
+                Needs human →
+              </Link>
+            )}
+            {!loading && m.blockingGatesOpen === 0 && m.openEscalations === 0 && (
+              <Link to="/insurance" className="practice-health-link">
+                All claims →
+              </Link>
+            )}
+          </div>
+        </article>
+
+        <article className={`practice-health-card ${loading ? 'is-loading' : ''}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="practice-health-q">Is CollectRx calling now?</h2>
+            {!loading && m.awaitingSync > 0 && <RecoveryBadge verification="carrier_confirmed" />}
+          </div>
+          <MetricValue loading={loading}>
+            {m.activeCalls > 0 ? `${m.activeCalls} live call${m.activeCalls === 1 ? '' : 's'}` : 'No live calls'}
+          </MetricValue>
+          <p className="crx-sub">
+            {loading ? 'Loading…' : syncLabel(lastImport, pms)}
+          </p>
+          {m.awaitingSync > 0 && !loading && (
+            <p className="practice-health-note">{m.awaitingSync} approved — waiting on PMS sync</p>
+          )}
+          <Link to="/insurance" className="practice-health-link">
+            Open Claims →
+          </Link>
+        </article>
+      </section>
+
       <section className="practice-health-footer">
         <p className="crx-sub">
-          Resolved today:{' '}
+          Sync-verified today:{' '}
           {loading ? (
             <span className="practice-health-inline-skeleton" aria-hidden />
           ) : (
             <strong>{m.claimsResolvedToday}</strong>
           )}
-          {!loading && m.agingOver60 > 0 && (
+          {!loading && m.callsToday > 0 && (
             <>
               {' '}
-              · Over 60 days: <strong>{fmtCurrency(m.agingOver60)}</strong>
+              · Carrier calls today: <strong>{m.callsToday}</strong>
             </>
           )}
         </p>
         <div className="practice-health-quick">
-          <Link to="/work-queue" className="crx-btn-primary">
-            Open work queue
+          <Link to="/insurance" className="crx-btn-primary">
+            Open Claims
           </Link>
           <Link to="/reports/carriers" className="crx-btn-ghost">
-            Carrier stats
+            Carrier intel
           </Link>
         </div>
       </section>

@@ -5,6 +5,11 @@
 import type { PrismaClient } from '@prisma/client';
 import { getMetrics } from './metrics.js';
 import { dispatchOpsAlert } from './opsAlerts.js';
+import {
+  getQueueHealth,
+  evaluateQueueHealthAlerts,
+  defaultQueueHealthThresholds,
+} from './queueHealth.js';
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -49,6 +54,22 @@ export function startOpsMonitor(prisma: PrismaClient): void {
         detail: `failed=${emrFailed} delivered=${emrDelivered} (since process boot)`,
         source: 'ops-monitor',
       });
+    }
+
+    // Queue health — the signal that catches silent dispatch stalls and stuck
+    // call locks (see queueHealth.ts). A DB hiccup here must not kill the tick.
+    try {
+      const snapshot = await getQueueHealth(prisma);
+      const alerts = evaluateQueueHealthAlerts(snapshot, defaultQueueHealthThresholds());
+      for (const alert of alerts) {
+        await dispatchOpsAlert({
+          alertId: alert.alertId,
+          detail: alert.detail,
+          source: 'ops-monitor',
+        });
+      }
+    } catch (err) {
+      console.error('[opsMonitor] queue health check failed:', err);
     }
   };
 

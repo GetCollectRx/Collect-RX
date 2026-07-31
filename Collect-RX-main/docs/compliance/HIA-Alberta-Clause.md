@@ -104,7 +104,7 @@ Alberta HIA does not prohibit storage of health information outside Alberta, but
 - Equivalent protection to HIA standards
 - Disclosure in the privacy notice that information may be stored outside Alberta
 
-CollectRx's current Railway PostgreSQL deployment may be in a US region. For Alberta customers, the same Canadian data residency recommendation as Quebec applies: deploy on `ca-central-1` (AWS Montreal). This is the recommended path before Alberta pilot launch.
+CollectRx's PostgreSQL deployment is hosted on Fly.io in `yyz` (Toronto, Canada) — confirmed via `fly postgres list` / `fly status` on 2026-07-05. CollectRx previously ran on Railway; that deployment has been fully decommissioned. All Alberta patient data resides in this Canadian instance.
 
 ---
 

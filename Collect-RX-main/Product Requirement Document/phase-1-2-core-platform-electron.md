@@ -43,7 +43,7 @@ Dental practice staff need to run CollectRx on a Windows desktop alongside Abeld
 
 ### Abeldent Connector
 - Node.js service using `mssql` package with Windows Integrated Authentication
-- `discover-schema.cjs` to map actual Abeldent table and column names (must run on Dr. Hasan's machine before sync goes live)
+- `discover-schema.cjs` to map actual Abeldent table and column names (must run on the practice's machine before sync goes live)
 - Aging bucket logic: 30, 45, 60, 90-day claim cohorts
 - Carrier filtering: Sun Life, Canada Life, Manulife, Green Shield, RBC, TELUS AdjudiCare
 - Windows Service installation via `node-windows`
@@ -72,8 +72,8 @@ Dental practice staff need to run CollectRx on a Windows desktop alongside Abeld
 - Electron is a thin wrapper only — all business logic lives in Node.js backend
 - Backend must remain on Railway (Vapi webhook requires public URL)
 - PHI never crosses to Vapi — UUID tokens only
-- `discover-schema.cjs` must be run on Dr. Hasan's Abeldent instance before production sync
-- Stripe Connect (not standard Stripe) for patient payment collection
+- `discover-schema.cjs` must be run on the practice's Abeldent instance before production sync
+- Stripe Billing for practice SaaS subscription (patient/client payment collection is out of scope)
 
 ---
 

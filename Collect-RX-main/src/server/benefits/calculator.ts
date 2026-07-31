@@ -170,8 +170,8 @@ export async function calculateEstimate(
     totalInsurance: lines.reduce((s, l) => s + parseFloat(l.insuranceCovers), 0).toFixed(2),
     totalPatient:   lines.reduce((s, l) => s + parseFloat(l.patientOwes), 0).toFixed(2),
     annualMaxUsed:  totalUsed.toFixed(2),
-    annualMax:      benefits.annualMax?.toFixed(2) || 'Unlimited',
-    annualMaxRemaining: Math.max(0, annualMaxRemaining).toFixed(2),
+    annualMax:      benefits.annualMax != null ? benefits.annualMax.toFixed(2) : 'Unlimited',
+    annualMaxRemaining: annualMaxRemaining === Infinity ? 'Unlimited' : Math.max(0, annualMaxRemaining).toFixed(2),
     deductible:     benefits.deductible?.toFixed(2) || '0.00',
     deductibleMet:  benefits.deductibleMet?.toFixed(2) || '0.00',
   };

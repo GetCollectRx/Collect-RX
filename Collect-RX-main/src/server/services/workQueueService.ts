@@ -1,4 +1,9 @@
 import type { CarrierId, Prisma, PrismaClient } from '@prisma/client';
+import {
+  buildPriorityScoreInput,
+  rankClaimForPractice,
+  scoreClaim,
+} from './priorityEngine.js';
 
 export interface QueueRankingWeights {
   dollarsWeight: number;
@@ -11,33 +16,6 @@ const DEFAULT_WEIGHTS: QueueRankingWeights = {
   daysWeight: 0.35,
   carrierRiskWeight: 0.15,
 };
-
-const CARRIER_DENIAL_RISK: Partial<Record<CarrierId, number>> = {
-  sun_life: 0.7,
-  canada_life: 0.75,
-  manulife: 0.8,
-  green_shield: 0.65,
-  rbc: 0.7,
-  telus_adjudicare: 0.6,
-};
-
-function computeRankScore(
-  dollarsAtRisk: number,
-  daysOutstanding: number,
-  carrierId: CarrierId | null,
-  weights: QueueRankingWeights,
-): number {
-  const maxDollars = 5000;
-  const maxDays = 120;
-  const dollarNorm = Math.min(1, dollarsAtRisk / maxDollars);
-  const daysNorm = Math.min(1, daysOutstanding / maxDays);
-  const carrierRisk = carrierId ? (CARRIER_DENIAL_RISK[carrierId] ?? 0.5) : 0.5;
-  return (
-    dollarNorm * weights.dollarsWeight +
-    daysNorm * weights.daysWeight +
-    carrierRisk * weights.carrierRiskWeight
-  );
-}
 
 export async function getQueueWeights(
   prisma: PrismaClient,
@@ -55,8 +33,8 @@ export async function syncWorkItemsForPractice(
   prisma: PrismaClient,
   practiceId: string,
 ): Promise<{ upserted: number }> {
-  const weights = await getQueueWeights(prisma, practiceId);
   let upserted = 0;
+  const referenceDate = new Date();
 
   // Retire legacy patient/outreach queue rows — insurance claims only.
   await prisma.workItem.updateMany({
@@ -71,12 +49,31 @@ export async function syncWorkItemsForPractice(
   const openClaimStatuses = ['PENDING', 'IN_QUEUE', 'CALLING', 'DENIED', 'ESCALATED', 'ON_HOLD', 'APPROVED_PENDING_PAYMENT'] as const;
 
   const claims = await prisma.insuranceClaim.findMany({
-    where: { practiceId, status: { in: [...openClaimStatuses] }, outstandingAmount: { gt: 0 } },
+    where: {
+      practiceId,
+      deletedAt: null,
+      status: { in: [...openClaimStatuses] },
+      outstandingAmount: { gt: 0 },
+    },
+    include: {
+      queueEntry: { select: { attempts: true } },
+      callAttempts: {
+        orderBy: { initiatedAt: 'desc' },
+        take: 1,
+        select: { outcomeDetail: true },
+      },
+    },
   });
 
-  for (const c of claims) {
+  const scored = claims.map((c) => {
+    const input = buildPriorityScoreInput(c, referenceDate);
+    return { claim: c, input, total: scoreClaim(input).total };
+  });
+  const practiceMaxScore = Math.max(...scored.map((s) => s.total), 1);
+
+  for (const { claim: c, input } of scored) {
     const dollars = Number(c.outstandingAmount);
-    const rankScore = computeRankScore(dollars, c.daysOutstanding, c.carrierId, weights);
+    const rankScore = rankClaimForPractice(input, practiceMaxScore);
     await prisma.workItem.upsert({
       where: {
         practiceId_sourceType_sourceId: {
@@ -149,7 +146,7 @@ async function enrichWorkItemsWithRecovery(
 
   const [claims, gates, traces] = await Promise.all([
     prisma.insuranceClaim.findMany({
-      where: { id: { in: claimIds } },
+      where: { id: { in: claimIds }, deletedAt: null },
       select: { id: true, recoveryRoute: true },
     }),
     prisma.claimRecoveryAction.findMany({

@@ -4,31 +4,26 @@
  * and confirm the 8-dimension dashboard renders with status pills.
  */
 import { test, expect } from '@playwright/test';
+import { signInAsE2eUser } from './helpers/signIn';
 
-const practiceId = process.env.E2E_PRACTICE_ID;
-const password = process.env.E2E_PRACTICE_PASSWORD || 'changeme';
+const email = process.env.E2E_USER_EMAIL;
+const password = process.env.E2E_USER_PASSWORD || 'changeme';
 
 test('canadian-2026 page renders Phase 2 modules', async ({ page }) => {
-  test.skip(!practiceId, 'Set E2E_PRACTICE_ID (db:seed, then npm run e2e:print-id)');
+  test.skip(!email, 'E2E_USER_EMAIL missing — check DATABASE_URL for e2e auto-seed');
 
-  await page.goto('/');
-  await page.getByLabel('Practice ID').fill(practiceId!);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({
-    timeout: 20_000,
-  });
+  await signInAsE2eUser(page, email!, password);
 
-  await page.getByRole('link', { name: /CDCP 2026/i }).click();
+  await page.goto('/canadian-2026');
   await expect(
     page.getByRole('heading', { name: /Canadian expansion/i })
-  ).toBeVisible({ timeout: 10_000 });
+  ).toBeVisible({ timeout: 20_000 });
 
   // Stat tiles: total, pipeline, attention, write-backs
   await expect(page.getByText('CDCP reconsiderations')).toBeVisible();
   await expect(page.getByText('Active pipeline')).toBeVisible();
   await expect(page.getByText('60-day attention')).toBeVisible();
-  await expect(page.getByText(/Write-backs/i)).toBeVisible();
+  await expect(page.getByText('Write-backs (7d)')).toBeVisible();
 
   // MOD-03 — gap estimator: prefilled D0120 line; click "Calculate gap"
   await page.getByRole('button', { name: /calculate gap/i }).click();

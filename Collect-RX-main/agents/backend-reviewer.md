@@ -6,7 +6,7 @@
 
 ## Context
 
-CollectRx is a Canadian dental insurance A/R collection product. Vapi AI voice agents call insurance carrier provider lines on behalf of dental practices. The server runs on Railway (Express + Prisma + PostgreSQL). The Electron desktop app handles data sync from the practice's PMS (AbelDent or CSV) but is not involved in call dispatch.
+CollectRx is a Canadian dental insurance A/R collection product. Vapi AI voice agents call insurance carrier provider lines on behalf of dental practices. The server runs on Fly.io (Express + Prisma + PostgreSQL). The Electron desktop app handles data sync from the practice's PMS (AbelDent or CSV) but is not involved in call dispatch.
 
 **The three most safety-critical paths in this codebase:**
 
@@ -41,7 +41,7 @@ CollectRx is a Canadian dental insurance A/R collection product. Vapi AI voice a
   4. Enforces max 3 attempts per claim
   5. Rejects claims < 30 days old
   6. Auto-escalates claims > 90 days old (TELUS exception: 21 days minimum)
-- [ ] Read `src/billing/tiers.ts`. Confirm the four tiers (trial/core/growth/scale) with correct minute caps: trial=500/month 50/day, core=800/month 100/day, growth=2000/month 300/day, scale=7000/month no daily cap.
+- [ ] Read `src/billing/tiers.ts` (source of truth). Confirm trial/core/growth/scale: trial=500/mo 50/day hard-stop; core=$799 1200/mo 100/day; growth=$1999 2800/mo 300/day; scale=$2499 4000/mo no daily cap.
 - [ ] Confirm `hardStopAtLimit: true` for trial tier (no overage allowed).
 
 ### AbelDent Isolation

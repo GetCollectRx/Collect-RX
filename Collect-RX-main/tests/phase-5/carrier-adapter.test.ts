@@ -2,7 +2,7 @@
 // CollectRx — Carrier Adapter Unit Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import {
   isWithinCallWindow,
@@ -11,6 +11,7 @@ import {
   checkCarrierAuthorizationGate,
 } from '../../src/carriers/adapter';
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
+import carrierRulesJson from '../../src/services/eligibility/rules/carrier-configs.json';
 
 function authorizedSettings() {
   return {
@@ -47,6 +48,22 @@ function makePrisma(settings = authorizedSettings()) {
   } as unknown as PrismaClient;
 }
 
+const originalPlanEnv = {
+  STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID: process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
+  SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT: process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT,
+  SUBSCRIPTION_CLAIM_LIMIT_ENFORCE: process.env.SUBSCRIPTION_CLAIM_LIMIT_ENFORCE,
+};
+
+afterEach(() => {
+  for (const [key, value] of Object.entries(originalPlanEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+});
+
 describe('CarrierAdapter', () => {
   describe('CARRIER_CONFIGS', () => {
     it('defines all 6 supported carriers', () => {
@@ -76,6 +93,25 @@ describe('CarrierAdapter', () => {
 
     it('non-TELUS carriers are not clearinghouses', () => {
       expect(CARRIER_CONFIGS.sun_life.isClearinghouse).toBe(false);
+    });
+
+    it('minWaitDays comes from carrier-configs.json (minWaitDayForClaims)', () => {
+      const rules = carrierRulesJson.carriers as Record<string, { minWaitDayForClaims?: number }>;
+      for (const cfg of Object.values(CARRIER_CONFIGS)) {
+        expect(cfg.minWaitDays).toBe(rules[cfg.carrierId]?.minWaitDayForClaims);
+      }
+    });
+
+    it('avgHoldMinutes and ivrHints come from carrier-configs.json dispatch rules', () => {
+      const rules = carrierRulesJson.carriers as Record<
+        string,
+        { dispatch?: { avgHoldMinutes: number; ivrHints: string[] } }
+      >;
+      for (const cfg of Object.values(CARRIER_CONFIGS)) {
+        expect(cfg.avgHoldMinutes).toBe(rules[cfg.carrierId]?.dispatch?.avgHoldMinutes);
+        expect(cfg.ivrHints).toEqual(rules[cfg.carrierId]?.dispatch?.ivrHints);
+        expect(cfg.ivrHints.length).toBeGreaterThan(0);
+      }
     });
 
     it('all carriers have a non-empty phone number', () => {
@@ -195,6 +231,70 @@ describe('CarrierAdapter', () => {
       });
       expect(r.allowed).toBe(false);
       expect(r.reason).toMatch(/BAAL/i);
+    });
+
+    function makePrismaAtSubscriptionLimit(callAttemptFindFirst: () => Promise<{ id: string } | null>) {
+      return {
+        carrierBlockEvent: { findFirst: async () => null },
+        insuranceClaim: {
+          findUnique: async () => ({
+            recoveryRoute: 'CALL_CARRIER',
+            status: 'IN_QUEUE',
+            queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
+          }),
+        },
+        claimRecoveryAction: { findFirst: async () => null },
+        practice: {
+          findUnique: async () => ({
+            settings: authorizedSettings(),
+            subscriptionStatus: 'active',
+            subscriptionPriceId: 'price_standard',
+            subscriptionPlanId: 'standard',
+            subscriptionCurrentPeriodStart: new Date('2026-05-01T00:00:00Z'),
+            subscriptionCurrentPeriodEnd: new Date('2026-06-01T00:00:00Z'),
+          }),
+        },
+        callAttempt: {
+          findMany: async () => [{ claimId: 'claim-already-addressed' }],
+          findFirst: callAttemptFindFirst,
+        },
+      } as unknown as PrismaClient;
+    }
+
+    it('claim-count limits are retired — dispatch is not blocked by claim volume (minutes are the meter)', async () => {
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
+      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
+      const prismaAtLimit = makePrismaAtSubscriptionLimit(async () => null);
+
+      const r = await validateDispatch(prismaAtLimit, {
+        practiceId: 'practice-1',
+        claimId: 'claim-new',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+
+      expect(r.allowed).toBe(true);
+    });
+
+    it('allows a retry for a claim already counted in the current claim period', async () => {
+      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID = 'price_standard';
+      process.env.SUBSCRIPTION_DEFAULT_MONTHLY_CLAIM_LIMIT = '1';
+      const prismaAtLimit = makePrismaAtSubscriptionLimit(async () => ({ id: 'attempt-1' }));
+
+      const r = await validateDispatch(prismaAtLimit, {
+        practiceId: 'practice-1',
+        claimId: 'claim-already-addressed',
+        carrierId: 'sun_life',
+        daysOutstanding: 45,
+        attemptsSoFar: 1,
+        scheduledFor: new Date('2026-05-11T14:00:00Z'),
+        claimStatus: 'PENDING',
+      });
+
+      expect(r.allowed).toBe(true);
     });
   });
 });

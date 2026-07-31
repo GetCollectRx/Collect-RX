@@ -1,0 +1,33 @@
+# Staging Redis VM — deploy: fly deploy -c fly.staging-redis.toml -a collect-rx-staging-kv
+# App secret: REDIS_URL=redis://collect-rx-staging-kv.internal:6379
+# Must bind IPv6 (::) — Fly 6PN is IPv6-only; IPv4-only bind causes ECONNREFUSED from other apps.
+
+app = 'collect-rx-staging-kv'
+primary_region = 'yyz'
+
+[build]
+  image = 'redis:7-alpine'
+
+[processes]
+  app = 'redis-server --appendonly yes --bind 0.0.0.0 :: --protected-mode no --dir /data --port 6379 --save ""'
+
+[[mounts]]
+  source = 'redis_data'
+  destination = '/data'
+
+[[services]]
+  internal_port = 6379
+  protocol = 'tcp'
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[services.ports]]
+    port = 6379
+    handlers = []
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

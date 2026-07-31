@@ -8,7 +8,7 @@
  *
  * Usage:
  *   node scripts/set-persona-test-passwords.mjs
- *   railway run node scripts/set-persona-test-passwords.mjs
+ *   fly ssh console -a collect-rx -C 'node scripts/set-persona-test-passwords.mjs'
  *
  * Password: PERSONA_TEST_PASSWORD or SEED_PRACTICE_PASSWORD (min 8 chars).
  */
@@ -30,13 +30,13 @@ if (!TEST_PASSWORD || TEST_PASSWORD.length < 8) {
 
 /** Practice-layer roles (email login on main form). */
 const PRACTICE_PERSONAS = [
-  { email: 'tenthlinefd@collectrx.ca', role: 'practice_owner', displayName: 'Tenth Line Owner' },
-  { email: 'managertfd@collectrx.ca', role: 'office_manager', displayName: 'Office Manager' },
-  { email: 'billingtfd@collectrx.ca', role: 'billing_coordinator', displayName: 'Billing Coordinator' },
-  { email: 'frontdesktfd@collectrx.ca', role: 'front_desk', displayName: 'Front Desk' },
-  { email: 'dentisttfd@collectrx.ca', role: 'associate_dentist', displayName: 'Associate Dentist' },
-  { email: 'accountanttfd@collectrx.ca', role: 'accountant', displayName: 'Accountant' },
-  { email: 'groupadmintfd@collectrx.ca', role: 'group_admin', displayName: 'Group Admin' },
+  { email: 'demo@collectrx-test.local', role: 'practice_owner', displayName: 'Demo Owner' },
+  { email: 'om@collectrx-test.local', role: 'office_manager', displayName: 'Office Manager' },
+  { email: 'billing@collectrx-test.local', role: 'billing_coordinator', displayName: 'Billing Coordinator' },
+  { email: 'desk@collectrx-test.local', role: 'front_desk', displayName: 'Front Desk' },
+  { email: 'associate@collectrx-test.local', role: 'associate_dentist', displayName: 'Associate Dentist' },
+  { email: 'accountant@collectrx-test.local', role: 'accountant', displayName: 'Accountant' },
+  { email: 'group@collectrx-test.local', role: 'group_admin', displayName: 'Group Admin' },
 ];
 
 /** Brief personas (platform-user login — second form on login page). */
@@ -61,7 +61,7 @@ async function upsertPracticeUsers(practiceId, passwordHash) {
       role: persona.role,
       displayName: persona.displayName,
       isActive: true,
-      providerId: persona.role === 'associate_dentist' ? 'tfd-provider-1' : null,
+      providerId: persona.role === 'associate_dentist' ? 'demo-provider-1' : null,
       ...(persona.role === 'accountant' ? { tokenExpiresAt: accountantExpiry } : { tokenExpiresAt: null }),
     };
 
@@ -73,7 +73,7 @@ async function upsertPracticeUsers(practiceId, passwordHash) {
           role: persona.role,
           displayName: persona.displayName,
           isActive: true,
-          providerId: persona.role === 'associate_dentist' ? 'tfd-provider-1' : null,
+          providerId: persona.role === 'associate_dentist' ? 'demo-provider-1' : null,
           ...(persona.role === 'accountant' ? { tokenExpiresAt: accountantExpiry } : { tokenExpiresAt: null }),
         },
       });
@@ -155,9 +155,10 @@ async function upsertPlatformUsers(practiceId, passwordHash) {
 }
 
 async function main() {
-  const practice = await prisma.practice.findFirst({ orderBy: { name: 'asc' } });
+  const practiceName = process.env.SEED_PRACTICE_NAME || 'CollectRx Demo Practice';
+  const practice = await prisma.practice.findFirst({ where: { name: practiceName } });
   if (!practice) {
-    throw new Error('No practice in database — run db:seed first.');
+    throw new Error(`Practice "${practiceName}" not found — run npm run demo:seed first.`);
   }
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
@@ -170,9 +171,10 @@ async function main() {
   await upsertPlatformUsers(practice.id, passwordHash);
 
   console.log('\n── Login cheat sheet ──');
-  console.log('Main form (email + password): all *@collectrx.ca practice emails above');
-  console.log('Platform roles form: auditor@, billingops@, platformadmin@collectrx.ca');
-  console.log('Platform developer: PLATFORM_DEV_PASSWORD (login page footer — not this script)');
+  console.log(`Password for every account below: ${TEST_PASSWORD}`);
+  console.log('Main sign-in form (@collectrx-test.local): demo@, om@, billing@, desk@, associate@, accountant@, group@');
+  console.log('Platform roles form (@collectrx.ca): auditor@, billingops@, platformadmin@');
+  console.log(`Platform developer (footer form, no email): ${process.env.PLATFORM_DEV_PASSWORD || '(set PLATFORM_DEV_PASSWORD in .env)'}`);
 }
 
 main()

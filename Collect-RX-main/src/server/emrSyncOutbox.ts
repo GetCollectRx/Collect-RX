@@ -11,12 +11,49 @@ export async function enqueueEmrClaimEvent(
     payload: Record<string, unknown>;
   },
 ): Promise<void> {
+  const practice = await prisma.practice.findUnique({
+    where: { id: params.practiceId },
+    select: { recoveryMode: true },
+  });
+  // CSV-first is the default. It records recovery in CollectRx and waits for
+  // the next import instead of creating a writeback event the PMS cannot use.
+  if (!practice || practice.recoveryMode !== 'PMS_WRITEBACK') return;
+
   await prisma.emrSyncOutbox.create({
     data: {
       practiceId: params.practiceId,
       claimId: params.claimId,
       eventType: params.eventType,
       payloadJson: params.payload as Prisma.InputJsonValue,
+    },
+  });
+}
+
+/** Shadow-ledger sync for pre-visit verification outcomes (no claim row required). */
+export async function enqueueEmrPreVisitEvent(
+  prisma: PrismaClient,
+  params: {
+    practiceId: string;
+    appointmentVerificationId: string;
+    eventType: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<void> {
+  const practice = await prisma.practice.findUnique({
+    where: { id: params.practiceId },
+    select: { recoveryMode: true },
+  });
+  if (!practice || practice.recoveryMode !== 'PMS_WRITEBACK') return;
+
+  await prisma.emrSyncOutbox.create({
+    data: {
+      practiceId: params.practiceId,
+      claimId: `pre-visit:${params.appointmentVerificationId}`,
+      eventType: params.eventType,
+      payloadJson: {
+        ...params.payload,
+        appointmentVerificationId: params.appointmentVerificationId,
+      } as Prisma.InputJsonValue,
     },
   });
 }

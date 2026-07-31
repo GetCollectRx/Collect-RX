@@ -4,7 +4,6 @@
   "carrier_type": "PRIVATE",
   "active": true,
   "market_share": 15,
-
   "contact_info": {
     "provider_phone": "1-800-957-9777",
     "provider_phone_alternate": null,
@@ -14,7 +13,6 @@
     "hours_of_operation": "Mon-Fri 8:00am-8:00pm ET",
     "timezone": "ET"
   },
-
   "authentication": {
     "required_fields": [
       "provider_id",
@@ -31,15 +29,14 @@
       "What is the patient's certificate number?",
       "What is the date of service?"
     ],
-    "notes": "Canada Life uses CDAnet carrier ID 000011. Electronic claims must be submitted within 90 days of service date — after that, paper only. Canada Life took over administration of the federal PDSP (Pensioners Dental Services Plan) from Sun Life on November 1, 2024. Make sure to distinguish between private employer plans and PDSP — they have different phone numbers and workflows."
+    "notes": "Canada Life uses CDAnet carrier ID 000011. Electronic claims must be submitted within 90 days of service date \u2014 after that, paper only. Canada Life took over administration of the federal PDSP (Pensioners Dental Services Plan) from Sun Life on November 1, 2024. Make sure to distinguish between private employer plans and PDSP \u2014 they have different phone numbers and workflows."
   },
-
   "ivr_navigation": {
     "ivr_type": "touchtone",
     "steps": [
       {
         "step_number": 1,
-        "expected_prompt": "Welcome to Canada Life. For English, press 1. Pour le français, faites le 2.",
+        "expected_prompt": "Welcome to Canada Life. For English, press 1. Pour le fran\u00e7ais, faites le 2.",
         "action": "Press 1",
         "wait_time": 2
       },
@@ -59,7 +56,9 @@
         "step_number": 4,
         "expected_prompt": "For claim status inquiries, press 1. For predetermination status, press 2. For eligibility verification, press 3. To speak with a representative, press 0.",
         "action": "Press 1",
-        "alternative_actions": ["Press 0 to bypass to representative"],
+        "alternative_actions": [
+          "Press 0 to bypass to representative"
+        ],
         "wait_time": 1
       },
       {
@@ -84,27 +83,34 @@
     "shortcuts": [
       {
         "shortcut": "Press 0 at any time",
-        "destination": "Representative queue — fastest route to human"
+        "destination": "Representative queue \u2014 fastest route to human"
       }
     ],
     "last_verified": "2025-02-15"
   },
-
   "call_metrics": {
     "average_hold_time_minutes": 25,
-    "peak_hours": ["9am-11am ET", "1pm-3pm ET"],
-    "best_times_to_call": ["8am-9am ET", "5pm-7pm ET"],
+    "peak_hours": [
+      "9am-11am ET",
+      "1pm-3pm ET"
+    ],
+    "best_times_to_call": [
+      "8am-9am ET",
+      "5pm-7pm ET"
+    ],
     "success_rate": 83,
-    "average_call_duration_minutes": 35
+    "average_call_duration_minutes": 35,
+    "max_hold_minutes": 30,
+    "cost_per_minute_usd": 0.1315,
+    "max_cost_per_claim_usd": 11.84
   },
-
   "claim_processing": {
     "typical_processing_time_days": 14,
     "follow_up_threshold_days": 30,
     "common_denial_reasons": [
       {
         "code": "CL01",
-        "description": "Service not covered — not in benefit schedule",
+        "description": "Service not covered \u2014 not in benefit schedule",
         "resolution": "Check plan benefit booklet for covered codes. Some plans exclude cosmetic, implants, or certain restorative procedures.",
         "frequency": "common"
       },
@@ -116,7 +122,7 @@
       },
       {
         "code": "CL03",
-        "description": "Frequency limitation — service submitted too soon",
+        "description": "Frequency limitation \u2014 service submitted too soon",
         "resolution": "Most plans allow 2 cleanings/year, bitewings 1/year, full-mouth series every 3-5 years. Verify dates of previous claims.",
         "frequency": "very_common"
       },
@@ -134,7 +140,7 @@
       },
       {
         "code": "CL06",
-        "description": "Coordination of benefits — primary carrier has not paid",
+        "description": "Coordination of benefits \u2014 primary carrier has not paid",
         "resolution": "Submit to primary plan first. Attach EOB showing primary payment amount before submitting to Canada Life.",
         "frequency": "occasional"
       },
@@ -160,17 +166,17 @@
     "accepts_electronic_claims": true,
     "clearinghouse": "CDAnet (Carrier ID: 000011), ITRANS"
   },
-
   "cdcp_specific": null,
-
   "special_requirements": {
     "requires_cob_verification": true,
     "accepts_ai_callers": "unknown",
     "has_antibot_detection": false,
     "requires_human_voice_verification": false,
-    "language_options": ["English", "French"]
+    "language_options": [
+      "English",
+      "French"
+    ]
   },
-
   "ai_agent_guidance": {
     "tone": "professional",
     "key_phrases": [
@@ -182,9 +188,9 @@
       "Is there a deadline for submitting supporting documentation?"
     ],
     "avoid_phrases": [
-      "Great-West Life — Canada Life rebranded from Great-West Life in 2020, don't use the old name",
-      "London Life — also merged into Canada Life, separate references may confuse reps",
-      "PDSP provider line — use the private dental line 1-800-957-9777 for employer plans, not the PDSP line"
+      "Great-West Life \u2014 Canada Life rebranded from Great-West Life in 2020, don't use the old name",
+      "London Life \u2014 also merged into Canada Life, separate references may confuse reps",
+      "PDSP provider line \u2014 use the private dental line 1-800-957-9777 for employer plans, not the PDSP line"
     ],
     "escalation_triggers": [
       "Claim cannot be located after providing policy number, certificate number, and date of service",
@@ -193,22 +199,27 @@
       "Claim older than 90 days and rep says electronic resubmission is not possible",
       "COB situation where Canada Life and another carrier are both claiming the other is primary"
     ],
-    "representative_script_hints": "Canada Life reps are generally knowledgeable and have good system access. They merged with Great-West Life and London Life in 2020 — reps may still refer to legacy systems for older claims. For any claim predating 2020, be prepared for longer lookup times. If rep says the claim is 'with the adjudicator', ask for an estimated completion date — do not accept open-ended timelines."
+    "representative_script_hints": "Canada Life reps are generally knowledgeable and have good system access. They merged with Great-West Life and London Life in 2020 \u2014 reps may still refer to legacy systems for older claims. For any claim predating 2020, be prepared for longer lookup times. If rep says the claim is 'with the adjudicator', ask for an estimated completion date \u2014 do not accept open-ended timelines."
   },
-
   "metadata": {
     "created_date": "2025-02-26T00:00:00Z",
-    "last_updated": "2025-02-26T00:00:00Z",
+    "last_updated": "2026-06-23",
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 74,
-    "notes": "Canada Life is the result of the 2020 merger of Great-West Life, London Life, and Canada Life. They also took over the federal PDSP from Sun Life in November 2024. One of the largest carriers in Canada. For Tenth Line Family Dentistry in Orleans, Canada Life employer plans are very common given the large federal public sector workforce in the Ottawa area. The 90-day electronic submission window is a critical detail — claims beyond that require paper mail to Winnipeg.",
+    "notes": "Canada Life is the result of the 2020 merger of Great-West Life, London Life, and Canada Life. They also took over the federal PDSP from Sun Life in November 2024. One of the largest carriers in Canada. Employer plans are common in regions with large public-sector workforces. The 90-day electronic submission window is a critical detail — claims beyond that require paper mail to Winnipeg.",
     "change_log": [
       {
         "date": "2025-02-26",
         "change": "Initial configuration created",
-        "reason": "Major Canadian carrier — high volume expected"
+        "reason": "Major Canadian carrier \u2014 high volume expected"
+      },
+      {
+        "date": "2026-06-23",
+        "change": "Added schema_version, cost fields (max_hold_minutes, cost_per_minute_usd, max_cost_per_claim_usd). Every future change to ivr_navigation, authentication, or ai_agent_guidance must increment schema_version and add a changelog entry.",
+        "reason": "P1-2 carrier KB versioning + P2-5 call duration cost controls"
       }
-    ]
+    ],
+    "schema_version": "1.0.0"
   }
 }

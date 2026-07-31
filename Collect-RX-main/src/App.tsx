@@ -1,58 +1,85 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
-import LegalTerms from './pages/LegalTerms'
-import LegalPrivacy from './pages/LegalPrivacy'
-import ProductOnePager from './pages/ProductOnePager'
-import Changelog from './pages/Changelog'
-import PilotDemo  from './pages/PilotDemo'
+const LegalTerms = lazy(() => import('./pages/LegalTerms'))
+const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
+const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
+const Changelog = lazy(() => import('./pages/Changelog'))
+const PilotDemo = lazy(() => import('./pages/PilotDemo'))
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
+import { PlanUsageBanner } from './components/PlanUsageBanner'
+import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
-import Dashboard             from './pages/Dashboard'
-import Analytics             from './pages/Analytics'
-import Admin                 from './pages/Admin'
-import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
-import PracticeBillingPage   from './pages/PracticeBillingPage'
-import Phase5Dashboard       from './pages/Phase5Dashboard'
-import InsuranceClaims       from './pages/InsuranceClaims'
-import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
-import RecoveryGatesInbox    from './pages/RecoveryGatesInbox'
-import WorkQueue             from './pages/WorkQueue'
-import SyncOpsDashboard      from './pages/SyncOpsDashboard'
-import LiveConsole           from './pages/LiveConsole'
-import CallHistory           from './pages/CallHistory'
-import AgingReport           from './pages/AgingReport'
-import CarrierStats          from './pages/CarrierStats'
-import PracticeSettings      from './pages/PracticeSettings'
-import Escalations           from './pages/Escalations'
-import QueueStatsReport      from './pages/QueueStatsReport'
-import Portfolio             from './pages/Portfolio'
-import AdminPractices        from './pages/AdminPractices'
-import PartnershipsBoard     from './pages/PartnershipsBoard'
-import ProspectDetail        from './pages/ProspectDetail'
-import SystemHealth          from './pages/SystemHealth'
-import UserManagement        from './pages/UserManagement'
-import BreakGlass            from './pages/BreakGlass'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
 import SignupPage              from './pages/SignupPage'
 import AcceptInvitePage        from './pages/AcceptInvitePage'
-import UsersAdmin              from './pages/UsersAdmin'
+const Dashboard             = lazy(() => import('./pages/Dashboard'))
+const Analytics             = lazy(() => import('./pages/Analytics'))
+const AssumptionValidation  = lazy(() => import('./pages/AssumptionValidation'))
+const PilotRunbook          = lazy(() => import('./pages/PilotRunbook'))
+const Admin                 = lazy(() => import('./pages/Admin'))
+const OfficeGuide           = lazy(() => import('./pages/OfficeGuide'))
+const PracticeBillingPage   = lazy(() => import('./pages/PracticeBillingPage'))
+const PreVisitCommandCenter = lazy(() => import('./pages/PreVisitCommandCenter'))
+const CanadianExpansion     = lazy(() => import('./pages/CanadianExpansion'))
+const GroupDashboard        = lazy(() => import('./pages/GroupDashboard'))
+const ArCommandCenter       = lazy(() => import('./pages/ArCommandCenter'))
+const InsuranceClaims       = lazy(() => import('./pages/InsuranceClaims'))
+const InsuranceClaimDetail  = lazy(() => import('./pages/InsuranceClaimDetail'))
+const WorkQueue             = lazy(() => import('./pages/WorkQueue'))
+const SyncOpsDashboard      = lazy(() => import('./pages/SyncOpsDashboard'))
+const DesktopDownload       = lazy(() => import('./pages/DesktopDownload'))
+const LiveConsole           = lazy(() => import('./pages/LiveConsole'))
+const CallHistory           = lazy(() => import('./pages/CallHistory'))
+const AgingReport           = lazy(() => import('./pages/AgingReport'))
+const CarrierStats          = lazy(() => import('./pages/CarrierStats'))
+const PracticeSettings      = lazy(() => import('./pages/PracticeSettings'))
+const Escalations           = lazy(() => import('./pages/Escalations'))
+const QueueStatsReport      = lazy(() => import('./pages/QueueStatsReport'))
+const Portfolio             = lazy(() => import('./pages/Portfolio'))
+const AdminPractices        = lazy(() => import('./pages/AdminPractices'))
+const PartnershipsBoard     = lazy(() => import('./pages/PartnershipsBoard'))
+const ProspectDetail        = lazy(() => import('./pages/ProspectDetail'))
+const SystemHealth          = lazy(() => import('./pages/SystemHealth'))
+const UserManagement        = lazy(() => import('./pages/UserManagement'))
+const BreakGlass            = lazy(() => import('./pages/BreakGlass'))
+const UsersAdmin            = lazy(() => import('./pages/UsersAdmin'))
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
 import { HOME_ROUTE, type UserRole } from './types/userRole'
 import { StartupScreen } from './components/StartupScreen'
-import { useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
-import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
+const ProductUsageAnalytics = lazy(() => import('./pages/ProductUsageAnalytics'))
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
 import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
-import MarketingSite from './website/MarketingSite'
+import { isCommandCenterSurface } from './lib/appSurface'
+const MarketingSite = lazy(() => import('./website/MarketingSite'))
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
+const CsvImportPage = lazy(() => import('./pages/CsvImportPage'))
+import { ToastProvider } from './context/ToastContext'
+import { CommandPalette } from './components/CommandPalette'
+import './styles/tailwind.css'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
+
+/** Fallback shown while a lazily-loaded route chunk is fetched. */
+function RouteFallback({ fullScreen = false }: { fullScreen?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-center${fullScreen ? ' min-h-screen' : ' py-24'}`}
+      style={fullScreen ? { background: 'var(--crx-bg1)' } : undefined}
+    >
+      <div className="flex items-center gap-2.5">
+        <CollectRxLogoMark size={24} />
+        <p className="text-sm font-medium" style={{ color: 'var(--crx-t2)' }}>Loading…</p>
+      </div>
+    </div>
+  )
+}
 
 /** Paths that should redirect to the signed-in home route (not render AppShell content). */
 function isPostAuthEntryPath(pathname: string): boolean {
@@ -60,8 +87,22 @@ function isPostAuthEntryPath(pathname: string): boolean {
   return path === '/' || path === '/login'
 }
 
+/**
+ * Practice-user group admins (sessionUser present) home on the PHI-free
+ * GroupDashboard. Platform billing-ops/admin sessions also carry the legacy
+ * shim role 'group_admin' but have no sessionUser — they keep the
+ * billing-ops persona home (/portfolio), whose APIs accept their JWT.
+ */
+function isPracticeGroupAdmin(role: string | null, sessionUser: unknown): boolean {
+  return role === 'group_admin' && sessionUser != null
+}
+
+function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
+  return groupAdmin ? '/group-dashboard' : HOME_ROUTE[userRole]
+}
+
 function PublicDemoRoute() {
-  const { authState, userRole } = usePractice()
+  const { authState, userRole, role, sessionUser } = usePractice()
   if (authState === 'loading') {
     return (
       <div
@@ -73,17 +114,28 @@ function PublicDemoRoute() {
     )
   }
   if (authState === 'ready' && userRole) {
-    return <Navigate to={HOME_ROUTE[userRole]} replace />
+    return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
   }
   return <PilotDemo />
 }
 
 function AppHomeFallback() {
-  const { userRole, authState } = usePractice()
+  const { userRole, authState, role, sessionUser } = usePractice()
   if (authState === 'anon' || !userRole) {
     return <Navigate to="/login" replace />
   }
-  return <Navigate to={HOME_ROUTE[userRole]} replace />
+  return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
+}
+
+function GroupAdminRoute({ children }: { children: ReactNode }) {
+  const { authState, role } = usePractice()
+  if (authState === 'anon') {
+    return <Navigate to="/login" replace />
+  }
+  if (authState === 'ready' && role !== 'group_admin') {
+    return <AppHomeFallback />
+  }
+  return <>{children}</>
 }
 
 type NavItem = { to: string; exact: boolean; label: string; icon: NavIconName }
@@ -91,19 +143,15 @@ type NavSection = { label: string; items: NavItem[] }
 
 /** Routes blocked for platform developer sessions (PHI-bearing surfaces). */
 const PLATFORM_DEV_BLOCKED_PREFIXES = [
-  '/balances',
-  '/patient-ar',
-  '/estimate',
-  '/outbox',
   '/cdcp',
-  '/pay',
+  '/pre-visit',
+  '/canadian-2026',
 ]
 
 const PLATFORM_DEV_NAV_PATHS = new Set([
   '/',
   '/dashboard',
   '/guide',
-  '/work-queue',
   '/insurance',
   '/analytics',
   '/usage-insights',
@@ -118,22 +166,47 @@ const FRONT_DESK_NAV: NavItem[] = [
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
-const OWNER_NAV: NavItem[] = [
-  { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
-  { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
-  { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
-  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
-  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-  { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+const PRACTICE_OWNER_SECTIONS: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
+      { to: '/guide', exact: true, label: 'How it works', icon: 'guide' },
+    ],
+  },
+  {
+    label: 'After visit',
+    items: [
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
+      { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
+      { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+    ],
+  },
 ]
 
 const AUDITOR_NAV: NavItem[] = [
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
   { to: '/reports/queue', exact: true, label: 'Queue stats', icon: 'workqueue' },
+]
+
+const GROUP_ADMIN_NAV: NavItem[] = [
+  { to: '/group-dashboard', exact: true, label: 'Group overview', icon: 'portfolio' },
 ]
 
 const BILLING_OPS_NAV: NavItem[] = [
@@ -143,21 +216,39 @@ const BILLING_OPS_NAV: NavItem[] = [
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
-const OFFICE_MANAGER_NAV: NavItem[] = [
-  { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
-  { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
-  { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
-  { to: '/reports/carriers', exact: false, label: 'Carrier stats', icon: 'carriers' },
-  { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
-  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+const OFFICE_MANAGER_SECTIONS: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/dashboard', exact: true, label: 'Dashboard', icon: 'dashboard' },
+      { to: '/guide', exact: true, label: 'How it works', icon: 'guide' },
+    ],
+  },
+  {
+    label: 'After visit',
+    items: [
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
+      { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
+      { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+  },
+  {
+    label: 'Account',
+    items: [
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+    ],
+  },
 ]
 
 const BILLING_COORDINATOR_NAV: NavItem[] = [
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
-  { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-  { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+  { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
@@ -179,11 +270,7 @@ const FRONT_DESK_BLOCKED_PREFIXES = [
   '/guide',
   '/work-queue',
   '/insurance',
-  '/balances',
-  '/patient-ar',
-  '/estimate',
   '/analytics',
-  '/outbox',
   '/cdcp',
   '/admin',
   '/portfolio',
@@ -201,24 +288,31 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: 'Claims',
+    label: 'After visit',
     items: [
-      { to: '/work-queue', exact: false, label: 'Work queue', icon: 'workqueue' },
-      { to: '/insurance', exact: false, label: 'Insurance AR', icon: 'insurance' },
-      { to: '/insurance/gates', exact: true, label: 'Gate inbox', icon: 'workqueue' },
+      { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+    ],
+  },
+  {
+    label: 'Before visit',
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { to: '/estimate', exact: false, label: 'Estimate', icon: 'estimate' },
       { to: '/analytics', exact: false, label: 'Analytics', icon: 'analytics' },
-      { to: '/cdcp', exact: false, label: 'CDCP', icon: 'cdcp' },
+      { to: '/validation', exact: true, label: 'Validation', icon: 'analytics' },
+      { to: '/cdcp', exact: false, label: 'CDCP (legacy)', icon: 'cdcp' },
     ],
   },
   {
     label: 'Setup',
-    items: [{ to: '/admin', exact: false, label: 'Admin', icon: 'admin' }],
+    items: [
+      { to: '/admin', exact: false, label: 'Admin', icon: 'admin' },
+      { to: '/admin/runbook', exact: true, label: 'Runbook', icon: 'admin' },
+    ],
   },
 ]
 
@@ -243,21 +337,28 @@ function sidebarNavSections(
   userRole: string | null,
   isPlatformDev: boolean,
   isPracticeOwner: boolean,
+  groupAdmin?: boolean,
+  role?: string | null,
 ): NavSection[] {
+  // Raw-role checks come first: office_manager and billing_coordinator
+  // collapse to the practice_owner persona, so their authored navs are only
+  // reachable via the session role.
   const personaNav: NavSection[] =
-    userRole === 'auditor'
+    groupAdmin
+      ? [{ label: 'Group', items: GROUP_ADMIN_NAV }]
+      : role === 'office_manager'
+      ? OFFICE_MANAGER_SECTIONS
+      : role === 'billing_coordinator'
+      ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
+      : userRole === 'auditor'
       ? [{ label: 'Reports', items: AUDITOR_NAV }]
       : userRole === 'billing_ops_manager'
         ? [{ label: 'Operations', items: BILLING_OPS_NAV }]
         : userRole === 'platform_admin' || isPlatformDev
           ? [{ label: 'Platform', items: PLATFORM_ADMIN_NAV }]
-          : userRole === 'office_manager'
-            ? [{ label: '', items: OFFICE_MANAGER_NAV }]
-            : userRole === 'billing_coordinator'
-              ? [{ label: '', items: BILLING_COORDINATOR_NAV }]
-              : isPracticeOwner
-                ? [{ label: '', items: OWNER_NAV }]
-                : NAV_SECTIONS
+          : isPracticeOwner
+            ? PRACTICE_OWNER_SECTIONS
+            : NAV_SECTIONS
 
   if (isPlatformDev && userRole !== 'platform_admin') {
     return NAV_SECTIONS.map((section) => ({
@@ -270,7 +371,7 @@ function sidebarNavSections(
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar() {
-  const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole } = usePractice()
+  const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole, role, sessionUser } = usePractice()
 
   if (isFrontDesk) {
     return (
@@ -287,7 +388,7 @@ function Sidebar() {
     )
   }
 
-  const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner)
+  const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner, isPracticeGroupAdmin(role, sessionUser), role)
 
   return (
     <aside className="crx-sidebar" aria-label="Main navigation">
@@ -353,6 +454,7 @@ function AppShell() {
   const { sessionHealth, userRole } = usePractice()
   return (
     <div className="crx-app flex min-h-screen">
+      <CommandPalette />
       <Sidebar />
       <div className="crx-app-main">
         <AppTopBar />
@@ -360,8 +462,11 @@ function AppShell() {
           health={sessionHealth}
           isPlatformAdmin={userRole === 'platform_admin'}
         />
+        <DesktopConnectorBanner />
+        <PlanUsageBanner />
         <main className="crx-app-content" id="main-content">
         <PlatformDevRouteGuard>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/console" element={<ProtectedRoute allowedRoles={['front_desk']}><LiveConsole /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute allowedRoles={['front_desk']}><CallHistory /></ProtectedRoute>} />
@@ -370,7 +475,7 @@ function AppShell() {
           <Route path="/reports/aging" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin']}><AgingReport /></ProtectedRoute>} />
           <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
           <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
           <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
@@ -381,25 +486,28 @@ function AppShell() {
           <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />
           <Route path="/admin/staff" element={<ProtectedRoute allowedRoles={['practice_owner']}><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
+          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PilotRunbook /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
+          <Route path="/download" element={<DesktopDownload />} />
           <Route path="/work-queue" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><WorkQueue /></ProtectedRoute>} />
-          <Route path="/insurance/gates" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><RecoveryGatesInbox /></ProtectedRoute>} />
+          <Route path="/insurance/gates" element={<Navigate to="/insurance?tab=blocked" replace />} />
           <Route path="/insurance" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaims /></ProtectedRoute>} />
+          <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
+          <Route path="/import" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CsvImportPage /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
-          <Route path="/balances" element={<Navigate to="/insurance" replace />} />
-          <Route path="/balances/:id" element={<Navigate to="/insurance" replace />} />
-          <Route path="/patient-ar" element={<Navigate to="/insurance" replace />} />
-          <Route path="/outbox" element={<Navigate to="/insurance" replace />} />
-          <Route path="/pay/:balanceId" element={<Navigate to="/insurance" replace />} />
           <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/estimate"      element={<Navigate to="/insurance" replace />} />
           <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/validation" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><AssumptionValidation /></ProtectedRoute>} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
-          <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant'] as UserRole[]}><PracticeBillingPage /></ProtectedRoute>} />
-          <Route path="/cdcp"          element={<Phase5Dashboard />} />
+          <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
+          <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
+          <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
+          <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
+          <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
+        </Suspense>
         </PlatformDevRouteGuard>
         </main>
       </div>
@@ -428,6 +536,7 @@ function AnonRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/download" element={<DesktopDownload />} />
       <Route path="/dashboard" element={<RedirectToLogin />} />
       <Route path="/dashboard/*" element={<RedirectToLogin />} />
       <Route path="/" element={<MarketingSite />} />
@@ -438,7 +547,7 @@ function AnonRoutes() {
 }
 
 function AuthGate() {
-  const { authState, loading, subscription, isPlatformDev, userRole } = usePractice()
+  const { authState, loading, subscription, isPlatformDev, userRole, role, sessionUser } = usePractice()
   const location = useLocation()
   const navigate = useNavigate()
   const [bootComplete, setBootComplete] = useState(false)
@@ -449,6 +558,8 @@ function AuthGate() {
     if (authReady) setBootComplete(true)
   }, [authReady])
 
+  const groupAdmin = isPracticeGroupAdmin(role, sessionUser)
+
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
     const redirect = consumeLoginRedirect()
@@ -457,9 +568,9 @@ function AuthGate() {
       return
     }
     if (isPostAuthEntryPath(location.pathname)) {
-      navigate(HOME_ROUTE[userRole], { replace: true })
+      navigate(signedInHomeRoute(groupAdmin, userRole), { replace: true })
     }
-  }, [loading, authState, userRole, location.pathname, navigate])
+  }, [loading, authState, userRole, groupAdmin, location.pathname, navigate])
 
   useEffect(() => {
     if (loading || authState !== 'anon') return
@@ -502,35 +613,55 @@ function AuthGate() {
 }
 
 function App() {
-  return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <CookieBanner />
+  const shell = (
+    <ThemeProvider>
+      <ToastProvider>
         <PracticeProvider>
           <AnalyticsSessionBridge>
-          <Routes>
-            <Route path="/pay/p/:publicToken" element={<Navigate to="/" replace />} />
-            <Route path="/payment/thank-you" element={<Navigate to="/" replace />} />
-            <Route path="/legal/terms" element={<LegalTerms />} />
-            <Route path="/legal/privacy" element={<LegalPrivacy />} />
-            <Route path="/product" element={<ProductOnePager />} />
-            <Route path="/changelog" element={<Changelog />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/accept-invite" element={<AcceptInvitePage />} />
-            <Route path="/demo" element={<PublicDemoRoute />} />
-            <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
-            <Route path="/how-it-works" element={<MarketingSite />} />
-            <Route path="/roi" element={<MarketingSite />} />
-            <Route path="/features" element={<MarketingSite />} />
-            <Route path="/carriers" element={<MarketingSite />} />
-            <Route path="/compliance" element={<MarketingSite />} />
-            <Route path="/landing" element={<MarketingSite />} />
-            <Route path="*" element={<AuthGate />} />
-          </Routes>
+            <Suspense fallback={<RouteFallback fullScreen />}>
+            {isCommandCenterSurface ? (
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<AuthGate />} />
+              </Routes>
+            ) : (
+              <Routes>
+                <Route path="/" element={<MarketingSite />} />
+                <Route path="/legal/terms" element={<LegalTerms />} />
+                <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/product" element={<ProductOnePager />} />
+                <Route path="/changelog" element={<Changelog />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/demo" element={<PublicDemoRoute />} />
+                <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
+                <Route path="/how-it-works" element={<MarketingSite />} />
+                <Route path="/roi" element={<MarketingSite />} />
+                <Route path="/pricing" element={<MarketingSite />} />
+                <Route path="/features" element={<MarketingSite />} />
+                <Route path="/carriers" element={<MarketingSite />} />
+                <Route path="/compliance" element={<MarketingSite />} />
+                <Route path="/about" element={<MarketingSite />} />
+                <Route path="/landing" element={<MarketingSite />} />
+                <Route path="*" element={<AuthGate />} />
+              </Routes>
+            )}
+            </Suspense>
           </AnalyticsSessionBridge>
         </PracticeProvider>
-      </ThemeProvider>
+      </ToastProvider>
+    </ThemeProvider>
+  )
+
+  return (
+    <BrowserRouter>
+      {!isCommandCenterSurface && <CookieBanner />}
+      {shell}
     </BrowserRouter>
   )
 }

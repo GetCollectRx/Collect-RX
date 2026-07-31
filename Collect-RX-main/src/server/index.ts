@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CollectRx — Express Backend Server
-// Port: 3001 (Railway)
+// Port: 3000 (Fly.io)
 //
 // Route map:
 //   /api/auth/*            authRoutes.ts (login, logout, me)
@@ -19,12 +19,12 @@
 //   /api/webhooks/vapi     webhooks/vapi.ts (raw body — mounted before json())
 //   /api/webhooks/sendgrid sendgrid/handleSendgridEventWebhook.ts (prospect engagement only)
 //
-// Removed (Practice→Insurance product — no patient-facing layer):
+// Removed (Practice→Insurance product — no patient billing / patient pay):
 //   /api/patients/*        patientArApi.ts
 //   /api/balances/*        balancesOutreachRoutes.ts
 //   /api/public/*          publicPatientPayRoutes.ts
-//   /api/twilio/sms        twilio/inboundSms.ts
-//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding)
+//   /api/twilio/sms        twilio/inboundSms.ts (patient pay replies)
+//   /api/stripe/connect/*  stripeApiRoutes.ts (Connect onboarding — permanently retired)
 //
 // Safety:
 //   - Webhook route uses raw body parser (HMAC validation requires raw bytes)
@@ -38,7 +38,7 @@
 //   - Insurance, calls, analytics, carriers, queue, eligibility: require practice JWT (cookie or Bearer)
 //   - VAPI_WEBHOOK_SECRET required in production — server refuses to start without it
 //   - SendGrid: SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY required in production (401 otherwise)
-//   - Stripe Connect onboard refresh/complete: ?v= HMAC (or same-practice JWT); see STRIPE_ONBOARD_RETURN_SECRET
+//   - Stripe Billing (practice SaaS subscription) via /api/billing + /api/webhooks/stripe
 //   - PostgreSQL: in production DATABASE_URL must require TLS (sslmode=require or stricter); see databaseTls.ts
 //   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
 //   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
@@ -47,10 +47,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
-import { applyPostgresTlsToProcessEnv } from './databaseTls.js';
-
-// Before Prisma reads DATABASE_URL (Railway URLs often omit ?sslmode=require).
-applyPostgresTlsToProcessEnv();
 
 import fs from 'node:fs';
 import https from 'node:https';
@@ -59,6 +55,7 @@ import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
@@ -72,11 +69,15 @@ import { prisma } from '../lib/prisma';
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPostgresTlsInProduction } from './databaseTls';
-import { assertPhiEncryptionAtRestConfigured } from './crypto/phiEncryptionKey.js';
+import {
+  assertPersistentPhiVaultConfigured,
+  assertPhiEncryptionAtRestConfigured,
+} from './crypto/phiEncryptionKey.js';
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
 import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
+import { runWithRlsBypass } from './db/rlsContext.js';
 import { loadTlsCredentialsForNodeServer } from './tls/nodeHttpsSettings.js';
 import {
   assertResourcePagesBuilt,
@@ -103,6 +104,7 @@ import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
+import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
@@ -110,42 +112,64 @@ import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
+import preVisitRouter from './routes/preVisitRoutes.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
 import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
+import gocardlessRouter from './routes/gocardlessRoutes';
+import { gocardlessWebhookHandler } from './webhooks/gocardless.js';
 import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
+import { startPadReconciliationScheduler } from './jobs/padReconciliationScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
 import { startLearningLoopInProcess } from './learning/scheduler.js';
 import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
+import { drainGuardrailAuditOutbox } from '../workers/guardrailAuditWorker.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 
 import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
+import { createDesktopReleasesRouter } from './routes/desktopReleasesRoutes.js';
+import { createConnectorRouter } from './routes/connectorRoutes.js';
+import { createConnectorAdminRouter } from './routes/connectorAdminRoutes.js';
 import { createPartnershipsRouter } from './routes/partnershipsRouter.js';
 import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
 import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
+import { startEmailCampaignScheduler } from './marketing/emailCampaignScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
 import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
+import { complianceWorkspaceRouter } from './routes/complianceWorkspaceRoutes.js';
+import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
+import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
+import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
+import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
+app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // Without these, an uncaught error anywhere (e.g. a background async path) kills the
-// process silently — Railway then just sees the healthcheck fail with no indication why.
+// process silently — the platform then just sees the healthcheck fail with no indication why.
 // Per Node's own guidance, the process is in an unknown state after either event, so we
-// log full detail for visibility in Railway logs and then exit so the platform restarts
+// log full detail for visibility in fly logs and then exit so the platform restarts
 // the container cleanly, instead of leaving a half-broken process running.
+// Playwright sets COLLECTRX_E2E=1: log but do not exit — a single background rejection
+// must not take down the suite mid-run (remaining tests would see ERR_CONNECTION_REFUSED).
+const e2eMode = (() => {
+  const v = (process.env.COLLECTRX_E2E || '').trim();
+  return v === '1' || v.toLowerCase() === 'true';
+})();
 process.on('uncaughtException', (err) => {
   console.error('[server] FATAL: uncaughtException —', err);
-  process.exit(1);
+  if (!e2eMode) process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[server] FATAL: unhandledRejection —', reason);
-  process.exit(1);
+  if (!e2eMode) process.exit(1);
 });
 
 // Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
@@ -156,7 +180,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Behind Railway / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
+// Behind Fly / other reverse proxies, trust X-Forwarded-* so req.ip and rate limits are per-client.
 if (
   process.env.TRUST_PROXY === '1' ||
   process.env.TRUST_PROXY === 'true' ||
@@ -171,7 +195,18 @@ app.use(
       process.env.NODE_ENV === 'production'
         ? { maxAge: 31536000, includeSubDomains: true, preload: false }
         : false,
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
   }),
 );
 
@@ -183,7 +218,7 @@ app.use(
 if (process.env.NODE_ENV === 'production' && !process.env.VAPI_WEBHOOK_SECRET) {
   console.error(
     '[server] FATAL: VAPI_WEBHOOK_SECRET is not set in production. ' +
-    'Set this env var in Railway to enable webhook signature verification. Refusing to start.',
+    'Set this env var (fly secrets set) to enable webhook signature verification. Refusing to start.',
   );
   process.exit(1);
 }
@@ -203,6 +238,7 @@ try {
 
 assertPostgresTlsInProduction();
 assertPhiEncryptionAtRestConfigured();
+assertPersistentPhiVaultConfigured();
 assertEmrSyncWebhookUrlConfiguredAtBoot();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,13 +250,25 @@ app.use(cors({
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stripe — webhook requires raw body (same signing secret as Connect + Billing)
+// Stripe — webhook requires raw body (practice SaaS Billing)
 // ─────────────────────────────────────────────────────────────────────────────
 app.post(
   '/api/stripe/webhook',
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   stripeWebhookHandler(prisma),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GoCardless PAD — real-time webhook (HMAC-verified, see webhooks/gocardless.ts).
+// The reconciliation poller (POST /api/gocardless/reconcile, or the cron job in
+// jobs/padReconciliationScheduler.ts) is a safety net for missed deliveries.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post(
+  '/api/webhooks/gocardless',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  gocardlessWebhookHandler(prisma),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,6 +281,17 @@ app.use(
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   vapiWebhookRouter,
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Claims Validator webhook — async validation after call ends
+// Runs OFF-CALL after Claims_Agent completes; validates extraction & safety
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/claims/validate',
+  webhookLimiter,
+  express.json({ limit: '10mb' }),
+  claimsValidatorRouter,
 );
 
 app.post(
@@ -287,9 +346,19 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
 });
 
-app.get('/api/health/metrics', healthLimiter, (req: Request, res: Response) => {
-  res.json(buildPublicHealthMetricsBody(req));
+app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response) => {
+  const body = buildPublicHealthMetricsBody(req);
+  try {
+    const { getQueueHealth } = await import('./observability/queueHealth.js');
+    res.json({ ...body, queue: await getQueueHealth(prisma) });
+  } catch (err) {
+    console.error('[health/metrics] queue health unavailable:', err);
+    res.json({ ...body, queue: { error: 'unavailable' } });
+  }
 });
+
+// Public download metadata — must not sit behind session auth (download page is unauthenticated).
+app.use('/api', createDesktopReleasesRouter());
 
 // Product telemetry ingestion — higher limit than standard /api (SDK batches every 5 s).
 app.use('/api/telemetry/events', telemetryEventsLimiter);
@@ -307,11 +376,13 @@ app.use('/api', anonStandardLimiter);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
+app.use('/api/gocardless', gocardlessRouter);
 app.use('/api/insurance',  insuranceRouter);
 app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
 app.use('/api/desk',       createFrontDeskRouter());
 app.use('/api/practices',  createPracticeReportsRouter());
+app.use('/api/practices',  createTriageCredentialRouter());
 app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
@@ -319,19 +390,27 @@ app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
+app.use('/api/connector',  createConnectorRouter());
+app.use('/api/admin/connector', createConnectorAdminRouter());
 app.use('/api',            createBenefitsApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
+registerEmailCampaignRoutes(app, prisma);
+registerCampaignRoutes(app, prisma);
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
+app.use('/api/pre-visit',  preVisitRouter);
 app.use('/api',            createCanadianExpansionRouter(prisma));
 // Compliance audit — platform_admin / auditor only
 app.use('/api/compliance', complianceRouter);
+app.use('/api/compliance/workspace', complianceWorkspaceRouter);
+// Operator-only discovery records; no scheduler or dispatch worker is mounted.
+app.use('/api/admin/carrier-discovery', createCarrierDiscoveryRouter());
 
 // Autonomous agent runtime — structured outputs + escalation
 import agentRunsRouter from './routes/agentRunsRouter.js';
@@ -372,7 +451,19 @@ function getSpaIndexHtml(): string {
 }
 
 app.use(createResourceStaticMiddleware(distPath));
-app.use(express.static(distPath));
+app.use(
+  express.static(distPath, {
+    setHeaders(res, filePath) {
+      // Vite emits content-hashed asset filenames, so a new build changes the
+      // URL — those can be cached indefinitely. index.html (served by the SPA
+      // catch-all below, not here) must never be long-cached or new deploys
+      // wouldn't be picked up.
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }),
+);
 app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ success: false, error: 'Not found' });
@@ -415,19 +506,17 @@ function isMainModule(): boolean {
   });
 }
 
-async function connectDatabaseOrExit(): Promise<void> {
+async function connectDatabase(): Promise<void> {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log('[server] Database connected');
   } catch (err) {
     console.error('[server] Database connection failed:', err);
-    process.exit(1);
+    throw err;
   }
 }
 
 async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
-  await connectDatabaseOrExit();
-
   try {
     const closed = await prisma.workItem.updateMany({
       where: { status: 'open', itemType: { not: 'insurance' } },
@@ -444,7 +533,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
   });
 
-  // Periodic GC on main vault (AES-256-GCM, 4h TTL — holds full PatientPHI for call dispatch).
+  // Periodic GC on main vault (AES-256-GCM, claim-lifecycle TTL via PHI_VAULT_TTL_DAYS — holds full PatientPHI for call dispatch).
   // H-6: legacy vault (services/pii-vault.ts, 24h TTL, simple string tokens) GC removed —
   // the legacy tokenize/detokenize functions are no longer called and the legacy vault
   // accumulates no new entries, so purging it is a no-op and creates misleading log output.
@@ -465,23 +554,13 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     }
     startMarketingLoopInProcess(prisma);
     startMarketingLearningInProcess(prisma);
+    startEmailCampaignScheduler(prisma);
   }
+
+  startConnectorMonitorScheduler(prisma);
+  startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
-
-  // ── PHI Vault: attach persistent store + rehydrate before queue engine ─────
-  // On server restart, all in-memory PHI tokens are lost. claimsPiiVault.rehydrate()
-  // decrypts all non-expired PhiVaultEntry rows back into memory so the queue
-  // engine can dispatch existing claims without requiring a re-import.
-  // PHI_ENCRYPTION_KEY must be set (asserted above by assertPhiEncryptionAtRestConfigured).
-  claimsPiiVault.useStore(prisma);
-  try {
-    const rehydrated = await claimsPiiVault.rehydrate();
-    console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
-  } catch (err) {
-    // Non-fatal — calls will fail detokenize checks until re-import, but server still runs
-    console.error('[piiVault] Rehydration failed:', err);
-  }
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);
@@ -489,13 +568,28 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
   // ── Autonomous agent system ──────────────────────────────────────────────────
   // 23 cron-based agents + 6 event-triggered agents.
-  // Activate by setting AGENTS_ENABLED=true in Railway env vars.
+  // Activate by setting AGENTS_ENABLED=true in the host env vars.
   // Also requires GEMINI_API_KEY (already used by learning + marketing modules)
   // and AGENTS_DIR pointing to the agents/ folder (defaults to ../../agents).
   startScheduledAgents(prisma);
 }
 
+async function initializePersistentPhiVault(): Promise<void> {
+  await connectDatabase();
+  claimsPiiVault.useStore(prisma);
+  const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
+  console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
+}
+
 async function boot() {
+  // Bind the port before any DB/PHI-vault work. Fly's proxy checks for an open
+  // listening socket on machine start, separately from and before it starts
+  // polling the HTTP health check — if DB connect + PHI rehydration (which can
+  // take several seconds) runs before .listen(), that window shows up as
+  // "app is not listening on the expected address" on every restart. /api/health
+  // (fly.toml's check) doesn't touch the DB, so it's safe to serve immediately;
+  // /api/health/ready does check the DB and gates whether Fly should route real
+  // traffic here — see fly.toml, which points the actual health check at it.
   const tlsKey = process.env.TLS_KEY_PATH?.trim();
   const tlsCert = process.env.TLS_CERT_PATH?.trim();
   const onListen = () => {
@@ -528,6 +622,32 @@ async function boot() {
     }
     throw err;
   });
+
+  // Start guardrail audit worker (non-blocking, runs every 60s)
+  if (process.env.SIDECAR_URL) {
+    setInterval(drainGuardrailAuditOutbox, 60_000);
+    console.log('[server] Guardrail audit worker started');
+  } else if (process.env.NODE_ENV === 'production') {
+    // Guardrail audit is a post-call compliance control (PHI-leak / hallucination /
+    // off-script / carrier-block detection that can auto-apply CARRIER_BLOCK). With no
+    // SIDECAR_URL the outbox is never drained, so calls still enqueue but go unaudited
+    // and the outbox grows unbounded. Fail loud so error alerting catches it rather than
+    // letting a compliance control silently degrade in production.
+    console.error(
+      '[server] CRITICAL: SIDECAR_URL not set in production — guardrail audit is DISABLED. ' +
+      'Post-call PHI-leak/hallucination/carrier-block auditing is NOT running and the audit ' +
+      'outbox will accumulate unprocessed rows. Set SIDECAR_URL (fly secrets set) to restore it.',
+    );
+  } else {
+    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled (dev).');
+  }
+
+  try {
+    await initializePersistentPhiVault();
+  } catch (err) {
+    console.error('[server] PHI vault initialization failed; refusing to start:', err);
+    process.exit(1);
+  }
 
   void afterListen(server).catch((err) => {
     console.error('[server] Post-listen startup failed:', err);

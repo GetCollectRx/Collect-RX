@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'crypto';
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
@@ -19,6 +19,8 @@ import {
   linkRecoveryActionToCdcpCase,
   tryCdcpFromVapiPayload,
 } from '../recovery/cdcpRecoveryBridge.js';
+import { isHeldThenDumped } from '../recovery/holdLedger.js';
+import { parseMoneyToCents } from './claimsValidatorWebhook.js';
 import { piiVault } from '../../pii-vault.js';
 import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
 import {
@@ -27,6 +29,7 @@ import {
   triggerEscalationTriage,
 } from '../agents/eventAgents.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -44,6 +47,24 @@ const PHI_TRANSCRIPT_PATTERNS: Array<[RegExp, string]> = [
   [/(?:date[_ -]?of[_ -]?birth|dob)[:\s]+[\w/-]+/gi, 'date_of_birth: [REDACTED-PHI]'],
   [/(?:patient[_ -]?name|member[_ -]?name)[:\s]+[A-Za-z ,.-]+/gi, 'patient_name: [REDACTED-PHI]'],
 ];
+
+/**
+ * PHI may be purged from the vault only when the recovery decision means this
+ * claim will not be dialed again. A retryable outcome requeues the claim for
+ * another attempt and must keep its token; a terminal outcome (resolved,
+ * denied, escalated, max attempts, or an explicit stop) releases it.
+ */
+export function shouldRevokePhiAfterCall(decision: {
+  route: string;
+  queueStatus: string;
+  stopCalling: boolean;
+}): boolean {
+  const willBeCalledAgain =
+    decision.route === 'CALL_CARRIER' &&
+    decision.queueStatus === 'PENDING' &&
+    !decision.stopCalling;
+  return !willBeCalledAgain;
+}
 
 export function scrubTranscriptPhi(transcript: string): string {
   let scrubbed = transcript;
@@ -70,7 +91,84 @@ export async function isWebhookDuplicate(
 }
 
 export async function markWebhookProcessed(prisma: PrismaClient, bodyHash: string): Promise<void> {
-  await prisma.processedVapiWebhook.create({ data: { bodyHash } });
+  await prisma.processedVapiWebhook.upsert({
+    where: { bodyHash },
+    create: {
+      bodyHash,
+      status: 'processed',
+      attemptCount: 1,
+      processedAt: new Date(),
+    },
+    update: {
+      status: 'processed',
+      processedAt: new Date(),
+      failedAt: null,
+    },
+  });
+}
+
+const VAPI_WEBHOOK_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
+export type VapiWebhookProcessingClaim =
+  | { state: 'claimed' }
+  | { state: 'processed' }
+  | { state: 'processing' };
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
+
+/**
+ * Atomically claims a hashed delivery for synchronous processing. A stale lease
+ * is reclaimable after a process crash; the payload itself is never persisted.
+ */
+export async function claimVapiWebhookForProcessing(
+  prisma: PrismaClient,
+  bodyHash: string,
+  now = new Date(),
+): Promise<VapiWebhookProcessingClaim> {
+  try {
+    await prisma.processedVapiWebhook.create({
+      data: { bodyHash, status: 'received' },
+    });
+  } catch (err) {
+    if (!isUniqueConstraintError(err)) throw err;
+  }
+
+  const staleBefore = new Date(now.getTime() - VAPI_WEBHOOK_PROCESSING_LEASE_MS);
+  const claimed = await prisma.processedVapiWebhook.updateMany({
+    where: {
+      bodyHash,
+      OR: [
+        { status: { in: ['received', 'failed'] } },
+        { status: 'processing', processingStartedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      status: 'processing',
+      attemptCount: { increment: 1 },
+      processingStartedAt: now,
+      failedAt: null,
+    },
+  });
+
+  if (claimed.count === 1) return { state: 'claimed' };
+
+  const existing = await prisma.processedVapiWebhook.findUnique({
+    where: { bodyHash },
+    select: { status: true },
+  });
+  return existing?.status === 'processed' ? { state: 'processed' } : { state: 'processing' };
+}
+
+export async function markVapiWebhookFailed(
+  prisma: PrismaClient,
+  bodyHash: string,
+): Promise<void> {
+  await prisma.processedVapiWebhook.update({
+    where: { bodyHash },
+    data: { status: 'failed', failedAt: new Date() },
+  });
 }
 
 function verifyVapiAuth(req: Request): boolean {
@@ -86,19 +184,76 @@ function verifyVapiAuth(req: Request): boolean {
   return false;
 }
 
+/**
+ * Deterministic in-call payment comparison. The voice model reliably calls
+ * tools (DTMF/transfer/endCall are 100% across sim rounds) but drops prose
+ * arithmetic rules, so the comparison lives here: the model copies the two
+ * amounts it has, the server does the math and hands back the exact next
+ * move as a tool result — the one channel the model never ignores.
+ * Mirrors the SHORTFALL_MISREPORTED post-call backstop ($50 tolerance).
+ */
+export function verifyPaymentToolResult(
+  statedRaw: unknown,
+  expectedRaw: unknown,
+): string {
+  const stated = parseMoneyToCents(typeof statedRaw === 'string' ? statedRaw : String(statedRaw ?? ''));
+  const expected = parseMoneyToCents(typeof expectedRaw === 'string' ? expectedRaw : String(expectedRaw ?? ''));
+  if (stated == null || expected == null) {
+    return 'AMOUNT UNCLEAR — read the stated payment amount back to the representative and confirm it digit by digit, then call this tool again.';
+  }
+  if (stated >= expected - 50 * 100) {
+    return (
+      `AMOUNT OK — $${(stated / 100).toFixed(2)} covers the expected $${(expected / 100).toFixed(2)}. ` +
+      'Proceed: capture the check number, payment date, mailing address or deposit details, and a reference number. Outcome CLAIM_PAID.'
+    );
+  }
+  const shortfall = ((expected - stated) / 100).toFixed(2);
+  return (
+    `SHORTFALL DETECTED — the stated $${(stated / 100).toFixed(2)} is $${shortfall} below the expected ` +
+    `$${(expected / 100).toFixed(2)}. Say now: 'That is less than the $${(expected / 100).toFixed(2)} we expected ` +
+    `on this claim — can you explain the difference?' Then collect the reduction or remark codes for each procedure ` +
+    'code, the fee guide year and province if cited, and whether the difference is patient-payable or appealable, ' +
+    'plus a reference number. Report the outcome as PARTIAL_PAYMENT with the shortfall amount and reason.'
+  );
+}
+
 function responseForVapiMessage(body: unknown): Record<string, unknown> {
-  const b = body as { message?: { type?: string; toolWithToolCallList?: Array<{ name: string; toolCall?: { id?: string } }> } };
+  const b = body as {
+    message?: {
+      type?: string;
+      toolWithToolCallList?: Array<{
+        name: string;
+        toolCall?: { id?: string; function?: { arguments?: unknown } };
+      }>;
+    };
+  };
   const type = b?.message?.type;
   if (type === 'assistant-request' && process.env.VAPI_DEFAULT_ASSISTANT_ID) {
     return { assistantId: process.env.VAPI_DEFAULT_ASSISTANT_ID };
   }
   if (type === 'tool-calls' && b.message?.toolWithToolCallList?.length) {
     return {
-      results: b.message.toolWithToolCallList.map((t) => ({
-        name: t.name,
-        toolCallId: t.toolCall?.id,
-        result: JSON.stringify({ ok: false, error: 'No tool handlers configured.' }),
-      })),
+      results: b.message.toolWithToolCallList.map((t) => {
+        if (t.name === 'verify_payment_amount' || t.toolCall?.function && (t as { toolCall?: { function?: { name?: string } } }).toolCall?.function?.name === 'verify_payment_amount') {
+          let args: Record<string, unknown> = {};
+          const rawArgs = t.toolCall?.function?.arguments;
+          try {
+            args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
+          } catch {
+            args = {};
+          }
+          return {
+            name: 'verify_payment_amount',
+            toolCallId: t.toolCall?.id,
+            result: verifyPaymentToolResult(args.statedAmount, args.expectedAmount),
+          };
+        }
+        return {
+          name: t.name,
+          toolCallId: t.toolCall?.id,
+          result: JSON.stringify({ ok: false, error: 'No tool handlers configured.' }),
+        };
+      }),
     };
   }
   return {};
@@ -150,6 +305,11 @@ async function processCallEnded(
     return;
   }
 
+  if (payload.metadata?.appointmentVerificationId) {
+    await processPreVisitCallEnded(payload, prisma);
+    return;
+  }
+
   const attempt = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
     include: {
@@ -164,6 +324,7 @@ async function processCallEnded(
           daysOutstanding: true,
           status: true,
           patientToken: true,
+          treatmentCodes: true,
         },
       },
     },
@@ -260,6 +421,12 @@ async function processCallEnded(
         referenceNumber: processed.referenceNumber,
         transcriptUrl: processed.transcriptUrl,
         carrierBlockDetected: processed.carrierBlockDetected,
+        heldThenDumped: isHeldThenDumped({
+          outcome: processed.outcome,
+          durationSeconds: processed.durationSeconds,
+          repName: processed.repName,
+          referenceNumber: processed.referenceNumber,
+        }),
       },
     });
   }
@@ -276,7 +443,10 @@ async function processCallEnded(
   });
 
   try {
-    const cdcpHit = await tryCdcpFromVapiPayload(prisma, rawBody ?? payload);
+    const cdcpHit = await tryCdcpFromVapiPayload(prisma, rawBody ?? payload, {
+      practiceId: claim.practiceId,
+      patientToken: claim.patientToken,
+    });
     if (cdcpHit) {
       await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpHit.caseId);
     }
@@ -287,10 +457,10 @@ async function processCallEnded(
   await emitRecoveryTerminalEmrEvent(prisma, claim, decision.claimStatus, processed);
 
   // ── PHI TOKEN REVOCATION ────────────────────────────────────────────────
-  // The call is complete. Revoke the PHI token from piiVault immediately so
-  // the PHI is no longer accessible in memory. The patientToken UUID remains
-  // in the DB for record-keeping — but the PHI it pointed to is gone.
-  if (claim.patientToken) {
+  // Revoke the PHI token only when this claim will NOT be dialed again (see
+  // shouldRevokePhiAfterCall). Revoking after a retryable outcome would leave
+  // attempts 2/3 unable to detokenize, silently defeating the retry policy.
+  if (claim.patientToken && shouldRevokePhiAfterCall(decision)) {
     piiVault.expireToken(claim.patientToken, 'post-call-revocation');
   }
 

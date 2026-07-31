@@ -7,12 +7,15 @@ import {
   type HealthActionItem,
   type HealthBriefMetrics,
 } from '../components/dashboard/PracticeHealthBrief'
-import { QueueOverview } from '../components/QueueOverview'
+import { LiveActivityStrip } from '../components/dashboard/LiveActivityStrip'
+import { TopMoneyAtRisk } from '../components/dashboard/TopMoneyAtRisk'
 import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { LivingAgingOrb } from '../components/dashboard/LivingAgingOrb'
 import { LivingPipelineFlow } from '../components/dashboard/LivingPipelineFlow'
-import { PlanUsageBanner } from '../components/PlanUsageBanner'
+import { SubscriptionUsageCard } from '../components/SubscriptionUsageCard'
 import { PmsSyncBanner, type DashboardLastPmsImport } from '../components/dashboard/PmsSyncBanner'
+import { NeedsYouInbox } from '../components/NeedsYouInbox'
+import { OnboardingProgress, type SetupStatus } from '../components/OnboardingProgress'
 import type { PracticePmsInfo } from '../types/pms'
 
 interface RecoveryMetricsSnapshot {
@@ -140,23 +143,23 @@ function buildActions(
     href: n.href,
   }))
 
-  if (metrics.blockingGatesOpen > 0 && !items.some((i) => i.href.includes('/gates'))) {
+  if (metrics.blockingGatesOpen > 0 && !items.some((i) => i.href.includes('tab=blocked'))) {
     items.unshift({
       id: 'gates-summary',
       severity: 'urgent',
       title: `${metrics.blockingGatesOpen} practice gate${metrics.blockingGatesOpen === 1 ? '' : 's'} open`,
       detail: 'Resubmit, missing docs, or human verify, clear these to keep agents moving.',
-      href: '/insurance/gates',
+      href: '/insurance?tab=blocked',
     })
   }
 
-  if (metrics.openEscalations > 0 && !items.some((i) => i.href.includes('/escalations'))) {
+  if (metrics.openEscalations > 0 && !items.some((i) => i.href.includes('tab=human'))) {
     items.unshift({
       id: 'escalations-summary',
       severity: 'urgent',
-      title: `${metrics.openEscalations} open escalation${metrics.openEscalations === 1 ? '' : 's'}`,
-      detail: 'Claims that need an owner decision before the next call batch.',
-      href: '/escalations',
+      title: `${metrics.openEscalations} claim${metrics.openEscalations === 1 ? '' : 's'} need human review`,
+      detail: 'Review on Claims before the next carrier call batch.',
+      href: '/insurance?tab=human',
     })
   }
 
@@ -169,6 +172,20 @@ type DashboardBodyProps = {
   isPracticeOwner: boolean
   canManageSync: boolean
   recoveryNotifications: RecoveryNotificationItem[]
+  needsYou: Array<{
+    id: string
+    kind: string
+    title: string
+    detail: string | null
+    claimId: string | null
+    claimNumber: string | null
+    carrierId: string | null
+    dollarsAtRisk: number
+    dueAt: string | null
+    route: string | null
+  }>
+  setupStatus: SetupStatus | null
+  inboxLoading: boolean
 }
 
 function DashboardBody({
@@ -177,6 +194,9 @@ function DashboardBody({
   isPracticeOwner,
   canManageSync,
   recoveryNotifications,
+  needsYou,
+  setupStatus,
+  inboxLoading,
 }: DashboardBodyProps) {
   const [arCloseMsg, setArCloseMsg] = useState<string | null>(null)
 
@@ -218,8 +238,8 @@ function DashboardBody({
           <Link to="/reports/carriers" className="crx-btn-ghost">
             Carriers
           </Link>
-          <Link to="/escalations" className="crx-btn-ghost">
-            Escalations
+          <Link to="/insurance?tab=human" className="crx-btn-ghost">
+            Needs human
           </Link>
           <button
             type="button"
@@ -247,8 +267,26 @@ function DashboardBody({
         </p>
       )}
 
+      <LiveActivityStrip />
+
+      {canManageSync && setupStatus && <OnboardingProgress status={setupStatus} />}
+
+      <NeedsYouInbox
+        items={needsYou}
+        loading={inboxLoading && needsYou.length === 0}
+        compact
+        emptyAction={
+          canManageSync ? (
+            <Link to="/import" className="crx-btn-primary inline-flex text-sm">Import claims CSV</Link>
+          ) : undefined
+        }
+      />
+
+      <TopMoneyAtRisk />
+
+      <SubscriptionUsageCard compact className="relative z-10" />
+
       <div className="relative z-10 space-y-3">
-        <PlanUsageBanner />
         {s.pms && (
           <PmsSyncBanner
             pms={s.pms}
@@ -317,32 +355,37 @@ function DashboardBody({
               </p>
             </div>
             <Link to="/insurance" className="crx-btn-ghost shrink-0">
-              Insurance AR →
+              Open Claims →
             </Link>
             {(rm.blockingGatesOpen ?? 0) > 0 && (
-              <Link to="/insurance/gates" className="crx-btn-primary shrink-0">
-                Gate inbox ({rm.blockingGatesOpen})
+              <Link to="/insurance?tab=blocked" className="crx-btn-primary shrink-0">
+                Blocked gates ({rm.blockingGatesOpen})
               </Link>
             )}
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <LivingStatCard
+              label="$ at risk over 60 days"
+              displayValue={fmtCurrency(s.aging['>60'])}
+              countUp={Math.round(s.aging['>60'])}
+              formatCount={fmtCurrency}
+              sub={`${fmtCurrency(s.totalOpenAR)} total open insurance A/R`}
+              badge={s.aging['>60'] > 0 ? 'Focus here' : 'Healthy'}
+              recoveryVerification={s.aging['>60'] > 0 ? 'at_risk' : undefined}
+              tone={s.aging['>60'] > s.totalOpenAR * 0.25 ? 'amber' : 'green'}
+              delayMs={0}
+            />
+            <LivingStatCard
               label="Sync-verified recovery (30d)"
               displayValue={fmtCurrency(rm.dollarsRecoveredSyncVerifiedLast30Days)}
               countUp={Math.round(rm.dollarsRecoveredSyncVerifiedLast30Days)}
               formatCount={fmtCurrency}
-              sub={`${fmtCurrency(rm.dollarsRecoveredSyncVerified)} all-time`}
-              badge="PMS confirmed"
+              sub={`${fmtCurrency(rm.dollarsRecoveredSyncVerified)} all-time · PMS confirmed`}
+              badge="North star"
+              recoveryVerification={
+                rm.dollarsRecoveredSyncVerifiedLast30Days > 0 ? 'sync_verified' : 'in_progress'
+              }
               tone="green"
-              delayMs={0}
-            />
-            <LivingStatCard
-              label="Verified today"
-              countUp={rm.syncVerifiedToday}
-              displayValue="0"
-              sub={`${rm.paymentsVerifiedBySync} total sync closures`}
-              badge="Today"
-              tone={rm.syncVerifiedToday > 0 ? 'green' : 'blue'}
               delayMs={40}
             />
             <LivingStatCard
@@ -351,6 +394,7 @@ function DashboardBody({
               displayValue="0"
               sub="Resubmit, docs, or human verify"
               badge={rm.blockingGatesOpen > 0 ? 'Action needed' : 'Clear'}
+              recoveryVerification={rm.blockingGatesOpen > 0 ? 'at_risk' : undefined}
               tone={rm.blockingGatesOpen > 0 ? 'amber' : 'green'}
               delayMs={80}
             />
@@ -365,7 +409,10 @@ function DashboardBody({
                     ? `Median ${rm.medianTimeToSyncVerifyHours}h to sync verify`
                     : 'Carrier approved, balance pending'
               }
-              badge="WAIT_SYNC"
+              badge="Checking PMS"
+              recoveryVerification={
+                rm.awaitingSyncVerification > 0 ? 'carrier_confirmed' : undefined
+              }
               tone="blue"
               delayMs={120}
             />
@@ -374,15 +421,12 @@ function DashboardBody({
       )}
 
       {isPracticeOwner && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 relative z-10">
-          <div className="lg:col-span-2 living-chart-panel p-4">
-            <QueueOverview />
-          </div>
+        <div className="relative z-10">
           <LivingStatCard
-            label="Open escalations"
+            label="Needs human review"
             countUp={platform?.openEscalations ?? 0}
             displayValue="0"
-            sub="Needs owner decision"
+            sub="Escalated claims on Claims tab"
             badge="Action queue"
             tone="amber"
             delayMs={80}
@@ -398,6 +442,7 @@ function DashboardBody({
           formatCount={fmtCurrency}
           sub={`${s.openWorkItemCount ?? s.openBalanceCount} claims in queue`}
           badge="Synced live"
+          recoveryVerification={s.totalOpenAR > 0 ? 'in_progress' : undefined}
           delayMs={0}
         />
         <LivingStatCard
@@ -407,6 +452,7 @@ function DashboardBody({
           formatCount={fmtCurrency}
           sub={pct31 > 0 ? `${pct31.toFixed(0)}% of open A/R` : 'Healthy mid-band'}
           badge={pct31 > 40 ? 'Watch closely' : 'On track'}
+          recoveryVerification={pct31 > 40 ? 'at_risk' : undefined}
           tone={pct31 > 40 ? 'amber' : 'green'}
           delayMs={60}
         />
@@ -457,6 +503,19 @@ export default function Dashboard() {
   )
   const [platform, setPlatform] = useState<OwnerPlatformData | null>(null)
   const [recoveryNotifications, setRecoveryNotifications] = useState<RecoveryNotificationItem[]>([])
+  const [needsYou, setNeedsYou] = useState<Array<{
+    id: string
+    kind: string
+    title: string
+    detail: string | null
+    claimId: string | null
+    claimNumber: string | null
+    carrierId: string | null
+    dollarsAtRisk: number
+    dueAt: string | null
+    route: string | null
+  }>>([])
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null)
   const [loading, setLoading] = useState(() => Boolean(practiceId && !readCachedStats(practiceId)))
   const [error, setError] = useState<string | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -468,7 +527,7 @@ export default function Dashboard() {
       setError(null)
     }
     try {
-      const [dash, notifRes, plat] = await Promise.all([
+      const [dash, notifRes, plat, inboxRes, setupRes] = await Promise.all([
         apiFetchJson<DashboardStats>(`/api/dashboard/stats?practiceId=${practiceId}`),
         apiFetchJson<{ success: boolean; data: RecoveryNotificationItem[] }>(
           `/api/insurance/recovery/notifications?practiceId=${practiceId}`,
@@ -480,10 +539,20 @@ export default function Dashboard() {
               .then((r) => r.data)
               .catch(() => null)
           : Promise.resolve(null),
+        apiFetchJson<{ success: boolean; data: typeof needsYou }>(`/api/desk/${practiceId}/ar-inbox`).catch(() => ({
+          success: true,
+          data: [],
+        })),
+        apiFetchJson<{ success: boolean; data: SetupStatus | null }>('/api/dashboard/setup-status').catch(() => ({
+          success: false,
+          data: null as SetupStatus | null,
+        })),
       ])
       setStats(dash)
       writeCachedStats(practiceId, dash)
       setRecoveryNotifications(notifRes.data ?? [])
+      setNeedsYou(inboxRes.data ?? [])
+      setSetupStatus(setupRes.data ?? null)
       setPlatform(plat)
       setError(null)
     } catch (e) {
@@ -566,6 +635,9 @@ export default function Dashboard() {
           isPracticeOwner={isPracticeOwner}
           canManageSync={canManageSync}
           recoveryNotifications={recoveryNotifications}
+          needsYou={needsYou}
+          setupStatus={setupStatus}
+          inboxLoading={loading}
         />
       )}
     </div>

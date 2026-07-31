@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 type ToastType = 'success' | 'error' | 'info' | 'warning'
-type ToastInputType = ToastType | 'ok' | 'err'
+export type ToastInputType = ToastType | 'ok' | 'err'
 
 function toDisplayType(t: ToastInputType): ToastType {
   if (t === 'ok' || t === 'success') return 'success'

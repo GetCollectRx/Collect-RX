@@ -36,6 +36,9 @@ export async function processInboundReply(
       replyIntent: analysis.intent,
       suggestedReply: suggestedReply ?? null,
       lastEngagedAt: new Date(),
+      // Stops the follow-up scheduler: it only selects prospects with
+      // emailRepliedAt still null.
+      emailRepliedAt: new Date(),
       metadata: {
         ...existingMeta,
         lastInboundReply: replyText.slice(0, 4000),

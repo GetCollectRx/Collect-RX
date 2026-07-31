@@ -53,7 +53,10 @@ export function mapQueueEntry(
     priority: priorityToNumber(row.priority),
     attemptsMade: row.attempts,
     heldForCarrierBlock: row.status === 'BLOCKED',
-    heldReason: row.status === 'BLOCKED' ? 'Carrier block active' : null,
+  heldReason: row.dispatchDeferralNextAction ?? (row.status === 'BLOCKED' ? 'Carrier block active' : null),
+  dispatchDeferralCode: row.dispatchDeferralCode,
+  dispatchDeferralNextAction: row.dispatchDeferralNextAction,
+  dispatchDeferredAt: row.dispatchDeferredAt?.toISOString() ?? null,
     scheduledAfter: row.scheduledFor.toISOString(),
     addedAt: row.createdAt.toISOString(),
   };

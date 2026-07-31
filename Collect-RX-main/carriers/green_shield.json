@@ -4,7 +4,6 @@
   "carrier_type": "PRIVATE",
   "active": true,
   "market_share": 10,
-
   "contact_info": {
     "provider_phone": "1-888-711-1119",
     "provider_phone_alternate": null,
@@ -14,7 +13,6 @@
     "hours_of_operation": "Mon-Fri 8:30am-8:30pm ET",
     "timezone": "ET"
   },
-
   "authentication": {
     "required_fields": [
       "provider_id",
@@ -31,15 +29,14 @@
       "What is the patient's date of birth?",
       "What was the date of service?"
     ],
-    "notes": "Green Shield Canada (GSC) also administers claims for RBC Insurance under carrier ID 000124 on the same providerConnect infrastructure. When calling about a Green Shield plan, their own CDAnet carrier code is 000060. Make sure you are calling the right line — the GSC provider line (1-888-711-1119) handles GSC plans only, not RBC Insurance plans."
+    "notes": "Green Shield Canada (GSC) also administers claims for RBC Insurance under carrier ID 000124 on the same providerConnect infrastructure. When calling about a Green Shield plan, their own CDAnet carrier code is 000060. Make sure you are calling the right line \u2014 the GSC provider line (1-888-711-1119) handles GSC plans only, not RBC Insurance plans."
   },
-
   "ivr_navigation": {
     "ivr_type": "hybrid",
     "steps": [
       {
         "step_number": 1,
-        "expected_prompt": "Thank you for calling Green Shield Canada. For English, press 1. Pour le français, faites le 2.",
+        "expected_prompt": "Thank you for calling Green Shield Canada. For English, press 1. Pour le fran\u00e7ais, faites le 2.",
         "action": "Press 1",
         "wait_time": 2
       },
@@ -59,7 +56,9 @@
         "step_number": 4,
         "expected_prompt": "For claim inquiries, press 1. For eligibility and coverage verification, press 2. For predetermination status, press 3. To speak with a representative, press 0.",
         "action": "Press 1",
-        "alternative_actions": ["Press 0 for representative"],
+        "alternative_actions": [
+          "Press 0 for representative"
+        ],
         "wait_time": 1
       },
       {
@@ -87,15 +86,22 @@
     ],
     "last_verified": "2025-02-15"
   },
-
   "call_metrics": {
     "average_hold_time_minutes": 17,
-    "peak_hours": ["10am-12pm ET", "2pm-4pm ET"],
-    "best_times_to_call": ["8:30am-9:30am ET", "5pm-7pm ET"],
+    "peak_hours": [
+      "10am-12pm ET",
+      "2pm-4pm ET"
+    ],
+    "best_times_to_call": [
+      "8:30am-9:30am ET",
+      "5pm-7pm ET"
+    ],
     "success_rate": 87,
-    "average_call_duration_minutes": 28
+    "average_call_duration_minutes": 28,
+    "max_hold_minutes": 30,
+    "cost_per_minute_usd": 0.1315,
+    "max_cost_per_claim_usd": 11.84
   },
-
   "claim_processing": {
     "typical_processing_time_days": 10,
     "follow_up_threshold_days": 25,
@@ -103,13 +109,13 @@
       {
         "code": "G01",
         "description": "Service not covered under plan",
-        "resolution": "Check GSC benefit schedule for the specific plan. Plan designs vary widely — some exclude implants, orthodontics, or cosmetic procedures.",
+        "resolution": "Check GSC benefit schedule for the specific plan. Plan designs vary widely \u2014 some exclude implants, orthodontics, or cosmetic procedures.",
         "frequency": "common"
       },
       {
         "code": "G02",
         "description": "Annual or lifetime maximum reached",
-        "resolution": "GSC plans have annual maximums that vary by employer. Patient is responsible for overage — bill patient directly.",
+        "resolution": "GSC plans have annual maximums that vary by employer. Patient is responsible for overage \u2014 bill patient directly.",
         "frequency": "common"
       },
       {
@@ -127,7 +133,7 @@
       {
         "code": "G05",
         "description": "Supporting documentation required",
-        "resolution": "Submit X-rays or periodontal charting through providerConnect.ca portal — fastest method. Fax is also accepted.",
+        "resolution": "Submit X-rays or periodontal charting through providerConnect.ca portal \u2014 fastest method. Fax is also accepted.",
         "frequency": "common"
       },
       {
@@ -158,17 +164,17 @@
     "accepts_electronic_claims": true,
     "clearinghouse": "CDAnet (Carrier ID: 000060), ITRANS, providerConnect.ca"
   },
-
   "cdcp_specific": null,
-
   "special_requirements": {
     "requires_cob_verification": true,
     "accepts_ai_callers": "unknown",
     "has_antibot_detection": false,
     "requires_human_voice_verification": false,
-    "language_options": ["English", "French"]
+    "language_options": [
+      "English",
+      "French"
+    ]
   },
-
   "ai_agent_guidance": {
     "tone": "professional",
     "key_phrases": [
@@ -180,33 +186,38 @@
       "What is the expected payment date if the claim is approved?"
     ],
     "avoid_phrases": [
-      "RBC Insurance — GSC administers RBC plans but they are separate; use the RBC line for RBC plans",
-      "Green Shield is slow — GSC actually has faster processing than most carriers",
-      "Why was this denied without telling us — ask for specific denial code instead"
+      "RBC Insurance \u2014 GSC administers RBC plans but they are separate; use the RBC line for RBC plans",
+      "Green Shield is slow \u2014 GSC actually has faster processing than most carriers",
+      "Why was this denied without telling us \u2014 ask for specific denial code instead"
     ],
     "escalation_triggers": [
-      "Claim not found despite valid member ID and date of service — may be routing issue with RBC plans",
+      "Claim not found despite valid member ID and date of service \u2014 may be routing issue with RBC plans",
       "Rep confirms payment issued but not received after 30+ days",
       "Claim flagged for clinical review with no clear timeline provided",
       "Denial reason appears inconsistent with plan documents on file",
       "COB issue where GSC and another carrier are both rejecting as secondary payer"
     ],
-    "representative_script_hints": "GSC reps are generally efficient and knowledgeable. Their providerConnect.ca portal is one of the better ones in the industry — many issues can be resolved via portal before calling. If a rep asks you to upload documents, they can usually process within 3-5 business days. GSC has some of the shorter hold times among major Canadian dental carriers."
+    "representative_script_hints": "GSC reps are generally efficient and knowledgeable. Their providerConnect.ca portal is one of the better ones in the industry \u2014 many issues can be resolved via portal before calling. If a rep asks you to upload documents, they can usually process within 3-5 business days. GSC has some of the shorter hold times among major Canadian dental carriers."
   },
-
   "metadata": {
     "created_date": "2025-02-26T00:00:00Z",
-    "last_updated": "2025-02-26T00:00:00Z",
+    "last_updated": "2026-06-23",
     "last_verified_by": "Khalid - CollectRx",
     "verification_method": "documentation",
     "confidence_score": 76,
-    "notes": "Green Shield Canada is a non-profit health and dental benefits carrier — one of the few in Canada. They also run the providerConnect.ca portal infrastructure used by RBC Insurance. GSC has a reputation for faster adjudication than most competitors. For Tenth Line Family Dentistry in Orleans, GSC is a common carrier among tech and public sector employers in the Ottawa region. Important: do not confuse GSC plans (carrier 000060) with RBC Insurance plans (carrier 000124) — they share infrastructure but are billed separately.",
+    "notes": "Green Shield Canada is a non-profit health and dental benefits carrier — one of the few in Canada. They also run the providerConnect.ca portal infrastructure used by RBC Insurance. GSC has a reputation for faster adjudication than most competitors. Common among tech and public sector employer plans in Ontario. Important: do not confuse GSC plans (carrier 000060) with RBC Insurance plans (carrier 000124) — they share infrastructure but are billed separately.",
     "change_log": [
       {
         "date": "2025-02-26",
         "change": "Initial configuration created",
-        "reason": "Major carrier in Ottawa market — common among tech and public sector employers"
+        "reason": "Major carrier in Ottawa market \u2014 common among tech and public sector employers"
+      },
+      {
+        "date": "2026-06-23",
+        "change": "Added schema_version, cost fields (max_hold_minutes, cost_per_minute_usd, max_cost_per_claim_usd). Every future change to ivr_navigation, authentication, or ai_agent_guidance must increment schema_version and add a changelog entry.",
+        "reason": "P1-2 carrier KB versioning + P2-5 call duration cost controls"
       }
-    ]
+    ],
+    "schema_version": "1.0.0"
   }
 }

@@ -9,8 +9,9 @@ import {
 import { appendAuditLog } from '../audit/auditLog.js';
 import type { Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
-import { isPlatformDev } from '../accessControl/types.js';
+import { isPlatformDev, authUserId } from '../accessControl/types.js';
 import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
+import { reviewLesson } from '../learning/carrierLessons.js';
 
 const router = Router();
 router.use(authenticate);
@@ -44,11 +45,6 @@ function integrationPayload() {
     stripe: {
       secretKey: Boolean(sk),
       testMode: sk.startsWith('sk_test_'),
-    },
-    stripeConnect: {
-      account: false,
-      onboardingComplete: false,
-      chargesEnabled: false,
     },
     vapi: {
       webhookSecret: Boolean(process.env.VAPI_WEBHOOK_SECRET?.trim()),
@@ -111,11 +107,111 @@ router.put('/settings', async (req: Request, res: Response) => {
 
 router.get('/integrations', async (_req: Request, res: Response) => {
   try {
-    const base = integrationPayload();
-    // Stripe Connect (patient payment collection) removed — stripeConnect defaults to disabled.
-    return res.json(base);
+    return res.json(integrationPayload());
   } catch (err) {
     console.error('[GET /admin/integrations]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ── Practice Identity ──────────────────────────────────────────────────────
+// Direct Practice-model fields (not the settings JSON blob).
+// These are read aloud by the voice agent and used for carrier identity checks.
+
+const ADDRESS_MAX = 200;
+const E164 = /^\+[1-9]\d{7,14}$/;
+
+router.get('/practice-identity', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const row = await prisma.practice.findUnique({
+      where: { id: practiceId },
+      select: {
+        name: true,
+        billingPhone: true,
+        faxNumber: true,
+        practiceAddress: true,
+        npi: true,
+        taxId: true,
+      },
+    });
+    if (!row) return res.status(404).json({ error: 'Practice not found' });
+    return res.json({
+      name: row.name,
+      billingPhone: row.billingPhone ?? '',
+      faxNumber: row.faxNumber ?? '',
+      practiceAddress: row.practiceAddress ?? '',
+      npi: row.npi ?? '',
+      taxId: row.taxId ?? '',
+    });
+  } catch (err) {
+    console.error('[GET /admin/practice-identity]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.put('/practice-identity', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const body = req.body as {
+      billingPhone?: string;
+      faxNumber?: string;
+      practiceAddress?: string;
+      npi?: string;
+      taxId?: string;
+    };
+
+    const patch: Prisma.PracticeUpdateInput = {};
+
+    if (body.billingPhone !== undefined) {
+      const v = body.billingPhone.trim();
+      if (v && !E164.test(v)) {
+        return res.status(400).json({ error: 'billingPhone must be a valid E.164 number (+1...)' });
+      }
+      patch.billingPhone = v || null;
+    }
+
+    if (body.faxNumber !== undefined) {
+      const v = body.faxNumber.trim();
+      if (v && !E164.test(v)) {
+        return res.status(400).json({ error: 'faxNumber must be a valid E.164 number (+1...)' });
+      }
+      patch.faxNumber = v || null;
+    }
+
+    if (body.practiceAddress !== undefined) {
+      const v = body.practiceAddress.trim();
+      if (v.length > ADDRESS_MAX) {
+        return res.status(400).json({ error: `practiceAddress must be ${ADDRESS_MAX} characters or fewer` });
+      }
+      patch.practiceAddress = v || null;
+    }
+
+    if (body.npi !== undefined) {
+      patch.npi = body.npi.trim() || null;
+    }
+
+    if (body.taxId !== undefined) {
+      patch.taxId = body.taxId.trim() || null;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    await prisma.practice.update({ where: { id: practiceId }, data: patch });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'admin.practice_identity.update',
+      subjectType: 'Practice',
+      subjectId: practiceId,
+      details: { keys: Object.keys(patch) },
+      req,
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[PUT /admin/practice-identity]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -151,6 +247,55 @@ router.get('/audit-log', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[GET /admin/audit-log]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Carrier lessons — learning-loop review queue.
+// Lessons are platform-wide carrier knowledge (no PHI, no practice data);
+// only APPROVED lessons are ever injected into live call instructions.
+// ---------------------------------------------------------------------------
+router.get('/carrier-lessons', async (req: Request, res: Response) => {
+  try {
+    const status = String(req.query.status ?? 'PROPOSED');
+    if (!['PROPOSED', 'APPROVED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({ error: 'status must be PROPOSED, APPROVED, or REJECTED' });
+    }
+    const lessons = await prisma.carrierLesson.findMany({
+      where: { status: status as 'PROPOSED' | 'APPROVED' | 'REJECTED' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return res.json({ lessons });
+  } catch (err) {
+    console.error('[GET /admin/carrier-lessons]', err);
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/carrier-lessons/:id/review', async (req: Request, res: Response) => {
+  try {
+    const action = (req.body as { action?: string })?.action;
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({ error: 'action must be "approve" or "reject"' });
+    }
+    const reviewer = authUserId(req.auth) ?? 'unknown';
+    const updated = await reviewLesson(prisma, req.params.id, action, reviewer);
+    if (!updated) {
+      return res.status(404).json({ error: 'Lesson not found or already reviewed' });
+    }
+    void appendAuditLog(prisma, {
+      practiceId: practiceIdFromSession(req),
+      action: `admin.carrier-lesson.${action}`,
+      subjectType: 'CarrierLesson',
+      subjectId: req.params.id,
+      details: {},
+      req,
+    });
+    return res.json({ ok: true, status: action === 'approve' ? 'APPROVED' : 'REJECTED' });
+  } catch (err) {
+    console.error('[POST /admin/carrier-lessons/:id/review]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });

@@ -1,10 +1,10 @@
 const COLLECTRX_APEX = 'https://collectrx.ca';
 const COLLECTRX_WWW = 'https://www.collectrx.ca';
 
-import { readAllowedOriginsRaw as readAllowedOriginsEnv } from './envRailway.js';
+import { readAllowedOriginsRaw as readAllowedOriginsEnv } from './envAliases.js';
 
 /**
- * Raw `ALLOWED_ORIGINS` string. Railway UI sometimes labels the row "Allowed Origins";
+ * Raw `ALLOWED_ORIGINS` string. Some host dashboards label the row "Allowed Origins";
  * the canonical key is `ALLOWED_ORIGINS` — we accept a few aliases so CORS still applies.
  */
 export function readAllowedOriginsRaw(): string {
@@ -12,7 +12,7 @@ export function readAllowedOriginsRaw(): string {
 }
 
 /**
- * If only apex or only www is listed for collectrx.ca, add the other. One Railway
+ * If only apex or only www is listed for collectrx.ca, add the other. One host
  * `ALLOWED_ORIGINS` value often lists a single public URL; browsers still send distinct Origins.
  */
 export function expandMirroredCollectRxOrigins(origins: string[]): string[] {

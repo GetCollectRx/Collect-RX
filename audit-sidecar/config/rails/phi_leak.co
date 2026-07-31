@@ -1,0 +1,17 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PHI Leak Detection Flow
+# Detects when non-tokenized identifiers appear in the transcript
+# (e.g., health card numbers, DOBs, names in contexts where they shouldn't be)
+# ─────────────────────────────────────────────────────────────────────────────
+
+define user contains phi identifier
+  /\b\d{10}\b/  # 10-digit health card number pattern
+  /\d{4}-\d{2}-\d{2}/  # DOB format YYYY-MM-DD
+  /\d{2}\/\d{2}\/\d{4}/  # DOB format MM/DD/YYYY
+
+define bot detect phi leak
+  "phi_leak_detected"
+
+define flow phi_leak_detection
+  user contains phi identifier
+  bot detect phi leak

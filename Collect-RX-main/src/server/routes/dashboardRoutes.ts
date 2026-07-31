@@ -68,7 +68,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     ]);
 
     const claims = await prisma.insuranceClaim.findMany({
-      where: { practiceId, status: { in: OPEN_STATUSES } },
+      where: { practiceId, deletedAt: null, status: { in: OPEN_STATUSES } },
       select: {
         outstandingAmount: true,
         daysOutstanding: true,
@@ -121,6 +121,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     const claimsResolvedToday = await prisma.insuranceClaim.count({
       where: {
         practiceId,
+        deletedAt: null,
         status: 'RESOLVED',
         updatedAt: { gte: startOfUtcDay },
       },
@@ -248,6 +249,94 @@ router.post('/ar-close/run', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[POST /dashboard/ar-close/run]', err);
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+/** Server-driven onboarding checklist for practice setup wizard. */
+router.get('/setup-status', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const [practice, lastImport, claimCount, callCount, pms] = await Promise.all([
+      prisma.practice.findUnique({
+        where: { id: practiceId },
+        select: { name: true, billingPhone: true, npi: true, settings: true },
+      }),
+      prisma.pmsImportRun.findFirst({
+        where: { practiceId, status: 'success', recordsImported: { gt: 0 } },
+        orderBy: { startedAt: 'desc' },
+        select: { id: true, recordsImported: true },
+      }),
+      prisma.insuranceClaim.count({ where: { practiceId, deletedAt: null } }),
+      prisma.callAttempt.count({ where: { claim: { practiceId } } }),
+      getPracticePmsContext(prisma, practiceId),
+    ]);
+
+    const pmsVendorSet = Boolean(pms.vendorId && pms.vendorId !== 'other');
+    const identitySet = Boolean(practice?.name && practice?.billingPhone && practice?.npi);
+    const vapiReady = Boolean(process.env.VAPI_API_KEY?.trim());
+
+    const steps = [
+      {
+        id: 'csv_import',
+        title: 'Import outstanding claims',
+        detail: 'Upload a CSV export so CollectRx knows which claims to follow up.',
+        done: Boolean(lastImport),
+        href: '/import',
+      },
+      {
+        id: 'pms_vendor',
+        title: 'Confirm PMS vendor',
+        detail: 'Set your practice management system for consistent column mapping.',
+        done: pmsVendorSet || Boolean(lastImport),
+        href: '/settings',
+      },
+      {
+        id: 'claims_verified',
+        title: 'Verify claims in queue',
+        detail: 'Open Claims and confirm outstanding balances look correct.',
+        done: claimCount > 0,
+        href: '/insurance?tab=queue',
+      },
+      {
+        id: 'practice_identity',
+        title: 'Practice identity for carrier calls',
+        detail: 'Name, callback number, and NPI are spoken on every carrier call.',
+        done: identitySet,
+        href: '/settings',
+      },
+      {
+        id: 'integrations',
+        title: 'Voice agent configured',
+        detail: 'Vapi must be connected before CollectRx can dial carriers.',
+        done: vapiReady,
+        href: '/admin/integrations',
+      },
+      {
+        id: 'first_call',
+        title: 'First carrier call placed',
+        detail: 'Optional — confirms the full loop is working end-to-end.',
+        done: callCount > 0,
+        href: '/console',
+      },
+    ];
+
+    const complete = steps.filter((s) => s.done).length;
+    const readyForCalls = Boolean(lastImport && claimCount > 0 && identitySet && vapiReady);
+
+    return res.json({
+      success: true,
+      data: {
+        steps,
+        complete,
+        total: steps.length,
+        readyForCalls,
+        claimCount,
+        lastImportAt: lastImport ? undefined : null,
+      },
+    });
+  } catch (err) {
+    console.error('[GET /dashboard/setup-status]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 

@@ -1,6 +1,7 @@
 import { resolveApiUrl } from './resolveApiUrl'
 import { parseApiJson } from './parseApiJson'
 import { practiceScopedFetchInit, practiceScopedUrl } from './practiceScopedApi'
+import { desktopAuthHeaders } from './desktopAuth'
 
 function withApiOrigin(input: RequestInfo | URL): RequestInfo | URL {
   if (typeof input === 'string') {
@@ -33,13 +34,24 @@ function requestUrlString(input: RequestInfo | URL): string {
 }
 
 export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const scopedInit = practiceScopedFetchInit(init)
+  const scopedInit = practiceScopedFetchInit(init) ?? {}
+  const authHeaders = desktopAuthHeaders()
+  const mergedInit: RequestInit = {
+    ...scopedInit,
+    credentials: 'include',
+    headers: {
+      ...(scopedInit.headers instanceof Headers
+        ? Object.fromEntries(scopedInit.headers.entries())
+        : (scopedInit.headers as Record<string, string> | undefined)),
+      ...authHeaders,
+    },
+  }
   let resolved = input
   if (typeof input === 'string') {
     const t = input.trim()
     if (t.startsWith('/api')) resolved = practiceScopedUrl(t)
   }
-  return fetch(withApiOrigin(resolved), { ...scopedInit, credentials: 'include' }).then((r) => {
+  return fetch(withApiOrigin(resolved), mergedInit).then((r) => {
     if (r.status === 401) {
       const url = requestUrlString(input)
       // Wrong-password login returns 401; must not clear an existing session.

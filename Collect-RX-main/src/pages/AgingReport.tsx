@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
 import { apiFetchJson } from '../lib/apiFetch'
 import {
-  Card, CardHeader, DataState, Button,
+  Card, CardHeader, DataState, Button, AnimatedNumber,
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
 import { LivingCarrierRiver } from '../components/dashboard/LivingCarrierRiver'
@@ -166,7 +166,9 @@ export default function AgingReport() {
                     <Td align="right">{fmtMoney(r.days31to60)}</Td>
                     <Td align="right">{fmtMoney(r.days61to90)}</Td>
                     <Td align="right">{fmtMoney(r.days90plus)}</Td>
-                    <Td align="right" className="font-semibold">{fmtMoney(r.total)}</Td>
+                    <Td align="right" className="font-semibold tabular-nums">
+                      <AnimatedNumber value={r.total} format={fmtMoney} />
+                    </Td>
                   </Tr>
                 ))}
               </Tbody>

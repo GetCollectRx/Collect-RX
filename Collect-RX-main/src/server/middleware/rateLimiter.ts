@@ -8,7 +8,7 @@
 //   webhookLimiter  — 300 req / 1 min  per IP  (Vapi can fire bursts)
 //
 // When REDIS_URL is set, all limiters use a Redis-backed store so counts are shared
-// across multiple API processes (Railway horizontal scaling).
+// across multiple API processes (horizontal scaling).
 //
 // All tiers return JSON 429 with Retry-After so clients can back off cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,6 +21,12 @@ import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 
 let rateLimitRedis: IORedis | null = null;
 let loggedRedisStore = false;
+
+/** Playwright sets COLLECTRX_E2E=1 on the webServer process so parallel workers do not 429. */
+function skipForE2eOrVitest(): boolean {
+  const e2e = (process.env.COLLECTRX_E2E || '').trim();
+  return process.env.VITEST === 'true' || e2e === '1' || e2e.toLowerCase() === 'true';
+}
 
 function getOptionalRateLimitRedis(): IORedis | null {
   const url = (process.env.REDIS_URL || '').trim();
@@ -103,10 +109,13 @@ function makeLimiter(name: string, opts: Partial<Options>): RateLimitRequestHand
  * authLimiter — 5 attempts per 15 minutes per IP.
  * Applied to POST /api/auth/login to prevent credential brute-forcing.
  * Intentionally strict: legitimate users won't hit this in normal use.
+ * Skipped under Vitest — integration suites issue many login requests from one IP.
  */
 export const authLimiter: RateLimitRequestHandler = makeLimiter('auth', {
   windowMs: 15 * 60 * 1000, // 15-minute window
   max: 5,
+  // Vitest/e2e hammer login from one IP; local dev should not lock you out while iterating.
+  skip: () => skipForE2eOrVitest() || process.env.NODE_ENV !== 'production',
   handler: makeHandler(
     'Too many login attempts. Please wait 15 minutes before trying again.',
   ),
@@ -119,6 +128,7 @@ export const authLimiter: RateLimitRequestHandler = makeLimiter('auth', {
 export const strictLimiter: RateLimitRequestHandler = makeLimiter('strict', {
   windowMs: 60 * 1000,
   max: 10,
+  skip: skipForE2eOrVitest,
   handler: makeHandler(
     'Too many requests. Please slow down and try again shortly.',
   ),
@@ -130,7 +140,7 @@ export const strictLimiter: RateLimitRequestHandler = makeLimiter('strict', {
 export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter('session-standard', {
   windowMs: 60 * 1000,
   max: 600,
-  skip: (req) => !hasValidSession(req),
+  skip: (req) => skipForE2eOrVitest() || !hasValidSession(req),
   handler: makeHandler(
     'Too many requests. Please slow down and try again shortly.',
   ),
@@ -142,7 +152,7 @@ export const sessionStandardLimiter: RateLimitRequestHandler = makeLimiter('sess
 export const anonStandardLimiter: RateLimitRequestHandler = makeLimiter('anon-standard', {
   windowMs: 60 * 1000,
   max: 120,
-  skip: (req) => hasValidSession(req),
+  skip: (req) => skipForE2eOrVitest() || hasValidSession(req),
   handler: makeHandler(
     'Too many requests. Please slow down and try again shortly.',
   ),
@@ -164,12 +174,13 @@ export const webhookLimiter: RateLimitRequestHandler = makeLimiter('webhook', {
 });
 
 /**
- * publicLimiter — unauthenticated patient pay + email unsubscribe.
- * Tighter than standardLimiter to slow token / UUID enumeration.
+ * publicLimiter — unauthenticated public routes (e.g. email unsubscribe).
+ * Tighter than standardLimiter to slow enumeration.
  */
 export const publicLimiter: RateLimitRequestHandler = makeLimiter('public', {
   windowMs: 60 * 1000,
   max: 60,
+  skip: skipForE2eOrVitest,
   handler: makeHandler(
     'Too many requests. Please slow down and try again shortly.',
   ),
@@ -182,6 +193,7 @@ export const publicLimiter: RateLimitRequestHandler = makeLimiter('public', {
 export const healthLimiter: RateLimitRequestHandler = makeLimiter('health', {
   windowMs: 60 * 1000,
   max: 120,
+  skip: () => skipForE2eOrVitest() || process.env.CI === 'true',
   handler: makeHandler(
     'Too many health or metrics requests. Please slow down and try again shortly.',
   ),

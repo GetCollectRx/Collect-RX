@@ -1,8 +1,8 @@
 # CollectRx platform
 
-Monorepo-style workspace for **CollectRx** — dental practice accounts receivable (A/R) workflows, messaging, and payment-related flows.
+Monorepo-style workspace for **CollectRx** — dental **insurance** accounts receivable (A/R) recovery (Practice → Insurance). Practice SaaS Billing is supported; patient/client payment collection is out of scope.
 
-**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. The phased engineering backlog is [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
+**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. Launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md). Phased backlog: [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
 
 ## Monorepo commands (canonical app)
 
@@ -10,7 +10,7 @@ From the **repository root** (after `npm install` — installs the **Collect-RX-
 
 | Command | What it does |
 |--------|----------------|
-| `npm run dev` | Same as `dev:collectrx` — Vite + API for **Collect-RX-main** |
+| `npm run dev` | API + Vite (+ worker + Redis when `REDIS_URL` is in `.env`) |
 | `npm run ci:collectrx` | Typecheck, lint, test, production build (run before PRs) |
 | `npm run diagnose -w dental-ar-system` | **What broke?** — one report: typecheck, env, DB, tests, optional live smoke |
 | `npm run db:migrate:collectrx` | `prisma migrate deploy` in Collect-RX-main (needs `DATABASE_URL`) |

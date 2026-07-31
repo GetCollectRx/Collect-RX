@@ -8,10 +8,18 @@ import {
   marketingPageFromPathname,
   type MarketingPageId,
 } from '../website/marketingPaths'
+import {
+  fmtCad,
+  paidTierCards,
+  STAFF_BURDENED_HOURLY_CAD,
+  STAFF_EQUIV_MINUTES_PER_CALL,
+} from '../website/pricingContent'
+import { TIERS } from '../billing/tiers'
 
 const HASH_TO_PATH: Record<string, string> = {
   'how-it-works': MARKETING_PATHS.howItWorks,
   roi: MARKETING_PATHS.roi,
+  pricing: MARKETING_PATHS.pricing,
   features: MARKETING_PATHS.features,
   carriers: MARKETING_PATHS.carriers,
   compliance: MARKETING_PATHS.compliance,
@@ -84,12 +92,11 @@ const STYLES = `
   .lp-nav-inner {
     max-width: 1200px; margin: 0 auto;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 40px; height: 68px;
+    padding: 0 56px; height: 68px;
   }
-  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 80px; }
   .lp-logo-mark {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: var(--green);
+    width: 28px; height: 28px;
     display: grid; place-items: center; flex-shrink: 0;
   }
   .lp-logo-mark svg { width: 15px; height: 15px; fill: none; stroke: #fcfcfa; stroke-width: 2.5; }
@@ -133,7 +140,7 @@ const STYLES = `
 
   /* ─── BUTTONS ────────────────────────────────────── */
   .lp-btn-primary {
-    background: var(--green); color: #fcfcfa; border: none;
+    background: var(--green-dark); color: #fcfcfa; border: none;
     padding: 12px 24px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 16px; font-weight: 500;
     cursor: pointer; white-space: nowrap;
@@ -143,9 +150,20 @@ const STYLES = `
   .lp-btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
   .lp-btn-primary svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
 
+  .lp-btn-secondary {
+    background: transparent; color: var(--green-dark);
+    border: 1.5px solid var(--green-dark);
+    padding: 10px 16px; border-radius: var(--radius-btn);
+    font-family: var(--fn); font-size: 14px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lp-btn-secondary:hover { background: var(--green-lo); border-color: var(--green); }
+
   .lp-btn-ghost {
-    background: transparent; color: var(--green);
-    border: 1.5px solid var(--green);
+    background: transparent; color: var(--green-dark);
+    border: 1.5px solid var(--green-dark);
     padding: 11px 24px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 16px; font-weight: 500;
     cursor: pointer; white-space: nowrap;
@@ -176,9 +194,9 @@ const STYLES = `
   }
   .lp-hero {
     max-width: 1200px; margin: 0 auto;
-    padding: 72px 40px 96px;
+    padding: 120px 56px 140px;
     display: grid; grid-template-columns: 54% 46%;
-    gap: 64px; align-items: center;
+    gap: 80px; align-items: center;
   }
 
   /* Left column */
@@ -187,13 +205,13 @@ const STYLES = `
     font-size: clamp(40px, 6vw, 80px);
     font-weight: 500; line-height: 1.10;
     letter-spacing: -0.01em; color: var(--ink);
-    margin-bottom: 24px;
+    margin-bottom: 40px;
   }
   .lp-h1 .lp-dot { color: var(--green); }
   .lp-hero-body {
     font-family: var(--fn);
     font-size: 18px; color: var(--graphite); line-height: 1.67;
-    max-width: 460px; margin-bottom: 32px; font-weight: 400;
+    max-width: 460px; margin-bottom: 48px; font-weight: 400;
   }
   .lp-hero-btns { margin-bottom: 36px; }
   .lp-trust-row { display: flex; gap: 20px; flex-wrap: wrap; }
@@ -216,7 +234,7 @@ const STYLES = `
   .lp-ops-title { font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
   .lp-ops-sample {
     display: flex; align-items: center; gap: 5px;
-    font-family: var(--fm); font-size: 10px; color: var(--mist); letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: var(--fm); font-size: 10px; color: var(--graphite); letter-spacing: 0.06em; text-transform: uppercase;
   }
   .lp-ops-sample-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--mist); }
 
@@ -289,8 +307,8 @@ const STYLES = `
     padding: 3px 9px; border-radius: var(--radius-badge); font-family: var(--fn); font-size: 11px; font-weight: 500; white-space: nowrap;
   }
   .lp-badge.approved { background: var(--green-lo); color: var(--green-dark); border: 1px solid var(--green-hi); }
-  .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: var(--blue);  border: 1px solid rgba(59,127,212,0.25); }
-  .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: var(--gold);  border: 1px solid rgba(201,143,18,0.25); }
+  .lp-badge.calling  { background: rgba(59,127,212,0.10);  color: #1b4a8c;  border: 1px solid rgba(59,127,212,0.25); }
+  .lp-badge.pending  { background: rgba(201,143,18,0.10);  color: #8b5c0d;  border: 1px solid rgba(201,143,18,0.25); }
   .lp-badge-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
   .lp-badge.calling .lp-badge-dot { animation: lp-blink 0.9s ease-in-out infinite; }
 
@@ -323,7 +341,7 @@ const STYLES = `
     color: var(--ink); letter-spacing: -0.01em; line-height: 1.1;
     margin-bottom: 8px; display: flex; align-items: baseline; gap: 4px;
   }
-  .lp-stat-num span { font-size: 24px; color: var(--green); font-family: var(--fn); font-weight: 500; }
+  .lp-stat-num span { font-size: 24px; color: var(--green-dark); font-family: var(--fn); font-weight: 500; }
   .lp-stat-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
 
   /* ─── SECTION STRUCTURE ──────────────────────────── */
@@ -491,6 +509,91 @@ const STYLES = `
   .lp-roi-output-lbl { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.5; }
   .lp-roi-note { font-family: var(--fn); font-size: 13px; color: var(--mist); text-align: center; margin-top: 24px; }
 
+  /* ─── PRICING ───────────────────────────────────── */
+  .lp-pricing { background: var(--cream); }
+  .lp-pricing-dual {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 40px;
+  }
+  .lp-pricing-dual-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 24px 28px;
+  }
+  .lp-pricing-dual-icon {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--green-lo);
+    display: grid; place-items: center; margin-bottom: 14px;
+  }
+  .lp-pricing-dual-icon svg { width: 20px; height: 20px; stroke: var(--green-dark); fill: none; stroke-width: 2; }
+  .lp-pricing-dual-h { font-family: var(--fs); font-size: 20px; font-weight: 500; color: var(--ink); margin-bottom: 8px; }
+  .lp-pricing-dual-p { font-family: var(--fn); font-size: 15px; color: var(--graphite); line-height: 1.6; }
+  .lp-pricing-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: stretch;
+  }
+  .lp-pricing-card {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 28px 24px; display: flex; flex-direction: column; position: relative;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .lp-pricing-card:hover { border-color: var(--bdr2); box-shadow: 0 8px 32px rgba(31,31,31,0.06); }
+  .lp-pricing-card.highlight {
+    background: var(--green-dark); border-color: transparent;
+    box-shadow: 0 12px 40px rgba(11,91,71,0.25); transform: scale(1.02);
+  }
+  .lp-pricing-badge {
+    display: inline-flex; align-self: flex-start;
+    background: rgba(255,255,255,0.15); border-radius: var(--radius-badge);
+    padding: 4px 10px; margin-bottom: 14px;
+    font-family: var(--fn); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: rgba(252,252,250,0.9);
+  }
+  .lp-pricing-tier {
+    font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--graphite);
+    margin-bottom: 6px; letter-spacing: 0.02em;
+  }
+  .lp-pricing-card.highlight .lp-pricing-tier { color: rgba(252,252,250,0.65); }
+  .lp-pricing-price {
+    font-family: var(--fm); font-size: 40px; font-weight: 500; color: var(--ink);
+    letter-spacing: -1px; line-height: 1; margin-bottom: 4px;
+  }
+  .lp-pricing-card.highlight .lp-pricing-price { color: #fcfcfa; }
+  .lp-pricing-price span {
+    font-family: var(--fn); font-size: 14px; font-weight: 400; color: var(--mist);
+  }
+  .lp-pricing-card.highlight .lp-pricing-price span { color: rgba(252,252,250,0.55); }
+  .lp-pricing-target {
+    font-family: var(--fn); font-size: 13px; color: var(--mist); margin-bottom: 16px;
+  }
+  .lp-pricing-card.highlight .lp-pricing-target { color: rgba(252,252,250,0.6); }
+  .lp-pricing-minutes {
+    font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-bottom: 20px;
+    padding-bottom: 20px; border-bottom: 1px solid var(--bdr);
+  }
+  .lp-pricing-card.highlight .lp-pricing-minutes {
+    color: rgba(252,252,250,0.75); border-bottom-color: rgba(255,255,255,0.15);
+  }
+  .lp-pricing-savings {
+    font-family: var(--fn); font-size: 13px; color: var(--green-dark); font-weight: 500;
+    margin-bottom: 20px; line-height: 1.5;
+  }
+  .lp-pricing-card.highlight .lp-pricing-savings { color: #6ee7b7; }
+  .lp-pricing-features { display: flex; flex-direction: column; gap: 10px; flex: 1; margin-bottom: 24px; }
+  .lp-pricing-feat {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-family: var(--fn); font-size: 13px; color: var(--graphite); line-height: 1.45;
+  }
+  .lp-pricing-card.highlight .lp-pricing-feat { color: rgba(252,252,250,0.85); }
+  .lp-pricing-feat svg {
+    width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px;
+    stroke: var(--green); fill: none; stroke-width: 2.5;
+  }
+  .lp-pricing-card.highlight .lp-pricing-feat svg { stroke: rgba(252,252,250,0.8); }
+  .lp-pricing-cta { margin-top: auto; }
+  .lp-pricing-trial {
+    background: var(--parchment); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 24px 28px; margin-top: 32px; text-align: center;
+  }
+  .lp-pricing-trial-h { font-family: var(--fs); font-size: 22px; font-weight: 500; color: var(--ink); margin-bottom: 8px; }
+  .lp-pricing-trial-p { font-family: var(--fn); font-size: 15px; color: var(--graphite); margin-bottom: 16px; }
+
   /* ─── CARRIERS (feature split) ───────────────────── */
   .lp-carriers { background: var(--cream); }
   .lp-carrier-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -513,27 +616,6 @@ const STYLES = `
   .lp-carrier-bar-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
   .lp-carriers-note { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 16px; }
 
-  /* ─── TESTIMONIALS ───────────────────────────────── */
-  .lp-quotes { background: var(--parchment); }
-  .lp-quote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .lp-quote {
-    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
-    padding: 32px;
-  }
-  .lp-quote-mark {
-    font-family: var(--fs); font-size: 56px; line-height: 0.5;
-    color: var(--green); position: relative; top: 16px;
-  }
-  .lp-quote-body { font-family: var(--fn); font-size: 16px; color: var(--ink); line-height: 1.67; margin-bottom: 24px; font-weight: 400; }
-  .lp-quote-attr { display: flex; align-items: center; gap: 12px; }
-  .lp-quote-avatar {
-    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--bdr2);
-    background: var(--green-lo); display: grid; place-items: center; flex-shrink: 0;
-    font-family: var(--fn); font-size: 13px; font-weight: 600; color: var(--green-dark);
-  }
-  .lp-quote-name { font-family: var(--fn); font-size: 14px; font-weight: 600; color: var(--ink); }
-  .lp-quote-title { font-family: var(--fn); font-size: 13px; color: var(--graphite); margin-top: 2px; }
-
   /* ─── COMPLIANCE (product hub cards) ─────────────── */
   .lp-compliance { background: var(--cream); }
   .lp-compliance-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
@@ -552,14 +634,31 @@ const STYLES = `
   .lp-compliance-h { font-family: var(--fn); font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 8px; letter-spacing: -0.01em; }
   .lp-compliance-p { font-family: var(--fn); font-size: 14px; color: var(--graphite); line-height: 1.57; }
 
+  /* ─── ABOUT / FOUNDER ────────────────────────────── */
+  .lp-about-founder {
+    background: var(--card); border: 1px solid var(--bdr); border-radius: var(--radius-card);
+    padding: 40px; display: flex; gap: 28px; align-items: flex-start;
+  }
+  .lp-about-avatar {
+    width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--bdr2);
+    background: var(--green-lo); display: grid; place-items: center; flex-shrink: 0;
+    font-family: var(--fn); font-size: 20px; font-weight: 600; color: var(--green-dark);
+  }
+  .lp-about-name { font-family: var(--fn); font-size: 17px; font-weight: 600; color: var(--ink); }
+  .lp-about-role { font-family: var(--fn); font-size: 14px; color: var(--green-dark); margin-top: 2px; margin-bottom: 16px; }
+  .lp-about-body p { font-family: var(--fn); font-size: 16px; color: var(--graphite); line-height: 1.7; margin-bottom: 16px; }
+  .lp-about-body p:last-child { margin-bottom: 0; }
+  .lp-about-cta { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .lp-about-pillars { grid-template-columns: repeat(3,1fr); margin-top: 40px; }
+
   /* ─── CTA ────────────────────────────────────────── */
-  .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 80px 40px; }
+  .lp-cta-section { background: var(--parchment); border-top: 1px solid var(--bdr); padding: 120px 56px; }
   .lp-cta-inner {
     max-width: 1200px; margin: 0 auto;
     text-align: center;
   }
   .lp-cta-tag {
-    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green);
+    font-family: var(--fn); font-size: 14px; font-weight: 500; color: var(--green-dark);
     letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 14px;
   }
   .lp-cta-h {
@@ -621,7 +720,7 @@ const STYLES = `
   .lp-modal-success { text-align: center; padding: 8px 0; }
   .lp-modal-success-icon {
     width: 48px; height: 48px; border-radius: 50%;
-    background: var(--green-lo); color: var(--green);
+    background: var(--green-lo); color: var(--green-dark);
     display: grid; place-items: center; margin: 0 auto 16px;
   }
   .lp-modal-success-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; }
@@ -629,7 +728,7 @@ const STYLES = `
   .lp-modal-success .lp-btn-primary { margin-top: 8px; }
 
   /* ─── FOOTER ─────────────────────────────────────── */
-  .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 64px 40px 32px; }
+  .lp-footer { background: var(--cream); border-top: 1px solid var(--bdr); padding: 100px 56px 48px; }
   .lp-footer-inner { max-width: 1200px; margin: 0 auto; }
   .lp-footer-top { display: flex; justify-content: space-between; gap: 40px; flex-wrap: wrap; margin-bottom: 48px; }
   .lp-footer-brand-sub { font-family: var(--fn); font-size: 14px; color: var(--graphite); margin-top: 12px; max-width: 220px; line-height: 1.57; }
@@ -658,7 +757,7 @@ const STYLES = `
     text-align: center; padding: 10px 48px; position: relative;
     line-height: 1.4;
   }
-  .lp-announce a { color: #a8dfc0; text-decoration: underline; text-underline-offset: 2px; }
+  .lp-announce a { color: var(--green-dark); text-decoration: underline; text-underline-offset: 2px; }
   .lp-announce a:hover { color: #fcfcfa; }
   .lp-announce-close {
     position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
@@ -676,8 +775,8 @@ const STYLES = `
   }
   .lp-pain-inner {
     max-width: 1200px; margin: 0 auto;
-    padding: 72px 40px;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+    padding: 120px 56px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
   }
   .lp-pain-eyebrow {
     font-family: var(--fn); font-size: 12px; font-weight: 600;
@@ -695,7 +794,7 @@ const STYLES = `
   }
   .lp-pain-cta {
     display: inline-flex; align-items: center; gap: 8px;
-    background: var(--green); color: #fcfcfa; border: none;
+    background: var(--green-dark); color: #fcfcfa; border: none;
     padding: 11px 22px; border-radius: var(--radius-btn);
     font-family: var(--fn); font-size: 15px; font-weight: 500;
     cursor: pointer; transition: background var(--transition), transform var(--transition);
@@ -717,7 +816,7 @@ const STYLES = `
 
   /* ─── PROCESS PREVIEW (home) ─────────────────────── */
   .lp-process { background: var(--parchment); border-top: 1px solid var(--bdr); border-bottom: 1px solid var(--bdr); }
-  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 72px 40px; }
+  .lp-process-inner { max-width: 1200px; margin: 0 auto; padding: 120px 56px; }
   .lp-process-steps {
     display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 0; position: relative; margin-top: 48px;
@@ -764,8 +863,8 @@ const STYLES = `
   /* ─── COMPLIANCE SNIPPET (home) ──────────────────── */
   .lp-compliance-snippet { background: var(--cream); border-top: 1px solid var(--bdr); }
   .lp-compliance-snippet-inner {
-    max-width: 1200px; margin: 0 auto; padding: 72px 40px;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+    max-width: 1200px; margin: 0 auto; padding: 120px 56px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
   }
   .lp-compliance-snippet-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .lp-compliance-snippet-card {
@@ -825,15 +924,18 @@ const STYLES = `
     .lp-stats-inner { grid-template-columns: 1fr 1fr; }
     .lp-feat-grid { grid-template-columns: 1fr; }
     .lp-roi-card { grid-template-columns: 1fr; gap: 32px; padding: 32px; }
+    .lp-pricing-grid { grid-template-columns: 1fr; }
+    .lp-pricing-dual { grid-template-columns: 1fr; }
+    .lp-pricing-card.highlight { transform: none; }
     .lp-compliance-grid { grid-template-columns: 1fr 1fr; }
     .lp-walk { grid-template-columns: 1fr; }
     .lp-split { grid-template-columns: 1fr; gap: 40px; }
-    .lp-quote-grid { grid-template-columns: 1fr; }
     .lp-pain-inner { grid-template-columns: 1fr; gap: 40px; padding: 56px 32px; }
     .lp-process-steps { grid-template-columns: 1fr 1fr; gap: 32px; }
     .lp-process-steps::before { display: none; }
     .lp-feat-mini-grid { grid-template-columns: 1fr; }
     .lp-compliance-snippet-inner { grid-template-columns: 1fr; gap: 40px; }
+    .lp-about-founder { flex-direction: column; gap: 20px; padding: 32px; }
   }
   @media (max-width: 768px) {
     .lp-nav-links { display: none; }
@@ -969,7 +1071,7 @@ const TRUST = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours enforcement',
-    p: 'All carrier calls are placed Mon–Fri, 8am–5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
+    p: 'All carrier calls are placed Monday to Friday, 8am to 5pm Eastern. Call frequency limits and scheduling windows are enforced at the system level.',
   },
 ]
 
@@ -1018,38 +1120,35 @@ const IVR_TRANSCRIPT = [
   'Adjudication status received.',
 ]
 
-const TESTIMONIALS = [
+const ABOUT_PILLARS = [
   {
-    body: "We were spending four to five hours a week just on hold with insurance carriers. That time is completely gone now. The claims that used to age past 90 days are now resolved by day 35.",
-    name: 'Dr. Sarah Chen',
-    title: 'Practice Owner, North York, ON',
-    initials: 'SC',
+    icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
+    h: 'Started from one practice',
+    p: 'Not a market trend. One dentist described a real problem, and the CDCP and carrier data confirmed it was structural, not a one-off.',
   },
   {
-    body: "The PHIPA compliance piece was what convinced us. We had reservations about any AI touching patient workflows. Knowing that identifiers never leave our server made this a straightforward decision.",
-    name: 'Dr. Michael Patel',
-    title: 'Managing Partner, Dental Group, Mississauga',
-    initials: 'MP',
+    icon: <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>,
+    h: 'Compliance built in, not bolted on',
+    p: 'PHIPA and PIPEDA architecture was a day-one requirement, the same discipline applied to every part of the build.',
   },
   {
-    body: "Our billing coordinator used to dread Mondays — that was carrier-call day. Now she spends that time on patient-facing work. The denial capture alone has saved us from writing off claims we would have given up on.",
-    name: 'Dr. Priya Nair',
-    title: 'Owner, Family Dental, Brampton, ON',
-    initials: 'PN',
+    icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>,
+    h: 'Direct line to the founder',
+    p: "Early practices work with me directly, not a support queue. If something's broken, I hear about it the same day.",
   },
 ]
 
 const PAIN_STATS = [
   { num: '$47K', label: 'Average outstanding insurance AR sitting unpaid at a Canadian dental practice at any given time' },
   { num: '6 hrs', label: 'Staff hours lost per week to carrier hold queues, IVR navigation, and rep callbacks' },
-  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery — most never needed to be' },
+  { num: '18%', label: 'Of claims aged past 90 days are written off without recovery; most never needed to be' },
 ]
 
 const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>,
     h: 'AI calls carriers for you',
-    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back — without your team touching a phone.',
+    p: 'CollectRx navigates each carrier\'s IVR, speaks with reps, captures adjudication status, and writes results back without your team touching a phone.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
@@ -1059,7 +1158,7 @@ const HOME_FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
     h: 'Recovery metrics you can verify',
-    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes — all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
+    p: 'Sync-verified dollars recovered, claim pipeline, and denial reason codes, all reconciled against your PMS aging report so you can see exactly what CollectRx did.',
   },
 ]
 
@@ -1082,7 +1181,7 @@ const COMPLIANCE_SNIPPETS = [
   {
     icon: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
     h: 'Business hours only',
-    p: 'All calls Mon–Fri 8am–5pm Eastern. Scheduling windows enforced at system level.',
+    p: 'All calls Monday to Friday, 8am to 5pm Eastern. Scheduling windows enforced at system level.',
   },
 ]
 
@@ -1113,23 +1212,57 @@ function useReveal(page: MarketingPageId) {
 function useCounter(target: number) {
   const [val, setVal] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  const ran = useRef(false)
+
   useEffect(() => {
-    const el = ref.current; if (!el) return
-    const obs = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return
-      obs.disconnect()
+    const el = ref.current
+    if (!el) return
+
+    const animate = () => {
+      if (ran.current) return
+      ran.current = true
       const start = performance.now()
       const dur = 1400
       const tick = (now: number) => {
         const p = Math.min((now - start) / dur, 1)
         setVal(Math.round(p * p * target))
         if (p < 1) requestAnimationFrame(tick)
+        else setVal(target)
       }
       requestAnimationFrame(tick)
-    }, { threshold: 0.5 })
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVal(target)
+      ran.current = true
+      return
+    }
+
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        obs.disconnect()
+        animate()
+      },
+      { threshold: 0, rootMargin: '0px 0px -5% 0px' },
+    )
     obs.observe(el)
+
+    // IntersectionObserver can miss first paint when the band is already on screen.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect()
+        const vh = window.innerHeight || document.documentElement.clientHeight
+        if (rect.top < vh && rect.bottom > 0) {
+          obs.disconnect()
+          animate()
+        }
+      })
+    })
+
     return () => obs.disconnect()
   }, [target])
+
   return { val, ref }
 }
 
@@ -1379,10 +1512,20 @@ function OpsPanel({ active, onSelect }: { active: number; onSelect: (i: number) 
   )
 }
 
-function StatNum({ target, suffix, label }: { target: number; suffix: string; label: string }) {
+function StatNum({
+  target,
+  suffix,
+  label,
+  testId,
+}: {
+  target: number
+  suffix: string
+  label: string
+  testId?: string
+}) {
   const { val, ref } = useCounter(target)
   return (
-    <div className="lp-stat" ref={ref}>
+    <div className="lp-stat" ref={ref} data-testid={testId}>
       <div className="lp-stat-num">{val.toLocaleString()}<span>{suffix}</span></div>
       <div className="lp-stat-lbl">{label}</div>
     </div>
@@ -1446,6 +1589,102 @@ function RoiCalculator() {
         </div>
       </div>
     </div>
+  )
+}
+
+function PricingSection() {
+  const tiers = paidTierCards()
+  const trial = TIERS.trial
+
+  return (
+    <>
+      <div className="lp-pricing-dual lp-reveal">
+        <div className="lp-pricing-dual-card">
+          <div className="lp-pricing-dual-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3M12 22a10 10 0 100-20 10 10 0 000 20z" /></svg>
+          </div>
+          <div className="lp-pricing-dual-h">People savings</div>
+          <p className="lp-pricing-dual-p">
+            Each carrier follow-up your team would handle manually costs roughly{' '}
+            {STAFF_EQUIV_MINUTES_PER_CALL} staff-equivalent minutes on hold, IVR navigation,
+            and note-taking. CollectRx runs those calls concurrently, at a burdened{' '}
+            {fmtCad(STAFF_BURDENED_HOURLY_CAD)}/hr, that time adds up fast.
+          </p>
+        </div>
+        <div className="lp-pricing-dual-card">
+          <div className="lp-pricing-dual-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+          </div>
+          <div className="lp-pricing-dual-h">Money recovered</div>
+          <p className="lp-pricing-dual-p">
+            When a claim balance drops on re-import or connector sync, CollectRx marks it as
+            verified recovery in your dashboard. You see dollars collected, not just calls
+            completed. Both savings streams justify the subscription.
+          </p>
+        </div>
+      </div>
+
+      <div className="lp-pricing-grid lp-reveal">
+        {tiers.map((tier) => (
+          <div
+            key={tier.id}
+            className={`lp-pricing-card${tier.highlight ? ' highlight' : ''}`}
+          >
+            {tier.highlight && <span className="lp-pricing-badge">Most popular</span>}
+            <div className="lp-pricing-tier">{tier.name}</div>
+            <div className="lp-pricing-price">
+              {fmtCad(tier.price)}<span>/mo</span>
+            </div>
+            <div className="lp-pricing-target">{tier.targetCustomer}</div>
+            <div className="lp-pricing-minutes">
+              {tier.includedMinutes.toLocaleString('en-CA')} minutes included
+              {tier.dailyCapMinutes
+                ? ` · ${tier.dailyCapMinutes} min/day cap`
+                : ' · no daily cap'}
+              {tier.overageRate ? ` · ${fmtCad(tier.overageRate)}/min overage` : ''}
+            </div>
+            <div className="lp-pricing-savings">
+              Illustrative staff time freed: ~{fmtCad(tier.illustrativeStaffSavings)}/mo
+              {' '}({tier.illustrativeCalls} calls × {STAFF_EQUIV_MINUTES_PER_CALL} min)
+              Plus verified recovery tracked in your dashboard.
+            </div>
+            <div className="lp-pricing-features">
+              {tier.features.map((feature) => (
+                <div className="lp-pricing-feat" key={feature}>
+                  <svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" /></svg>
+                  {feature}
+                </div>
+              ))}
+            </div>
+            <div className="lp-pricing-cta">
+              <Link
+                to={MARKETING_PATHS.signup}
+                className={tier.highlight ? 'lp-btn-primary' : 'lp-btn-ghost'}
+                style={tier.highlight ? { width: '100%', justifyContent: 'center' } : { width: '100%', justifyContent: 'center' }}
+              >
+                Start free trial
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="lp-pricing-trial lp-reveal">
+        <div className="lp-pricing-trial-h">{trial.name}: {trial.includedMinutes} minutes, {trial.trialDays} days</div>
+        <p className="lp-pricing-trial-p">
+          {trial.description}. No credit card required. Upgrade when you see results on your own claims.
+        </p>
+        <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+          Create account
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </Link>
+      </div>
+      <p className="lp-roi-note" style={{ marginTop: 24 }}>
+        All prices in CAD. HST applied where applicable. Illustrative savings are estimates; actual
+        recovery depends on your claim mix, carriers, and re-import cadence.{' '}
+        <Link to={MARKETING_PATHS.roi}>Run your numbers →</Link>
+      </p>
+    </>
   )
 }
 
@@ -1576,7 +1815,7 @@ function ComplianceSnippet() {
           </h2>
           <p className="lp-section-sub" style={{ textAlign: 'left', fontSize: 16, marginBottom: 28 }}>
             In healthcare, compliance built in after the fact is compliance that fails. PHI
-            protection in CollectRx is a structural requirement — it cannot be disabled or
+            protection in CollectRx is a structural requirement; it cannot be disabled or
             accidentally bypassed.
           </p>
           <Link to={MARKETING_PATHS.compliance} className="lp-feat-link" style={{ fontSize: 15 }}>
@@ -1703,7 +1942,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
-                <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                <img src="/collectrx-mark.png" alt="CollectRx" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
@@ -1711,7 +1950,7 @@ export default function LandingPage() {
               {MARKETING_NAV_TABS.map(tab => (
                 <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
               ))}
-              <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
+              <Link to={MARKETING_PATHS.download} className="lp-nav-link">Download</Link>
             </div>
             <div className="lp-nav-right">
               <button
@@ -1727,10 +1966,10 @@ export default function LandingPage() {
                   <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
                 )}
               </button>
-              <Link to="/login" className="lp-nav-signin">Practice sign in</Link>
-              <button type="button" className="lp-btn-primary" onClick={() => openAccess('access')}>
-                Request Access
-              </button>
+              <Link to="/login" className="lp-nav-signin">Sign in</Link>
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-secondary">
+                Create account
+              </Link>
             </div>
           </div>
         </nav>
@@ -1741,15 +1980,15 @@ export default function LandingPage() {
               {tab.label}
             </Link>
           ))}
-          <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
-          <button
-            type="button"
+          <Link to={MARKETING_PATHS.download} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Download</Link>
+          <Link
+            to={MARKETING_PATHS.signup}
             className="lp-btn-primary"
             style={{ marginTop: 8, justifyContent: 'center' }}
-            onClick={() => { setMenuOpen(false); openAccess('access') }}
+            onClick={() => setMenuOpen(false)}
           >
-            Request Early Access
-          </button>
+            Create account
+          </Link>
         </div>
 
         {/* ── HERO (home only) ── */}
@@ -1768,22 +2007,22 @@ export default function LandingPage() {
               </h1>
               <p className="lp-hero-body">
                 Unresolved insurance AR costs twice: staff hours on carrier phones, and revenue
-                that never lands. CollectRx runs follow-up to six major Canadian insurers, tracks
-                claim status, and handles denials, from a simple PMS export.
+                that never lands. CollectRx works with any PMS: import a CSV export, or connect an
+                optional sync agent, then runs follow-up to six major Canadian insurers and handles denials.
               </p>
               <div className="lp-hero-btns">
                 <div className="lp-cta-pair">
-                  <button className="lp-btn-primary" onClick={() => openAccess('access')}>
-                    Request Early Access
+                  <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+                    Create account
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                  </button>
+                  </Link>
                   <Link to="/demo" className="lp-btn-ghost">
                     See how it works
                   </Link>
                 </div>
               </div>
               <div className="lp-trust-row">
-                {['PHIPA compliant by design', '6 major Canadian carriers', 'No IT setup required'].map(t => (
+                {['PHIPA compliant by design', 'Any PMS via CSV', '6 major Canadian carriers'].map(t => (
                   <div className="lp-trust-item" key={t}>
                     <svg className="lp-trust-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                       <path d="M5 13l4 4L19 7" />
@@ -1802,12 +2041,12 @@ export default function LandingPage() {
 
         {/* ── STATS BAND (home only) ── */}
         {page === 'home' && (
-        <div className="lp-stats lp-reveal">
+        <div className="lp-stats" data-testid="marketing-home-stats">
           <div className="lp-stats-inner">
-            <StatNum target={6}  suffix=" carriers" label="Major Canadian insurers integrated" />
-            <StatNum target={78} suffix="%"          label="Private dental market covered" />
-            <StatNum target={100} suffix="%"         label="Insurance AR focus (not patient balances)" />
-            <StatNum target={3}  suffix=" attempts"  label="Maximum per claim before escalation" />
+            <StatNum testId="marketing-stat-carriers" target={6} suffix=" carriers" label="Major Canadian insurers integrated" />
+            <StatNum testId="marketing-stat-market" target={78} suffix="%" label="Private dental market covered" />
+            <StatNum testId="marketing-stat-focus" target={100} suffix="%" label="Insurance AR focus (not patient balances)" />
+            <StatNum testId="marketing-stat-attempts" target={3} suffix=" attempts" label="Maximum per claim before escalation" />
           </div>
         </div>
         )}
@@ -1842,6 +2081,25 @@ export default function LandingPage() {
                 claim mix, carriers, and current follow-up process.
               </p>
             </div>
+          </div>
+        </section>
+        )}
+
+        {/* ── PRICING ── */}
+        {page === 'pricing' && (
+        <section className="lp-pricing" style={{ paddingTop: 88 }} data-testid="marketing-pricing">
+          <div className="lp-section-inner">
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">Pricing</div>
+              <h2 className="lp-section-h2">
+                Priced on what you save: staff time and recovered dollars<span className="lp-dot">.</span>
+              </h2>
+              <p className="lp-section-sub">
+                Flat monthly tiers with included call minutes. You pay for automation that frees
+                your team from carrier hold time and drives verified insurance collections.
+              </p>
+            </div>
+            <PricingSection />
           </div>
         </section>
         )}
@@ -1950,33 +2208,6 @@ export default function LandingPage() {
         </section>
         )}
 
-        {/* ── TESTIMONIALS (home only) ── */}
-        {page === 'home' && (
-        <section className="lp-quotes">
-          <div className="lp-section-inner">
-            <div className="lp-section-heading lp-reveal">
-              <div className="lp-eyebrow">Early Access</div>
-              <h2 className="lp-section-h2">What practices say<span className="lp-dot">.</span></h2>
-            </div>
-            <div className="lp-reveal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-              {TESTIMONIALS.map(t => (
-                <div className="lp-quote" key={t.name}>
-                  <div className="lp-quote-mark">&ldquo;</div>
-                  <p className="lp-quote-body">{t.body}</p>
-                  <div className="lp-quote-attr">
-                    <div className="lp-quote-avatar">{t.initials}</div>
-                    <div>
-                      <div className="lp-quote-name">{t.name}</div>
-                      <div className="lp-quote-title">{t.title}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-        )}
-
         {/* ── COMPLIANCE SNIPPET (home only) ── */}
         {page === 'home' && <ComplianceSnippet />}
 
@@ -2007,11 +2238,76 @@ export default function LandingPage() {
         </section>
         )}
 
+        {/* ── ABOUT ── */}
+        {page === 'about' && (
+        <section className="lp-compliance" style={{ paddingTop: 88 }} data-testid="marketing-about">
+          <div className="lp-section-inner">
+            <div className="lp-section-heading lp-reveal">
+              <div className="lp-eyebrow">About</div>
+              <h2 className="lp-section-h2">
+                Built because a dentist asked for it<span className="lp-dot">.</span>
+              </h2>
+              <p className="lp-section-sub">
+                CollectRx didn't start as a market opportunity. It started as a conversation,
+                and the data backed up what one practice owner already knew.
+              </p>
+            </div>
+
+            <div className="lp-about-founder lp-reveal">
+              <div className="lp-about-avatar">KE</div>
+              <div>
+                <div className="lp-about-name">Khalid Egeh</div>
+                <div className="lp-about-role">Founder, CollectRx</div>
+                <div className="lp-about-body">
+                  <p>
+                    I was building workflow automation for small businesses when I asked my
+                    dentist whether there was anything in his practice worth automating. He
+                    didn't hesitate: insurance follow-up. His front desk was losing hours every
+                    week on hold with carriers, chasing claims that should have moved on their own.
+                  </p>
+                  <p>
+                    That conversation sent me into the data. The pattern he described wasn't
+                    isolated to his practice. It showed up across Canadian dental billing more
+                    broadly, AR aging past 90 days, denial rates climbing, front desks absorbing
+                    work that has nothing to do with patient care. So I built CollectRx: an AI
+                    system that calls Sun Life, Canada Life, Manulife, Green Shield, RBC, and
+                    TELUS AdjudiCare on a practice's behalf, the same calls a person would make,
+                    minus the hold time.
+                  </p>
+                  <p>
+                    I'm a builder first. The same approach goes into the compliance architecture,
+                    the carrier call logic, and the trial itself: understand the actual workflow,
+                    then remove the part that's repetitive and never needed a person's judgment in
+                    the first place.
+                  </p>
+                </div>
+                <div className="lp-about-cta">
+                  <button type="button" className="lp-btn-primary" onClick={() => openAccess('demo')}>
+                    Book 15 minutes with me
+                  </button>
+                  <Link to={MARKETING_PATHS.compliance} className="lp-btn-ghost">See how compliance works</Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="lp-compliance-grid lp-about-pillars lp-reveal">
+              {ABOUT_PILLARS.map(t => (
+                <div className="lp-compliance-card" key={t.h}>
+                  <div className="lp-compliance-icon">{t.icon}</div>
+                  <div className="lp-compliance-h">{t.h}</div>
+                  <div className="lp-compliance-p">{t.p}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        )}
+
         {/* ── CTA (home only) ── */}
         {page === 'home' && (
         <div className="lp-cta-section">
           <div className="lp-cta-inner lp-reveal">
-            <div className="lp-cta-tag">Early Access</div>
+            <div className="lp-cta-tag">Get Started</div>
             <h2 className="lp-cta-h">
               The AR work is already getting done<span className="lp-dot">.</span>
             </h2>
@@ -2020,10 +2316,10 @@ export default function LandingPage() {
               Collections metrics show what we recovered on your outstanding insurance AR.
             </p>
             <div className="lp-cta-actions">
-              <button className="lp-btn-primary" onClick={() => openAccess('access')}>
-                Request Early Access
+              <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">
+                Create account
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-              </button>
+              </Link>
               <Link to="/demo" className="lp-btn-ghost">See the product demo</Link>
             </div>
           </div>
@@ -2037,7 +2333,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <svg viewBox="0 0 24 24"><path d="M12 2l9 4v6c0 5-3.9 9.7-9 11-5.1-1.3-9-6-9-11V6l9-4z" /></svg>
+                    <img src="/collectrx-mark.png" alt="CollectRx" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>
@@ -2051,10 +2347,13 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.features}>Features</Link>
                   <Link to={MARKETING_PATHS.carriers}>Carriers</Link>
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
+                  <Link to={MARKETING_PATHS.pricing}>Pricing</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
+                  <Link to={MARKETING_PATHS.download}>Download desktop app</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>
+                  <Link to={MARKETING_PATHS.signup}>Create account</Link>
                   <Link to="/login">Practice sign in</Link>
                   <button type="button" onClick={() => openAccess('access')}>Request access</button>
                   <Link to="/demo">Watch demo</Link>
@@ -2072,6 +2371,10 @@ export default function LandingPage() {
                   <Link to="/legal/terms">Terms of Service</Link>
                   <Link to="/legal/privacy">Privacy Policy</Link>
                   <Link to="/product">Product one-pager</Link>
+                </div>
+                <div className="lp-footer-col">
+                  <h4>Company</h4>
+                  <Link to={MARKETING_PATHS.about}>About</Link>
                 </div>
               </div>
             </div>
