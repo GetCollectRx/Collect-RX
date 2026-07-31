@@ -980,22 +980,23 @@ model InsurancePlan {
 }
 
 model EligibilitySnapshot {
-  snapshotId              String            @id @default(uuid()) @map("snapshot_id")
-  practiceId              String            @map("practice_id")
-  patientId               String            @map("patient_id")
-  /// PIIVault UUID when written by pre-visit pipeline; bridges to patientToken.
-  patientToken            String?           @map("patient_token")
-  carrier                 CarrierId
-  planId                  String?           @map("plan_id")
-  status                  EligibilityStatus @default(unknown)
-  verifiedAt              DateTime          @map("verified_at")
-  deductibleIndividualMet Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
-  deductibleFamilyMet     Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
-  annualMaxUsedIndividual Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
-  annualMaxUsedFamily     Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
-  planYearStart           DateTime          @map("plan_year_start") @db.Date
-  rawCarrierResponse      Json?             @map("raw_carrier_response")
-  createdAt               DateTime          @default(now()) @map("created_at")
+  snapshotId                String            @id @default(uuid()) @map("snapshot_id")
+  practiceId                String            @map("practice_id")
+  /// PMS record ID (from the practice management system, e.g. Estimate flow writes). Not a PIIVault token.
+  patientId                 String?           @map("patient_id")
+  /// PIIVault UUID (see src/pii-vault.ts). Not interchangeable with patientId — never conflate the two.
+  patientToken              String?           @map("patient_token")
+  carrier                   CarrierId
+  planId                    String?           @map("plan_id")
+  status                    EligibilityStatus @default(unknown)
+  verifiedAt                DateTime          @map("verified_at")
+  deductibleIndividualMet   Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
+  deductibleFamilyMet       Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
+  annualMaxUsedIndividual   Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
+  annualMaxUsedFamily       Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
+  planYearStart             DateTime          @map("plan_year_start") @db.Date
+  rawCarrierResponse        Json?             @map("raw_carrier_response")
+  createdAt                 DateTime          @default(now()) @map("created_at")
 
   practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
