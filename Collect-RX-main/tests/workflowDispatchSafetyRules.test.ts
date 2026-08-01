@@ -122,7 +122,7 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
     expect(result.allowed).toBe(true);
   });
 
-  it('rejects a claim under 30 days outstanding — too early to call', async () => {
+  it('rejects a claim under its carrier-specific minimum wait — too early to call', async () => {
     const result = await validateDispatch(prisma, {
       practiceId,
       claimId: sunLifeClaimId,
@@ -133,7 +133,7 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
       claimStatus: 'PENDING',
     });
     expect(result.allowed).toBe(false);
-    expect(result.reason).toMatch(/30 days/);
+    expect(result.reason).toMatch(/requires minimum 32 days/);
   });
 
   it('rejects a claim over 90 days outstanding — escalate to a human instead of the AI', async () => {
@@ -284,13 +284,14 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
   });
 
   it(
-    'TELUS claims are still gated by the global 30-day floor, not the documented TELUS-specific 21-day minimum',
+    'TELUS claims are gated by their documented 21-day minimum, not the other carriers\' 32-day floor',
     async () => {
-      // CLAUDE.md and CARRIER_CONFIGS both describe TELUS's minimum as day 21 (vs. day 32 for
-      // other carriers). But validateDispatch's global floor (`daysOutstanding < 30`) runs before
-      // the TELUS-specific check, so a 25-day-old TELUS claim is rejected by the *global* rule,
-      // not the TELUS one — the TELUS branch is effectively unreachable under the current 30-day
-      // global floor. This test pins that actual behavior.
+      // CLAUDE.md and CARRIER_CONFIGS both describe TELUS's minimum as day 21
+      // (vs. day 32 for other carriers). validateDispatch enforces the
+      // carrier-specific minimum, so a 25-day-old TELUS claim -- below the
+      // other carriers' 32-day floor, above TELUS's real 21-day minimum -- is
+      // dispatchable. (Previously a flat 30-day global floor made this
+      // branch unreachable — see AA-07 in docs/operations/AGENT-AUDIT-BACKLOG-2026-08-01.md.)
       const result = await validateDispatch(prisma, {
         practiceId,
         claimId: telusClaimId,
@@ -300,18 +301,43 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
         scheduledFor: TUESDAY_10AM_ET,
         claimStatus: 'PENDING',
       });
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toMatch(/30 days/);
-      expect(result.reason).not.toMatch(/TELUS requires minimum/);
+      expect(result.allowed).toBe(true);
     },
   );
 
-  it('a standard (non-TELUS) claim at exactly 30 days is allowed, despite CARRIER_CONFIGS documenting a 32-day minimum for this carrier', async () => {
+  it('rejects a TELUS claim below its 21-day minimum', async () => {
+    const result = await validateDispatch(prisma, {
+      practiceId,
+      claimId: telusClaimId,
+      carrierId: 'telus_adjudicare',
+      daysOutstanding: 15,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/requires minimum 21 days/);
+  });
+
+  it('rejects a standard (non-TELUS) claim at exactly 30 days — the real minimum for this carrier is 32', async () => {
     const result = await validateDispatch(prisma, {
       practiceId,
       claimId: sunLifeClaimId,
       carrierId: 'sun_life',
       daysOutstanding: 30,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(result.allowed).toBe(false);
+  });
+
+  it('allows a standard (non-TELUS) claim at exactly 32 days', async () => {
+    const result = await validateDispatch(prisma, {
+      practiceId,
+      claimId: sunLifeClaimId,
+      carrierId: 'sun_life',
+      daysOutstanding: 32,
       attemptsSoFar: 0,
       scheduledFor: TUESDAY_10AM_ET,
       claimStatus: 'PENDING',
