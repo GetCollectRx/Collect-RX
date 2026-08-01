@@ -15,7 +15,7 @@
 | AA-03 | Fix `weeklyPilotReport.ts` to report verified recovered amounts, not billed amount | [x] |
 | AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [x] |
 | AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
-| AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [ ] |
+| AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [x] |
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [ ] |
 | AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [ ] |
 | AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [ ] |
@@ -43,9 +43,9 @@
 **Finding:** `prisma/schema.prisma:611` (`InsuranceClaim.practiceId`) and ~10 sibling tables (`ClaimRecoveryAction`, `ClaimRecoveryEvent`, `ClaimEvidenceItem`, `CallQueue`, `PhiAccessEvent`, etc.) carry a denormalized `practiceId` with no `@relation` to `Practice`.
 **Definition of done:** a new Prisma migration adds the FK (at minimum on `InsuranceClaim`, the highest-value table); migration tested against staging before prod per `Collect-RX-main/CLAUDE.md`'s own migration checklist (this is a schema change on a live multi-tenant table — do not `prisma migrate deploy` straight to prod without that staging pass).
 
-### AA-06 — Carrier timeout key mismatch
-**Finding:** `src/billing/tiers.ts:131-139` (`CARRIER_TIMEOUTS`) uses kebab-case keys (`'rbc-insurance'`); `prisma/schema.prisma`'s `CarrierId` enum is snake_case (`rbc`). `src/vapi/client.ts:43-46` (`maxCallDurationSeconds`) does a direct lookup that only ever matches `manulife`, silently falling back to the 30-min default for every other carrier — truncating RBC's intended 45-min ceiling.
-**Definition of done:** `CARRIER_TIMEOUTS` keys match `CarrierId` enum values exactly; a call to `maxCallDurationSeconds('rbc')` returns 45 minutes, not the default.
+### AA-06 — Carrier timeout key mismatch — FIXED
+**Finding:** `src/billing/tiers.ts:131-139` (`CARRIER_TIMEOUTS`) used kebab-case keys (`'rbc-insurance'`); `prisma/schema.prisma`'s `CarrierId` enum is snake_case (`rbc`). `src/vapi/client.ts:43-46` (`maxCallDurationSeconds`) does a direct lookup that only ever matched `manulife`, silently falling back to the 30-min default for every other carrier — truncating RBC's intended 45-min ceiling.
+**Fix:** `CARRIER_TIMEOUTS` keys now match the `CarrierId` enum exactly (`rbc`, `sun_life`, `canada_life`, `green_shield`, `telus_adjudicare`, `manulife`). `tests/billingCatalog.test.ts` previously asserted the *old, wrong* keys and passed only because both sides of the lookup were consistently wrong — updated it to assert real enum values, which is what actually exercises the bug. Also fixed the same stale kebab-case carrier list, and a missing `Hold_Sentinel` in the squad roster, in `scheduledAgents.ts`'s `buildVapiSquadContext` (feeds the vapi-squad-auditor agent's LLM context — cosmetic but the same recurring "4-agent squad" mistake CLAUDE.md already had to correct once).
 
 ### AA-07 — TELUS wait rule + TPA wiring
 **Finding:** `src/carriers/adapter.ts:348-357` applies a flat 30-day floor to every carrier; the per-carrier `minWaitDayForClaims` from `carrier-configs.json` (32 for 5 carriers, 21 for TELUS) is read but never enforced (the code comment admits it's "informational only"). Separately, `getTelusTpa()` is only called from the pre-visit estimate flow, never from `queueEngine.ts`'s AR-calling dispatch.

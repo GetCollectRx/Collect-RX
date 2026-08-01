@@ -201,8 +201,8 @@ async function buildTimeSavingsContext(prisma: PrismaClient) {
 
 async function buildVapiSquadContext(_prisma: PrismaClient) {
   return {
-    squadMembers: ['IVR_Navigator', 'Claims_Agent', 'Escalation_Closer', 'Resolution_Closer'],
-    carriers: ['sun-life', 'canada-life', 'manulife', 'green-shield', 'rbc-insurance', 'telus-adjudicare'],
+    squadMembers: ['IVR_Navigator', 'Hold_Sentinel', 'Claims_Agent', 'Escalation_Closer', 'Resolution_Closer'],
+    carriers: ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'],
     checkType: 'weekly config audit',
   };
 }
