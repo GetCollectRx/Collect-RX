@@ -74,7 +74,7 @@
 | AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [ ] |
 | AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [ ] |
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
-| AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [ ] |
+| AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
 | AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [ ] |
 | AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [ ] |
 
@@ -94,9 +94,9 @@
 **Finding:** Last entry 2026-07-19; 227 commits have shipped since (eligibility engine, AbelDent connector, billing tiers, marketing engine, guardrails, recovery routing) with no changelog coverage.
 **Definition of done:** `CHANGELOG.md` has entries (or one summarizing "Unreleased" section) covering user-visible changes since 2026-07-19.
 
-### AA-15 — Typecheck false-positive gap
-**Finding:** `npm ci && npx tsc --noEmit` gives 391 false "no exported member" errors because `postinstall` doesn't run `prisma generate`. CI's workflow does this step explicitly, so production CI is unaffected, but the documented local commands aren't consistent with what CI actually runs.
-**Definition of done:** either `postinstall` runs `db:generate`, or `CLAUDE.md`/`package.json` scripts make the dependency explicit so a bare `npm ci` + `tsc --noEmit` doesn't produce false errors.
+### AA-15 — Typecheck false-positive gap — FIXED
+**Finding:** `npm ci && npx tsc --noEmit` gave 391 false "no exported member" errors because `postinstall` didn't run `prisma generate`. CI's workflow does this step explicitly, so production CI was unaffected, but the documented local commands weren't consistent with what CI actually runs.
+**Fix:** `package.json`'s `postinstall` now runs `prisma generate` after the existing electron-symlink step, so a bare `npm ci` leaves a working Prisma client behind — no separate manual step needed. Verified by running `npm run postinstall` directly.
 
 ### AA-16 — Dead code cleanup
 **Finding:** `src/server/vapi/vapiWebhook.ts:547-596` (`handleVapiWebhook`) is self-documented `@deprecated ... never mounted, never called`, confirmed zero references anywhere including tests. `src/server/services/outcomeClassifier.ts` implements the exact anti-hallucination-violating pattern the backend-reviewer checklist forbids (keyword-regex → `RESOLVED`, no gating), with zero production importers — a landmine if ever wired in.
