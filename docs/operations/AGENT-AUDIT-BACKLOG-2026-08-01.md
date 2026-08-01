@@ -72,7 +72,7 @@
 |----|------|--------|
 | AA-11 | Wire `Hold_Sentinel` webhook/`analysisPlan` in `vapi-squad-config.json` | [ ] |
 | AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [ ] |
-| AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [ ] |
+| AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [x] |
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
 | AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
 | AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [ ] |
@@ -86,9 +86,9 @@
 **Finding:** `src/server/marketing/outreachVoice.ts:15-16` hardcodes `OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca'`, consumed unconditionally across 27+ template call sites in `emailTemplates.ts`, `trialOnboarding.ts`, `replyTemplates.ts`.
 **Definition of done:** sender identity is configurable (env var or practice/org setting), matching root `CLAUDE.md`'s "no hardcoded practice names, emails, or credentials in code" rule; existing behavior can default to the same value via env var so nothing breaks if unset.
 
-### AA-13 — Missing anti-impersonation instruction
-**Finding:** Only `Claims_Agent`'s system prompt (`vapi-squad-config.json:234`) has "Do not claim to be human if asked directly." `Escalation_Closer` (line ~437) and `Resolution_Closer` (line ~599) both converse directly with a live rep with no equivalent instruction.
-**Definition of done:** both agents' prompts include the same honest-disclosure instruction.
+### AA-13 — Missing anti-impersonation instruction — FIXED
+**Finding:** Only `Claims_Agent`'s system prompt (`vapi-squad-config.json:234`) had "Do not claim to be human if asked directly." `Escalation_Closer` (line ~437) and `Resolution_Closer` (line ~599) both converse directly with a live rep with no equivalent instruction.
+**Fix:** added "If asked directly whether you are human or an automated system, answer honestly - do not claim to be human." to both prompts. New test `tests/vapiSquadImpersonationGuard.test.ts` asserts all three conversational agents (not `IVR_Navigator`/`Hold_Sentinel`, which never converse by design) carry the instruction.
 
 ### AA-14 — Stale CHANGELOG
 **Finding:** Last entry 2026-07-19; 227 commits have shipped since (eligibility engine, AbelDent connector, billing tiers, marketing engine, guardrails, recovery routing) with no changelog coverage.
