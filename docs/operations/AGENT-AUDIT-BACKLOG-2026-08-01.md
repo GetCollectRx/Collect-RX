@@ -71,7 +71,7 @@
 | ID | Task | Status |
 |----|------|--------|
 | AA-11 | Wire `Hold_Sentinel` webhook/`analysisPlan` in `vapi-squad-config.json` | [x] |
-| AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [ ] |
+| AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [x] |
 | AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [x] |
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
 | AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
@@ -82,9 +82,10 @@
 **Finding:** `vapi-squad-config.json:185-221` — unlike the other 4 squad agents, `Hold_Sentinel` had no `server` webhook block and no `analysisPlan.structuredDataPlan`. If a call ended while control was with Hold_Sentinel (timeout, or the carrier hangs up during hold), nothing reached the backend for that leg.
 **Fix:** copied `IVR_Navigator`'s `server`/`serverMessages`/`analysisPlan` block verbatim onto `Hold_Sentinel` (the closest analog — another silent-only agent with the same fallback-reporting need). New test in `tests/vapiSquadConfig.test.ts` asserts all 5 squad members have a server webhook and an enabled `structuredDataPlan`.
 
-### AA-12 — Hardcoded personal identity in outbound email
-**Finding:** `src/server/marketing/outreachVoice.ts:15-16` hardcodes `OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca'`, consumed unconditionally across 27+ template call sites in `emailTemplates.ts`, `trialOnboarding.ts`, `replyTemplates.ts`.
-**Definition of done:** sender identity is configurable (env var or practice/org setting), matching root `CLAUDE.md`'s "no hardcoded practice names, emails, or credentials in code" rule; existing behavior can default to the same value via env var so nothing breaks if unset.
+### AA-12 — Hardcoded personal identity in outbound email — FIXED
+**Finding:** `src/server/marketing/outreachVoice.ts:15-16` hardcoded `OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca'`, consumed unconditionally across template call sites in `emailTemplates.ts`, `emailCampaignTemplates.ts`, `emailLayout.ts`, `prospectEmail.ts`.
+**Fix:** `outreachVoice.ts` now derives the sender identity from env vars with the old literals as fallback defaults (so unset-env behavior is unchanged): `OUTREACH_SENDER_NAME` (`MARKETING_OUTREACH_SENDER_NAME`, default `'Khalid'`), `OUTREACH_SENDER_FULL_NAME` (`MARKETING_OUTREACH_SENDER_FULL_NAME`, default `'Khalid Egeh'`), `OUTREACH_SENDER_EMAIL` (`MARKETING_OUTREACH_SENDER_EMAIL`, default `'khalid@collectrx.ca'`); `OUTREACH_SIGNOFF`/`OUTREACH_SIGNOFF_HTML` now build from those instead of literals. Every consumer switched from the hardcoded string to the exported constant: `emailTemplates.ts` (`"I'm ${OUTREACH_SENDER_NAME}, a founder..."`, was a literal `"I'm Khalid, ..."` in two places), `emailLayout.ts` (footer line now `${OUTREACH_SENDER_FULL_NAME} | CollectRx | ...`), `prospectEmail.ts` (SendGrid `from`/`fromName` fallback now `OUTREACH_SENDER_EMAIL`/`OUTREACH_SENDER_NAME` instead of literal `'khalid@collectrx.ca'`/`'Khalid'`), `emailCampaignTemplates.ts` (both signature blocks). Verified `grep -rn "Khalid\|khalid@collectrx" src/server/marketing/*.ts` now matches only the three default-value definitions in `outreachVoice.ts`. `npx tsc --noEmit` and `npx eslint` on all five touched files are clean (one pre-existing `no-console` warning in `prospectEmail.ts`, unrelated). `tests/emailCampaignScheduler.test.ts` and `tests/marketing/partnerships.test.ts` (27 tests, including two asserting the default `'Khalid'` signoff still renders) pass unchanged, confirming default behavior is preserved.
+**Note:** `src/server/observability/startupAlerts.ts` has a similar `khalid@collectrx.ca` default for ops alert email, but it's already env-overridable (`STARTUP_ALERT_EMAIL_TO`/`OPS_ALERT_EMAIL_TO`) and is unrelated to the marketing engine this ticket scoped — left as-is, same "default + env override" pattern this repo already uses elsewhere (e.g. `SEED_PRACTICE_EMAIL`).
 
 ### AA-13 — Missing anti-impersonation instruction — FIXED
 **Finding:** Only `Claims_Agent`'s system prompt (`vapi-squad-config.json:234`) had "Do not claim to be human if asked directly." `Escalation_Closer` (line ~437) and `Resolution_Closer` (line ~599) both converse directly with a live rep with no equivalent instruction.

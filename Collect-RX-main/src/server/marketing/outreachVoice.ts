@@ -12,8 +12,18 @@
  * - "I hope this finds you well", hype, exclamation marks, em dashes, AI filler phrases
  */
 
-export const OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca';
-export const OUTREACH_SIGNOFF_HTML = 'Khalid<br>khalid@collectrx.ca';
+// Configurable via env so the outbound sender identity isn't hardcoded into
+// the marketing engine (root CLAUDE.md: "No hardcoded practice names,
+// emails, or credentials in code"). Defaults preserve current behavior when
+// unset.
+export const OUTREACH_SENDER_NAME = process.env.MARKETING_OUTREACH_SENDER_NAME?.trim() || 'Khalid';
+export const OUTREACH_SENDER_FULL_NAME =
+  process.env.MARKETING_OUTREACH_SENDER_FULL_NAME?.trim() || 'Khalid Egeh';
+export const OUTREACH_SENDER_EMAIL =
+  process.env.MARKETING_OUTREACH_SENDER_EMAIL?.trim() || 'khalid@collectrx.ca';
+
+export const OUTREACH_SIGNOFF = `${OUTREACH_SENDER_NAME}\n${OUTREACH_SENDER_EMAIL}`;
+export const OUTREACH_SIGNOFF_HTML = `${OUTREACH_SENDER_NAME}<br>${OUTREACH_SENDER_EMAIL}`;
 
 export type CapabilityTier = 'core' | 'operational' | 'trust' | 'proof';
 
