@@ -13,12 +13,12 @@ import {
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
 import carrierRulesJson from '../../src/services/eligibility/rules/carrier-configs.json';
 
-function authorizedSettings() {
+function authorizedSettingsFor(carrierId: string) {
   return {
     ...defaultPracticeSettings(),
     voiceAgentEnabled: true,
     carrierConfigs: defaultPracticeSettings().carrierConfigs.map((c) =>
-      c.carrierId === 'sun_life'
+      c.carrierId === carrierId
         ? {
             ...c,
             enabled: true,
@@ -29,6 +29,10 @@ function authorizedSettings() {
         : c,
     ),
   };
+}
+
+function authorizedSettings() {
+  return authorizedSettingsFor('sun_life');
 }
 
 function makePrisma(settings = authorizedSettings()) {
@@ -231,6 +235,62 @@ describe('CarrierAdapter', () => {
       });
       expect(r.allowed).toBe(false);
       expect(r.reason).toMatch(/BAAL/i);
+    });
+
+    describe('carrier-specific minimum wait days (AA-07)', () => {
+      it('allows a TELUS claim at day 25 — below the old flat 30-day floor, above TELUS\'s real 21-day minimum', async () => {
+        const r = await validateDispatch(makePrisma(authorizedSettingsFor('telus_adjudicare')), {
+          practiceId: 'practice-1',
+          claimId: 'claim-test-1',
+          carrierId: 'telus_adjudicare',
+          daysOutstanding: 25,
+          attemptsSoFar: 0,
+          scheduledFor: new Date('2026-05-11T14:00:00Z'),
+          claimStatus: 'PENDING',
+        });
+        expect(r.allowed).toBe(true);
+      });
+
+      it('rejects a TELUS claim at day 15 — below TELUS\'s 21-day minimum', async () => {
+        const r = await validateDispatch(makePrisma(authorizedSettingsFor('telus_adjudicare')), {
+          practiceId: 'practice-1',
+          claimId: 'claim-test-1',
+          carrierId: 'telus_adjudicare',
+          daysOutstanding: 15,
+          attemptsSoFar: 0,
+          scheduledFor: new Date('2026-05-11T14:00:00Z'),
+          claimStatus: 'PENDING',
+        });
+        expect(r.allowed).toBe(false);
+        expect(r.code).toBe('CLAIM_TOO_YOUNG');
+      });
+
+      it('rejects a non-TELUS claim at day 30 — the old flat floor let this through, but the real minimum is 32', async () => {
+        const r = await validateDispatch(makePrisma(), {
+          practiceId: 'practice-1',
+          claimId: 'claim-test-1',
+          carrierId: 'sun_life',
+          daysOutstanding: 30,
+          attemptsSoFar: 0,
+          scheduledFor: new Date('2026-05-11T14:00:00Z'),
+          claimStatus: 'PENDING',
+        });
+        expect(r.allowed).toBe(false);
+        expect(r.code).toBe('CLAIM_TOO_YOUNG');
+      });
+
+      it('allows a non-TELUS claim at day 32', async () => {
+        const r = await validateDispatch(makePrisma(), {
+          practiceId: 'practice-1',
+          claimId: 'claim-test-1',
+          carrierId: 'sun_life',
+          daysOutstanding: 32,
+          attemptsSoFar: 0,
+          scheduledFor: new Date('2026-05-11T14:00:00Z'),
+          claimStatus: 'PENDING',
+        });
+        expect(r.allowed).toBe(true);
+      });
     });
 
     function makePrismaAtSubscriptionLimit(callAttemptFindFirst: () => Promise<{ id: string } | null>) {

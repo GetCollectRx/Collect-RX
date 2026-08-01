@@ -16,7 +16,7 @@
 | AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [x] |
 | AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [x] |
-| AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [ ] |
+| AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [x] |
 | AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [ ] |
 | AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [ ] |
 | AA-10 | Fix forensic logger dropping `Error.message`/`.stack` | [ ] |
@@ -47,9 +47,9 @@
 **Finding:** `src/billing/tiers.ts:131-139` (`CARRIER_TIMEOUTS`) used kebab-case keys (`'rbc-insurance'`); `prisma/schema.prisma`'s `CarrierId` enum is snake_case (`rbc`). `src/vapi/client.ts:43-46` (`maxCallDurationSeconds`) does a direct lookup that only ever matched `manulife`, silently falling back to the 30-min default for every other carrier — truncating RBC's intended 45-min ceiling.
 **Fix:** `CARRIER_TIMEOUTS` keys now match the `CarrierId` enum exactly (`rbc`, `sun_life`, `canada_life`, `green_shield`, `telus_adjudicare`, `manulife`). `tests/billingCatalog.test.ts` previously asserted the *old, wrong* keys and passed only because both sides of the lookup were consistently wrong — updated it to assert real enum values, which is what actually exercises the bug. Also fixed the same stale kebab-case carrier list, and a missing `Hold_Sentinel` in the squad roster, in `scheduledAgents.ts`'s `buildVapiSquadContext` (feeds the vapi-squad-auditor agent's LLM context — cosmetic but the same recurring "4-agent squad" mistake CLAUDE.md already had to correct once).
 
-### AA-07 — TELUS wait rule + TPA wiring
-**Finding:** `src/carriers/adapter.ts:348-357` applies a flat 30-day floor to every carrier; the per-carrier `minWaitDayForClaims` from `carrier-configs.json` (32 for 5 carriers, 21 for TELUS) is read but never enforced (the code comment admits it's "informational only"). Separately, `getTelusTpa()` is only called from the pre-visit estimate flow, never from `queueEngine.ts`'s AR-calling dispatch.
-**Definition of done:** `validateDispatch` gates on the carrier-specific minimum from `carrier-configs.json`, not a hardcoded 30; TELUS claims resolve a TPA before AR dispatch, and dispatch is blocked on an unresolved/low-confidence TPA.
+### AA-07 — TELUS wait rule + TPA wiring — FIXED
+**Finding:** `src/carriers/adapter.ts:348-357` applied a flat 30-day floor to every carrier; the per-carrier `minWaitDayForClaims` from `carrier-configs.json` (32 for 5 carriers, 21 for TELUS) was read but never enforced (the code comment admitted it was "informational only"). Separately, TPA resolution was only called from the pre-visit estimate flow, never from `queueEngine.ts`'s AR-calling dispatch.
+**Fix:** `validateDispatch`'s step 5 now gates on `CARRIER_CONFIGS[carrierId].minWaitDays` (carrier-specific) instead of a hardcoded 30; the redundant TELUS-only check is gone. `queueEngine.ts` now calls `identifyTelusPlan()` right after PHI resolution (where `subscriberId`/`groupPolicyNumber` are already available) for `telus_adjudicare` claims, and defers dispatch (`TELUS_TPA_UNRESOLVED`, 4h) if the TPA can't be identified or confidence is low. New tests added to `tests/phase-5/carrier-adapter.test.ts` (day-boundary behavior per carrier) and `tests/frontDesk/queueEngine.dispatch.test.ts` (TPA-unresolved defers, TPA-resolved dispatches). Also renumbered `validateDispatch`'s step comments, which had drifted (a missing step-3 label and a duplicate "7.") independent of this bug.
 
 ### AA-08 — Pre-visit disclosure leak risk
 **Finding:** `docs/compliance/crtc-disclosure-decision.md:47` requires `disclosure_message` to resolve empty for any IVR-navigator agent. The main claims squad does this correctly (`vapi-squad-config.json` hardcodes `firstMessage: ""`). The pre-visit squad doesn't: `src/vapi/client.ts:454-457` (`initiatePreVisitCall`) populates `disclosure_message` with a full sentence, and `vapi-previsit-config.json:8-10`'s `PreVisit_IVR_Navigator` speaks it immediately on connect — contradicting its own "silent, DTMF-only" system prompt.

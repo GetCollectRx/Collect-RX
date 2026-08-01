@@ -11,6 +11,7 @@ import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
+import { identifyTelusPlan } from '../../services/eligibility/engine.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
@@ -527,6 +528,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         patientToken: next.claim.patientToken,
         warnings: completeness.warnings,
       });
+    }
+
+    // ── TELUS TPA GATE ─────────────────────────────────────────────────────────
+    // TELUS AdjudiCare is a clearinghouse, not a single insurer — IVR navigation
+    // is TPA-specific, so a claim can't be routed correctly without one. Defer
+    // rather than dial blind and mis-navigate the IVR.
+    if (next.claim.carrierId === 'telus_adjudicare') {
+      const tpa = identifyTelusPlan(phi.subscriberId, phi.groupPolicyNumber);
+      if (!tpa.identifiedTpa || tpa.confidence === 'low') {
+        logger.warn('[deskQueueEngine] TELUS TPA unresolved or low-confidence — deferring dispatch', {
+          claimId: next.claimId,
+          identifiedTpa: tpa.identifiedTpa,
+          confidence: tpa.confidence,
+        });
+        await deferQueueEntry(
+          prisma,
+          next.id,
+          DEFER_STAFF_ACTION_MS,
+          'TELUS_TPA_UNRESOLVED',
+          tpa.notes,
+        );
+        continue;
+      }
     }
 
     // billingPhone is the CRTC disclosure / carrier callback number.

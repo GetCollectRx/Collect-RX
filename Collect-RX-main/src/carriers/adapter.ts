@@ -298,12 +298,13 @@ export async function checkCarrierAuthorizationGate(
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject, > 90 → escalate)
- *   5. TELUS-specific minimum days (when applicable)
- *   6. Max attempts (>= 3 → reject)
- *   7. Subscription monthly claim limit
- *   8. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   3. Recovery dispatch gate (practice-side blockers)
+ *   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   5. Minimum days outstanding — carrier-specific (day 21 TELUS, day 32 others)
+ *   6. Maximum days outstanding (> 90 → escalate to human)
+ *   7. Max attempts (>= 3 → reject)
+ *   8. Subscription monthly claim limit
+ *   9. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -334,26 +335,31 @@ export async function validateDispatch(
     };
   }
 
+  // 3. Recovery dispatch gate
   const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
   const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
   if (!recoveryGate.allowed) {
     return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
+  // 4. Practice carrier authorization
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
   if (!authGate.allowed) {
     return authGate;
   }
 
-  // 4. Claims under 30 days old — do not queue
+  // 5. Minimum days outstanding before calling — carrier-specific per
+  // carrier-configs.json (day 21 for TELUS, day 32 for the other five).
+  // A flat 30-day floor here would let TELUS's 21-32 window never trigger
+  // (30 already rejects anything under it) and under-enforce every other
+  // carrier's real 32-day minimum.
   const config = CARRIER_CONFIGS[carrierId];
-  if (daysOutstanding < 30) {
-    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
-  }
-
-  // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
-  if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
-    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
+  if (daysOutstanding < config.minWaitDays) {
+    return {
+      allowed: false,
+      code: 'CLAIM_TOO_YOUNG',
+      reason: `${config.displayName} requires minimum ${config.minWaitDays} days outstanding (currently ${daysOutstanding})`,
+    };
   }
 
   // 6. Claims over 90 days — escalate to human, skip AI
@@ -366,7 +372,7 @@ export async function validateDispatch(
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Subscription monthly claim limit
+  // 8. Subscription monthly claim limit
   const subscriptionGuard = await validateSubscriptionClaimCapacity(prisma, {
     practiceId,
     claimId,
@@ -380,7 +386,7 @@ export async function validateDispatch(
     };
   }
 
-  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 9. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);
