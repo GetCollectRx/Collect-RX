@@ -168,10 +168,22 @@
 
 | ID | Task | Status |
 |----|------|--------|
-| AA-27 | Add `scope="col"` to the shared `Th`/`Thead` component (app-wide a11y fix) | [ ] |
-| AA-28 | Electron `shell.openExternal` https-only check | [ ] |
-| AA-29 | Electron `will-navigate` handler (carried over from 2026-05-29 security audit) | [ ] |
-| AA-30 | Hash password-reset tokens at rest instead of storing plaintext | [ ] |
+| AA-27 | Add `scope="col"` to the shared `Th`/`Thead` component (app-wide a11y fix) | [x] |
+| AA-28 | Electron `shell.openExternal` https-only check | [x] |
+| AA-29 | Electron `will-navigate` handler (carried over from 2026-05-29 security audit) | [x] |
+| AA-30 | Hash password-reset tokens at rest instead of storing plaintext | [x] |
+
+### AA-27 — Missing `scope="col"` on table headers — FIXED
+**Finding:** the shared `Th` component (`src/components/ui/Table.tsx`) rendered `<th>` with no `scope` attribute — a screen reader can't reliably associate a data cell with its column header without it. Six more files bypassed the shared component with raw `<th>` elements, same gap: `PreVisitCommandCenter.tsx`, `GroupDashboard.tsx`, `ProductUsageAnalytics.tsx`, `Admin.tsx`, `OfficeGuide.tsx`.
+**Fix:** added `scope="col"` as the default on the shared `Th` component (still overridable via props spread), and added it explicitly to all raw `<th>` elements in the six files above. `npx tsc --noEmit` and `npm run lint` clean.
+
+### AA-28/AA-29 — Electron `shell.openExternal` unrestricted + no `will-navigate` guard — FIXED
+**Finding:** `desktop/main.js`'s `setWindowOpenHandler` called `shell.openExternal(url)` on any URL a page tried to `window.open()`, with no protocol check — a compromised or malicious page in the renderer could hand the OS shell a `file:`, `javascript:`, or arbitrary custom-protocol URI. Separately, there was no `will-navigate` handler, so a full in-window navigation (not just `window.open`) away from the app's own origin was unrestricted — the renderer could be redirected to load attacker-controlled content directly into the privileged Electron window.
+**Fix:** added `isSafeExternalUrl()` (https-only in production, http allowed only in dev for localhost) gating every `shell.openExternal()` call, and a `will-navigate` handler that allows same-origin navigation (via `isSameOrigin()` against `WINDOW_ENTRY_URL`) and denies everything else, handing safe http(s) URLs to the system browser instead of loading them in-window. Verified with `node --check desktop/main.js` (this file is Node/CommonJS and outside `npm run lint`'s `src/**/*.{ts,tsx}` scope, consistent with how the rest of `desktop/` is already validated).
+
+### AA-30 — Plaintext password-reset tokens at rest — FIXED
+**Finding:** `authRoutes.ts`'s `/reset-password/request` stored the raw `randomBytes(32).toString('hex')` reset token directly in `passwordResetToken.token`, and `/reset-password/confirm` looked it up by the raw value. A read-only DB compromise or backup leak would hand an attacker live, unexpired, directly-usable account-takeover tokens — no additional attack needed.
+**Fix:** added `hashResetToken()` (SHA-256 — deliberately not bcrypt; the token already has 256 bits of entropy from `randomBytes`, so bcrypt's slowness buys nothing against brute-forcing a specific token within its 1-hour expiry, unlike a low-entropy password). `/request` now stores the hash; `/confirm` hashes the incoming token before lookup. The raw token is unchanged everywhere it's user-facing (emailed link). New test in `tests/adversarial.smoke.test.ts` (`Password reset token is stored hashed, not plaintext, and still round-trips`) recovers the raw token via the SendGrid-unset console-fallback path, asserts the DB value is a 64-hex-char hash that is NOT the raw token, then confirms the reset still succeeds end-to-end with the raw token and the password actually changes. Verified against real local Postgres: full suite 1370 passed / 8 skipped, `npm run lint` 0 errors.
 
 ---
 

@@ -70,10 +70,10 @@ export default function OfficeGuide() {
           <table className="w-full text-sm text-left text-gray-700 dark:text-gray-300">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500">
-                <th className="py-2 pr-4">Action</th>
-                <th className="py-2 pr-4">Practice owner</th>
-                <th className="py-2 pr-4">Office manager / coordinator</th>
-                <th className="py-2">Front desk</th>
+                <th scope="col" className="py-2 pr-4">Action</th>
+                <th scope="col" className="py-2 pr-4">Practice owner</th>
+                <th scope="col" className="py-2 pr-4">Office manager / coordinator</th>
+                <th scope="col" className="py-2">Front desk</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -124,9 +124,9 @@ export default function OfficeGuide() {
         <table className="w-full text-sm text-left text-gray-700 dark:text-gray-300">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700 text-xs uppercase text-gray-500">
-              <th className="py-2 pr-3">Claim ref</th>
-              <th className="py-2 pr-3">Teaches</th>
-              <th className="py-2">Open</th>
+              <th scope="col" className="py-2 pr-3">Claim ref</th>
+              <th scope="col" className="py-2 pr-3">Teaches</th>
+              <th scope="col" className="py-2">Open</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

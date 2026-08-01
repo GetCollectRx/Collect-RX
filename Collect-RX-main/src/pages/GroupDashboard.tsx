@@ -69,7 +69,7 @@ export default function GroupDashboard() {
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   {['Practice', 'Status', 'Claims', 'Resolution', 'Outstanding AR', 'Active staff'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{h}</th>
+                    <th key={h} scope="col" className="px-4 py-3 text-left text-2xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>

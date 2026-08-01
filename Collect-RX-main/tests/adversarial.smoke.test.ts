@@ -14,8 +14,9 @@
  * For EACH test: proves failure via error message + audit log verification.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
@@ -312,6 +313,66 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     expect(resB.body.error).toContain('does not match session');
 
     await cleanupFixtures([practiceA, practiceB]);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Test 3b: Password reset tokens are hashed at rest, and the raw token
+  // still redeems successfully (AA-30 — plaintext-token-at-rest fix)
+  // ──────────────────────────────────────────────────────────────────────────
+  it('Password reset token is stored hashed, not plaintext, and still round-trips', async () => {
+    const practice = await createPracticeForTests(prisma);
+    const user = await prisma.user.create({
+      data: {
+        practiceId: practice.id,
+        email: `reset-hash-${Date.now()}@test.local`,
+        passwordHash: await bcrypt.hash('OldPassword123!', 4),
+        displayName: 'Reset Hash Test',
+        role: 'front_desk',
+        isActive: true,
+      },
+    });
+
+    // passwordReset.ts logs the reset URL (containing the raw token) when
+    // SENDGRID_API_KEY is unset, which is always true in this test env —
+    // spy on it to recover the raw token the same way an emailed link would.
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const resRequest = await request(app)
+      .post('/api/auth/reset-password/request')
+      .send({ email: user.email });
+    expect(resRequest.status).toBe(200);
+
+    const loggedLine = consoleLogSpy.mock.calls
+      .map((args) => args.join(' '))
+      .find((line) => line.includes('Reset URL'));
+    consoleLogSpy.mockRestore();
+
+    const stored = await prisma.passwordResetToken.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(stored).not.toBeNull();
+    // 64 lowercase hex chars = a SHA-256 digest, not the raw 32-byte-hex token.
+    expect(stored!.token).toMatch(/^[0-9a-f]{64}$/);
+
+    expect(loggedLine, 'expected password-reset console fallback to have logged the reset URL').toBeDefined();
+    const match = loggedLine!.match(/token=([0-9a-f]+)/);
+    expect(match, 'expected reset URL to contain a hex token query param').not.toBeNull();
+    const rawToken = decodeURIComponent(match![1]);
+
+    // The raw token must NOT equal what's stored — proves storage isn't plaintext.
+    expect(stored!.token).not.toBe(rawToken);
+
+    const resConfirm = await request(app)
+      .post('/api/auth/reset-password/confirm')
+      .send({ token: rawToken, newPassword: 'NewPassword456!' });
+    expect(resConfirm.status).toBe(200);
+    expect(resConfirm.body.ok).toBe(true);
+
+    const updated = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(await bcrypt.compare('NewPassword456!', updated!.passwordHash)).toBe(true);
+
+    await cleanupFixtures([practice]);
   });
 
   // ──────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
@@ -44,6 +44,14 @@ import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 
 const BCRYPT_ROUNDS = 12;
+
+// Reset tokens are high-entropy (32 random bytes) and single-use with a short
+// expiry, so a fast deterministic hash is sufficient here — unlike passwords,
+// there's no brute-forcing a specific token from its hash within the 1-hour
+// expiry window, so bcrypt's deliberate slowness buys nothing.
+function hashResetToken(rawToken: string): string {
+  return createHash('sha256').update(rawToken).digest('hex');
+}
 
 async function buildSessionHealth(prisma: PrismaClient) {
   const health = await runSessionHealthCheck(prisma);
@@ -728,8 +736,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
+      // Store only the hash — the raw token (sent to the user below) is the only
+      // thing that can redeem a reset, so a DB read/backup leak alone must not
+      // be enough to reset an account.
       await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt },
+        data: { userId: user.id, token: hashResetToken(token), expiresAt },
       });
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
@@ -762,7 +773,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
       }
 
-      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+      const record = await prisma.passwordResetToken.findUnique({ where: { token: hashResetToken(token) } });
       if (!record || record.usedAt || record.expiresAt < new Date()) {
         return res.status(400).json({ error: 'Invalid or expired reset token' });
       }

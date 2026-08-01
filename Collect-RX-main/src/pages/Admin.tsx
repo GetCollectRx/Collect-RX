@@ -366,10 +366,10 @@ export default function Admin() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-600 text-gray-500">
-                  <th className="py-1.5 pr-2">Time (UTC)</th>
-                  <th className="py-1.5 pr-2">Action</th>
-                  <th className="py-1.5 pr-2">Subject</th>
-                  <th className="py-1.5">Details</th>
+                  <th scope="col" className="py-1.5 pr-2">Time (UTC)</th>
+                  <th scope="col" className="py-1.5 pr-2">Action</th>
+                  <th scope="col" className="py-1.5 pr-2">Subject</th>
+                  <th scope="col" className="py-1.5">Details</th>
                 </tr>
               </thead>
               <tbody>

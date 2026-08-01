@@ -46,6 +46,7 @@ export function Th({ children, align = 'left', sortable = false, sorted, onSort,
         sortable && 'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors',
         className,
       ].filter(Boolean).join(' ')}
+      scope="col"
       onClick={sortable ? onSort : undefined}
       aria-sort={sorted ? (sorted === 'asc' ? 'ascending' : 'descending') : undefined}
       {...props}

@@ -81,9 +81,9 @@ function BucketTable({ title, buckets }: { title: string; buckets: AdjudicationG
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-            <th style={{ padding: '6px 4px' }}>Key</th>
-            <th>Events</th>
-            <th>Success</th>
+            <th scope="col" style={{ padding: '6px 4px' }}>Key</th>
+            <th scope="col">Events</th>
+            <th scope="col">Success</th>
           </tr>
         </thead>
         <tbody>
@@ -257,10 +257,10 @@ export default function PreVisitCommandCenter() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '8px 4px' }}>Procedure</th>
-                  <th>Status</th>
-                  <th>Days left</th>
-                  <th>Denial date</th>
+                  <th scope="col" style={{ padding: '8px 4px' }}>Procedure</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Days left</th>
+                  <th scope="col">Denial date</th>
                 </tr>
               </thead>
               <tbody>
@@ -296,11 +296,11 @@ export default function PreVisitCommandCenter() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '8px 4px' }}>Appointment</th>
-                  <th>Carrier</th>
-                  <th>Procedures</th>
-                  <th>Signal</th>
-                  <th>Reason</th>
+                  <th scope="col" style={{ padding: '8px 4px' }}>Appointment</th>
+                  <th scope="col">Carrier</th>
+                  <th scope="col">Procedures</th>
+                  <th scope="col">Signal</th>
+                  <th scope="col">Reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,10 +336,10 @@ export default function PreVisitCommandCenter() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '6px 4px' }}>Week</th>
-                    <th>Events</th>
-                    <th>Success rate</th>
-                    <th>Median duration</th>
+                    <th scope="col" style={{ padding: '6px 4px' }}>Week</th>
+                    <th scope="col">Events</th>
+                    <th scope="col">Success rate</th>
+                    <th scope="col">Median duration</th>
                   </tr>
                 </thead>
                 <tbody>
