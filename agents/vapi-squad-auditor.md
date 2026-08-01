@@ -4,37 +4,22 @@
 
 ---
 
-## ⚠️ CRITICAL OPEN ISSUE — PHI IN VAPI SYSTEM PROMPT
+## ✅ PHI Boundary — Closed (Option B)
 
-`vapi-system-prompt.md` currently contains the following PHI variables:
+**Decision (2026-06-20):** Ephemeral PHI via Vapi `variables` at call time only. Documented in `docs/compliance/PHI-VAPI-BOUNDARY.md`.
 
-```
-{{patient_name}}
-{{patient_dob}}
-{{policy_number}}
-{{group_number}}
-{{subscriber_name}}
-```
+`vapi-system-prompt.md` and `vapi-squad-config.json` use **placeholder variable names** (`{{patient_name}}`, etc.). Real values are injected by `initiateCall()` and never stored in DB, logs, or Vapi metadata.
 
-The CLAUDE.md PHI boundary rule states: "PHI (patient names, DOBs, health card numbers) never crosses to Vapi."
+**Before production scale — operator/legal:**
+1. Signed BAA/DPA with Vapi covering Canadian PHI
+2. Confirm Vapi transcript retention policy in writing
+3. PHI access log reviewed monthly
 
-**These two facts are in direct conflict.** This must be resolved before any production call is placed.
-
-**Resolution path — choose one and document the decision:**
-
-**Option A — PHI-Free Design (preferred)**
-Remove all PHI variables from the Vapi prompt. The agent identifies the claim by `claimRef` (e.g., CRX-4821) only. The carrier representative uses the claim number to pull up the file. Test whether all 6 carriers accept claim-number-only identification from an authorized billing agent without patient name/DOB verification.
-- Risk: Some carriers may refuse to discuss the claim without patient DOB verification, causing call failures.
-- If a carrier requires DOB: route those claims to human escalation instead of AI.
-
-**Option B — PHI-Permitted with BAA (if carriers require patient identity)**
-If calls cannot succeed without patient name/DOB, Vapi must be treated as a Business Associate under PHIPA. Requires:
-1. Signed BAA (Business Associate Agreement) / DPA-equivalent with Vapi covering Canadian PHI
-2. Update `vapiService.startCall()` to pass patient name and DOB as call variables
-3. Log every call where PHI is transmitted to Vapi in the PHI access log
-4. Confirm Vapi does not retain transcripts containing PHI beyond what's necessary
-
-**Do not go live until this decision is made and implemented. Each non-compliant call is a PHIPA violation.**
+**Auditor checks:**
+- [ ] No PHI in Vapi `metadata` payload (UUID only)
+- [ ] `recordingEnabled: false` on outbound calls
+- [ ] Post-call audio deletion gate active
+- [ ] Logger scrubs PHI field names
 
 ---
 

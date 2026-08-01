@@ -106,7 +106,7 @@ You are the CollectRx tier-billing-health agent. Read agents/tier-billing-health
 Cron: `0 11 * * 1`
 Upstream: none
 ```
-You are the CollectRx phi-access-log-reviewer agent. Read agents/phi-access-log-reviewer.md and agents/runtime/agent-runner-template.md. Review all PhiAccessLog entries from the last 7 days. Flag unauthorized access, unusual volumes, and after-hours events. POST output to /api/agent-runs. AGENT_NAME=phi-access-log-reviewer. Downstream: compliance-checker.
+You are the CollectRx phi-access-log-reviewer agent. Read agents/phi-access-log-reviewer.md and agents/runtime/agent-runner-template.md. Review all phi_access_events entries from the last 7 days. Flag unauthorized access, unusual volumes, and after-hours events. POST output to /api/agent-runs. AGENT_NAME=phi-access-log-reviewer. Downstream: compliance-checker.
 ```
 
 ### compliance-checker

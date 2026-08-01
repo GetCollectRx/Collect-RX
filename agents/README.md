@@ -1,8 +1,10 @@
 # CollectRx Agent System
 
+> **Billing (2026-07-09):** Do **not** run these markdown prompts via Claude Code / `loop_runner.py` with your Anthropic API key — that pattern caused ~$56/week in Opus API charges. Use the **free** vitest agents instead: `npm run agents` (deterministic, no LLM). Paid LLM evals require `COLLECTRX_ANTHROPIC_EVAL=1` explicitly.
+
 **29 agents** covering every dimension of building and running CollectRx as a company: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk.
 
-> **P0 OPEN:** PHI variables (`{{patient_name}}`, `{{patient_dob}}`) found in `Collect-RX-main/vapi-system-prompt.md`. This directly violates the PHI boundary rule. Production calls must not run until this is resolved. See `vapi-squad-auditor.md` for resolution options.
+> **Compliance status (2026-06-20):** PHI boundary closed (Option B — ephemeral Vapi variables). BAAL hard gate enforced in `validateDispatch()`. Legal templates pending counsel — see `docs/compliance/LEGAL-REVIEW-PROMPT.md`.
 
 ---
 
@@ -108,19 +110,29 @@ Client Acquisition → ROI Proof (prospect estimates)
 
 ---
 
-## Open Decisions Blocking Progress
+## Open Decisions
 
-1. **PHI in Vapi system prompt** — Option A (PHI-free design) or Option B (BAA with Vapi). Owner: Khalid. **Blocks: all production calls.**
+1. **AbelDent re-engagement** — Active pursuit or park. Owner: Khalid.
 
-2. **BAAL gate in queue engine** — Hard block or soft UI warning. Owner: Khalid. **Blocks: CRTC compliance for ADAD.**
+## Closed Decisions (2026-06-20)
 
-3. **AbelDent re-engagement** — Active pursuit or park. Owner: Khalid.
+1. **PHI / Vapi boundary** — Option B (ephemeral call variables). See `docs/compliance/PHI-VAPI-BOUNDARY.md`.
+2. **BAAL gate** — Hard block in `checkCarrierAuthorizationGate()` via `validateDispatch()`. Requires BAAL + provider number + voice agent enabled.
+
+## Operator / Legal (blocking production scale)
+
+1. **Counsel review** — Execute BAAL, Platform Agreement, Privacy Policy. Prompt: `docs/compliance/LEGAL-REVIEW-PROMPT.md`.
+2. **Vendor BAAs** — Vapi, Twilio, SendGrid, Stripe (Document 5 in legal prompt).
 
 ---
 
 ## How to Invoke Any Agent
 
-Paste the "How to Run This Agent" prompt from the relevant file into a new Cowork session. Each prompt is self-contained — it tells the agent what to read, what to check, and what format to report in.
+**Preferred (free):** `npm run agents` — runs vitest validation agents in `tests/agents/` (no Anthropic API).
+
+**Legacy (paid — avoid):** Pasting markdown prompts into Claude Code / Cowork sessions bills your Anthropic API console directly, especially with Opus. Do not use for routine development.
+
+Each `agents/*.md` file documents what to check; the vitest agents encode the same checks without LLM cost.
 
 ---
 
