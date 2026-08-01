@@ -64,6 +64,7 @@ model Practice {
   organizationMemberships        OrganizationPractice[]
   partnershipProspect            Prospect?
   ruleSets                       RuleSet[]
+  insuranceClaims                InsuranceClaim[]
   eligibilitySnapshots           EligibilitySnapshot[]
   users                          User[]
   usagePeriods                   UsagePeriod[]
@@ -643,6 +644,7 @@ model InsuranceClaim {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
+  practice        Practice @relation(fields: [practiceId], references: [id])
   callAttempts    CallAttempt[]
   queueEntry      CallQueue?
   recoveryActions ClaimRecoveryAction[]

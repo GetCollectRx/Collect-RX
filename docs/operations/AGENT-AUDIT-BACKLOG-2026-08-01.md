@@ -14,7 +14,7 @@
 | AA-02 | Fix Incident Response runbook kill-switch SQL (both `agents/` copies) | [x] |
 | AA-03 | Fix `weeklyPilotReport.ts` to report verified recovered amounts, not billed amount | [x] |
 | AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [x] |
-| AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
+| AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [x] |
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [x] |
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [x] |
 | AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [x] |
@@ -39,9 +39,10 @@
 **Fix:** both paths now create a `CallEscalation` row (deduped like `MAX_ATTEMPTS` already was) and send a `CLAIM_AGED_OUT` practice notification (new type added to `PracticeNotification`) for the `ESCALATE_OVER_90` case. New test added: `tests/frontDesk/queueEngine.dispatch.test.ts` ("escalates a >90-day head claim to a human...").
 **Known gap:** `routes/insurance.ts` has no existing test harness at all (no test file imports it) — the fix there mirrors the now-tested `queueEngine.ts` logic exactly, verified by typecheck/lint, but isn't independently covered by a route-level test. Building that harness is a bigger, separate investment — tracked as AA-32 below rather than bolted on here.
 
-### AA-05 — Missing FK constraint
+### AA-05 — Missing FK constraint — FIXED
 **Finding:** `prisma/schema.prisma:611` (`InsuranceClaim.practiceId`) and ~10 sibling tables (`ClaimRecoveryAction`, `ClaimRecoveryEvent`, `ClaimEvidenceItem`, `CallQueue`, `PhiAccessEvent`, etc.) carry a denormalized `practiceId` with no `@relation` to `Practice`.
-**Definition of done:** a new Prisma migration adds the FK (at minimum on `InsuranceClaim`, the highest-value table); migration tested against staging before prod per `Collect-RX-main/CLAUDE.md`'s own migration checklist (this is a schema change on a live multi-tenant table — do not `prisma migrate deploy` straight to prod without that staging pass).
+**Fix:** added the `InsuranceClaim.practice`/`Practice.insuranceClaims` relation to `prisma/schema.prisma` and migration `20260801000000_insurance_claims_practice_fk` (`ON DELETE RESTRICT ON UPDATE CASCADE`, added `NOT VALID` then validated in a separate statement so a large production table doesn't take a long exclusive lock during deploy). Sibling tables are tracked separately, not bundled into this one migration.
+**Verified for real, not just written:** spun up a local Postgres 16 instance (this sandbox has the binary — no Docker needed) and actually ran `prisma migrate deploy` end-to-end against it. First attempt **failed** — a real orphaned `insurance_claims` row already existed, produced by the shared test helper `cleanupPracticeWithUsers()` (`tests/factories/practice.ts`), which deleted `User` rows and the `Practice` but never the claims a test had created, silently succeeding because there was no FK to stop it. This is precisely the failure mode AA-05 exists to prevent, caught in the act. Fixed the helper to delete `CallQueue`/`CallAttempt` (the two tables with `ON DELETE RESTRICT` against `insurance_claims`) and the claims themselves before the practice. Reset to a clean DB, reapplied all 61 migrations cleanly, ran the full suite (`npm test`, matching CI's Postgres setup) twice — 1364 passed / 8 skipped both times — and confirmed zero orphaned or leftover `insurance_claims` rows afterward. Also manually confirmed the constraint rejects a direct orphaned INSERT.
 
 ### AA-06 — Carrier timeout key mismatch — FIXED
 **Finding:** `src/billing/tiers.ts:131-139` (`CARRIER_TIMEOUTS`) used kebab-case keys (`'rbc-insurance'`); `prisma/schema.prisma`'s `CarrierId` enum is snake_case (`rbc`). `src/vapi/client.ts:43-46` (`maxCallDurationSeconds`) does a direct lookup that only ever matched `manulife`, silently falling back to the 30-min default for every other carrier — truncating RBC's intended 45-min ceiling.
