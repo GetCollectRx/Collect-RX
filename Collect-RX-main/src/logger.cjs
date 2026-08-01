@@ -62,12 +62,23 @@ const PHI_FIELD_NAMES = new Set([
   "group_number", "patientName", "dateOfBirth", "policyNumber",
 ]);
 
+// Error.prototype.message/.stack are non-enumerable, so Object.entries(err)
+// (the generic object branch below) silently returns {} for any logged
+// Error — e.g. logger.error(msg, { error: dispatchErr }) — breaking the
+// "kept indefinitely for forensics" promise on exactly the calls that need
+// forensics most. Serialize Errors explicitly before the generic branch runs.
 function scrubPhi(meta) {
   if (!meta || typeof meta !== "object") return meta;
   const clean = {};
   for (const [key, value] of Object.entries(meta)) {
     if (PHI_FIELD_NAMES.has(key)) {
       clean[key] = "[REDACTED-PHI]";
+    } else if (value instanceof Error) {
+      clean[key] = {
+        name: value.name,
+        message: PHI_PATTERNS.some(p => p.test(value.message)) ? "[REDACTED-PATTERN]" : value.message,
+        stack: value.stack,
+      };
     } else if (typeof value === "string" && PHI_PATTERNS.some(p => p.test(value))) {
       clean[key] = "[REDACTED-PATTERN]";
     } else if (typeof value === "object" && value !== null) {
@@ -211,5 +222,9 @@ if (process.env.NODE_ENV !== "production" && process.env.EMIT_AUDIT_SAMPLE === "
     note:     "SAMPLE ONLY",
   });
 }
+
+// Exposed for unit testing only (tests/logger.test.ts) — not part of the
+// public logging API.
+logger._scrubPhi = scrubPhi;
 
 module.exports = logger;

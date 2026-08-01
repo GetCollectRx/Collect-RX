@@ -19,7 +19,7 @@
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [x] |
 | AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [x] |
 | AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [x] |
-| AA-10 | Fix forensic logger dropping `Error.message`/`.stack` | [ ] |
+| AA-10 | Fix forensic logger dropping `Error.message`/`.stack` | [x] |
 
 ### AA-01 — PHI detokenization logging gap
 **Finding:** Only 2 of 6 real `piiVault.detokenize()` call sites write a `PhiAccessEvent` row. Unlogged: `src/server/preVisit/preVisitDispatch.ts:69`, `src/server/preVisit/electronicPreVisit.ts:45,88`, `src/server/services/priorityEngine.ts:51`.
@@ -59,9 +59,9 @@
 **Finding:** `src/server/services/platformReports.ts:130-133` incremented `agg.total` and `agg.attempts` identically on every `CallAttempt` row, so `attempts/total` was mathematically always `1`.
 **Fix:** `computeCarrierStats` now groups attempts by `claimId`, sorts each claim's attempts chronologically, and — for claims that reached `RESOLVED` in the window — counts attempts up to and including the first resolution. `avgAttempts` is the average of that count across resolved claims, not a per-attempt-row ratio. Claims that never resolved in the window are correctly excluded from the average rather than dragging it toward 1. No test coverage existed for `platformReports.ts` at all — added `tests/platformReports.test.ts` covering the fix directly (including a case with extra post-resolution attempt rows, to prove only the *first* resolution counts).
 
-### AA-10 — Forensic logger drops Error detail
-**Finding:** `src/logger.cjs`'s `scrubPhi` does `Object.entries()` over the log `meta`, then `winston.format.json()` serializes it. `Error` instances have non-enumerable `message`/`stack`, so `logger.error(msg, { error: someErr })` persists as literal `{"error":{}}` — reproduced directly against this winston config. Consumed at `queueEngine.ts:571-576`, the Vapi-dispatch retry path.
-**Definition of done:** logging an `Error` under any key preserves `message` and `stack` in the persisted JSON.
+### AA-10 — Forensic logger drops Error detail — FIXED
+**Finding:** `src/logger.cjs`'s `scrubPhi` did `Object.entries()` over the log `meta`, then `winston.format.json()` serialized it. `Error` instances have non-enumerable `message`/`stack`, so `logger.error(msg, { error: someErr })` persisted as literal `{"error":{}}`. Consumed at `queueEngine.ts`'s Vapi-dispatch retry path (`logger.error('[deskQueueEngine] Vapi dispatch failed...', { error: dispatchErr })`), among others.
+**Fix:** `scrubPhi` now detects `value instanceof Error` before the generic `Object.entries` branch and serializes `name`/`message`/`stack` explicitly, still running `message` through the existing PHI-pattern redaction. `logger.cjs` had zero test coverage — added `tests/logger.test.ts` (exposes `scrubPhi` via `logger._scrubPhi`, test-only hook) covering the fix plus regression coverage for the pre-existing PHI-field and pattern redaction.
 
 ---
 
