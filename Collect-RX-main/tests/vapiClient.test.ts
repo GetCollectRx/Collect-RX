@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CARRIER_PHONE_MAP, initiateCall, initiatePreVisitCall } from '../src/vapi/client.js';
+import preVisitSquadConfig from '../vapi-previsit-config.json';
 
 const BASE_PARAMS = {
   claimId: 'claim-1',
@@ -120,5 +121,53 @@ describe('initiatePreVisitCall', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.squadId).toBe('squad-recovery');
+  });
+
+  it('never sets disclosure_message — PreVisit_IVR_Navigator.firstMessage is a literal "" in vapi-previsit-config.json and must not be able to speak a disclosure via a variable', async () => {
+    await initiatePreVisitCall(PRE_VISIT_BASE);
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.assistantOverrides.variableValues.disclosure_message).toBeUndefined();
+    // The disclosure text lives only in PreVisit_Agent's hardcoded firstMessage
+    // template; call_purpose supplies just the reason-for-call clause.
+    expect(body.assistantOverrides.variableValues.call_purpose).toBe(
+      'an eligibility and coverage verification before a scheduled appointment',
+    );
+  });
+
+  it('uses the CDCP-specific call purpose when cdcpContext is true', async () => {
+    await initiatePreVisitCall({ ...PRE_VISIT_BASE, cdcpContext: true });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.assistantOverrides.variableValues.call_purpose).toBe(
+      'a CDCP predetermination status inquiry before a scheduled appointment',
+    );
+  });
+});
+
+describe('vapi-previsit-config.json — PreVisit_IVR_Navigator must never speak', () => {
+  function findMember(name: string) {
+    const member = (preVisitSquadConfig.squad.members as Array<{ assistant: { name: string } }>).find(
+      (m) => m.assistant.name === name,
+    );
+    if (!member) throw new Error(`squad member "${name}" not found`);
+    return member.assistant;
+  }
+
+  it('PreVisit_IVR_Navigator.firstMessage is a literal empty string, not a variable', () => {
+    const navigator = findMember('PreVisit_IVR_Navigator');
+    expect(navigator.firstMessage).toBe('');
+    expect(navigator.firstMessageMode).toBe('assistant-waits-for-user');
+  });
+
+  it('PreVisit_Agent carries the real disclosure text, not a bare variable reference', () => {
+    const agent = findMember('PreVisit_Agent');
+    expect(agent.firstMessage).toContain('automated calling system');
+    expect(agent.firstMessage).toContain('{{practice_name}}');
+    expect(agent.firstMessage).toContain('{{call_purpose}}');
   });
 });

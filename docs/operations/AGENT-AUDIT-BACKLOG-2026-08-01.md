@@ -17,7 +17,7 @@
 | AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [x] |
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [x] |
-| AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [ ] |
+| AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [x] |
 | AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [ ] |
 | AA-10 | Fix forensic logger dropping `Error.message`/`.stack` | [ ] |
 
@@ -51,9 +51,9 @@
 **Finding:** `src/carriers/adapter.ts:348-357` applied a flat 30-day floor to every carrier; the per-carrier `minWaitDayForClaims` from `carrier-configs.json` (32 for 5 carriers, 21 for TELUS) was read but never enforced (the code comment admitted it was "informational only"). Separately, TPA resolution was only called from the pre-visit estimate flow, never from `queueEngine.ts`'s AR-calling dispatch.
 **Fix:** `validateDispatch`'s step 5 now gates on `CARRIER_CONFIGS[carrierId].minWaitDays` (carrier-specific) instead of a hardcoded 30; the redundant TELUS-only check is gone. `queueEngine.ts` now calls `identifyTelusPlan()` right after PHI resolution (where `subscriberId`/`groupPolicyNumber` are already available) for `telus_adjudicare` claims, and defers dispatch (`TELUS_TPA_UNRESOLVED`, 4h) if the TPA can't be identified or confidence is low. New tests added to `tests/phase-5/carrier-adapter.test.ts` (day-boundary behavior per carrier) and `tests/frontDesk/queueEngine.dispatch.test.ts` (TPA-unresolved defers, TPA-resolved dispatches). Also renumbered `validateDispatch`'s step comments, which had drifted (a missing step-3 label and a duplicate "7.") independent of this bug.
 
-### AA-08 — Pre-visit disclosure leak risk
-**Finding:** `docs/compliance/crtc-disclosure-decision.md:47` requires `disclosure_message` to resolve empty for any IVR-navigator agent. The main claims squad does this correctly (`vapi-squad-config.json` hardcodes `firstMessage: ""`). The pre-visit squad doesn't: `src/vapi/client.ts:454-457` (`initiatePreVisitCall`) populates `disclosure_message` with a full sentence, and `vapi-previsit-config.json:8-10`'s `PreVisit_IVR_Navigator` speaks it immediately on connect — contradicting its own "silent, DTMF-only" system prompt.
-**Definition of done:** `initiatePreVisitCall` sends an empty `disclosure_message` to `PreVisit_IVR_Navigator`; the real disclosure text is reserved for `PreVisit_Agent` (the agent that actually talks to a person).
+### AA-08 — Pre-visit disclosure leak risk — FIXED
+**Finding:** `docs/compliance/crtc-disclosure-decision.md:47` requires `disclosure_message` to resolve empty for any IVR-navigator agent. The main claims squad does this correctly (`vapi-squad-config.json` hardcodes `firstMessage: ""`, not a variable at all). The pre-visit squad didn't: `src/vapi/client.ts:454-457` (`initiatePreVisitCall`) populated `disclosure_message` with a full sentence, and `vapi-previsit-config.json`'s `PreVisit_IVR_Navigator` spoke it immediately on connect — contradicting its own "silent, DTMF-only" system prompt. Note: this landed on an IVR machine, not a live rep, so it was never a confirmed live CRTC violation, but it broke this exact documented verification gate.
+**Fix:** mirrored the main squad's pattern exactly. `PreVisit_IVR_Navigator.firstMessage` is now a literal `""` (`firstMessageMode: "assistant-waits-for-user"`), not a variable reference at all — it can no longer be made to speak by a bad variable value. The real disclosure text moved to `PreVisit_Agent.firstMessage` as a hardcoded template (same style as `Claims_Agent`), with a new `call_purpose` variable supplying just the reason-for-call clause. New tests in `tests/vapiClient.test.ts` pin both the runtime variable behavior and the config file's structure directly.
 
 ### AA-09 — Dead `avgAttempts` metric
 **Finding:** `src/server/services/platformReports.ts:130-133` increments `agg.total` and `agg.attempts` identically on every `CallAttempt` row, so `attempts/total` is mathematically always `1`.
