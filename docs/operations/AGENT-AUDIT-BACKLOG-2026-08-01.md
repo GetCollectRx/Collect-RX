@@ -73,7 +73,7 @@
 | AA-11 | Wire `Hold_Sentinel` webhook/`analysisPlan` in `vapi-squad-config.json` | [x] |
 | AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [x] |
 | AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [x] |
-| AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
+| AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [x] |
 | AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
 | AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [x] |
 | AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [x] |
@@ -91,9 +91,9 @@
 **Finding:** Only `Claims_Agent`'s system prompt (`vapi-squad-config.json:234`) had "Do not claim to be human if asked directly." `Escalation_Closer` (line ~437) and `Resolution_Closer` (line ~599) both converse directly with a live rep with no equivalent instruction.
 **Fix:** added "If asked directly whether you are human or an automated system, answer honestly - do not claim to be human." to both prompts. New test `tests/vapiSquadImpersonationGuard.test.ts` asserts all three conversational agents (not `IVR_Navigator`/`Hold_Sentinel`, which never converse by design) carry the instruction.
 
-### AA-14 — Stale CHANGELOG
+### AA-14 — Stale CHANGELOG — FIXED
 **Finding:** Last entry 2026-07-19; 227 commits have shipped since (eligibility engine, AbelDent connector, billing tiers, marketing engine, guardrails, recovery routing) with no changelog coverage.
-**Definition of done:** `CHANGELOG.md` has entries (or one summarizing "Unreleased" section) covering user-visible changes since 2026-07-19.
+**Fix:** reviewed `git log origin/main --since=2026-07-19` (69 commits on the actual trunk, excluding merge noise) and grouped the user-visible changes into the existing `[Unreleased]` section's Added/Changed/Fixed/Security buckets: weekly pilot reports, the Day 30/60/90 dashboard, pilot runbook pages, the email campaign system, accessibility/WCAG fixes, the Railway→Fly migration, the pre-push CI-mirroring hook, and the new brand logo under Added/Changed; PHI GCM auth-tag enforcement, the CDCP tenant-identity fix, the email-events auth-gate gap, npm audit clears, and this session's own AA-01 through AA-13/15-17 fixes (TELUS wait-day enforcement, 90-day escalation notifications, verified-revenue reporting, the practice FK, carrier-timeout keys, Hold_Sentinel webhook wiring, dead-code removal) under Fixed; the pre-visit token boundary and CASL enforcement under Security. Kept the format consistent with the file's existing Keep a Changelog structure.
 
 ### AA-15 — Typecheck false-positive gap — FIXED
 **Finding:** `npm ci && npx tsc --noEmit` gave 391 false "no exported member" errors because `postinstall` didn't run `prisma generate`. CI's workflow does this step explicitly, so production CI was unaffected, but the documented local commands weren't consistent with what CI actually runs.
