@@ -19,14 +19,19 @@ vi.mock('@sendgrid/mail', () => ({
 const NOW = new Date('2026-07-13T11:00:00Z');
 
 function makePrisma(overrides: {
-  attempts?: Array<{ outcome: string | null; durationSeconds: number | null; claim: { billedAmount: number } }>;
+  attempts?: Array<{ outcome: string | null; durationSeconds: number | null }>;
+  amountRecoveredCents?: number;
   ownerEmail?: string | null;
 } = {}) {
   const attempts = overrides.attempts ?? [
-    { outcome: 'RESOLVED', durationSeconds: 300, claim: { billedAmount: 850.5 } },
-    { outcome: 'RESOLVED', durationSeconds: 240, claim: { billedAmount: 425 } },
-    { outcome: 'NO_ANSWER', durationSeconds: 60, claim: { billedAmount: 900 } },
+    { outcome: 'RESOLVED', durationSeconds: 300 },
+    { outcome: 'RESOLVED', durationSeconds: 240 },
+    { outcome: 'NO_ANSWER', durationSeconds: 60 },
   ];
+  // Revenue comes from verified ClaimRecoveryEvent payments, not billedAmount —
+  // 127550 cents = $1,275.50, kept equal to the old fixture's total so the
+  // rendered-email assertions below don't need to change.
+  const amountRecoveredCents = overrides.amountRecoveredCents ?? 127_550;
   return {
     practice: {
       findMany: async () => [{ id: 'practice-1' }],
@@ -34,6 +39,9 @@ function makePrisma(overrides: {
     },
     callAttempt: {
       findMany: async () => attempts,
+    },
+    claimRecoveryEvent: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { amountRecoveredCents } }),
     },
     user: {
       findFirst: async () =>
@@ -61,7 +69,8 @@ describe('weeklyPilotReportEnabled', () => {
 
 describe('buildWeeklyPracticeMetrics', () => {
   it('aggregates calls, resolutions, revenue, and minutes over a 7-day window', async () => {
-    const metrics = await buildWeeklyPracticeMetrics(makePrisma(), 'practice-1', NOW);
+    const prisma = makePrisma();
+    const metrics = await buildWeeklyPracticeMetrics(prisma, 'practice-1', NOW);
 
     expect(metrics.practiceName).toBe('Test Dental Practice');
     expect(metrics.windowDays).toBe(7);
@@ -69,6 +78,23 @@ describe('buildWeeklyPracticeMetrics', () => {
     expect(metrics.claimsResolved).toBe(2);
     expect(metrics.revenueRecovered).toBeCloseTo(1275.5);
     expect(metrics.callMinutes).toBe(10);
+  });
+
+  it('sources revenue from verified payment events, not billed amount', async () => {
+    const prisma = makePrisma();
+    await buildWeeklyPracticeMetrics(prisma, 'practice-1', NOW);
+
+    const aggregateMock = (prisma as unknown as {
+      claimRecoveryEvent: { aggregate: ReturnType<typeof vi.fn> };
+    }).claimRecoveryEvent.aggregate;
+    expect(aggregateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          practiceId: 'practice-1',
+          eventType: { in: ['PAYMENT_VERIFIED_SYNC', 'MANUAL_PAYMENT_CONFIRMED'] },
+        }),
+      }),
+    );
   });
 });
 

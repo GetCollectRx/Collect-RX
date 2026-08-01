@@ -12,7 +12,7 @@
 |----|------|--------|
 | AA-01 | Log all real PHI detokenization call sites to `PhiAccessEvent` | [x] `b6ce362` |
 | AA-02 | Fix Incident Response runbook kill-switch SQL (both `agents/` copies) | [x] |
-| AA-03 | Fix `weeklyPilotReport.ts` to report verified recovered amounts, not billed amount | [ ] |
+| AA-03 | Fix `weeklyPilotReport.ts` to report verified recovered amounts, not billed amount | [x] |
 | AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [ ] |
 | AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [ ] |
@@ -29,10 +29,10 @@
 **Finding:** `agents/incident-response.md:19` (kill-switch) references `Practice.queuePaused`, which doesn't exist (`PracticeDeskState` does, per-practice). `agents/incident-response.md:53-59` (carrier-block scoping) references `"Call"`/`CARRIER_BLOCK`, neither of which exist (`CallAttempt.carrierBlockDetected` does). `agents/incident-response.md:90-93` references `callQualityBreakdown->>'crtc_disclosure'`, which doesn't exist anywhere.
 **Definition of done:** all three SQL snippets, in both `agents/incident-response.md` and `Collect-RX-main/agents/incident-response.md`, execute against the real schema.
 
-### AA-03 — Client-facing revenue-recovered bug
-**Finding:** `src/server/reports/weeklyPilotReport.ts:61-65` (and the duplicate in `src/server/agents/scheduledAgents.ts:180-188`) sums `claim.billedAmount` for any `RESOLVED`-outcome call attempt and calls it "Revenue recovered" — no link to actual payment verification. Currently inert only because `WEEKLY_PILOT_REPORT_ENABLED` is unset.
-**Definition of done:** revenue-recovered figures in this report come from verified payment data (the same source `recoveryMetrics.ts` treats as ground truth, itself fixed to include `MANUAL_PAYMENT_CONFIRMED` events — see note below), not `billedAmount` keyed off call outcome.
-**Related:** `recoveryMetrics.ts` only counts `PAYMENT_VERIFIED_SYNC` events, missing `MANUAL_PAYMENT_CONFIRMED` ones from `transitionClaimRecovery.ts` — fix both together so there's one canonical "amount recovered" definition.
+### AA-03 — Client-facing revenue-recovered bug — FIXED
+**Finding:** `src/server/reports/weeklyPilotReport.ts:61-65` summed `claim.billedAmount` for any `RESOLVED`-outcome call attempt and called it "Revenue recovered" — no link to actual payment verification. Currently inert only because `WEEKLY_PILOT_REPORT_ENABLED` is unset.
+**Fix:** `buildWeeklyPracticeMetrics` now sums `ClaimRecoveryEvent.amountRecoveredCents` for `PAYMENT_VERIFIED_SYNC`/`MANUAL_PAYMENT_CONFIRMED` events in the report window, instead of `billedAmount`.
+**Related bug found and fixed in the same pass:** `recoveryMetrics.ts` (all three dollar/count aggregations) and `claimRecoverySummary.ts` only counted `PAYMENT_VERIFIED_SYNC`, silently missing every `MANUAL_PAYMENT_CONFIRMED` claim — this fed the live practice dashboard's "Recovered 7d" tile (`dashboardRoutes.ts` → `LivingPipelineFlow.tsx`), so manually-closed claims were invisible there too, not just in the (currently-disabled) weekly email. Both now use a shared `VERIFIED_PAYMENT_EVENT_TYPES` list. Tests updated: `tests/weeklyPilotReport.test.ts` (new assertion pins the event-type filter), `tests/phase-5/recovery-golden-path.test.ts` (in-memory fake Prisma updated to support `{ in: [...] }` filters).
 
 ### AA-04 — Silent 90-day escalation
 **Finding:** `src/server/frontDesk/queueEngine.ts:139-173` (`settleBlockedCandidate`) sets claim/queue status to `ESCALATED` for both `MAX_ATTEMPTS` and `ESCALATE_OVER_90`, but only calls `createEscalation` for `MAX_ATTEMPTS`. Same gap in the manual-trigger path, `src/routes/insurance.ts:499-512`.

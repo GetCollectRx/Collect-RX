@@ -109,7 +109,7 @@ export async function getClaimRecoverySummary(
     null;
 
   const verifiedEvents = await prisma.claimRecoveryEvent.findMany({
-    where: { claimId, eventType: 'PAYMENT_VERIFIED_SYNC' },
+    where: { claimId, eventType: { in: ['PAYMENT_VERIFIED_SYNC', 'MANUAL_PAYMENT_CONFIRMED'] } },
     select: { amountRecoveredCents: true },
   });
   const dollarsRecoveredSyncVerified =
