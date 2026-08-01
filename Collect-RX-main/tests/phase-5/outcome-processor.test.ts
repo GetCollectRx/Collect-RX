@@ -157,6 +157,20 @@ describe('OutcomeProcessor.classifyOutcome', () => {
     expect(result.outcomeDetail).toContain('carrier_block');
   });
 
+  it('detects BLOCK_DETECTED for a phrase that only ever lived in the live-transcript scanner (AA-17)', () => {
+    // "we don't work with robots" is the exact wording Claims_Agent's own
+    // CARRIER REFUSAL PROTOCOL (vapi-squad-config.json) anticipates, added to
+    // carrierBlockPhrases.ts's baseline -- but previously invisible to this
+    // end-of-call classifier, since it had its own separate, narrower phrase
+    // list (BLOCK_SIGNAL_PATTERNS regexes + LEGACY_CARRIER_BLOCK_INCLUDES).
+    // Both detection paths now share one phrase list.
+    const result = classifyOutcome(makePayload({
+      transcript: "Sorry, we don't work with robots. Goodbye.",
+    }));
+    expect(result.outcome).toBe('BLOCK_DETECTED');
+    expect(result.carrierBlockDetected).toBe(true);
+  });
+
   it('classifies from summary when transcript is empty (legacy uses both)', () => {
     const result = classifyOutcome(makePayload({
       transcript: '',

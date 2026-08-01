@@ -76,7 +76,7 @@
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
 | AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
 | AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [ ] |
-| AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [ ] |
+| AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [x] |
 
 ### AA-11 — Hold_Sentinel has no reporting path — FIXED
 **Finding:** `vapi-squad-config.json:185-221` — unlike the other 4 squad agents, `Hold_Sentinel` had no `server` webhook block and no `analysisPlan.structuredDataPlan`. If a call ended while control was with Hold_Sentinel (timeout, or the carrier hangs up during hold), nothing reached the backend for that leg.
@@ -102,9 +102,9 @@
 **Finding:** `src/server/vapi/vapiWebhook.ts:547-596` (`handleVapiWebhook`) is self-documented `@deprecated ... never mounted, never called`, confirmed zero references anywhere including tests. `src/server/services/outcomeClassifier.ts` implements the exact anti-hallucination-violating pattern the backend-reviewer checklist forbids (keyword-regex → `RESOLVED`, no gating), with zero production importers — a landmine if ever wired in.
 **Definition of done:** both removed per the repo's own "no dead code" PRD rule (only after confirming, again, zero references — including in any branch this session didn't see).
 
-### AA-17 — Divergent CARRIER_BLOCK phrase lists
-**Finding:** the live-transcript scanner (`carrierBlockPhrases.ts`) and the end-of-call fallback classifier (`processor.ts`'s `BLOCK_SIGNAL_PATTERNS`/`LEGACY_CARRIER_BLOCK_INCLUDES`) maintain separate, non-identical phrase lists.
-**Definition of done:** one shared source of truth for carrier-block phrases, imported by both detection paths.
+### AA-17 — Divergent CARRIER_BLOCK phrase lists — FIXED
+**Finding:** the live-transcript scanner (`carrierBlockPhrases.ts`) and the end-of-call fallback classifier (`processor.ts`'s `BLOCK_SIGNAL_PATTERNS`/`LEGACY_CARRIER_BLOCK_INCLUDES`) maintained separate, non-identical phrase lists — real, concrete gap: several `carrierBlockPhrases.ts` phrases (e.g. "we don't work with robots", the exact wording Claims_Agent's own refusal protocol anticipates) were invisible to the end-of-call classifier.
+**Fix:** `processor.ts` now imports `getActiveBlockPhrases()` from `carrierBlockPhrases.ts` and checks it inside `matchLegacyTranscript`, in addition to its own regex patterns (kept — they catch flexible phrasing a literal list can't). The literal phrases from the retired `LEGACY_CARRIER_BLOCK_INCLUDES` were merged into `carrierBlockPhrases.ts`'s baseline (the `'carrier_block'` status-code literal stayed processor-specific — it's not a spoken phrase). Bonus: the end-of-call classifier now also benefits from self-tuner-learned block phrases, which it never did before. New test in `tests/phase-5/outcome-processor.test.ts` proves a phrase that only ever lived in the live-scanner list is now caught by the end-of-call classifier too.
 
 ---
 
