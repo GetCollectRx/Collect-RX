@@ -120,16 +120,24 @@ export async function computeCarrierStats(
 
   const byCarrier = new Map<
     CarrierId,
-    { total: number; resolved: number; duration: number; attempts: number; denials: Map<string, number> }
+    {
+      total: number;
+      resolved: number;
+      duration: number;
+      /** Attempts-to-resolution for each claim that resolved in this window — not a running total of every attempt row. */
+      resolutionAttemptCounts: number[];
+      denials: Map<string, number>;
+    }
   >();
 
   const recentRate = new Map<CarrierId, { recent: number; recentOk: number; prior: number; priorOk: number }>();
 
   for (const a of attempts) {
     const cid = a.claim.carrierId;
-    const agg = byCarrier.get(cid) ?? { total: 0, resolved: 0, duration: 0, attempts: 0, denials: new Map() };
+    const agg =
+      byCarrier.get(cid) ??
+      { total: 0, resolved: 0, duration: 0, resolutionAttemptCounts: [], denials: new Map() };
     agg.total += 1;
-    agg.attempts += 1;
     if (a.durationSeconds) agg.duration += a.durationSeconds;
     if (a.outcome === 'RESOLVED') agg.resolved += 1;
     if (a.outcome === 'DENIED' && a.outcomeDetail) {
@@ -147,6 +155,26 @@ export async function computeCarrierStats(
       if (a.outcome === 'RESOLVED') tr.priorOk += 1;
     }
     recentRate.set(cid, tr);
+  }
+
+  // "Avg attempts" means calls-to-resolution, per resolved claim — not
+  // attempts-per-attempt (which is trivially always 1). Group each claim's
+  // attempts chronologically and count how many it took to reach the first
+  // RESOLVED outcome.
+  const attemptsByClaim = new Map<string, typeof attempts>();
+  for (const a of attempts) {
+    const list = attemptsByClaim.get(a.claimId) ?? [];
+    list.push(a);
+    attemptsByClaim.set(a.claimId, list);
+  }
+  for (const claimAttempts of attemptsByClaim.values()) {
+    claimAttempts.sort((x, y) => x.initiatedAt.getTime() - y.initiatedAt.getTime());
+    const resolvedIndex = claimAttempts.findIndex((a) => a.outcome === 'RESOLVED');
+    if (resolvedIndex === -1) continue;
+    // Safe: attemptsByClaim only holds claimIds that were push()'d onto, so
+    // every list has at least one entry.
+    const cid = claimAttempts[0]!.claim.carrierId;
+    byCarrier.get(cid)?.resolutionAttemptCounts.push(resolvedIndex + 1);
   }
 
   const stats: CarrierStatRow[] = [...byCarrier.entries()].map(([carrierId, agg]) => {
@@ -173,7 +201,10 @@ export async function computeCarrierStats(
       totalClaims: agg.total,
       successRate: agg.total > 0 ? (agg.resolved / agg.total) * 100 : 0,
       avgCallDurationSeconds: agg.total > 0 ? Math.round(agg.duration / agg.total) : 0,
-      avgAttempts: agg.total > 0 ? agg.attempts / agg.total : 0,
+      avgAttempts:
+        agg.resolutionAttemptCounts.length > 0
+          ? agg.resolutionAttemptCounts.reduce((s, c) => s + c, 0) / agg.resolutionAttemptCounts.length
+          : 0,
       topDenialReason: topDenial,
       trend,
     };

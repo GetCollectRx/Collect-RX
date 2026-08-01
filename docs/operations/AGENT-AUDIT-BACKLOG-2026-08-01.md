@@ -18,7 +18,7 @@
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [x] |
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [x] |
 | AA-08 | Fix pre-visit `IVR_Navigator` disclosure_message (must resolve empty) | [x] |
-| AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [ ] |
+| AA-09 | Fix `avgAttempts` metric (currently always `1.0`) | [x] |
 | AA-10 | Fix forensic logger dropping `Error.message`/`.stack` | [ ] |
 
 ### AA-01 — PHI detokenization logging gap
@@ -55,9 +55,9 @@
 **Finding:** `docs/compliance/crtc-disclosure-decision.md:47` requires `disclosure_message` to resolve empty for any IVR-navigator agent. The main claims squad does this correctly (`vapi-squad-config.json` hardcodes `firstMessage: ""`, not a variable at all). The pre-visit squad didn't: `src/vapi/client.ts:454-457` (`initiatePreVisitCall`) populated `disclosure_message` with a full sentence, and `vapi-previsit-config.json`'s `PreVisit_IVR_Navigator` spoke it immediately on connect — contradicting its own "silent, DTMF-only" system prompt. Note: this landed on an IVR machine, not a live rep, so it was never a confirmed live CRTC violation, but it broke this exact documented verification gate.
 **Fix:** mirrored the main squad's pattern exactly. `PreVisit_IVR_Navigator.firstMessage` is now a literal `""` (`firstMessageMode: "assistant-waits-for-user"`), not a variable reference at all — it can no longer be made to speak by a bad variable value. The real disclosure text moved to `PreVisit_Agent.firstMessage` as a hardcoded template (same style as `Claims_Agent`), with a new `call_purpose` variable supplying just the reason-for-call clause. New tests in `tests/vapiClient.test.ts` pin both the runtime variable behavior and the config file's structure directly.
 
-### AA-09 — Dead `avgAttempts` metric
-**Finding:** `src/server/services/platformReports.ts:130-133` increments `agg.total` and `agg.attempts` identically on every `CallAttempt` row, so `attempts/total` is mathematically always `1`.
-**Definition of done:** `avgAttempts` reflects real attempts-per-claim-to-resolution (group by claim, count attempts to the first resolving outcome).
+### AA-09 — Dead `avgAttempts` metric — FIXED
+**Finding:** `src/server/services/platformReports.ts:130-133` incremented `agg.total` and `agg.attempts` identically on every `CallAttempt` row, so `attempts/total` was mathematically always `1`.
+**Fix:** `computeCarrierStats` now groups attempts by `claimId`, sorts each claim's attempts chronologically, and — for claims that reached `RESOLVED` in the window — counts attempts up to and including the first resolution. `avgAttempts` is the average of that count across resolved claims, not a per-attempt-row ratio. Claims that never resolved in the window are correctly excluded from the average rather than dragging it toward 1. No test coverage existed for `platformReports.ts` at all — added `tests/platformReports.test.ts` covering the fix directly (including a case with extra post-resolution attempt rows, to prove only the *first* resolution counts).
 
 ### AA-10 — Forensic logger drops Error detail
 **Finding:** `src/logger.cjs`'s `scrubPhi` does `Object.entries()` over the log `meta`, then `winston.format.json()` serializes it. `Error` instances have non-enumerable `message`/`stack`, so `logger.error(msg, { error: someErr })` persists as literal `{"error":{}}` — reproduced directly against this winston config. Consumed at `queueEngine.ts:571-576`, the Vapi-dispatch retry path.
