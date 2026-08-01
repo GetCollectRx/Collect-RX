@@ -134,7 +134,7 @@ The churn risk is real. A clinic with $0 in AR has no immediate pain, and Collec
 **Serviceable Addressable Market (SAM):**
 - Canadian clinics actively billing private/group insurance + CDCP: ~8,000–9,000 clinics
 - Assuming 30% early adopter penetration ceiling: ~2,500–3,000 clinics
-- At C$500–800/month SaaS pricing per clinic: C$15–29M ARR potential at scale
+- At current tier pricing (Core $799 / Growth $1,999 / Scale $2,499 per month — `src/billing/tiers.ts`; the C$500–800 figure this estimate previously used is stale), a blended average nearer the Core price still points to a similar order-of-magnitude ARR potential at scale, but this figure should be recomputed against the real tier mix (not just Core) rather than carried forward as a single blended assumption
 
 **Serviceable Obtainable Market (SOM) — 3-Year:**
 - Realistic: 300–500 clinics over 36 months = C$1.8–4.8M ARR

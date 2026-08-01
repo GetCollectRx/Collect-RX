@@ -53,9 +53,12 @@ Search for recent data on:
 ## CollectRx Market Intelligence — [MONTH YEAR]
 
 ### Market Sizing (update quarterly)
-- Licensed dental practices in Canada: [n]
-- TAM (all practices billing private insurance): [n practices × $X avg contract value]
-- SAM (practices accessible via CSV or AbelDent): [estimate]
+
+Baseline TAM/SAM/SOM figures live in `docs/strategy/CollectRx_Strategic_Analysis.md` §4 — treat that doc as canonical and reconcile against it here rather than re-deriving numbers independently each month (two independently-maintained TAM/SAM estimates is exactly the kind of drift AA-23 found and fixed once already). If this month's research changes an assumption, update the strategic analysis doc directly and note the change here.
+
+- Licensed dental practices in Canada: [n] (strategic analysis §4 TAM: ~16,000 dentists / ~10,000+ clinics)
+- TAM (all practices billing private insurance): [n practices × $X avg contract value] — cross-check against strategic analysis §4 before publishing a different number
+- SAM (practices accessible via CSV or AbelDent): [estimate] — cross-check against strategic analysis §4's SAM (~8,000–9,000 billing clinics, ~2,500–3,000 at 30% adoption ceiling)
 
 ### Key Developments This Month
 - [Event] — [Implication for CollectRx]

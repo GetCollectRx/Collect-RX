@@ -1,6 +1,6 @@
 # CollectRx Practice Time Savings Agent
 
-**Purpose:** Quantify, in hours and dollars, exactly how much time CollectRx saves each dental practice. This is not a vanity metric — it's the primary retention argument and the centerpiece of the ROI case. If a practice questions whether CollectRx is worth $599/month, this agent produces the proof. Run monthly per active practice. Feeds into: ROI Proof, Voice of Customer, Client Acquisition (benchmarks for new prospects).
+**Purpose:** Quantify, in hours and dollars, exactly how much time CollectRx saves each dental practice. This is not a vanity metric — it's the primary retention argument and the centerpiece of the ROI case. If a practice questions whether CollectRx is worth its monthly tier price (Core/Growth/Scale — see `src/billing/tiers.ts` for current numbers), this agent produces the proof. Run monthly per active practice. Feeds into: ROI Proof, Voice of Customer, Client Acquisition (benchmarks for new prospects).
 
 ---
 

@@ -1,6 +1,8 @@
 # CollectRx Voice of Customer Agent
 
-**Purpose:** Capture what dental practices actually experience, complain about, and need — then synthesize it into structured product input. "Voice of Customer" is the counterweight to what engineers think customers want. Run monthly. Feeds into: Product Manager.
+> **BLOCKED — no real data source exists yet.** Every input this agent depends on (trial exit surveys, churn surveys, support ticket categorization, demo call notes, NPS/CSAT) is aspirational — none of that capture plumbing exists in the codebase today (verified: no trial-exit-survey, churn-survey, support-ticket, or NPS/CSAT code anywhere in `src/`). Running this agent today would mean fabricating "customer feedback" from nothing, which is worse than not running it. **Do not run this agent until the underlying data capture exists.** Building that capture surface is a product decision (which channel first — trial-exit prompt? churn-cancel reason field? a support inbox?), not something to silently stub out here. Forum/review-site signals (the "Signals from Non-Customers" section below) are the one source that's genuinely runnable today with no new plumbing — that subset can still be worked ad hoc if useful, just don't present it as full Voice of Customer coverage.
+
+**Purpose:** Capture what dental practices actually experience, complain about, and need — then synthesize it into structured product input. "Voice of Customer" is the counterweight to what engineers think customers want. Run monthly once the data sources below actually exist. Feeds into: Product Manager.
 
 ---
 

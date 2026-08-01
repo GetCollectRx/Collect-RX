@@ -9,11 +9,11 @@
 CollectRx's value proposition: recover dental insurance AR that would otherwise sit unpaid. The unit of success is dollars recovered relative to dollars claimed and minutes burned. This agent tracks that across all practices.
 
 Unit cost per minute: $0.115 (Vapi + GPT + Deepgram + TTS + Twilio + Fly)
-Gross margins per tier (from `src/billing/tiers.ts`):
+Gross margins per tier (from `src/billing/tiers.ts` — verify before quoting, these drift):
 - Trial: no margin (acquisition)
-- Core: 82%
+- Core: 79%
 - Growth: 80%
-- Scale: 43%
+- Scale: 78%
 
 ---
 
@@ -23,11 +23,11 @@ Gross margins per tier (from `src/billing/tiers.ts`):
 
 | Metric | Query | Alert |
 |---|---|---|
-| Total AR recovered (30d) | Sum of `amountClaimed` where outcome = `CLAIM_PAID` or `RESOLVED` | Track week-over-week |
+| Total AR recovered (30d) | Sum of `claim_recovery_events.amount_recovered_cents` (not `insurance_claims.billed_amount` — see AA-03; there is no `CLAIM_PAID` outcome/status anywhere in the schema) | Track week-over-week |
 | Recovery rate | Claims resolved / claims attempted | Flag if <60% |
-| Avg calls to resolution | Avg `attemptNumber` at resolution | Flag if >2.1 |
+| Avg calls to resolution | Attempts-to-first-`RESOLVED` per claim, from `call_attempts` grouped by `claim_id` (see `computeCarrierStats()` in `src/server/services/platformReports.ts`, fixed under AA-09) — not a literal `attemptNumber` column, which doesn't exist | Flag if >2.1 |
 | Avg days from claim creation to resolution | Flag if >45 days |
-| CARRIER_BLOCK impact | $ held due to carrier blocks | Flag if >$10k |
+| `BLOCK_DETECTED` impact | $ held due to carrier blocks | Flag if >$10k |
 | Trial-to-paid conversion | Practices that converted from trial in last 30d | Track |
 
 ### Per-Practice
@@ -44,19 +44,19 @@ Report the bottom 20% of practices by ROI. These are churn risks.
 
 ### AR Aging Movement
 
-Compare the distribution of `daysSinceSubmitted` across all active claims at 30-day intervals:
+Compare the distribution of `insurance_claims.days_outstanding` (persisted field — not a computed `daysSinceSubmitted`) across all active claims at 30-day intervals:
 
 - Current (0-30d): should decrease over time as claims resolve
 - 31-60d: acceptable
 - 61-90d: yellow alert — these need to resolve or escalate soon
-- 90+d: red alert — auto-escalation should have fired; check if queue engine missed these
+- 90+d: red alert — auto-escalation should have fired (AA-04 wired `CallEscalation` + practice notification for this); check if the queue engine missed these
 
-Flag: any claim >90 days that is still in `PENDING` queue status (should have been escalated).
+Flag: any claim >90 days whose `insurance_claims.status` is still `PENDING`/`IN_QUEUE`/`CALLING` rather than `ESCALATED` (should have been escalated).
 
 ### Carrier Performance Ranking
 
 Rank all 6 carriers by:
-1. Recovery rate (% of claims resolved as `CLAIM_PAID`)
+1. Recovery rate (% of claims resolved as `RESOLVED` — there is no separate `CLAIM_PAID` status)
 2. Average calls to resolution
 3. Average hold time (minutes per call)
 
@@ -64,10 +64,10 @@ This tells you which carriers are profitable to call and which are burning minut
 
 ### Revenue at Risk
 
-Sum the `amountClaimed` for all claims in:
-- `PENDING` queue status (awaiting call)
-- `ESCALATED` status (awaiting human resolution)
-- `CARRIER_BLOCKED` held status
+Sum `insurance_claims.outstanding_amount` for all claims with `status` in:
+- `PENDING` / `IN_QUEUE` (awaiting call)
+- `ESCALATED` (awaiting human resolution)
+- `BLOCKED` (the real `ClaimStatus` enum value — not `CARRIER_BLOCKED`)
 
 This is the dollars currently in the pipeline. Report weekly trend.
 
@@ -89,7 +89,7 @@ Gross margin: (revenue - cost) / revenue
 
 Flag:
 - Any practice where gross margin is negative (burning more than charged)
-- Scale tier practices with >7,000 minutes used (overage at $0.20/min, 43% base margin — watch carefully)
+- Scale tier practices using well above the 4,000 included minutes (overage at $0.20/min, 78% base margin — watch carefully)
 - Trial practices at >80% of 500-minute limit (approaching hard stop — need conversion outreach)
 
 ---
@@ -129,5 +129,5 @@ Flag:
 ## How to Run This Agent
 
 ```
-"Run the CollectRx Collections Performance report. Query callAttempt, insuranceClaim, and practice billing tables. Compute recovery rate, per-practice ROI, AR aging distribution, and unit economics per tier. Use agents/collections-performance.md as the report template. Flag any practice with negative gross margin or >90d claims still in queue."
+"Run the CollectRx Collections Performance report. Query call_attempts, insurance_claims, claim_recovery_events, and practice billing (UsagePeriod / billingTier) tables. Compute recovery rate, per-practice ROI, AR aging distribution, and unit economics per tier. Use agents/collections-performance.md as the report template. Flag any practice with negative gross margin or >90d claims still in queue."
 ```
