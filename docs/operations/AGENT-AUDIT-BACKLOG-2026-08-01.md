@@ -70,7 +70,7 @@
 
 | ID | Task | Status |
 |----|------|--------|
-| AA-11 | Wire `Hold_Sentinel` webhook/`analysisPlan` in `vapi-squad-config.json` | [ ] |
+| AA-11 | Wire `Hold_Sentinel` webhook/`analysisPlan` in `vapi-squad-config.json` | [x] |
 | AA-12 | Remove hardcoded `Khalid`/`khalid@collectrx.ca` sender identity from marketing engine | [ ] |
 | AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [x] |
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
@@ -78,9 +78,9 @@
 | AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [ ] |
 | AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [ ] |
 
-### AA-11 — Hold_Sentinel has no reporting path
-**Finding:** `vapi-squad-config.json:185-221` — unlike the other 4 squad agents, `Hold_Sentinel` has no `server` webhook block and no `analysisPlan.structuredDataPlan`. If a call ends while control is with Hold_Sentinel (45-min timeout, or the carrier hangs up during hold), nothing reaches the backend for that leg.
-**Definition of done:** `Hold_Sentinel` has the same webhook/structured-output wiring as the other 4 agents.
+### AA-11 — Hold_Sentinel has no reporting path — FIXED
+**Finding:** `vapi-squad-config.json:185-221` — unlike the other 4 squad agents, `Hold_Sentinel` had no `server` webhook block and no `analysisPlan.structuredDataPlan`. If a call ended while control was with Hold_Sentinel (timeout, or the carrier hangs up during hold), nothing reached the backend for that leg.
+**Fix:** copied `IVR_Navigator`'s `server`/`serverMessages`/`analysisPlan` block verbatim onto `Hold_Sentinel` (the closest analog — another silent-only agent with the same fallback-reporting need). New test in `tests/vapiSquadConfig.test.ts` asserts all 5 squad members have a server webhook and an enabled `structuredDataPlan`.
 
 ### AA-12 — Hardcoded personal identity in outbound email
 **Finding:** `src/server/marketing/outreachVoice.ts:15-16` hardcodes `OUTREACH_SIGNOFF = 'Khalid\nkhalid@collectrx.ca'`, consumed unconditionally across 27+ template call sites in `emailTemplates.ts`, `trialOnboarding.ts`, `replyTemplates.ts`.

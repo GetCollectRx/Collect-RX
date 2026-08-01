@@ -208,7 +208,128 @@
           "maxDurationSeconds": 2700,
           "endCallPhrases": [
             "we will try again shortly"
-          ]
+          ],
+          "server": {
+            "url": "https://collect-rx.fly.dev/api/webhooks/vapi",
+            "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
+          },
+          "serverMessages": [
+            "end-of-call-report",
+            "status-update"
+          ],
+          "analysisPlan": {
+            "structuredDataPlan": {
+              "enabled": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "claimNumber": {
+                    "type": "string",
+                    "description": "The claim number discussed on the call, exactly as provided in the claim context"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM_NOT_RECEIVED",
+                      "CLAIM_PAID",
+                      "PARTIAL_PAYMENT",
+                      "CLAIM_DENIED",
+                      "NOT_COVERED",
+                      "MAX_BENEFITS_REACHED",
+                      "PROCESSING",
+                      "NEED_INFORMATION",
+                      "UNCLEAR"
+                    ],
+                    "description": "Final call outcome per the scenario classification"
+                  },
+                  "referenceNumber": {
+                    "type": "string",
+                    "description": "Call reference number given by the carrier representative"
+                  },
+                  "repName": {
+                    "type": "string",
+                    "description": "Name of the carrier representative"
+                  },
+                  "callbackNumber": {
+                    "type": "string",
+                    "description": "Callback or direct number provided by the representative"
+                  },
+                  "paymentAmount": {
+                    "type": "string",
+                    "description": "Payment amount if the claim was paid"
+                  },
+                  "paymentDate": {
+                    "type": "string",
+                    "description": "Date payment was issued, in YYYY-MM-DD format"
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "description": "Check number or payment reference"
+                  },
+                  "denialCode": {
+                    "type": "string",
+                    "description": "Denial code if denied or not covered"
+                  },
+                  "denialReason": {
+                    "type": "string",
+                    "description": "Denial reason as stated"
+                  },
+                  "expectedCompletionDate": {
+                    "type": "string",
+                    "description": "Expected processing completion date, in YYYY-MM-DD format"
+                  },
+                  "requiredDocumentation": {
+                    "type": "string",
+                    "description": "Documentation the carrier requires"
+                  },
+                  "submissionMethod": {
+                    "type": "string",
+                    "description": "How to submit documentation or resubmit the claim (fax, mail, portal)"
+                  },
+                  "submissionDestination": {
+                    "type": "string",
+                    "description": "Fax number, address, or portal for submission"
+                  },
+                  "submissionDeadline": {
+                    "type": "string",
+                    "description": "Deadline for submission if given, in YYYY-MM-DD format"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "description": "The agreed next action"
+                  },
+                  "escalationRequired": {
+                    "type": "boolean",
+                    "description": "True if the outcome requires practice staff follow-up"
+                  },
+                  "escalationReason": {
+                    "type": "string",
+                    "description": "Why staff follow-up is needed"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "One-paragraph factual summary of the call"
+                  },
+                  "expectedAmount": {
+                    "type": "string",
+                    "description": "The amount the practice expected on this claim, when discussed"
+                  },
+                  "shortfallAmount": {
+                    "type": "string",
+                    "description": "Expected minus paid, when the payment is short"
+                  },
+                  "shortfallReason": {
+                    "type": "string",
+                    "description": "Why the payment is short: reduction/remark codes, fee guide year and province, and whether the difference is patient-payable or appealable"
+                  }
+                },
+                "required": [
+                  "claimNumber",
+                  "outcome"
+                ]
+              }
+            }
+          }
         },
         "assistantDestinations": [
           {
