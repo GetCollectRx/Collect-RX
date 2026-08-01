@@ -13,7 +13,7 @@
 | AA-01 | Log all real PHI detokenization call sites to `PhiAccessEvent` | [x] `b6ce362` |
 | AA-02 | Fix Incident Response runbook kill-switch SQL (both `agents/` copies) | [x] |
 | AA-03 | Fix `weeklyPilotReport.ts` to report verified recovered amounts, not billed amount | [x] |
-| AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [ ] |
+| AA-04 | Create a `CallEscalation` (+ notify practice) when a claim auto-escalates past 90 days | [x] |
 | AA-05 | Add FK constraint from `insurance_claims.practiceId` to `Practice` | [ ] |
 | AA-06 | Fix `CARRIER_TIMEOUTS` key mismatch (kebab-case vs. `CarrierId` enum) | [ ] |
 | AA-07 | Enforce per-carrier minimum wait (TELUS 21d / others 32d), wire TPA into AR dispatch | [ ] |
@@ -34,9 +34,10 @@
 **Fix:** `buildWeeklyPracticeMetrics` now sums `ClaimRecoveryEvent.amountRecoveredCents` for `PAYMENT_VERIFIED_SYNC`/`MANUAL_PAYMENT_CONFIRMED` events in the report window, instead of `billedAmount`.
 **Related bug found and fixed in the same pass:** `recoveryMetrics.ts` (all three dollar/count aggregations) and `claimRecoverySummary.ts` only counted `PAYMENT_VERIFIED_SYNC`, silently missing every `MANUAL_PAYMENT_CONFIRMED` claim — this fed the live practice dashboard's "Recovered 7d" tile (`dashboardRoutes.ts` → `LivingPipelineFlow.tsx`), so manually-closed claims were invisible there too, not just in the (currently-disabled) weekly email. Both now use a shared `VERIFIED_PAYMENT_EVENT_TYPES` list. Tests updated: `tests/weeklyPilotReport.test.ts` (new assertion pins the event-type filter), `tests/phase-5/recovery-golden-path.test.ts` (in-memory fake Prisma updated to support `{ in: [...] }` filters).
 
-### AA-04 — Silent 90-day escalation
-**Finding:** `src/server/frontDesk/queueEngine.ts:139-173` (`settleBlockedCandidate`) sets claim/queue status to `ESCALATED` for both `MAX_ATTEMPTS` and `ESCALATE_OVER_90`, but only calls `createEscalation` for `MAX_ATTEMPTS`. Same gap in the manual-trigger path, `src/routes/insurance.ts:499-512`.
-**Definition of done:** `ESCALATE_OVER_90` creates a `CallEscalation` row and triggers practice notification in both code paths, mirroring the `MAX_ATTEMPTS` branch.
+### AA-04 — Silent 90-day escalation — FIXED
+**Finding:** `src/server/frontDesk/queueEngine.ts:139-173` (`settleBlockedCandidate`) set claim/queue status to `ESCALATED` for both `MAX_ATTEMPTS` and `ESCALATE_OVER_90`, but only called `createEscalation` for `MAX_ATTEMPTS`. Same gap in the manual-trigger path, `src/routes/insurance.ts:499-512`.
+**Fix:** both paths now create a `CallEscalation` row (deduped like `MAX_ATTEMPTS` already was) and send a `CLAIM_AGED_OUT` practice notification (new type added to `PracticeNotification`) for the `ESCALATE_OVER_90` case. New test added: `tests/frontDesk/queueEngine.dispatch.test.ts` ("escalates a >90-day head claim to a human...").
+**Known gap:** `routes/insurance.ts` has no existing test harness at all (no test file imports it) — the fix there mirrors the now-tested `queueEngine.ts` logic exactly, verified by typecheck/lint, but isn't independently covered by a route-level test. Building that harness is a bigger, separate investment — tracked as AA-32 below rather than bolted on here.
 
 ### AA-05 — Missing FK constraint
 **Finding:** `prisma/schema.prisma:611` (`InsuranceClaim.practiceId`) and ~10 sibling tables (`ClaimRecoveryAction`, `ClaimRecoveryEvent`, `ClaimEvidenceItem`, `CallQueue`, `PhiAccessEvent`, etc.) carry a denormalized `practiceId` with no `@relation` to `Practice`.
@@ -137,6 +138,7 @@
 
 ## Newly discovered while fixing the above
 
+- **AA-32 — `src/routes/insurance.ts` has no test coverage at all.** No test file in the repo imports this route. It's a large, high-stakes file (manual carrier dispatch, PHI detokenization, escalation) — worth a dedicated route-test harness (supertest + mocked Prisma/session) as its own piece of work, not opportunistically added while fixing one bug in it.
 - **AA-31 — No persisted CRTC-disclosure-compliance signal exists.** Found while fixing AA-02: `agents/incident-response.md` IC-3's SCOPE step assumed a `callQualityBreakdown->>'crtc_disclosure'` field; no such field exists anywhere, and call-quality-scorer's rubric grading isn't persisted to the DB at all. Today, scoping a CRTC-disclosure incident requires manually re-reading `CallAttempt.transcriptText` (while it still exists) or checking `GuardrailAudit.violationsJson` if the NeMo sidecar happened to flag it. **Recommendation:** persist call-quality-scorer's disclosure-check result (pass/fail + evidence) per `CallAttempt` so this is queryable — this is a real product gap, not just a doc fix, so it's tracked here rather than forced through as a one-line change.
 
 ## Not backlogged (needs a product/ops decision, not a code fix)

@@ -35,6 +35,8 @@ import { piiVault } from '../pii-vault.js';
 import logger from '../logger.cjs';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
+import { createEscalation } from '../server/services/escalationService.js';
+import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -508,6 +510,33 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
             where: { claimId },
             data: { status: 'ESCALATED' },
           });
+        }
+        const reason = 'Claim exceeded 90 days outstanding — escalated for human follow-up';
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: { practiceId, claimId, status: 'open', reason },
+          select: { id: true },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId,
+            claimId,
+            claimRef: claim.claimNumber,
+            carrierId: claim.carrierId,
+            amountClaimedCents: Math.round(Number(claim.outstandingAmount) * 100),
+            reason,
+          });
+          try {
+            await sendPracticeNotification(prisma, {
+              practiceId,
+              type: 'CLAIM_AGED_OUT',
+              subject: `Claim ${claim.claimNumber}: 90+ days outstanding`,
+              message: `This claim has been outstanding over 90 days. Per policy, AI calling has stopped and it has been escalated for human follow-up.`,
+              claimId,
+              severity: 'warning',
+            });
+          } catch (notifErr) {
+            console.error('[insurance] over-90-day escalation notification failed (non-fatal):', notifErr);
+          }
         }
       }
       const statusCode = guard.code === 'SUBSCRIPTION_CLAIM_LIMIT_REACHED' ? 402 : 422;

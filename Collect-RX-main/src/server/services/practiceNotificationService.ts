@@ -8,7 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 
 export interface PracticeNotification {
   practiceId: string;
-  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE';
+  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'CLAIM_AGED_OUT';
   subject: string;
   message: string;
   claimId?: string;

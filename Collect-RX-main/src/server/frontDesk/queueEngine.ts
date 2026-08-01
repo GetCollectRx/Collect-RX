@@ -15,6 +15,7 @@ import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
+import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import logger from '../../logger.cjs';
 
@@ -137,7 +138,7 @@ async function settleBlockedCandidate(
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -148,29 +149,46 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : 'Claim exceeded 90 days outstanding — escalated for human follow-up';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          ...(guardCode === 'MAX_ATTEMPTS' ? { attemptNumber: 3 } : {}),
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
+        if (guardCode === 'ESCALATE_OVER_90') {
+          try {
+            await sendPracticeNotification(prisma, {
+              practiceId: entry.practiceId,
+              type: 'CLAIM_AGED_OUT',
+              subject: `Claim ${entry.claim.claimNumber}: 90+ days outstanding`,
+              message: `This claim has been outstanding over 90 days. Per policy, AI calling has stopped and it has been escalated for human follow-up.`,
+              claimId: entry.claimId,
+              severity: 'warning',
+            });
+          } catch (notifErr) {
+            console.error('[queueEngine] over-90-day escalation notification failed (non-fatal):', notifErr);
+          }
         }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({

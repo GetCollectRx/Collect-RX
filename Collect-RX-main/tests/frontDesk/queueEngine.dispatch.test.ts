@@ -9,6 +9,7 @@ const canMakeCallMock = vi.fn();
 const completenessMock = vi.fn();
 const raiseGateMock = vi.fn();
 const transitionClaimRecoveryMock = vi.fn();
+const sendPracticeNotificationMock = vi.fn(async () => undefined);
 
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
@@ -74,6 +75,10 @@ vi.mock('../../src/server/triage/claimStatusProbe.js', () => ({
 
 vi.mock('../../src/server/recovery/transitionClaimRecovery.js', () => ({
   transitionClaimRecovery: (...args: unknown[]) => transitionClaimRecoveryMock(...args),
+}));
+
+vi.mock('../../src/server/services/practiceNotificationService.js', () => ({
+  sendPracticeNotification: (...args: unknown[]) => sendPracticeNotificationMock(...args),
 }));
 
 vi.mock('../../src/server/learning/carrierLessons.js', () => ({
@@ -263,6 +268,42 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
         attemptNumber: 3,
       }),
     });
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('escalates a >90-day head claim to a human, not just the queue/claim status', async () => {
+    const agedOut = queueEntry('1', { daysOutstanding: 95 });
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([agedOut, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({ allowed: false, code: 'ESCALATE_OVER_90', reason: 'Claim exceeds 90 days' })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({
+      where: { id: 'claim-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: { status: 'ESCALATED' },
+    });
+    // The bug this test guards: ESCALATE_OVER_90 used to flip statuses but
+    // never create a CallEscalation row or notify the practice, so the claim
+    // silently vanished from the human-facing escalation queue.
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        reason: 'Claim exceeded 90 days outstanding — escalated for human follow-up',
+      }),
+    });
+    expect(sendPracticeNotificationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'CLAIM_AGED_OUT', claimId: 'claim-1' }),
+    );
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });
