@@ -11,6 +11,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { piiVault } from '../../pii-vault';
+import { appendPhiAccessEvent } from '../audit/auditLog';
 import {
   applyPracticePriorityFloor,
   buildPriorityScoreInput,
@@ -62,7 +63,13 @@ export async function buildPriorityQueue(
   prisma: PrismaClient,
   practiceId: string,
   referenceDate: Date = new Date(),
+  options: { resolvePatientNames?: boolean } = {},
 ): Promise<RankedClaim[]> {
+  // Scheduling-only callers (syncCallQueueSchedulingFromPriority) never surface
+  // patientName — skip detokenization entirely rather than doing it and
+  // discarding the result, so PHI is only touched when a human will see it.
+  const resolvePatientNames = options.resolvePatientNames ?? true;
+
   const claims = await prisma.insuranceClaim.findMany({
     where: {
       practiceId,
@@ -90,7 +97,9 @@ export async function buildPriorityQueue(
 
     ranked.push({
       claimId: c.id,
-      patientName: displayPatientName(c.patientToken, practiceId),
+      patientName: resolvePatientNames
+        ? displayPatientName(c.patientToken, practiceId)
+        : `Patient ${c.patientToken.slice(0, 8)}…`,
       carrier: carrierName,
       amountCents,
       daysOutstanding: c.daysOutstanding,
@@ -104,6 +113,19 @@ export async function buildPriorityQueue(
         status: parts.status,
         total: parts.total,
       },
+    });
+  }
+
+  if (resolvePatientNames && claims.length > 0) {
+    // One audit row per queue view/build, not per claim — the access is a
+    // single "resolve names for this practice's queue" operation.
+    await appendPhiAccessEvent(prisma, {
+      practiceId,
+      operation: 'detokenize_for_priority_queue_display',
+      recordType: 'PriorityQueue',
+      recordId: practiceId,
+      purpose: 'priority_queue_display',
+      correlationId: `${claims.length}_claims`,
     });
   }
 
@@ -149,7 +171,11 @@ export async function syncCallQueueSchedulingFromPriority(
   let rowsUpdated = 0;
 
   for (const pid of practiceIds) {
-    const ranked = await buildPriorityQueue(prisma, pid, referenceDate);
+    // Scheduling only needs claimId + score — never surfaces patientName —
+    // so skip PHI detokenization entirely for this internal re-ranking pass.
+    const ranked = await buildPriorityQueue(prisma, pid, referenceDate, {
+      resolvePatientNames: false,
+    });
     const rankByClaimId = new Map(ranked.map((r, i) => [r.claimId, i]));
     const scoreByClaimId = new Map(ranked.map((r) => [r.claimId, r.scores.total]));
 

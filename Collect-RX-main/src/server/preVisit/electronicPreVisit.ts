@@ -10,6 +10,7 @@ import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { piiVault } from '../../pii-vault.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { submitTx23Inquiry } from './cdanetTx23Client.js';
+import { appendPhiAccessEvent } from '../audit/auditLog.js';
 
 export interface ElectronicPreVisitResult {
   resolved: boolean;
@@ -45,7 +46,16 @@ export async function tryCanadaLifePortalPreVisit(
     const det = piiVault.detokenize(params.patientToken, 'pre-visit-portal', {
       practiceId: params.practiceId,
     });
-    if (det.success && det.phi?.subscriberId) claimRef = det.phi.subscriberId;
+    if (det.success && det.phi?.subscriberId) {
+      claimRef = det.phi.subscriberId;
+      await appendPhiAccessEvent(prisma, {
+        practiceId: params.practiceId,
+        operation: 'detokenize_for_pre_visit_portal_check',
+        recordType: 'AppointmentVerification',
+        recordId: params.appointmentVerificationId,
+        purpose: 'canada_life_portal_first_gate',
+      });
+    }
   } catch {
     /* use synthetic ref */
   }
@@ -140,6 +150,15 @@ export async function tryTelusTx23PreVisit(
   }
 
   const identification = identifyTelusTx23(params.patientToken, params.practiceId);
+  if (identification.reason !== 'detokenize_failed') {
+    await appendPhiAccessEvent(prisma, {
+      practiceId: params.practiceId,
+      operation: 'detokenize_for_telus_tx23_dispatch',
+      recordType: 'AppointmentVerification',
+      recordId: params.appointmentVerificationId,
+      purpose: 'telus_tx23_inquiry',
+    });
+  }
   if (!identification.supported || !identification.memberId || !identification.groupNumber) {
     return { resolved: false, reason: identification.reason };
   }
