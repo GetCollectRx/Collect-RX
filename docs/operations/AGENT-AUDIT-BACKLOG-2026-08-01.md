@@ -75,7 +75,7 @@
 | AA-13 | Add anti-impersonation instruction to `Escalation_Closer`/`Resolution_Closer` prompts | [x] |
 | AA-14 | Bring `CHANGELOG.md` current (227 commits behind) | [ ] |
 | AA-15 | Fix `typecheck`/`postinstall` gap (`tsc --noEmit` needs `prisma generate` first) | [x] |
-| AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [ ] |
+| AA-16 | Delete confirmed-dead code (`vapiWebhook.ts` deprecated handler, `outcomeClassifier.ts`) | [x] |
 | AA-17 | Reconcile `carrierBlockPhrases.ts` vs. `processor.ts` block-phrase lists into one source | [x] |
 
 ### AA-11 — Hold_Sentinel has no reporting path — FIXED
@@ -98,9 +98,9 @@
 **Finding:** `npm ci && npx tsc --noEmit` gave 391 false "no exported member" errors because `postinstall` didn't run `prisma generate`. CI's workflow does this step explicitly, so production CI was unaffected, but the documented local commands weren't consistent with what CI actually runs.
 **Fix:** `package.json`'s `postinstall` now runs `prisma generate` after the existing electron-symlink step, so a bare `npm ci` leaves a working Prisma client behind — no separate manual step needed. Verified by running `npm run postinstall` directly.
 
-### AA-16 — Dead code cleanup
-**Finding:** `src/server/vapi/vapiWebhook.ts:547-596` (`handleVapiWebhook`) is self-documented `@deprecated ... never mounted, never called`, confirmed zero references anywhere including tests. `src/server/services/outcomeClassifier.ts` implements the exact anti-hallucination-violating pattern the backend-reviewer checklist forbids (keyword-regex → `RESOLVED`, no gating), with zero production importers — a landmine if ever wired in.
-**Definition of done:** both removed per the repo's own "no dead code" PRD rule (only after confirming, again, zero references — including in any branch this session didn't see).
+### AA-16 — Dead code cleanup — FIXED
+**Finding:** `src/server/vapi/vapiWebhook.ts:547-596` (`handleVapiWebhook`) was self-documented `@deprecated ... never mounted, never called`, confirmed zero references anywhere including tests. `src/server/services/outcomeClassifier.ts` implemented the exact anti-hallucination-violating pattern the backend-reviewer checklist forbids (keyword-regex → `RESOLVED`, no gating), with zero production importers — a landmine if ever wired in.
+**Fix:** re-confirmed zero references (grepped the whole repo, not just the files the earlier audit read) before deleting. Removed `handleVapiWebhook`, its only-used-by-it helpers `verifyVapiAuth` and `responseForVapiMessage`, and the now-unused `Request`/`Response` import from `vapiWebhook.ts`; updated the file's header comment, which described the removed auth mechanism as the file's main purpose when it isn't (the real exports are the call-ended processing pipeline consumed by `src/webhooks/vapi.ts`). Deleted `outcomeClassifier.ts` entirely and its dedicated test block in `tests/platformBrief.test.ts` (kept that file's unrelated "role gate expectations" describe block intact). Full suite re-run clean: 1369 passed / 8 skipped.
 
 ### AA-17 — Divergent CARRIER_BLOCK phrase lists — FIXED
 **Finding:** the live-transcript scanner (`carrierBlockPhrases.ts`) and the end-of-call fallback classifier (`processor.ts`'s `BLOCK_SIGNAL_PATTERNS`/`LEGACY_CARRIER_BLOCK_INCLUDES`) maintained separate, non-identical phrase lists — real, concrete gap: several `carrierBlockPhrases.ts` phrases (e.g. "we don't work with robots", the exact wording Claims_Agent's own refusal protocol anticipates) were invisible to the end-of-call classifier.
