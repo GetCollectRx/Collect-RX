@@ -141,7 +141,7 @@ When AbelDent access is available (run from `Collect-RX-main/`):
 1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
 2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
 3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
-4. `desktop/services/abeldent-sync.js` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
+4. `desktop/services/abeldent-sync.cjs` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
 
 ### CSV Import (Primary Onboarding Path)
 

@@ -15,7 +15,6 @@
 import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
-import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 
 // ---------------------------------------------------------------------------
@@ -364,20 +363,6 @@ export async function validateDispatch(
   // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
-  }
-
-  // 7. Subscription monthly claim limit
-  const subscriptionGuard = await validateSubscriptionClaimCapacity(prisma, {
-    practiceId,
-    claimId,
-    now: scheduledFor ?? new Date(),
-  });
-  if (!subscriptionGuard.allowed) {
-    return {
-      allowed: false,
-      code: subscriptionGuard.code,
-      reason: subscriptionGuard.reason,
-    };
   }
 
   // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)

@@ -68,6 +68,7 @@ import { prisma } from '../lib/prisma';
 // in vapiWebhook.ts and agentRunner.ts — those are unaffected.
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
+import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import {
   assertPersistentPhiVaultConfigured,
@@ -231,6 +232,7 @@ if (!process.env.VAPI_WEBHOOK_SECRET) {
 
 try {
   assertJwtConfigAtStartup();
+  assertPasswordResetEmailConfigAtStartup();
 } catch (e) {
   console.error('[server] FATAL:', (e as Error).message);
   process.exit(1);
