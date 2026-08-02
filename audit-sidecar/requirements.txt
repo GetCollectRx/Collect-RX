@@ -2,7 +2,13 @@ fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.4.2
 pydantic-settings==2.0.3
-nemoguardrails==0.7.0
 python-dotenv==1.0.0
 pyyaml==6.0.1
 httpx==0.25.1
+
+# nemoguardrails==0.7.0 — intentionally NOT installed. It's a heavy optional
+# dependency (pulls in sentence-transformers -> torch -> CUDA libraries, plus
+# the `annoy` C++ extension which needs build-essential to compile). The
+# current /audit/transcript logic in app.py is regex/heuristic-only and
+# doesn't need it. Add it back (and `RUN apt-get install -y build-essential`
+# to the Dockerfile) when real LLM-based semantic checks are implemented.
