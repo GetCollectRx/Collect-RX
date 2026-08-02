@@ -60,3 +60,52 @@ export function verifyUnsubscribeRequest(balanceId: string, email: string, sPara
   }
   return timingSafeEqual(a, b);
 }
+
+export function signProspectUnsubscribeToken(prospectId: string): string {
+  const secret = unsubscribeSecret();
+  return createHmac('sha256', secret).update(`prospect|${prospectId}`).digest('base64url');
+}
+
+/**
+ * One-click list-unsubscribe URL scoped to a marketing prospect (not a patient balance).
+ * Used for the `List-Unsubscribe` / RFC 8058 `List-Unsubscribe-Post` headers on cold
+ * outreach email — see prospectEmail.ts. Returns '' (caller omits the headers) when the
+ * unsubscribe secret isn't configured, so a missing env var degrades gracefully rather
+ * than blocking prospect email delivery.
+ */
+export function buildProspectUnsubscribeUrl(prospectId: string): string {
+  if (!prospectId) {
+    return '';
+  }
+  try {
+    const b = getPublicApiBase();
+    const s = signProspectUnsubscribeToken(prospectId);
+    return `${b}/api/public/prospect-unsubscribe?p=${encodeURIComponent(prospectId)}&s=${encodeURIComponent(
+      SIG_PREFIX + s
+    )}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * s param is "v1" + base64url hmac. Constant-time check.
+ */
+export function verifyProspectUnsubscribeRequest(prospectId: string, sParam: string | undefined): boolean {
+  if (!sParam || !sParam.startsWith(SIG_PREFIX)) {
+    return false;
+  }
+  const sig = sParam.slice(SIG_PREFIX.length);
+  let expected: string;
+  try {
+    expected = signProspectUnsubscribeToken(prospectId);
+  } catch {
+    return false;
+  }
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(sig, 'utf8');
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
+}

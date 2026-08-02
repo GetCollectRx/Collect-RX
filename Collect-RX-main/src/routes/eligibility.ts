@@ -113,6 +113,16 @@ router.post('/estimate', async (req: Request, res: Response) => {
 
     const estimate = generateEstimate(estimateRequest, body.patient as Patient);
 
+    await prisma.eligibilityEstimateLog.create({
+      data: {
+        practiceId: practiceIdFromSession(req),
+        patientId: body.patientId,
+        carrier: body.carrier,
+        requestJson: estimateRequest as unknown as object,
+        resultJson: { estimate } as unknown as object,
+      },
+    });
+
     const response: EstimateResponse = { success: true, estimate };
     return res.status(200).json(response);
   } catch (err) {
@@ -141,18 +151,34 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
     }
 
     const practiceId = practiceIdFromSession(req);
-    const snapshot = await prisma.eligibilitySnapshot.findFirst({
-      where: {
-        practiceId,
-        patientId,
-        carrier: carrier as CarrierId,
-      },
-      orderBy: { verifiedAt: 'desc' },
-    });
+    const [snapshot, lastEstimateLog] = await Promise.all([
+      prisma.eligibilitySnapshot.findFirst({
+        where: {
+          practiceId,
+          patientId,
+          carrier: carrier as CarrierId,
+        },
+        orderBy: { verifiedAt: 'desc' },
+      }),
+      prisma.eligibilityEstimateLog.findFirst({
+        where: {
+          practiceId,
+          patientId,
+          carrier,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const lastEstimate =
+      lastEstimateLog && typeof lastEstimateLog.resultJson === 'object' && lastEstimateLog.resultJson !== null
+        ? ((lastEstimateLog.resultJson as { estimate?: EligibilityEstimate }).estimate ?? undefined)
+        : undefined;
 
     const response: StatusResponse = {
       success: true,
       snapshot: snapshot ? mapEligibilitySnapshotFromDb(snapshot) : undefined,
+      lastEstimate,
     };
     return res.status(200).json(response);
   } catch (err) {

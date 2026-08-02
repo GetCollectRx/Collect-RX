@@ -8,18 +8,23 @@
 // otherwise `referenceDate − daysOutstanding` is used (documented fallback).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { PrismaClient } from '@prisma/client';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { piiVault } from '../../pii-vault';
 import {
   applyPracticePriorityFloor,
+  buildCarrierOrderRankMap,
   buildPriorityScoreInput,
   CARRIER_APPEAL_WINDOW_MONTHS,
+  carrierOrderRank,
+  claimPriorityOrdinal,
+  DEFAULT_CARRIER_ORDER,
   estimateServiceDateFromOutstanding,
   inferApprovedButUnpaid,
   inferApprovedButUnpaidLegacy,
   isApprovedPendingPaymentFromCallDetail,
   normalizeClaimRankScore,
+  parseCarrierOrderJson,
   rankClaimForPractice,
   scoreClaim,
   scoreToClaimPriority,
@@ -57,6 +62,13 @@ function displayPatientName(patientToken: string, practiceId: string): string {
 
 /**
  * Returns open claims for the practice, ranked by priority score (highest first).
+ *
+ * Age/amount/deadline/attempts/status (`scoreClaim`) remain the sole determinant of which
+ * `ClaimPriority` band (URGENT/HIGH/NORMAL/LOW) a claim falls into — that ordering is never
+ * overridden. When the practice has saved a carrier call-order preference (`CarrierOrder`,
+ * set via the CarrierPriorityPanel settings UI), it is consulted only as a *tiebreaker within
+ * the same band*, so claims sequence by the practice's preferred carrier order without a
+ * lower-urgency claim ever jumping ahead of a higher-urgency one.
  */
 export async function buildPriorityQueue(
   prisma: PrismaClient,
@@ -79,7 +91,7 @@ export async function buildPriorityQueue(
     },
   });
 
-  const ranked: RankedClaim[] = [];
+  const scored: { claim: RankedClaim; carrierId: CarrierId }[] = [];
 
   for (const c of claims) {
     const parts = scoreClaim(buildPriorityScoreInput(c, referenceDate));
@@ -88,27 +100,53 @@ export async function buildPriorityQueue(
 
     const carrierName = CARRIER_CONFIGS[c.carrierId]?.displayName ?? c.carrierId;
 
-    ranked.push({
-      claimId: c.id,
-      patientName: displayPatientName(c.patientToken, practiceId),
-      carrier: carrierName,
-      amountCents,
-      daysOutstanding: c.daysOutstanding,
-      attemptCount,
-      deadlineDaysRemaining: parts.deadlineDaysRemaining,
-      scores: {
-        age: parts.age,
-        amount: parts.amount,
-        deadline: parts.deadlineScore,
-        attempts: parts.attempts,
-        status: parts.status,
-        total: parts.total,
+    scored.push({
+      carrierId: c.carrierId,
+      claim: {
+        claimId: c.id,
+        patientName: displayPatientName(c.patientToken, practiceId),
+        carrier: carrierName,
+        amountCents,
+        daysOutstanding: c.daysOutstanding,
+        attemptCount,
+        deadlineDaysRemaining: parts.deadlineDaysRemaining,
+        scores: {
+          age: parts.age,
+          amount: parts.amount,
+          deadline: parts.deadlineScore,
+          attempts: parts.attempts,
+          status: parts.status,
+          total: parts.total,
+        },
       },
     });
   }
 
-  ranked.sort((a, b) => b.scores.total - a.scores.total);
-  return ranked;
+  if (scored.length > 1) {
+    const carrierOrderRow = await prisma.carrierOrder.findUnique({ where: { practiceId } });
+    if (carrierOrderRow) {
+      const rankMap = buildCarrierOrderRankMap(
+        parseCarrierOrderJson(carrierOrderRow.order, DEFAULT_CARRIER_ORDER),
+      );
+      const maxScore = Math.max(...scored.map((s) => s.claim.scores.total), 1);
+
+      scored.sort((a, b) => {
+        const tierDelta =
+          claimPriorityOrdinal(scoreToClaimPriority(a.claim.scores.total, maxScore)) -
+          claimPriorityOrdinal(scoreToClaimPriority(b.claim.scores.total, maxScore));
+        if (tierDelta !== 0) return tierDelta;
+
+        const carrierDelta = carrierOrderRank(a.carrierId, rankMap) - carrierOrderRank(b.carrierId, rankMap);
+        if (carrierDelta !== 0) return carrierDelta;
+
+        return b.claim.scores.total - a.claim.scores.total;
+      });
+      return scored.map((s) => s.claim);
+    }
+  }
+
+  scored.sort((a, b) => b.claim.scores.total - a.claim.scores.total);
+  return scored.map((s) => s.claim);
 }
 
 export interface PrioritySyncResult {

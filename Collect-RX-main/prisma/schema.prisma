@@ -140,6 +140,8 @@ model OrganizationMember {
   @@map("organization_members")
 }
 
+// Dead: not referenced anywhere in src/ outside this schema file — no route, service, or
+// worker reads/writes RuleSet. Left in place pending a human decision on removal (2026-08-02 audit).
 model RuleSet {
   id         String   @id @default(uuid())
   practiceId String
@@ -149,6 +151,8 @@ model RuleSet {
   rules      Rule[]
 }
 
+// Dead: not referenced anywhere in src/ outside this schema file — no route, service, or
+// worker reads/writes Rule. Left in place pending a human decision on removal (2026-08-02 audit).
 model Rule {
   id           String  @id @default(uuid())
   ruleSetId    String
@@ -159,6 +163,9 @@ model Rule {
   ruleSet      RuleSet @relation(fields: [ruleSetId], references: [id])
 }
 
+// Dead: the only writer was the write-only `POST /api/queue/priority` endpoint ("Electron
+// legacy"), removed 2026-08-02 because nothing ever read this table back. Left in place pending
+// a human decision on removal.
 model QueuePriority {
   id           String   @id @default(uuid())
   practiceId   String

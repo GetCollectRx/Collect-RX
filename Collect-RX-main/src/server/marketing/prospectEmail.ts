@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import type { Prospect, PrismaClient } from '@prisma/client'
 import { logProspectActivity } from './prospectActivity.js';
+import { buildProspectUnsubscribeUrl } from '../email/unsubscribeUrl.js';
 
 const require = createRequire(import.meta.url);
 
@@ -38,6 +39,11 @@ export async function sendProspectEmail(
     return false;
   }
 
+  // Gmail/Yahoo's 2024+ bulk-sender rules require a one-click List-Unsubscribe header on
+  // top of the reply-text opt-out CASL already satisfies. Degrades gracefully (header
+  // omitted, email still sends) if EMAIL_UNSUBSCRIBE_SECRET/JWT_SECRET isn't configured.
+  const unsubscribeUrl = buildProspectUnsubscribeUrl(prospect.id);
+
   try {
     await sg.send({
       to: prospect.email,
@@ -48,6 +54,10 @@ export async function sendProspectEmail(
       text: opts.text,
       headers: {
         'X-Prospect-Id': prospect.id,
+        ...(unsubscribeUrl && {
+          'List-Unsubscribe': `<${unsubscribeUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        }),
       },
       customArgs: {
         prospect_id: prospect.id,
