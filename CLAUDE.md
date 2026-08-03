@@ -172,6 +172,15 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 
 ---
 
+## Agent operating notes
+
+- **Verify before stating as fact.** This repo has moved fast; treat any claim about current architecture, integration status, or deployment target as something to confirm against the actual code/config, not something to repeat from memory or an older doc.
+- **Established architectural choices are not casually up for redesign.** The CSV-import onboarding path, the optional AbelDent PMS connector, and the Vapi squad structure are deliberate tradeoffs, not placeholders. If a change to one of these seems warranted, state the reasoning and flag it explicitly as a proposal — don't silently reshape it while doing unrelated work.
+- **Ask rather than infer** when something carrier- or workflow-specific is genuinely ambiguous (e.g., the exact shape of a carrier's IVR tree) instead of guessing and presenting the guess as settled behavior.
+- **PHIPA vs. HIPAA/GDPR:** this data is health-adjacent (dental insurance claims tied to patients) and is handled with PHI-level rigor even though it's billing/insurance data, not clinical data. PHIPA (Ontario) is the governing statute — it is not HIPAA or GDPR. General-purpose privacy skills (e.g. `data-privacy-compliance`, `gdpr-data-handling`) are useful for privacy-by-design and data-minimization patterns but are **not authoritative** for PHIPA-specific obligations (IPC Ontario breach-notification thresholds, custodian-vs-agent status, etc.) — see `docs/compliance/PHIPA_Compliance_Tracker.md` for the actual tracked obligations, and flag the gap rather than treating HIPAA/GDPR answers as PHIPA-equivalent.
+
+---
+
 ## Database
 
 PostgreSQL on Fly.io, accessed via Prisma. Migrations live in `Collect-RX-main/prisma/migrations/` and are applied with `npm run db:migrate:collectrx` (`prisma migrate deploy`) — not ad-hoc `psql -f`.
