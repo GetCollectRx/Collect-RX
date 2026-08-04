@@ -32,17 +32,40 @@
  *
  * Reset mechanism: RateLimitRequestHandler only exposes resetKey(key), not
  * resetAll() (confirmed empirically — the type's resetAll only exists on an
- * internal Store interface, not the public handler). That means the reset
- * has to target the exact key makeLimiter()'s keyGenerator would have
- * produced:
- *   - Authenticated requests: `sess:${userId}` — known directly, since these
- *     tests create the session themselves.
- *   - Unauthenticated requests: ipKeyGenerator(req.ip ?? 'unknown'). Verified
- *     empirically (a throwaway debug route) that supertest requests against
- *     an in-process app (no real socket) always resolve req.ip to undefined,
- *     so this always evaluates to the literal string 'unknown' — the same
- *     for every anonymous request in this whole suite, which is exactly why
- *     resetting it after every test here is required, not optional.
+ * internal Store interface, not the public handler). Getting this reset
+ * right took three attempts, in increasing order of how wrong the previous
+ * one turned out to be under CI's actual conditions (REDIS_URL set, CI=true,
+ * full suite in one process) — none of which showed up running this file
+ * alone locally without Redis:
+ *
+ *   1. Assumed resetAll() existed (it doesn't on the public handler type) —
+ *      every test failed immediately with "not a function," caught before
+ *      it could silently leave limiters exhausted.
+ *   2. Assumed resetKey('unknown') was the one universal anonymous key,
+ *      based on a debug route showing req.ip as undefined under vitest, and
+ *      called it without awaiting — looked clean in 2 consecutive full local
+ *      suite runs, but failed in CI's queue-redis job: app.integration.test.ts
+ *      and recovery.integration.test.ts started getting real 429s on their
+ *      own unrelated webhook/signature tests.
+ *   3. Reproducing locally against a real Redis instance (redis-server
+ *      --daemonize yes) found the actual cause was deeper than a missing
+ *      await: resetKey() does return a genuine Promise under RedisStore
+ *      (confirmed directly), but the key it needs to target isn't reliably
+ *      'unknown' at all — hitting the real POST /api/webhooks/sendgrid route
+ *      through supertest produced a Redis key of
+ *      collectrx:rl:webhook:127.0.0.1, not collectrx:rl:webhook:unknown,
+ *      while a plain debug GET route on the same app in the same process
+ *      showed req.ip as undefined. The exact key varies by
+ *      route/method/environment in ways not worth chasing further.
+ *
+ * The robust fix doesn't try to predict the key at all: when REDIS_URL is
+ * set, connect directly and delete every key under that limiter's own
+ * Redis prefix (collectrx:rl:<name>:*, matching the prefix each limiter is
+ * constructed with in rateLimiter.ts) — clearing every client, not one
+ * guessed key. resetKey() is still called for a few plausible literals too,
+ * as a cheap, harmless second layer for the in-memory (non-Redis) store,
+ * where this file's own repeated local full-suite runs already showed no
+ * contamination.
  *
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable.
  */
@@ -50,6 +73,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import type { RateLimitRequestHandler } from 'express-rate-limit';
+import IORedis from 'ioredis';
 import { app, prisma } from '../src/server/index.js';
 import {
   authLimiter,
@@ -75,11 +99,31 @@ try {
   );
 }
 
-/** The key every anonymous/IP-based request resolves to in this test environment — see file header. */
-const ANON_KEY = 'unknown';
+/** A few plausible anonymous-key literals, cleared defensively alongside the Redis-prefix sweep. */
+const ANON_KEY_CANDIDATES = ['unknown', '127.0.0.1', '::1', '::ffff:127.0.0.1'];
 
 function sessionKey(userId: string): string {
   return `sess:${userId}`;
+}
+
+/**
+ * Clears every client's counter for one limiter — see the file header for
+ * why this doesn't just target a single guessed key. `name` must match the
+ * string each limiter is constructed with in rateLimiter.ts
+ * (makeLimiter('webhook', ...) etc.), since that's the literal Redis prefix.
+ */
+async function clearLimiterState(limiter: RateLimitRequestHandler, name: string, extraKeys: string[] = []): Promise<void> {
+  await Promise.all([...ANON_KEY_CANDIDATES, ...extraKeys].map((k) => Promise.resolve(limiter.resetKey(k))));
+
+  const redisUrl = process.env.REDIS_URL?.trim();
+  if (!redisUrl) return;
+  const redis = new IORedis(redisUrl);
+  try {
+    const keys = await redis.keys(`collectrx:rl:${name}:*`);
+    if (keys.length > 0) await redis.del(...keys);
+  } finally {
+    await redis.quit();
+  }
 }
 
 function cookieHeaderFrom(res: request.Response): string {
@@ -89,7 +133,7 @@ function cookieHeaderFrom(res: request.Response): string {
 
 describe.skipIf(!dbReady)('authLimiter — 5 attempts / 15 min on POST /api/auth/login', () => {
   afterEach(async () => {
-    authLimiter.resetKey(ANON_KEY);
+    await clearLimiterState(authLimiter, 'auth');
   });
 
   it('the 6th login attempt from the same IP gets 429, not 401', async () => {
@@ -122,8 +166,8 @@ describe.skipIf(!dbReady)('authLimiter — 5 attempts / 15 min on POST /api/auth
 describe.skipIf(!dbReady)('strictLimiter — 10 requests / min on expensive writes', () => {
   let userIdToReset: string | undefined;
 
-  afterEach(() => {
-    if (userIdToReset) strictLimiter.resetKey(sessionKey(userIdToReset));
+  afterEach(async () => {
+    await clearLimiterState(strictLimiter, 'strict', userIdToReset ? [sessionKey(userIdToReset)] : []);
     userIdToReset = undefined;
   });
 
@@ -161,8 +205,8 @@ describe.skipIf(!dbReady)('strictLimiter — 10 requests / min on expensive writ
 describe.skipIf(!dbReady)('sessionStandardLimiter — 600 requests / min per signed-in user', () => {
   let userIdToReset: string | undefined;
 
-  afterEach(() => {
-    if (userIdToReset) sessionStandardLimiter.resetKey(sessionKey(userIdToReset));
+  afterEach(async () => {
+    await clearLimiterState(sessionStandardLimiter, 'session-standard', userIdToReset ? [sessionKey(userIdToReset)] : []);
     userIdToReset = undefined;
   });
 
@@ -193,8 +237,8 @@ describe.skipIf(!dbReady)('sessionStandardLimiter — 600 requests / min per sig
 });
 
 describe.skipIf(!dbReady)('anonStandardLimiter — 120 requests / min per IP, anonymous', () => {
-  afterEach(() => {
-    anonStandardLimiter.resetKey(ANON_KEY);
+  afterEach(async () => {
+    await clearLimiterState(anonStandardLimiter, 'anon-standard');
   });
 
   it('the 121st unauthenticated request gets 429', async () => {
@@ -237,8 +281,8 @@ async function proveLimiterEnforces(limiter: RateLimitRequestHandler, max: numbe
 }
 
 describe('webhookLimiter — 300 requests / min, no skip (always active)', () => {
-  afterEach(() => {
-    webhookLimiter.resetKey(ANON_KEY);
+  afterEach(async () => {
+    await clearLimiterState(webhookLimiter, 'webhook');
   });
 
   it('enforces its configured limit', async () => {
@@ -258,26 +302,32 @@ describe('webhookLimiter — 300 requests / min, no skip (always active)', () =>
 });
 
 describe('healthLimiter — 120 requests / min on health endpoints', () => {
-  afterEach(() => {
-    healthLimiter.resetKey(ANON_KEY);
+  afterEach(async () => {
+    await clearLimiterState(healthLimiter, 'health');
   });
 
   it('enforces its configured limit', async () => {
-    // healthLimiter's skip is `skipForE2eOrVitest() || CI === 'true'` — CI is
-    // unset in this environment (confirmed), only VITEST needs defeating.
+    // healthLimiter's skip is `skipForE2eOrVitest() || CI === 'true'`. CI is
+    // unset locally, but GitHub Actions sets CI=true on every job by
+    // default — missing that here is exactly what made this test pass
+    // locally and fail in real CI (0 rejections, since the limiter silently
+    // skipped itself). Both must be defeated for this environment too.
     const originalVitest = process.env.VITEST;
+    const originalCi = process.env.CI;
     process.env.VITEST = 'false';
+    process.env.CI = 'false';
     try {
       await proveLimiterEnforces(healthLimiter, 120);
     } finally {
       process.env.VITEST = originalVitest;
+      process.env.CI = originalCi;
     }
   }, 30_000);
 });
 
 describe('telemetryEventsLimiter — 1000 requests / min, no skip (always active)', () => {
-  afterEach(() => {
-    telemetryEventsLimiter.resetKey(ANON_KEY);
+  afterEach(async () => {
+    await clearLimiterState(telemetryEventsLimiter, 'telemetry-events');
   });
 
   it('enforces its configured limit', async () => {
@@ -286,8 +336,8 @@ describe('telemetryEventsLimiter — 1000 requests / min, no skip (always active
 });
 
 describe('publicLimiter — 60 requests / min — DEAD CODE, not wired to any route', () => {
-  afterEach(() => {
-    publicLimiter.resetKey(ANON_KEY);
+  afterEach(async () => {
+    await clearLimiterState(publicLimiter, 'public');
   });
 
   it('the middleware itself enforces its configured limit correctly, if it is ever wired up', async () => {
