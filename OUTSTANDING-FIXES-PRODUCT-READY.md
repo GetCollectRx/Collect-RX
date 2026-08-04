@@ -269,7 +269,7 @@
 | **P3-30** | **Complete** | CSV upload, [header aliases](Collect-RX-main/src/server/csv/parseSimple.ts), row `errors` + Admin panel; `400` empty file. |
 | **P3-31** | **Complete** | [upsertBalances](Collect-RX-main/src/server/patients/balances.ts) + [CSV-IMPORT-IDEMPOTENCY.md](docs/product/CSV-IMPORT-IDEMPOTENCY.md). |
 | **P3-32** | **Complete (doc epic)** | [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md). |
-| **P3-40** | **Complete** | `EligibilityEstimateLog` + [routes](Collect-RX-main/src/routes/eligibility.ts); status returns `lastEstimate`. |
+| **P3-40** | **Complete** | `POST /api/eligibility/estimate` writes `prisma.eligibilityEstimateLog.create(...)` ([eligibility.ts:116](Collect-RX-main/src/routes/eligibility.ts#L116)) into the `EligibilityEstimateLog` model ([schema.prisma:346](Collect-RX-main/prisma/schema.prisma#L346)); `GET /api/eligibility/status/:patientId/:carrier` reads the latest row and returns it as `lastEstimate` ([eligibility.ts:154-181](Collect-RX-main/src/routes/eligibility.ts#L154-L181)). |
 | **P3-41** | **Complete** | [eligibility.test.ts](Collect-RX-main/tests/eligibility.test.ts) (deductible, annual max, COB, reconciliation flags, + P3-41 edge cases); [vitest.config](Collect-RX-main/vitest.config.ts) includes `tests/`. |
 | **P3-42** | **Complete** | `EligibilityReconcileLog` + `POST/GET` reconcile history; [ELIGIBILITY-RECONCILE-LOG.md](docs/product/ELIGIBILITY-RECONCILE-LOG.md). |
 
