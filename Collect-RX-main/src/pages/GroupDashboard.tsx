@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { apiFetchJson } from '../lib/apiFetch'
 
 interface PracticeSummary {
@@ -10,6 +10,128 @@ interface PracticeSummary {
   resolutionRate: number
   outstandingAR: number
   activeUsers: number
+}
+
+interface MyOrganization {
+  id: string
+  name: string
+  myRole: string
+  practices: { id: string; name: string }[]
+}
+
+function ManageGroupPanel() {
+  const [orgs, setOrgs] = useState<MyOrganization[] | null>(null)
+  const [name, setName] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    apiFetchJson<{ organizations: MyOrganization[] }>('/api/organizations/mine')
+      .then(d => setOrgs(d.organizations))
+      .catch(e => setError((e as Error).message))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function createGroup(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true); setError(null); setMessage(null)
+    try {
+      await apiFetchJson('/api/organizations', { method: 'POST', body: JSON.stringify({ name }) })
+      setName('')
+      setMessage('Group created.')
+      load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function invitePractice(orgId: string, e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true); setError(null); setMessage(null)
+    try {
+      await apiFetchJson(`/api/organizations/${orgId}/invite-practice`, {
+        method: 'POST',
+        body: JSON.stringify({ email: inviteEmail }),
+      })
+      setInviteEmail('')
+      setMessage('Invite sent — the practice owner has 72 hours to accept.')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (orgs === null) return null
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {message && <p className="text-sm text-green-700 dark:text-green-400">{message}</p>}
+
+      {orgs.length === 0 && (
+        <form onSubmit={createGroup} className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="crx-group-name" className="block text-2xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Create a group</label>
+            <input
+              id="crx-group-name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Northside Dental Group"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
+              required
+              minLength={2}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-lg bg-crx-600 hover:bg-crx-700 text-white text-sm font-semibold px-4 py-2 disabled:opacity-50"
+          >
+            {busy ? 'Creating…' : 'Create group'}
+          </button>
+          <p className="text-xs text-gray-400 basis-full">Your own practice joins automatically. No other practice is ever added without its owner accepting an invite.</p>
+        </form>
+      )}
+
+      {orgs.map(org => (
+        <div key={org.id} className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{org.name}</h3>
+          <ul className="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {org.practices.map(p => <li key={p.id}>{p.name}</li>)}
+          </ul>
+          {org.myRole === 'org_admin' && (
+            <form onSubmit={e => invitePractice(org.id, e)} className="flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor={`crx-invite-email-${org.id}`} className="block text-2xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Invite a practice by owner email</label>
+                <input
+                  id={`crx-invite-email-${org.id}`}
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="owner@otherpractice.com"
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded-lg bg-crx-600 hover:bg-crx-700 text-white text-sm font-semibold px-4 py-2 disabled:opacity-50"
+              >
+                {busy ? 'Sending…' : 'Send invite'}
+              </button>
+            </form>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function GroupDashboard() {
@@ -45,6 +167,8 @@ export default function GroupDashboard() {
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      <ManageGroupPanel />
 
       {!loading && !error && (
         <>

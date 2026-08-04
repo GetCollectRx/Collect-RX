@@ -14,6 +14,7 @@ import { LoginPage }         from './pages/LoginPage'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
 import SignupPage              from './pages/SignupPage'
 import AcceptInvitePage        from './pages/AcceptInvitePage'
+import OrganizationAcceptInvitePage from './pages/OrganizationAcceptInvitePage'
 const Dashboard             = lazy(() => import('./pages/Dashboard'))
 const Analytics             = lazy(() => import('./pages/Analytics'))
 const AssumptionValidation  = lazy(() => import('./pages/AssumptionValidation'))
@@ -631,6 +632,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/organizations/accept-invite" element={<OrganizationAcceptInvitePage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<AuthGate />} />
               </Routes>
@@ -644,6 +646,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/organizations/accept-invite" element={<OrganizationAcceptInvitePage />} />
                 <Route path="/demo" element={<PublicDemoRoute />} />
                 <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
                 <Route path="/how-it-works" element={<MarketingSite />} />

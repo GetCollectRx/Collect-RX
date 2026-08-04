@@ -103,12 +103,13 @@ model User {
 
 /// Customer-owned DSO / multi-location boundary. Platform staff are not members.
 model Organization {
-  id          String                 @id @default(uuid())
+  id          String                    @id @default(uuid())
   name        String
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
   practices   OrganizationPractice[]
   members     OrganizationMember[]
+  inviteTokens OrganizationInviteToken[]
 
   @@map("organizations")
 }
@@ -116,14 +117,34 @@ model Organization {
 model OrganizationPractice {
   id             String       @id @default(uuid())
   organizationId String       @map("organization_id")
-  practiceId     String       @map("practice_id")
+  /// A practice belongs to at most one DSO at a time — attaching it elsewhere
+  /// requires detaching first, so cross-org data exposure can't be ambiguous.
+  practiceId     String       @unique @map("practice_id")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   practice       Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, practiceId])
-  @@index([practiceId])
+  @@index([organizationId])
   @@map("organization_practices")
+}
+
+/// Invite an existing practice's owner to attach their practice to a DSO.
+/// Consent-based by design: the inviter never attaches a practice they don't
+/// own themselves — only the invited owner's own acceptance can do that.
+model OrganizationInviteToken {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  inviteeEmail   String       @map("invitee_email")
+  token          String       @unique @default(uuid())
+  expiresAt      DateTime     @map("expires_at")
+  usedAt         DateTime?    @map("used_at")
+  createdBy      String       @map("created_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([organizationId])
+  @@map("organization_invite_tokens")
 }
 
 model OrganizationMember {
@@ -867,11 +888,33 @@ model CallTranscriptLine {
 
 /// Per-practice front desk queue controls (pause/resume).
 model PracticeDeskState {
-  practiceId  String   @id @map("practice_id")
-  queuePaused Boolean  @default(false) @map("queue_paused")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  practiceId   String    @id @map("practice_id")
+  queuePaused  Boolean   @default(false) @map("queue_paused")
+  /// Last time runDeskQueueTick gave this practice a turn (reached it in the
+  /// loop), regardless of whether a call was actually dispatched. Ordering
+  /// practices by this ascending (nulls first) each tick is what prevents a
+  /// practice from being starved indefinitely when the fleet-wide Vapi slot
+  /// budget is tight — a practice skipped this tick due to budget exhaustion
+  /// keeps its old (older) timestamp and sorts to the front next tick.
+  lastServedAt DateTime? @map("last_served_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("practice_desk_state")
+}
+
+/// Singleton lease so only one replica's runDeskQueueTick body executes at a
+/// time. The in-process isTickRunning guard in queueEngine.ts only prevents
+/// double-dispatch within a single Node process — once the app process is
+/// horizontally scaled beyond one machine (a realistic response to DSO-scale
+/// call volume), each replica runs its own independent 60s interval and
+/// would double-dispatch calls to the same claim without this.
+model QueueEngineLease {
+  id          String    @id
+  lockedUntil DateTime? @map("locked_until")
+  lockedBy    String?   @map("locked_by")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("queue_engine_lease")
 }
 
 /// Written when a carrier detects automation. Triggers practice-wide suspension

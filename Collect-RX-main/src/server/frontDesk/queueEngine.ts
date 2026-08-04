@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
@@ -96,6 +97,57 @@ function vapiSlotBudget(): number {
   const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
   if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
   return Math.max(0, limit - Math.max(0, reserve));
+}
+
+// This process's identity for the QueueEngineLease row — diagnostic only,
+// the claim itself is decided by the atomic UPDATE below, not by comparing IDs.
+const ENGINE_INSTANCE_ID = `${process.pid}-${randomUUID()}`;
+const LEASE_ID = 'global';
+// Longer than the 60s tick interval so a live tick's lease survives to cover
+// the next scheduled fire (no gap where a second replica could sneak in),
+// but a crashed process's stale lease still clears within two ticks.
+const LEASE_TTL_MS = 90_000;
+
+/**
+ * Atomically claim the fleet-wide dispatch lease. Only one replica's tick
+ * body may run at a time — the in-process isTickRunning guard alone only
+ * protects a single Node process, not a horizontally-scaled deployment.
+ * Uses the same claim-row idiom as ProcessedVapiWebhook rather than a native
+ * Postgres advisory lock: session-level advisory locks are tied to the
+ * physical connection that acquired them, and a pooled connection can route
+ * the matching unlock call through a different one, silently failing to
+ * release — a DB row with a WHERE-guarded UPSERT has no such gotcha.
+ */
+export async function claimTickLease(prisma: PrismaClient): Promise<boolean> {
+  const affected = await prisma.$executeRaw`
+    INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
+    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${ENGINE_INSTANCE_ID}, now())
+    ON CONFLICT (id) DO UPDATE
+    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+        locked_by = ${ENGINE_INSTANCE_ID},
+        updated_at = now()
+    WHERE queue_engine_lease.locked_until IS NULL OR queue_engine_lease.locked_until < now()
+  `;
+  return affected > 0;
+}
+
+interface PracticeServeOrder {
+  id: string;
+}
+
+/**
+ * Practices ordered so the one that's gone longest without a turn (or never
+ * had one) goes first. A practice only keeps its place in line if the loop
+ * never reached it this tick (slot budget exhausted first) — see the
+ * lastServedAt touch inside the loop below.
+ */
+export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
+  return prisma.$queryRaw<PracticeServeOrder[]>`
+    SELECT p.id
+    FROM "Practice" p
+    LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+    ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+  `;
 }
 
 async function deferQueueEntry(
@@ -227,9 +279,18 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
+  // Fleet-wide lease: if another replica already holds it this cycle, skip —
+  // it, not this process, is running the tick body right now.
+  if (!(await runWithRlsBypass(() => claimTickLease(prisma)))) {
+    logger.warn('[deskQueueEngine] another replica holds the dispatch lease — skipping this tick', {
+      instanceId: ENGINE_INSTANCE_ID,
+    });
+    return;
+  }
+
   const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
     Promise.all([
-      prisma.practice.findMany({ select: { id: true } }),
+      orderPracticesByFairness(prisma),
       prisma.callAttempt.count({ where: { completedAt: null } }),
     ]),
   );
@@ -249,6 +310,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // loop — isolate each practice's tick.
     try {
     await runWithPracticeRls(practiceId, async () => {
+    // Reaching this point spends this practice's fairness turn for the tick —
+    // it sorts to the back of orderPracticesByFairness next time, same as
+    // every other practice the loop got to (paused or not). A practice the
+    // loop never reaches (slot budget ran out first) keeps its older
+    // timestamp and moves to the front instead.
+    await prisma.practiceDeskState.upsert({
+      where: { practiceId },
+      create: { practiceId, lastServedAt: new Date() },
+      update: { lastServedAt: new Date() },
+    });
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
 
     // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
