@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
+import { strictLimiter } from '../middleware/rateLimiter';
 import { requirePracticeContext, practiceIdFromSession } from '../middleware/requirePracticeSession';
 import { isUserSession, type UserAuthPayload } from '../accessControl/types.js';
 import { sendOrganizationInviteEmail } from '../email/organizationInviteEmail.js';
@@ -130,7 +131,7 @@ export function createOrganizationRouter(prisma: PrismaClient): Router {
    * never attach a practice on someone else's behalf — only the invited
    * owner's own acceptance creates the OrganizationPractice row.
    */
-  r.post('/:orgId/invite-practice', authorizeRole('group_admin'), async (req: Request, res: Response) => {
+  r.post('/:orgId/invite-practice', strictLimiter, authorizeRole('group_admin'), async (req: Request, res: Response) => {
     try {
       const { orgId } = req.params;
       const auth = req.auth!;
