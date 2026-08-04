@@ -32,10 +32,16 @@ afterAll(async () => {
 });
 
 describe.skipIf(!dbReady)('claimTickLease — fleet-wide distributed lock', () => {
-  it('grants the lease to only one of two concurrent claimants', async () => {
+  it('grants the lease to only one of two concurrent DIFFERENT claimants', async () => {
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
     try {
-      const [a, b] = await Promise.all([claimTickLease(prisma), claimTickLease(prisma)]);
+      // Two distinct instance IDs — genuinely simulates two replicas racing,
+      // not the same process claiming twice (that's renewal, tested below,
+      // and both calls succeeding there is correct, not a race failure).
+      const [a, b] = await Promise.all([
+        claimTickLease(prisma, 'replica-a'),
+        claimTickLease(prisma, 'replica-b'),
+      ]);
       // Exactly one of the two concurrent claims wins — this is what stops
       // two replicas from both running the tick body in the same cycle.
       expect([a, b].filter(Boolean)).toHaveLength(1);
@@ -44,13 +50,39 @@ describe.skipIf(!dbReady)('claimTickLease — fleet-wide distributed lock', () =
     }
   });
 
-  it('rejects a second claim while the lease is still live', async () => {
+  it('rejects a claim while a DIFFERENT instance still holds a live lease', async () => {
+    // Simulates a second replica: a lease row held by some other instance,
+    // not yet expired. claimTickLease() here uses this process's own
+    // ENGINE_INSTANCE_ID, so this is a genuine cross-instance conflict.
+    await prisma.queueEngineLease.upsert({
+      where: { id: 'global' },
+      create: { id: 'global', lockedUntil: new Date(Date.now() + 60_000), lockedBy: 'other-live-instance' },
+      update: { lockedUntil: new Date(Date.now() + 60_000), lockedBy: 'other-live-instance' },
+    });
+    try {
+      const claimed = await claimTickLease(prisma);
+      expect(claimed).toBe(false);
+    } finally {
+      await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+    }
+  });
+
+  it('lets the SAME instance renew its own still-live lease on the next tick', async () => {
+    // Regression test for a real bug: LEASE_TTL_MS (90s) is deliberately
+    // longer than the 60s tick interval, so on a single-machine deployment
+    // this process's own next tick would always see its prior lease as still
+    // "held" unless renewal by the same locked_by is explicitly allowed.
+    // Caught by tests/dsoLoadCapacity.test.ts running two real consecutive
+    // ticks — this file's own earlier lease tests reset the row between
+    // cases, so they never exercised "same instance, second real claim."
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
     try {
       const first = await claimTickLease(prisma);
       expect(first).toBe(true);
       const second = await claimTickLease(prisma);
-      expect(second).toBe(false);
+      expect(second).toBe(true);
+      const third = await claimTickLease(prisma);
+      expect(third).toBe(true);
     } finally {
       await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
     }

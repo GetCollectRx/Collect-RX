@@ -117,16 +117,32 @@ const LEASE_TTL_MS = 90_000;
  * physical connection that acquired them, and a pooled connection can route
  * the matching unlock call through a different one, silently failing to
  * release — a DB row with a WHERE-guarded UPSERT has no such gotcha.
+ *
+ * The WHERE guard must also let this same instance renew its own still-live
+ * lease — LEASE_TTL_MS (90s) is deliberately longer than the 60s tick
+ * interval so a slow tick's lease survives to the next scheduled fire, but
+ * without the locked_by clause below, that same margin means this process's
+ * OWN next tick would see its own lease as still "held" and skip forever:
+ * on a single-machine deployment (the only thing running today) every tick
+ * after the first would silently never dispatch again. Caught by
+ * tests/dsoLoadCapacity.test.ts running two real consecutive ticks — every
+ * other lease test either reset the row between cases or mocked $executeRaw
+ * outright, so this never showed up until something ran the real sequence.
  */
-export async function claimTickLease(prisma: PrismaClient): Promise<boolean> {
+export async function claimTickLease(
+  prisma: PrismaClient,
+  instanceId: string = ENGINE_INSTANCE_ID,
+): Promise<boolean> {
   const affected = await prisma.$executeRaw`
     INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
-    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${ENGINE_INSTANCE_ID}, now())
+    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
     ON CONFLICT (id) DO UPDATE
     SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
-        locked_by = ${ENGINE_INSTANCE_ID},
+        locked_by = ${instanceId},
         updated_at = now()
-    WHERE queue_engine_lease.locked_until IS NULL OR queue_engine_lease.locked_until < now()
+    WHERE queue_engine_lease.locked_until IS NULL
+       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_by = ${instanceId}
   `;
   return affected > 0;
 }
