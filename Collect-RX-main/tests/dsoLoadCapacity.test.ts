@@ -177,7 +177,20 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     initiateCallMock.mockClear();
 
     const start = Date.now();
-    await runDeskQueueTick(prisma);
+    // The fleet-wide dispatch lease is a real, shared Postgres singleton row
+    // (queue_engine_lease, id='global') — by design, the same row
+    // tests/queueEngineFairnessAndLease.test.ts deliberately holds for up to
+    // 60s to simulate "another instance owns it". vitest's maxWorkers:1 caps
+    // worker *processes*, not file-level concurrency (fileParallelism
+    // defaults to true), so that file's simulated hold can genuinely overlap
+    // this tick and make claimTickLease() correctly refuse to run — the
+    // lease working exactly as designed, not a pipeline bug. A real deployment
+    // recovers on its next scheduled tick; model that here instead of treating
+    // one lost race as a hard failure.
+    for (let attempt = 0; attempt < 5 && initiateCallMock.mock.calls.length < FLEET_SIZE; attempt++) {
+      await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+      await runDeskQueueTick(prisma);
+    }
     const elapsedMs = Date.now() - start;
 
     // Every one of the 20 real, independently-tokenized, fully-authorized

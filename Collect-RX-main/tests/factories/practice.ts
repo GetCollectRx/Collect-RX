@@ -49,6 +49,7 @@ export async function createPracticeWithOwnerForTests(
 
 /** Delete a practice and all its users, in FK-safe order. */
 export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId: string) {
+  await prisma.inviteToken.deleteMany({ where: { practiceId } });
   await prisma.user.deleteMany({ where: { practiceId } });
   await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);
 }
