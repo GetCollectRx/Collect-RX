@@ -143,8 +143,8 @@ import { createSendgridInboundRouter } from './routes/sendgridInboundRouter.js';
 import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRouter.js';
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
 import { startEmailCampaignScheduler } from './marketing/emailCampaignScheduler.js';
-import { attachDeskWebSocket } from './frontDesk/deskWs.js';
-import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
+import { attachDeskWebSocket, closeAllDeskConnections } from './frontDesk/deskWs.js';
+import { startDeskQueueEngine, drainDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
 import { complianceWorkspaceRouter } from './routes/complianceWorkspaceRoutes.js';
 import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
@@ -327,6 +327,23 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — excluded from /api rate limiting (tests + probes)
 // ─────────────────────────────────────────────────────────────────────────────
+// Flipped the instant graceful shutdown begins (see registerGracefulShutdown
+// below) so Fly stops routing new traffic here before the drain completes,
+// rather than discovering the instance is going away only when a request
+// already in flight fails.
+let shuttingDown = false;
+
+/**
+ * Test-only seam: registerGracefulShutdown() only runs from boot(), which is
+ * gated behind isMainModule() and never executes when this file is imported
+ * under vitest — so integration tests need a way to exercise the
+ * /api/health/ready shutdown branch without invoking real signal handlers
+ * (which call process.exit() and would kill the test worker).
+ */
+export function __setShuttingDownForTests(value: boolean): void {
+  shuttingDown = value;
+}
+
 app.get('/health', healthLimiter, (_req: Request, res: Response) => {
   res.json({ status: 'ok', ts: new Date().toISOString(), service: 'collectrx-api' });
 });
@@ -342,6 +359,10 @@ app.get('/api/health', healthLimiter, async (_req: Request, res: Response) => {
 });
 
 app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response) => {
+  if (shuttingDown) {
+    res.status(503).json({ status: 'not_ready', reason: 'shutting_down' });
+    return;
+  }
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ready' });
@@ -523,7 +544,78 @@ async function connectDatabase(): Promise<void> {
   }
 }
 
+const GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS || 30_000),
+);
+const GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS = Math.max(
+  GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS,
+  Number(process.env.GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS || 60_000),
+);
+
+let shutdownStarted = false;
+
+/**
+ * Phased shutdown: flip readiness to 503 first (so the load balancer stops
+ * routing here), then close in dependency order — WS clients, the desk
+ * queue tick (so an in-flight claim dispatch isn't abandoned mid-call), the
+ * HTTP server (drains in-flight requests), then Prisma. A hard timeout
+ * force-exits so a hung close() can't leave the process stuck forever.
+ */
+function registerGracefulShutdown(server: ReturnType<typeof app.listen> | https.Server): void {
+  const shutdown = (signal: string) => {
+    if (shutdownStarted) return;
+    shutdownStarted = true;
+    shuttingDown = true;
+    console.log(`[server] ${signal} received — starting graceful shutdown`);
+
+    const forceExitTimer = setTimeout(() => {
+      console.error(
+        `[server] graceful shutdown exceeded ${GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS}ms — forcing exit`,
+      );
+      process.exit(1);
+    }, GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS);
+    forceExitTimer.unref?.();
+
+    void (async () => {
+      try {
+        closeAllDeskConnections();
+      } catch (err) {
+        console.error('[server] error closing desk WebSocket connections:', err);
+      }
+
+      try {
+        await drainDeskQueueEngine(GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS);
+      } catch (err) {
+        console.error('[server] error draining desk queue engine:', err);
+      }
+
+      await new Promise<void>((resolve) => {
+        server.close((err) => {
+          if (err) console.error('[server] error closing HTTP server:', err);
+          resolve();
+        });
+      });
+
+      try {
+        await prisma.$disconnect();
+      } catch (err) {
+        console.error('[server] error disconnecting Prisma during shutdown:', err);
+      }
+
+      clearTimeout(forceExitTimer);
+      console.log('[server] graceful shutdown complete');
+      process.exit(0);
+    })();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
 async function afterListen(server: ReturnType<typeof app.listen> | https.Server): Promise<void> {
+  registerGracefulShutdown(server);
+
   try {
     const closed = await prisma.workItem.updateMany({
       where: { status: 'open', itemType: { not: 'insurance' } },
@@ -667,12 +759,8 @@ if (isMainModule()) {
     console.error('[server] Fatal boot error:', err);
     process.exit(1);
   });
-
-  process.on('SIGTERM', async () => {
-    console.log('[server] SIGTERM received — shutting down gracefully');
-    await prisma.$disconnect();
-    process.exit(0);
-  });
+  // SIGTERM/SIGINT are handled by registerGracefulShutdown(), wired up from
+  // afterListen() once the HTTP server exists.
 }
 
 export { app, prisma };

@@ -274,6 +274,67 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'If migrations were created locally but never deployed, commit and deploy them',
     ],
   },
+  queue_dispatch_stalled: {
+    id: 'queue_dispatch_stalled',
+    title: 'Call dispatch queue has stopped moving',
+    severity: 'critical',
+    affectedSystems: ['call queue', 'desk queue engine', 'Vapi dispatch'],
+    impact: [
+      'Claims that are due to be called are not being dialed even though the call window is open',
+      'A practice may go an entire day with zero outbound calls and no one would otherwise notice',
+    ],
+    suggestedFixes: [
+      'Check API process logs for "[deskQueueEngine]" errors around the stall time',
+      'Confirm the process is not stuck on isTickRunning (restart the API if a tick has been "running" far longer than 60s)',
+      'Check queue_engine_lease table — a stale locked_by row from a crashed replica can block dispatch',
+      'curl /api/health/metrics and inspect the queue block for duePendingCount / oldestDuePendingAgeMinutes',
+    ],
+  },
+  call_attempt_stuck: {
+    id: 'call_attempt_stuck',
+    title: 'Call attempt has been open far longer than any real call',
+    severity: 'high',
+    affectedSystems: ['call queue', 'Vapi webhook', 'dispatch lock'],
+    impact: [
+      'The practice this attempt belongs to likely cannot have new calls dispatched until this attempt closes',
+      'Usually means the Vapi end-of-call webhook was lost or never arrived',
+    ],
+    suggestedFixes: [
+      'Check Vapi dashboard for the call ID tied to this attempt — confirm it actually ended',
+      'Check for webhook delivery failures around the call\'s expected end time',
+      'If the call is confirmed over, manually close the CallAttempt row so the dispatch lock releases',
+    ],
+  },
+  worker_job_failed: {
+    id: 'worker_job_failed',
+    title: 'Background job exhausted all retry attempts',
+    severity: 'critical',
+    affectedSystems: ['background jobs', 'BullMQ worker', 'rules engine'],
+    impact: [
+      'A scheduled job (rules tick, credential health check, or similar) did not complete after retrying',
+      'Depending on which job, AR follow-up scheduling or credential monitoring may be silently behind',
+    ],
+    suggestedFixes: [
+      'Check worker process logs (npm run worker) for the job name and error in this alert\'s detail',
+      'Confirm Redis and Postgres are reachable from the worker process',
+      'The job will not run again until its next scheduled repeat — fix the root cause before then',
+    ],
+  },
+  ops_alerting_disabled: {
+    id: 'ops_alerting_disabled',
+    title: 'Production is running without ongoing ops alerting configured',
+    severity: 'critical',
+    affectedSystems: ['observability', 'on-call', 'all subsystems'],
+    impact: [
+      'Queue stalls, database outages, worker failures, and elevated error rates will not page anyone',
+      'The only way an incident would be noticed is a practice or client reporting it directly',
+    ],
+    suggestedFixes: [
+      'Set OPS_MONITOR_ENABLED=1 and OPS_ALERTS_ENABLED=1 as host secrets (fly secrets set ...)',
+      'Configure at least one delivery channel: ALERT_SMS_TO + Twilio vars, OPS_ALERT_EMAIL_TO + SENDGRID_API_KEY, or OPS_ALERT_WEBHOOK_URL',
+      'See docs/operations/OPS-ALERTS.md for the full variable list',
+    ],
+  },
   cogs_breaker: {
     id: 'cogs_breaker',
     title: 'Practice delivery cost breaker tripped — calls paused',

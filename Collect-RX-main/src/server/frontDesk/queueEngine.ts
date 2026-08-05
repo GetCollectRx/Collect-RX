@@ -24,29 +24,57 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 // If a tick takes longer than 60 seconds (slow DB, slow Vapi), the next tick
 // fires but immediately returns rather than running a parallel dispatch loop.
 let isTickRunning = false;
+// Tracked so a graceful shutdown can await the in-flight tick instead of
+// exiting mid-dispatch (which would leave a claim in an ambiguous state).
+let currentTick: Promise<void> | null = null;
+let acceptingNewTicks = true;
 
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
-  tickTimer = setInterval(() => {
+  acceptingNewTicks = true;
+  const fire = () => {
+    if (!acceptingNewTicks) return;
     if (isTickRunning) {
       logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
       return;
     }
     isTickRunning = true;
-    void runDeskQueueTick(prisma)
+    currentTick = runDeskQueueTick(prisma)
       .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
-      .finally(() => { isTickRunning = false; });
-  }, 60_000);
-  isTickRunning = true;
-  void runDeskQueueTick(prisma)
-    .catch((err) => { console.error('[deskQueueEngine] initial tick error:', err); })
-    .finally(() => { isTickRunning = false; });
+      .finally(() => { isTickRunning = false; currentTick = null; });
+  };
+  tickTimer = setInterval(fire, 60_000);
+  fire();
 }
 
 export function stopDeskQueueEngine(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+}
+
+/**
+ * Graceful-shutdown hook: stop scheduling new ticks and wait for any
+ * in-flight tick to finish (up to timeoutMs) before the process exits, so a
+ * claim mid-dispatch isn't abandoned by a hard exit. Does not throw on
+ * timeout — shutdown must proceed either way, just logs so it's visible.
+ */
+export async function drainDeskQueueEngine(timeoutMs: number): Promise<void> {
+  acceptingNewTicks = false;
+  stopDeskQueueEngine();
+  const inFlight = currentTick;
+  if (!inFlight) return;
+
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => { timedOut = true; resolve(); }, timeoutMs);
+  });
+  await Promise.race([inFlight, timeout]);
+  if (timedOut) {
+    console.error(
+      `[deskQueueEngine] shutdown: in-flight tick did not finish within ${timeoutMs}ms — proceeding anyway`,
+    );
   }
 }
 

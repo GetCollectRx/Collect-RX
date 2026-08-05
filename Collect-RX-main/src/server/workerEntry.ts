@@ -21,6 +21,8 @@ import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisit
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { dispatchOpsAlert } from './observability/opsAlerts.js';
+import { shouldAlertOnJobExhaustion, buildJobFailureAlertDetail } from './jobs/jobFailureAlert.js';
 
 assertPostgresTlsInProduction();
 
@@ -169,7 +171,25 @@ const worker = new Worker(
 );
 
 worker.on('failed', (job, err) => {
-  console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  console.error('[worker] job failed', {
+    id: job?.id,
+    name: job?.name,
+    attemptsMade,
+    attemptsAllowed,
+    err: (err as Error).message,
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'worker_job_failed',
+      detail: buildJobFailureAlertDetail(job.name, job.id, attemptsMade, attemptsAllowed, (err as Error).message),
+      source: 'worker',
+    }).catch((alertErr) => {
+      console.error('[worker] failed to dispatch worker_job_failed alert:', (alertErr as Error).message);
+    });
+  }
 });
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);

@@ -47,6 +47,8 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
       ok: vapi,
       detail: vapi ? 'set' : 'required in production',
     });
+
+    results.push(checkOpsAlertingConfigured());
   }
 
   try {
@@ -95,6 +97,38 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
   results.push(await checkMigrationDrift(prisma));
 
   return results;
+}
+
+/**
+ * This check deliberately reads raw env vars rather than importing
+ * opsAlertsEnabled()/opsMonitor's gate — it exists specifically to catch the
+ * case where ongoing ops alerting is OFF, so it must not depend on that same
+ * config to fire. It rides the startup digest email instead (SendGrid +
+ * STARTUP_ALERT_EMAIL_TO), which is independent of OPS_ALERTS_ENABLED.
+ */
+export function checkOpsAlertingConfigured(): StartupCheckResult {
+  const truthy = (v: string | undefined) => ['1', 'true', 'yes'].includes((v || '').trim().toLowerCase());
+  const monitorOn = truthy(process.env.OPS_MONITOR_ENABLED);
+  const alertsOn = truthy(process.env.OPS_ALERTS_ENABLED);
+  const hasSmsChannel = Boolean(
+    process.env.ALERT_SMS_TO && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN,
+  );
+  const hasEmailChannel = Boolean(process.env.OPS_ALERT_EMAIL_TO && process.env.SENDGRID_API_KEY);
+  const hasWebhookChannel = Boolean(process.env.OPS_ALERT_WEBHOOK_URL);
+  const hasChannel = hasSmsChannel || hasEmailChannel || hasWebhookChannel;
+  const ok = monitorOn && alertsOn && hasChannel;
+
+  const missing: string[] = [];
+  if (!monitorOn) missing.push('OPS_MONITOR_ENABLED');
+  if (!alertsOn) missing.push('OPS_ALERTS_ENABLED');
+  if (!hasChannel) missing.push('a delivery channel (ALERT_SMS_TO+Twilio, OPS_ALERT_EMAIL_TO+SendGrid, or OPS_ALERT_WEBHOOK_URL)');
+
+  return {
+    id: 'ops_alerting_disabled',
+    label: 'Ongoing ops alerting configured',
+    ok,
+    detail: ok ? 'monitor + alerts + at least one channel configured' : `missing: ${missing.join(', ')}`,
+  };
 }
 
 /**
