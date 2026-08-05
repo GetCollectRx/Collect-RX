@@ -50,14 +50,26 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
   };
 });
 
-// The only other override: skip the Mon-Fri 8am-5pm ET gate so this test is
-// not flaky depending on when CI happens to run it. validateDispatch and
+// The only other override needed is the Mon-Fri 8am-5pm ET gate, so this test
+// is not flaky depending on when CI happens to run it. validateDispatch and
 // CARRIER_CONFIGS stay real — this test's whole point is exercising the real
 // dispatch guard chain, not bypassing it.
-vi.mock('../src/carriers/adapter.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/carriers/adapter.js')>();
-  return { ...actual, isWithinCallWindow: () => true };
-});
+//
+// This is NOT done by mocking carriers/adapter.js's isWithinCallWindow export.
+// That was tried first and looked right, but validateDispatch() calls
+// isWithinCallWindow() as a same-module local reference, not through the
+// module's export object — vi.mock only rewrites what OTHER modules see when
+// they import this one, so queueEngine.ts's top-level `isWithinCallWindow()`
+// gate picked up the mock while validateDispatch's internal check kept
+// calling the real, unmocked function. Confirmed directly: CI failed twice
+// with initiateCallMock called 0 times, and both runs' logs showed real
+// OUTSIDE_CALL_WINDOW rejections for every fleet claim ("current Eastern
+// hour: 21") — proof the override never reached the check that mattered.
+// Pinning the actual system clock (Date only — setTimeout/network stay real
+// so DB/HTTP calls aren't affected) satisfies both call sites for real,
+// because neither one is being intercepted; the underlying wall clock itself
+// is just inside the window.
+const BUSINESS_HOURS_ET = new Date('2024-01-09T15:00:00Z'); // Tue 10:00 EST — no DST ambiguity
 
 process.env.VAPI_MAX_CONCURRENT_CALLS = '500';
 process.env.VAPI_CONCURRENCY_RESERVE = '0';
@@ -157,6 +169,14 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
 
   beforeAll(async () => {
     if (!dbReady) return;
+    // Only Date is faked — setTimeout/setInterval/network stay real, so the
+    // real DB and Vapi-mock I/O below still runs on the actual clock. This
+    // must be set before seeding: seedDispatchablePractice() below stamps
+    // callQueue.scheduledFor from Date.now(), and it needs to land inside the
+    // same pinned window the dispatch checks will later evaluate against.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(BUSINESS_HOURS_ET);
+
     // queue_engine_lease is a global singleton row (by design — one lease
     // for the whole fleet). A previous test process can leave it live for up
     // to LEASE_TTL_MS under ITS OWN instance ID; a fresh `vitest run` is a
@@ -171,27 +191,18 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   afterAll(async () => {
     await cleanupFleet(fleet);
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+    vi.useRealTimers();
   });
 
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
     initiateCallMock.mockClear();
 
-    const start = Date.now();
-    // The fleet-wide dispatch lease is a real, shared Postgres singleton row
-    // (queue_engine_lease, id='global') — by design, the same row
-    // tests/queueEngineFairnessAndLease.test.ts deliberately holds for up to
-    // 60s to simulate "another instance owns it". vitest's maxWorkers:1 caps
-    // worker *processes*, not file-level concurrency (fileParallelism
-    // defaults to true), so that file's simulated hold can genuinely overlap
-    // this tick and make claimTickLease() correctly refuse to run — the
-    // lease working exactly as designed, not a pipeline bug. A real deployment
-    // recovers on its next scheduled tick; model that here instead of treating
-    // one lost race as a hard failure.
-    for (let attempt = 0; attempt < 5 && initiateCallMock.mock.calls.length < FLEET_SIZE; attempt++) {
-      await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
-      await runDeskQueueTick(prisma);
-    }
-    const elapsedMs = Date.now() - start;
+    // performance.now() rather than Date.now(): Date is pinned above, so
+    // Date.now() would always read ~0ms elapsed and the bound below would
+    // assert nothing.
+    const start = performance.now();
+    await runDeskQueueTick(prisma);
+    const elapsedMs = performance.now() - start;
 
     // Every one of the 20 real, independently-tokenized, fully-authorized
     // claims made it all the way through: RLS-scoped candidate fetch, PHI
