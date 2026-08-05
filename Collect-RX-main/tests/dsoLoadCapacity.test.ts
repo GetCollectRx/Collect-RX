@@ -50,15 +50,17 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
   };
 });
 
-// The only other override: skip the Mon-Fri 8am-5pm ET gate so this test is
-// not flaky depending on when CI happens to run it. validateDispatch and
-// CARRIER_CONFIGS stay real — this test's whole point is exercising the real
-// dispatch guard chain, not bypassing it.
-vi.mock('../src/carriers/adapter.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/carriers/adapter.js')>();
-  return { ...actual, isWithinCallWindow: () => true };
-});
-
+// Skip the Mon-Fri 8am-5pm ET gate so this test is not flaky depending on
+// when CI happens to run it. validateDispatch and CARRIER_CONFIGS stay real
+// — this test's whole point is exercising the real dispatch guard chain, not
+// bypassing it. Must use the production-code escape hatch (adapter.ts's
+// callWindowForced(), gated on NODE_ENV !== 'production') rather than
+// vi.mock()'ing isWithinCallWindow: validateDispatch() calls its own local
+// isWithinCallWindow() internally, which binds to the real function within
+// the same ES module — vi.mock only rebinds what OTHER modules import, so a
+// mocked export here never reached that internal call, and the test stayed
+// wall-clock-dependent despite this comment's original intent.
+process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
 process.env.VAPI_MAX_CONCURRENT_CALLS = '500';
 process.env.VAPI_CONCURRENCY_RESERVE = '0';
 
