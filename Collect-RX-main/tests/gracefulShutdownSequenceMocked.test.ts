@@ -138,13 +138,18 @@ describe('runGracefulShutdownSequence — timeout, ordering, tracing', () => {
         signal: 'SIGTERM',
       });
 
-      const shutdownLogCalls = logSpy.mock.calls.filter((args) =>
-        typeof args[0] === 'string' && args[0].includes('[server]') && /shutdown/i.test(args[0]),
-      );
-      expect(shutdownLogCalls.length).toBeGreaterThanOrEqual(2); // start + complete
-      for (const args of shutdownLogCalls) {
-        const meta = args[args.length - 1];
-        expect(meta).toMatchObject({ correlationId: 'trace-me-123' });
+      // logger.info() emits one JSON string per line (see observability/logger.ts) —
+      // parse each console.log call's single string argument rather than
+      // checking (msg, meta) as separate positional arguments.
+      const shutdownLogLines = logSpy.mock.calls
+        .map((args) => args[0])
+        .filter((arg): arg is string => typeof arg === 'string')
+        .map((line) => JSON.parse(line) as { msg: string; correlationId?: string })
+        .filter((parsed) => parsed.msg.includes('[server]') && /shutdown/i.test(parsed.msg));
+
+      expect(shutdownLogLines.length).toBeGreaterThanOrEqual(2); // start + complete
+      for (const parsed of shutdownLogLines) {
+        expect(parsed.correlationId).toBe('trace-me-123');
       }
     } finally {
       logSpy.mockRestore();

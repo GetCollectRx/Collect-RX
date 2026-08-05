@@ -4,6 +4,7 @@ import { checkOpsAlertingConfigured } from '../src/server/observability/startupH
 import {
   shouldAlertOnJobExhaustion,
   buildJobFailureAlertDetail,
+  resolveJobCorrelationId,
 } from '../src/server/jobs/jobFailureAlert.js';
 
 describe('new alert catalog entries', () => {
@@ -86,5 +87,25 @@ describe('BullMQ job-failure alert decision', () => {
     expect(detail).toContain('job-42');
     expect(detail).toContain('3/3');
     expect(detail).toContain('connection refused');
+  });
+});
+
+describe('resolveJobCorrelationId', () => {
+  it('reuses a correlation ID already present on job.data', () => {
+    expect(resolveJobCorrelationId({ correlationId: 'from-enqueue-time' })).toBe('from-enqueue-time');
+  });
+
+  it('generates a fresh UUID when job.data has none', () => {
+    const id = resolveJobCorrelationId(undefined);
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it('generates a fresh UUID when job.data.correlationId is blank', () => {
+    const id = resolveJobCorrelationId({ correlationId: '   ' });
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it('generates a different UUID on each call with no correlation ID given', () => {
+    expect(resolveJobCorrelationId(undefined)).not.toBe(resolveJobCorrelationId(undefined));
   });
 });

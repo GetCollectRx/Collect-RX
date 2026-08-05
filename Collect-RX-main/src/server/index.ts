@@ -56,6 +56,8 @@ import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { correlationIdMiddleware } from './middleware/correlationId.js';
+import { logger } from './observability/logger.js';
 import compression from 'compression';
 import helmet from 'helmet';
 
@@ -169,11 +171,11 @@ const e2eMode = (() => {
   return v === '1' || v.toLowerCase() === 'true';
 })();
 process.on('uncaughtException', (err) => {
-  console.error('[server] FATAL: uncaughtException —', err);
+  logger.error('[server] FATAL: uncaughtException', { error: err });
   if (!e2eMode) process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
-  console.error('[server] FATAL: unhandledRejection —', reason);
+  logger.error('[server] FATAL: unhandledRejection', { error: reason });
   if (!e2eMode) process.exit(1);
 });
 
@@ -221,24 +223,22 @@ app.use(
 // anyone can POST forged Vapi events to the server.
 // ─────────────────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production' && !process.env.VAPI_WEBHOOK_SECRET) {
-  console.error(
-    '[server] FATAL: VAPI_WEBHOOK_SECRET is not set in production. ' +
-    'Set this env var (fly secrets set) to enable webhook signature verification. Refusing to start.',
-  );
+  logger.error('[server] FATAL: VAPI_WEBHOOK_SECRET is not set in production', {
+    hint: 'Set this env var (fly secrets set) to enable webhook signature verification. Refusing to start.',
+  });
   process.exit(1);
 }
 if (!process.env.VAPI_WEBHOOK_SECRET) {
-  console.warn(
-    '[server] WARNING: VAPI_WEBHOOK_SECRET is not set. ' +
-    'Webhook signature verification is DISABLED. Set this in production.',
-  );
+  logger.warn('[server] VAPI_WEBHOOK_SECRET is not set', {
+    hint: 'Webhook signature verification is DISABLED. Set this in production.',
+  });
 }
 
 try {
   assertJwtConfigAtStartup();
   assertPasswordResetEmailConfigAtStartup();
 } catch (e) {
-  console.error('[server] FATAL:', (e as Error).message);
+  logger.error('[server] FATAL', { error: e });
   process.exit(1);
 }
 
@@ -318,6 +318,7 @@ app.use(
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+app.use(correlationIdMiddleware);
 
 app.use(
   '/api/webhooks/demo-booking',
@@ -379,7 +380,7 @@ app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response
     const { getQueueHealth } = await import('./observability/queueHealth.js');
     res.json({ ...body, queue: await getQueueHealth(prisma) });
   } catch (err) {
-    console.error('[health/metrics] queue health unavailable:', err);
+    logger.error('[health/metrics] queue health unavailable', { error: err });
     res.json({ ...body, queue: { error: 'unavailable' } });
   }
 });
@@ -514,7 +515,7 @@ app.use((_req: Request, res: Response) => {
 // Global error handler
 // ─────────────────────────────────────────────────────────────────────────────
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[server] Unhandled error:', err);
+  logger.error('[server] Unhandled error', { error: err });
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
@@ -540,9 +541,9 @@ function isMainModule(): boolean {
 async function connectDatabase(): Promise<void> {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    console.log('[server] Database connected');
+    logger.info('[server] Database connected', {});
   } catch (err) {
-    console.error('[server] Database connection failed:', err);
+    logger.error('[server] Database connection failed', { error: err });
     throw err;
   }
 }
@@ -592,24 +593,24 @@ export async function runGracefulShutdownSequence(
   opts: { jobTimeoutMs: number; totalTimeoutMs: number; correlationId: string; signal: string },
 ): Promise<GracefulShutdownResult> {
   const { jobTimeoutMs, totalTimeoutMs, correlationId, signal } = opts;
-  console.log(`[server] ${signal} received — starting graceful shutdown`, { correlationId });
+  logger.info('[server] shutdown signal received — starting graceful shutdown', { signal, correlationId });
 
   const work = (async () => {
     try {
       closeAllDeskConnections();
     } catch (err) {
-      console.error('[server] error closing desk WebSocket connections:', err, { correlationId });
+      logger.error('[server] error closing desk WebSocket connections', { error: err, correlationId });
     }
 
     try {
       await drainDeskQueueEngine(jobTimeoutMs);
     } catch (err) {
-      console.error('[server] error draining desk queue engine:', err, { correlationId });
+      logger.error('[server] error draining desk queue engine', { error: err, correlationId });
     }
 
     await new Promise<void>((resolve) => {
       server.close((err) => {
-        if (err) console.error('[server] error closing HTTP server:', err, { correlationId });
+        if (err) logger.error('[server] error closing HTTP server', { error: err, correlationId });
         resolve();
       });
     });
@@ -617,7 +618,7 @@ export async function runGracefulShutdownSequence(
     try {
       await prisma.$disconnect();
     } catch (err) {
-      console.error('[server] error disconnecting Prisma during shutdown:', err, { correlationId });
+      logger.error('[server] error disconnecting Prisma during shutdown', { error: err, correlationId });
     }
   })();
 
@@ -635,12 +636,9 @@ export async function runGracefulShutdownSequence(
   clearTimeout(timeoutTimer);
 
   if (timedOut) {
-    console.error(
-      `[server] graceful shutdown exceeded ${totalTimeoutMs}ms — forcing exit`,
-      { correlationId },
-    );
+    logger.error('[server] graceful shutdown exceeded timeout — forcing exit', { totalTimeoutMs, correlationId });
   } else {
-    console.log('[server] graceful shutdown complete', { correlationId });
+    logger.info('[server] graceful shutdown complete', { correlationId });
   }
 
   return { timedOut };
@@ -676,14 +674,14 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
       data: { status: 'closed' },
     });
     if (closed.count > 0) {
-      console.log(`[server] closed ${closed.count} legacy non-insurance work queue item(s)`);
+      logger.info('[server] closed legacy non-insurance work queue items', { closed: closed.count });
     }
   } catch (err) {
-    console.warn('[server] legacy work queue cleanup failed:', (err as Error).message);
+    logger.warn('[server] legacy work queue cleanup failed', { error: err });
   }
 
   void runTelemetryMigrations().catch((err) => {
-    console.error('[Telemetry] ClickHouse migration failed (non-fatal):', err);
+    logger.error('[Telemetry] ClickHouse migration failed (non-fatal)', { error: err });
   });
 
   // Periodic GC on main vault (AES-256-GCM, claim-lifecycle TTL via PHI_VAULT_TTL_DAYS — holds full PatientPHI for call dispatch).
@@ -693,12 +691,12 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   claimsPiiVault.gc();
   setInterval(() => {
     const purgedMain = claimsPiiVault.gc();
-    if (purgedMain > 0) console.log(`[piiVault] GC: purged ${purgedMain} PHI token(s)`);
+    if (purgedMain > 0) logger.info('[piiVault] GC purged PHI tokens', { purged: purgedMain });
   }, 60 * 60 * 1000);
 
   if (process.env.REDIS_URL) {
     registerArJobSchedulers().catch((err) => {
-      console.error('[server] registerArJobSchedulers failed:', (err as Error).message);
+      logger.error('[server] registerArJobSchedulers failed', { error: err });
     });
   } else {
     startRulesEngine(prisma);
@@ -731,7 +729,7 @@ async function initializePersistentPhiVault(): Promise<void> {
   await connectDatabase();
   claimsPiiVault.useStore(prisma);
   const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
-  console.log(`[piiVault] Rehydrated ${rehydrated} PHI token(s) from encrypted store`);
+  logger.info('[piiVault] Rehydrated PHI tokens from encrypted store', { rehydrated });
 }
 
 async function boot() {
@@ -747,8 +745,8 @@ async function boot() {
   const tlsCert = process.env.TLS_CERT_PATH?.trim();
   const onListen = () => {
     const mode = tlsKey && tlsCert ? 'https' : 'http';
-    console.log(`[server] CollectRx API listening on port ${PORT} (${mode})`);
-    console.log('[server] Liveness: GET /api/health — readiness: GET /api/health/ready');
+    logger.info('[server] CollectRx API listening', { port: PORT, mode });
+    logger.info('[server] Liveness: GET /api/health — readiness: GET /api/health/ready', {});
   };
 
   let server: ReturnType<typeof app.listen> | https.Server;
@@ -760,17 +758,16 @@ async function boot() {
       server = app.listen(PORT, onListen);
     }
   } catch (err) {
-    console.error('[server] Failed to bind listen socket:', err);
+    logger.error('[server] Failed to bind listen socket', { error: err });
     process.exit(1);
   }
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(
-        `[server] Port ${PORT} is already in use. Stop the other process:\n` +
-          `  lsof -nP -iTCP:${PORT} -sTCP:LISTEN\n` +
-          `Or set PORT (and API_PORT for Vite proxy) in Collect-RX-main/.env`,
-      );
+      logger.error('[server] Port already in use', {
+        port: PORT,
+        hint: `Stop the other process: lsof -nP -iTCP:${PORT} -sTCP:LISTEN, or set PORT (and API_PORT for Vite proxy) in Collect-RX-main/.env`,
+      });
       process.exit(1);
     }
     throw err;
@@ -779,38 +776,38 @@ async function boot() {
   // Start guardrail audit worker (non-blocking, runs every 60s)
   if (process.env.SIDECAR_URL) {
     setInterval(drainGuardrailAuditOutbox, 60_000);
-    console.log('[server] Guardrail audit worker started');
+    logger.info('[server] Guardrail audit worker started', {});
   } else if (process.env.NODE_ENV === 'production') {
     // Guardrail audit is a post-call compliance control (PHI-leak / hallucination /
     // off-script / carrier-block detection that can auto-apply CARRIER_BLOCK). With no
     // SIDECAR_URL the outbox is never drained, so calls still enqueue but go unaudited
     // and the outbox grows unbounded. Fail loud so error alerting catches it rather than
     // letting a compliance control silently degrade in production.
-    console.error(
-      '[server] CRITICAL: SIDECAR_URL not set in production — guardrail audit is DISABLED. ' +
-      'Post-call PHI-leak/hallucination/carrier-block auditing is NOT running and the audit ' +
-      'outbox will accumulate unprocessed rows. Set SIDECAR_URL (fly secrets set) to restore it.',
-    );
+    logger.error('[server] CRITICAL: SIDECAR_URL not set in production — guardrail audit is DISABLED', {
+      hint:
+        'Post-call PHI-leak/hallucination/carrier-block auditing is NOT running and the audit ' +
+        'outbox will accumulate unprocessed rows. Set SIDECAR_URL (fly secrets set) to restore it.',
+    });
   } else {
-    console.warn('[server] SIDECAR_URL not set — guardrail audits disabled (dev).');
+    logger.warn('[server] SIDECAR_URL not set — guardrail audits disabled (dev)', {});
   }
 
   try {
     await initializePersistentPhiVault();
   } catch (err) {
-    console.error('[server] PHI vault initialization failed; refusing to start:', err);
+    logger.error('[server] PHI vault initialization failed; refusing to start', { error: err });
     process.exit(1);
   }
 
   void afterListen(server).catch((err) => {
-    console.error('[server] Post-listen startup failed:', err);
+    logger.error('[server] Post-listen startup failed', { error: err });
     process.exit(1);
   });
 }
 
 if (isMainModule()) {
   boot().catch((err) => {
-    console.error('[server] Fatal boot error:', err);
+    logger.error('[server] Fatal boot error', { error: err });
     process.exit(1);
   });
   // SIGTERM/SIGINT are handled by registerGracefulShutdown(), wired up from

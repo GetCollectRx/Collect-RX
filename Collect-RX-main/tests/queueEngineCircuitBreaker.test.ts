@@ -35,7 +35,7 @@ function mockCommonDeps() {
   }));
   vi.doMock('../src/server/services/escalationService.js', () => ({ createEscalation: vi.fn() }));
   vi.doMock('../src/server/audit/auditLog.js', () => ({ appendPhiAccessEvent: vi.fn() }));
-  vi.doMock('../src/logger.cjs', () => ({
+  vi.doMock('../src/server/observability/logger.js', () => ({
     default: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   }));
 }
@@ -56,7 +56,7 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
       },
     }));
 
-    const loggerModule = await import('../src/logger.cjs');
+    const loggerModule = await import('../src/server/observability/logger.js');
     const prisma = {
       $executeRaw: async () => 1, // claimTickLease succeeds
       $queryRaw: async () => [{ id: 'practice-1' }], // a practice IS due
@@ -87,7 +87,7 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
       },
     }));
 
-    const loggerModule = await import('../src/logger.cjs');
+    const loggerModule = await import('../src/server/observability/logger.js');
     const prisma = {
       $executeRaw: async () => 1,
       $queryRaw: async () => [], // no practices due — nothing to dispatch either way

@@ -1,3 +1,17 @@
+import { randomUUID } from 'node:crypto';
+
+/**
+ * Reused from job.data if a future enqueue site chooses to propagate one
+ * from the HTTP request that triggered it; generated fresh otherwise (the
+ * common case — repeatable/scheduled jobs have no originating request).
+ * Pulled out as a pure function for the same reason as the rest of this
+ * file: unit-testable without booting the real BullMQ Worker.
+ */
+export function resolveJobCorrelationId(jobData: { correlationId?: string } | undefined): string {
+  const existing = jobData?.correlationId;
+  return existing && existing.trim() ? existing : randomUUID();
+}
+
 /**
  * Pure decision logic for worker.on('failed') in workerEntry.ts, pulled out
  * so it's unit-testable without booting the real BullMQ Worker (which opens

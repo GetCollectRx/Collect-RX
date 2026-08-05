@@ -89,7 +89,7 @@ vi.mock('../../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: (fn: () => Promise<unknown>) => fn(),
 }));
 
-vi.mock('../../src/logger.cjs', () => ({
+vi.mock('../../src/server/observability/logger.js', () => ({
   default: { warn: vi.fn(), error: vi.fn(), audit: vi.fn() },
 }));
 

@@ -69,7 +69,7 @@ const { defaultPracticeSettings, updatePracticeSettings } = await import(
   '../src/server/services/practiceSettingsService.js'
 );
 const { piiVault } = await import('../src/pii-vault.js');
-const { default: logger } = await import('../src/logger.cjs');
+const { default: logger } = await import('../src/server/observability/logger.js');
 
 let dbReady = false;
 try {

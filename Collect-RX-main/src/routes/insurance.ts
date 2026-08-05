@@ -32,7 +32,7 @@ import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { piiVault } from '../pii-vault.js';
-import logger from '../logger.cjs';
+import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
@@ -141,7 +141,7 @@ router.get('/claims', async (req: Request, res: Response) => {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error('[GET /insurance/claims]', err);
+    logger.error('[GET /insurance/claims]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -180,7 +180,7 @@ router.patch('/claims/:id', async (req: Request, res: Response) => {
       data: redactInsuranceClaim(updated as Record<string, unknown>, req.auth),
     });
   } catch (err) {
-    console.error('[PATCH /insurance/claims/:id]', err);
+    logger.error('[PATCH /insurance/claims/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -230,7 +230,7 @@ router.delete('/claims/:id', async (req: Request, res: Response) => {
     });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[DELETE /insurance/claims/:id]', err);
+    logger.error('[DELETE /insurance/claims/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -271,7 +271,7 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
       recovery: result,
     });
   } catch (err) {
-    console.error('[POST /insurance/claims/:id/confirm-payment]', err);
+    logger.error('[POST /insurance/claims/:id/confirm-payment]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -311,7 +311,7 @@ router.post('/claims/:id/resolve-escalation', async (req: Request, res: Response
       recovery: result,
     });
   } catch (err) {
-    console.error('[POST /insurance/claims/:id/resolve-escalation]', err);
+    logger.error('[POST /insurance/claims/:id/resolve-escalation]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -365,7 +365,7 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
       data: redactInsuranceClaim(claim as Record<string, unknown>, req.auth),
     });
   } catch (err) {
-    console.error('[GET /insurance/claims/:id]', err);
+    logger.error('[GET /insurance/claims/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -383,7 +383,7 @@ router.get('/claims/:id/recovery', async (req: Request, res: Response) => {
     }
     return res.json({ success: true, data: summary });
   } catch (err) {
-    console.error('[GET /insurance/claims/:id/recovery]', err);
+    logger.error('[GET /insurance/claims/:id/recovery]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -425,7 +425,7 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
       dollarsRecoveredSyncVerified: result.dollarsRecoveredSyncVerified,
     });
   } catch (err) {
-    console.error('[POST /insurance/claims/import]', err);
+    logger.error('[POST /insurance/claims/import]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -439,7 +439,7 @@ router.get('/analytics/denials', async (req: Request, res: Response) => {
     const data = await getDenialAnalytics(prisma, practiceIdFromSession(req));
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[GET /insurance/analytics/denials]', err);
+    logger.error('[GET /insurance/analytics/denials]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -494,7 +494,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     try {
       await writeDispatchAudit(claim.id, claim.patientToken, guard, claim.practiceId);
     } catch (err) {
-      console.error('[guardrails] Failed to write dispatch audit:', err);
+      logger.error('[guardrails] Failed to write dispatch audit:', { error: err });
     }
 
     if (!guard.allowed) {
@@ -733,7 +733,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         reservation: reserved.reservation,
         terminateCall: (callId) => vapiClient.endVapiCall(callId),
       });
-      console.error('[POST /insurance/queue/trigger/:claimId] post-dispatch persistence failed', {
+      logger.error('[POST /insurance/queue/trigger/:claimId] post-dispatch persistence failed', {
         claimId,
         vapiCallId: vapiResult.vapiCallId,
         persistenceError,
@@ -748,7 +748,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       status: vapiResult.status,
     });
   } catch (err) {
-    console.error('[POST /insurance/queue/trigger/:claimId]', err);
+    logger.error('[POST /insurance/queue/trigger/:claimId]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -801,7 +801,7 @@ router.get('/queue', async (req: Request, res: Response) => {
       upcoming,
     });
   } catch (err) {
-    console.error('[GET /insurance/queue]', err);
+    logger.error('[GET /insurance/queue]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -816,7 +816,7 @@ router.get('/recovery/gates', async (req: Request, res: Response) => {
     const gates = await listPracticeRecoveryGates(prisma, practiceId);
     return res.json({ success: true, data: gates });
   } catch (err) {
-    console.error('[GET /insurance/recovery/gates]', err);
+    logger.error('[GET /insurance/recovery/gates]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -831,7 +831,7 @@ router.get('/recovery/metrics', async (req: Request, res: Response) => {
     const metrics = await computeRecoveryMetrics(prisma, practiceId);
     return res.json({ success: true, data: metrics });
   } catch (err) {
-    console.error('[GET /insurance/recovery/metrics]', err);
+    logger.error('[GET /insurance/recovery/metrics]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -874,7 +874,7 @@ router.get('/recovery/notifications', async (req: Request, res: Response) => {
     const items = await listRecoveryNotifications(prisma, practiceId);
     return res.json({ success: true, data: items });
   } catch (err) {
-    console.error('[GET /insurance/recovery/notifications]', err);
+    logger.error('[GET /insurance/recovery/notifications]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -892,7 +892,7 @@ router.get('/practice-notifications', async (req: Request, res: Response) => {
     });
     return res.json({ success: true, data: notifications });
   } catch (err) {
-    console.error('[GET /insurance/practice-notifications]', err);
+    logger.error('[GET /insurance/practice-notifications]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -909,7 +909,7 @@ router.patch('/practice-notifications/:id/read', async (req: Request, res: Respo
     });
     return res.json({ success: true, modified: notification.count });
   } catch (err) {
-    console.error('[PATCH /insurance/practice-notifications/:id/read]', err);
+    logger.error('[PATCH /insurance/practice-notifications/:id/read]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -1121,7 +1121,7 @@ router.get('/claims/:id/route-explanation', async (req: Request, res: Response) 
     }
     return res.json({ success: true, data: explanation });
   } catch (err) {
-    console.error('[GET /insurance/claims/:id/route-explanation]', err);
+    logger.error('[GET /insurance/claims/:id/route-explanation]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

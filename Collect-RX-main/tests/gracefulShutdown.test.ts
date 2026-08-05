@@ -44,7 +44,7 @@ const mockModules = () => {
   }));
   vi.doMock('../src/server/services/escalationService.js', () => ({ createEscalation: vi.fn() }));
   vi.doMock('../src/server/audit/auditLog.js', () => ({ appendPhiAccessEvent: vi.fn() }));
-  vi.doMock('../src/logger.cjs', () => ({ default: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+  vi.doMock('../src/server/observability/logger.js', () => ({ default: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 };
 
 describe('drainDeskQueueEngine', () => {
