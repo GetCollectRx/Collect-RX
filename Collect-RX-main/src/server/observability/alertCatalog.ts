@@ -335,6 +335,22 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'See docs/operations/OPS-ALERTS.md for the full variable list',
     ],
   },
+  vapi_circuit_open: {
+    id: 'vapi_circuit_open',
+    title: 'Vapi circuit breaker opened — call dispatch paused fleet-wide',
+    severity: 'critical',
+    affectedSystems: ['Vapi', 'call queue', 'all practices'],
+    impact: [
+      'No new carrier calls will dispatch for any practice until the breaker closes again',
+      'Vapi is failing repeatedly (timeouts, 5xx, or network errors) — this is not a single-claim issue',
+    ],
+    suggestedFixes: [
+      'Check Vapi status page and recent API response codes',
+      'curl /api/health/metrics and inspect the vapiCircuitBreaker block for failureReasons and nextProbeEligibleAt',
+      'The breaker will self-probe (HALF_OPEN) once its open duration elapses — no manual reset needed unless it keeps re-opening',
+      'If Vapi is confirmed healthy but the breaker won’t close, check VAPI_API_KEY/VAPI_SQUAD_ID and recent deploys to src/vapi/client.ts',
+    ],
+  },
   cogs_breaker: {
     id: 'cogs_breaker',
     title: 'Practice delivery cost breaker tripped — calls paused',

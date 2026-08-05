@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -344,6 +345,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     logger.warn('[deskQueueEngine] Vapi concurrency budget exhausted — skipping dispatch this tick', {
       activeCallsGlobal,
       slotBudget: vapiSlotBudget(),
+    });
+    return;
+  }
+
+  // Additive to the guards above — does not replace the isTickRunning latch,
+  // the lease, or the slot budget. Skipping the whole tick here (rather than
+  // letting every candidate claim fail into its own per-claim deferral) is
+  // deliberate: if Vapi is down, there is no point spending a claim's
+  // dispatch attempt (and its 15-minute defer window) finding that out
+  // again for every practice in the loop.
+  if (vapiCircuitBreaker.getState() === 'OPEN') {
+    logger.warn('[deskQueueEngine] Vapi circuit breaker OPEN — skipping dispatch this tick', {
+      metrics: vapiCircuitBreaker.getMetrics(),
     });
     return;
   }
