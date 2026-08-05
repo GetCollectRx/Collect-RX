@@ -89,8 +89,8 @@ Execute on staging, then prod:
 - [ ] PIPEDA / breach contact owned
 - [ ] Pen test scheduled **or** written pilot exception
 - [ ] Encryption at rest confirmed on prod DB
-- [ ] PHIPA deletion/breach workflow scope decided — see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 2 (schema exists, zero implementation; needs legal/privacy sign-off before engineering builds it)
-- [ ] Production Postgres role verified `NOSUPERUSER`/`NOBYPASSRLS` — see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 3 (RLS is proven correct in CI under a restricted role; prod's actual role has not been checked)
+- [x] PHIPA deletion/breach: interim manual runbook shipped (`docs/compliance/PHIPA-MANUAL-PROCESS-RUNBOOK.md`) — [ ] real automated workflow still needs legal/privacy sign-off before engineering builds it; see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 2
+- [x] Runtime guard shipped — prod refuses to boot against a superuser/`BYPASSRLS` DB role (`src/server/db/rlsRoleGuard.ts`) — [ ] actual production role still needs a one-time manual check (or a prod deploy, which now exercises the guard); see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 3
 
 ---
 

@@ -75,6 +75,7 @@ import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
 import {
   assertPersistentPhiVaultConfigured,
   assertPhiEncryptionAtRestConfigured,
@@ -786,6 +787,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
 async function initializePersistentPhiVault(): Promise<void> {
   await connectDatabase();
+  await assertRlsRoleSafeInProduction(prisma);
   claimsPiiVault.useStore(prisma);
   const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
   logger.info('[piiVault] Rehydrated PHI tokens from encrypted store', { rehydrated });
