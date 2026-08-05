@@ -51,6 +51,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -555,58 +556,109 @@ const GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS = Math.max(
 
 let shutdownStarted = false;
 
+export interface GracefulShutdownResult {
+  timedOut: boolean;
+}
+
 /**
- * Phased shutdown: flip readiness to 503 first (so the load balancer stops
- * routing here), then close in dependency order — WS clients, the desk
- * queue tick (so an in-flight claim dispatch isn't abandoned mid-call), the
- * HTTP server (drains in-flight requests), then Prisma. A hard timeout
- * force-exits so a hung close() can't leave the process stuck forever.
+ * Maps the shutdown sequence's outcome to a process exit code. Pulled out as
+ * a pure function so the force-exit-on-timeout behavior is unit-testable
+ * without any test ever having to call the real process.exit().
  */
+export function exitCodeForShutdownResult(result: GracefulShutdownResult): number {
+  return result.timedOut ? 1 : 0;
+}
+
+/**
+ * The actual phased shutdown: close in dependency order — WS clients, the
+ * desk queue tick (so an in-flight claim dispatch isn't abandoned mid-call),
+ * the HTTP server (drains in-flight requests rather than dropping them),
+ * then Prisma. Bounded by totalTimeoutMs via Promise.race so a hung close()
+ * can't leave shutdown running forever; the caller decides what "timed out"
+ * means for the process (see exitCodeForShutdownResult).
+ *
+ * Deliberately free of process.exit() / process.on() so it can be exercised
+ * directly in tests — registerGracefulShutdown() below is the only place
+ * that wires it to real OS signals and calls process.exit().
+ *
+ * Every log line here carries the same correlationId so a shutdown can be
+ * traced end to end in aggregated logs even though it spans multiple
+ * modules (deskWs, queueEngine, this file).
+ */
+export async function runGracefulShutdownSequence(
+  server: ReturnType<typeof app.listen> | https.Server,
+  opts: { jobTimeoutMs: number; totalTimeoutMs: number; correlationId: string; signal: string },
+): Promise<GracefulShutdownResult> {
+  const { jobTimeoutMs, totalTimeoutMs, correlationId, signal } = opts;
+  console.log(`[server] ${signal} received — starting graceful shutdown`, { correlationId });
+
+  const work = (async () => {
+    try {
+      closeAllDeskConnections();
+    } catch (err) {
+      console.error('[server] error closing desk WebSocket connections:', err, { correlationId });
+    }
+
+    try {
+      await drainDeskQueueEngine(jobTimeoutMs);
+    } catch (err) {
+      console.error('[server] error draining desk queue engine:', err, { correlationId });
+    }
+
+    await new Promise<void>((resolve) => {
+      server.close((err) => {
+        if (err) console.error('[server] error closing HTTP server:', err, { correlationId });
+        resolve();
+      });
+    });
+
+    try {
+      await prisma.$disconnect();
+    } catch (err) {
+      console.error('[server] error disconnecting Prisma during shutdown:', err, { correlationId });
+    }
+  })();
+
+  let timedOut = false;
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, totalTimeoutMs);
+    timeoutTimer.unref?.();
+  });
+
+  await Promise.race([work, timeout]);
+  clearTimeout(timeoutTimer);
+
+  if (timedOut) {
+    console.error(
+      `[server] graceful shutdown exceeded ${totalTimeoutMs}ms — forcing exit`,
+      { correlationId },
+    );
+  } else {
+    console.log('[server] graceful shutdown complete', { correlationId });
+  }
+
+  return { timedOut };
+}
+
 function registerGracefulShutdown(server: ReturnType<typeof app.listen> | https.Server): void {
   const shutdown = (signal: string) => {
     if (shutdownStarted) return;
     shutdownStarted = true;
     shuttingDown = true;
-    console.log(`[server] ${signal} received — starting graceful shutdown`);
+    const correlationId = randomUUID();
 
-    const forceExitTimer = setTimeout(() => {
-      console.error(
-        `[server] graceful shutdown exceeded ${GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS}ms — forcing exit`,
-      );
-      process.exit(1);
-    }, GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS);
-    forceExitTimer.unref?.();
-
-    void (async () => {
-      try {
-        closeAllDeskConnections();
-      } catch (err) {
-        console.error('[server] error closing desk WebSocket connections:', err);
-      }
-
-      try {
-        await drainDeskQueueEngine(GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS);
-      } catch (err) {
-        console.error('[server] error draining desk queue engine:', err);
-      }
-
-      await new Promise<void>((resolve) => {
-        server.close((err) => {
-          if (err) console.error('[server] error closing HTTP server:', err);
-          resolve();
-        });
-      });
-
-      try {
-        await prisma.$disconnect();
-      } catch (err) {
-        console.error('[server] error disconnecting Prisma during shutdown:', err);
-      }
-
-      clearTimeout(forceExitTimer);
-      console.log('[server] graceful shutdown complete');
-      process.exit(0);
-    })();
+    void runGracefulShutdownSequence(server, {
+      jobTimeoutMs: GRACEFUL_SHUTDOWN_JOB_TIMEOUT_MS,
+      totalTimeoutMs: GRACEFUL_SHUTDOWN_TOTAL_TIMEOUT_MS,
+      correlationId,
+      signal,
+    }).then((result) => {
+      process.exit(exitCodeForShutdownResult(result));
+    });
   };
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
