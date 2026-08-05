@@ -200,6 +200,46 @@ describe.skipIf(!dbReady)('invite-practice + consent-based accept', () => {
     }
   });
 
+  it('rejects invite-practice from a GENUINE group_admin of a DIFFERENT org — the real IDOR case', async () => {
+    // The "not an admin" test above uses an outsider who never holds
+    // group_admin role at all, so it only proves authorizeRole('group_admin')
+    // rejects them — it never reaches (and never proved correct) the
+    // isOrgAdminMember() membership check inside the handler. This is the
+    // adversarial case that actually exercises it: the attacker legitimately
+    // owns their OWN org (so they genuinely hold group_admin role) and tries
+    // to invite a practice into a DIFFERENT org they don't belong to.
+    const orgAOwner = await createPracticeWithOwnerForTests(prisma);
+    const orgBOwner = await createPracticeWithOwnerForTests(prisma);
+    let orgAId: string | undefined;
+    let orgBId: string | undefined;
+    try {
+      const ownerACookie = await login(orgAOwner.email, orgAOwner.password);
+      const createA = await request(app).post('/api/organizations').set('Cookie', ownerACookie).send({ name: 'Org A' });
+      orgAId = createA.body.organization?.id;
+
+      const ownerBCookie = await login(orgBOwner.email, orgBOwner.password);
+      const createB = await request(app).post('/api/organizations').set('Cookie', ownerBCookie).send({ name: 'Org B' });
+      orgBId = createB.body.organization?.id;
+      // The fresh session cookie reissued on create carries the real group_admin role.
+      const attackerCookie = cookieHeaderFrom(createB);
+
+      const res = await request(app)
+        .post(`/api/organizations/${orgAId}/invite-practice`)
+        .set('Cookie', attackerCookie)
+        .send({ email: 'someone@fixture.test' });
+      expect(res.status).toBe(403);
+
+      // No invite token was created for org A as a side effect of the rejected attempt.
+      const leaked = await prisma.organizationInviteToken.findFirst({ where: { organizationId: orgAId } });
+      expect(leaked).toBeNull();
+    } finally {
+      await cleanupOrg(orgAId);
+      await cleanupOrg(orgBId);
+      await cleanupPracticeWithUsers(prisma, orgAOwner.practice.id);
+      await cleanupPracticeWithUsers(prisma, orgBOwner.practice.id);
+    }
+  });
+
   it('rejects an expired invite and an already-in-a-group practice trying to accept', async () => {
     const orgOwner = await createPracticeWithOwnerForTests(prisma);
     const alreadyGrouped = await createPracticeWithOwnerForTests(prisma);

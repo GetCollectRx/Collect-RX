@@ -99,6 +99,7 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
 import { createOrganizationRouter, createOrganizationPublicRouter } from './routes/organizationRoutes';
+import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
@@ -380,6 +381,7 @@ app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/organizations', createOrganizationPublicRouter(prisma));
 app.use('/api/organizations', createOrganizationRouter(prisma));
+app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
 app.use('/api/insurance',  insuranceRouter);
