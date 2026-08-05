@@ -320,6 +320,23 @@ export const ALERT_CATALOG: Record<string, AlertDefinition> = {
       'The job will not run again until its next scheduled repeat — fix the root cause before then',
     ],
   },
+  desk_queue_tick_failing: {
+    id: 'desk_queue_tick_failing',
+    title: 'Desk queue tick has failed repeatedly',
+    severity: 'critical',
+    affectedSystems: ['call queue', 'desk queue engine', 'Vapi dispatch'],
+    impact: [
+      'The desk queue tick (runDeskQueueTick) has thrown on 3 or more consecutive runs',
+      'While failing, no claims are being evaluated for dispatch — this is worse than a single slow tick',
+      'The engine is backing off between attempts, so failures will keep recurring at a slower cadence until fixed',
+    ],
+    suggestedFixes: [
+      'Check API process logs for "[deskQueueEngine] tick error" and this alert\'s detail for the underlying error',
+      'Confirm Postgres and Redis (if used) are reachable from the API process',
+      'curl /api/health/metrics and check the queue block for lastSuccessfulTickAt / consecutiveTickFailures',
+      'Once the underlying cause is fixed, the next successful tick clears this automatically — no manual reset needed',
+    ],
+  },
   ops_alerting_disabled: {
     id: 'ops_alerting_disabled',
     title: 'Production is running without ongoing ops alerting configured',

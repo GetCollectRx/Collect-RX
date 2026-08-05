@@ -18,6 +18,7 @@ import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryServic
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
+import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -30,6 +31,34 @@ let isTickRunning = false;
 let currentTick: Promise<void> | null = null;
 let acceptingNewTicks = true;
 
+// P0.5 — tick-level failure tracking (in-process; matches the existing
+// isTickRunning/vapiCircuitBreaker precedent of single-instance state exposed
+// via getMetrics()). A thrown tick previously just logged and waited for the
+// next fixed 60s fire — under a sustained outage (DB down, etc.) that means
+// hammering the same failure every 60s forever with no backoff and no alert.
+let consecutiveTickFailures = 0;
+let lastSuccessfulTickAt: Date | null = null;
+let lastTickFailureAt: Date | null = null;
+// Epoch ms before which fire() should skip — 0 means no backoff in effect.
+let nextTickEarliestAt = 0;
+
+const TICK_BACKOFF_BASE_MS = 60_000;
+const TICK_BACKOFF_MAX_MS = 15 * 60_000;
+const TICK_FAILURE_ALERT_THRESHOLD = 3;
+
+/** Exposed for /api/health/metrics via queueHealth.ts — single-instance signal. */
+export function getDeskQueueTickHealth(): {
+  lastSuccessfulTickAt: string | null;
+  consecutiveTickFailures: number;
+  lastTickFailureAt: string | null;
+} {
+  return {
+    lastSuccessfulTickAt: lastSuccessfulTickAt?.toISOString() ?? null,
+    consecutiveTickFailures,
+    lastTickFailureAt: lastTickFailureAt?.toISOString() ?? null,
+  };
+}
+
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
   acceptingNewTicks = true;
@@ -39,9 +68,52 @@ export function startDeskQueueEngine(prisma: PrismaClient): void {
       logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
       return;
     }
+    if (Date.now() < nextTickEarliestAt) {
+      return;
+    }
     isTickRunning = true;
     currentTick = runDeskQueueTick(prisma)
-      .catch((err) => { logger.error('[deskQueueEngine] tick error', { error: err }); })
+      .then(() => {
+        if (consecutiveTickFailures > 0) {
+          logger.info('[deskQueueEngine] tick recovered after previous failures', {
+            previousConsecutiveFailures: consecutiveTickFailures,
+          });
+        }
+        consecutiveTickFailures = 0;
+        nextTickEarliestAt = 0;
+        lastSuccessfulTickAt = new Date();
+      })
+      .catch((err) => {
+        consecutiveTickFailures += 1;
+        lastTickFailureAt = new Date();
+        // 2^N (not 2^(N-1)): the fixed 60s tick interval means a backoff equal
+        // to exactly one interval would coincide with the next scheduled fire
+        // and skip nothing — this must exceed one interval to actually defer
+        // the next attempt instead of retrying on the very next tick.
+        const backoffMs = Math.min(
+          TICK_BACKOFF_MAX_MS,
+          TICK_BACKOFF_BASE_MS * 2 ** consecutiveTickFailures,
+        );
+        nextTickEarliestAt = Date.now() + backoffMs;
+        logger.error('[deskQueueEngine] tick error', {
+          error: err,
+          consecutiveTickFailures,
+          nextRetryInMs: backoffMs,
+        });
+        if (consecutiveTickFailures >= TICK_FAILURE_ALERT_THRESHOLD) {
+          void dispatchOpsAlert({
+            alertId: 'desk_queue_tick_failing',
+            detail: `${consecutiveTickFailures} consecutive tick failures. Latest error: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            source: 'desk-queue-engine',
+          }).catch((alertErr) => {
+            logger.error('[deskQueueEngine] failed to dispatch tick-failure alert (non-fatal)', {
+              error: alertErr,
+            });
+          });
+        }
+      })
       .finally(() => { isTickRunning = false; currentTick = null; });
   };
   tickTimer = setInterval(fire, 60_000);
