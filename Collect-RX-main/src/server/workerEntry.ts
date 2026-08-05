@@ -23,6 +23,7 @@ import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointment
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
 import { dispatchOpsAlert } from './observability/opsAlerts.js';
 import { shouldAlertOnJobExhaustion, buildJobFailureAlertDetail } from './jobs/jobFailureAlert.js';
+import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
 
 assertPostgresTlsInProduction();
 
@@ -162,6 +163,9 @@ const worker = new Worker(
       } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
         const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
         if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
+      } else if (job.name === 'DLQ_RETENTION_SWEEP') {
+        const pruned = await pruneOldDeadLetters(prisma);
+        if (pruned > 0) console.log(`[worker] DLQ_RETENTION_SWEEP pruned ${pruned} dead letter(s)`);
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
@@ -188,6 +192,18 @@ worker.on('failed', (job, err) => {
       source: 'worker',
     }).catch((alertErr) => {
       console.error('[worker] failed to dispatch worker_job_failed alert:', (alertErr as Error).message);
+    });
+
+    void insertDeadLetter(prisma, {
+      queueName: AR_QUEUE_NAME,
+      jobName: job.name,
+      bullJobId: job.id,
+      payload: job.data,
+      stacktrace: job.stacktrace ?? undefined,
+      finalErrorMessage: (err as Error).message,
+      attemptsMade,
+    }).catch((dlqErr) => {
+      console.error('[worker] failed to write dead letter record:', (dlqErr as Error).message);
     });
   }
 });

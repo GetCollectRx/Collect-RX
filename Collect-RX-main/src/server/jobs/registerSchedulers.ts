@@ -4,6 +4,7 @@ import { getArQueue } from './arQueue.js';
 
 const RULES_EVERY_MS = 60_000;
 const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
+const DLQ_RETENTION_SWEEP_CRON = '0 4 * * *';
 
 /**
  * These repeatables previously had no attempts/backoff — a single transient
@@ -43,6 +44,11 @@ export async function registerArJobSchedulers(): Promise<void> {
     'TRIAGE_CREDENTIAL_HEALTH',
     {},
     { repeat: { pattern: TRIAGE_CREDENTIAL_HEALTH_CRON }, ...JOB_RETRY_OPTS },
+  );
+  await q.add(
+    'DLQ_RETENTION_SWEEP',
+    {},
+    { repeat: { pattern: DLQ_RETENTION_SWEEP_CRON }, ...JOB_RETRY_OPTS },
   );
 
   // REMINDER_CYCLE (patient SMS/email) intentionally not registered — insurance-only product.
@@ -85,7 +91,7 @@ export async function registerArJobSchedulers(): Promise<void> {
   }
 
   console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, TRIAGE_CREDENTIAL_HEALTH daily` +
+    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, TRIAGE_CREDENTIAL_HEALTH daily, DLQ_RETENTION_SWEEP daily` +
       (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
       (process.env.MARKETING_LOOP_ENABLED !== '0'
         ? `, MARKETING every ${marketingEveryMs}ms` +

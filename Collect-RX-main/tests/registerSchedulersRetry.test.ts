@@ -38,10 +38,14 @@ describe('registerArJobSchedulers — retry options', () => {
 
     const rulesTick = addCalls.find((c) => c.name === 'RULES_TICK');
     const triage = addCalls.find((c) => c.name === 'TRIAGE_CREDENTIAL_HEALTH');
+    const dlqSweep = addCalls.find((c) => c.name === 'DLQ_RETENTION_SWEEP');
 
     expect(rulesTick).toBeDefined();
     expect(rulesTick?.opts.attempts).toBe(3);
     expect(rulesTick?.opts.backoff).toEqual({ type: 'exponential', delay: 5000 });
+
+    expect(dlqSweep).toBeDefined();
+    expect(dlqSweep?.opts.attempts).toBe(3);
 
     expect(triage).toBeDefined();
     expect(triage?.opts.attempts).toBe(3);
