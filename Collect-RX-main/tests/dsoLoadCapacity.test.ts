@@ -51,13 +51,16 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
 });
 
 // The only other override: skip the Mon-Fri 8am-5pm ET gate so this test is
-// not flaky depending on when CI happens to run it. validateDispatch and
-// CARRIER_CONFIGS stay real — this test's whole point is exercising the real
-// dispatch guard chain, not bypassing it.
-vi.mock('../src/carriers/adapter.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/carriers/adapter.js')>();
-  return { ...actual, isWithinCallWindow: () => true };
-});
+// not flaky depending on when CI happens to run it. validateDispatch calls
+// isWithinCallWindow() as an internal same-module reference, not through the
+// exported binding — vi.mock'ing the export alone doesn't reach that call,
+// so this uses the real, purpose-built COLLECTRX_FORCE_CALL_WINDOW escape
+// hatch (src/carriers/adapter.ts) instead, which isWithinCallWindow itself
+// checks first. validateDispatch and CARRIER_CONFIGS stay real — this test's
+// whole point is exercising the real dispatch guard chain, not bypassing it.
+// Cleared in the afterAll below so it can't leak into other test files
+// sharing this worker process (vitest.config.ts runs with maxWorkers: 1).
+process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
 
 process.env.VAPI_MAX_CONCURRENT_CALLS = '500';
 process.env.VAPI_CONCURRENCY_RESERVE = '0';
@@ -84,6 +87,7 @@ try {
 }
 
 afterAll(async () => {
+  delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
   await prisma.$disconnect().catch(() => undefined);
 });
 
