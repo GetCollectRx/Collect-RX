@@ -96,7 +96,7 @@ Execute on staging, then prod:
 
 ## F — Ops hardening
 
-**Eng prepared:** [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) + [PHASE6-OPS.md](PHASE6-OPS.md).
+**Eng prepared:** [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) + [PHASE6-OPS.md](PHASE6-OPS.md). Detailed implementation backlog (graceful shutdown, Vapi circuit breaker, logging consolidation, queue retry/DLQ, diagnostics, deploy/rollback): [PRODUCTION-SAFETY-BACKLOG.md](PRODUCTION-SAFETY-BACKLOG.md) — backlog only, nothing in it is built yet.
 
 - [ ] Sentry DSNs + alerts
 - [ ] Uptime on `/api/health/ready`
