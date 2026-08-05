@@ -8,6 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { handleProspectSendGridEvent } from '../marketing/prospectEngagement.js';
 import { markEmailEvent, type EmailEventType } from '../services/emailService.js';
+import { logger } from '../observability/logger.js';
 
 const require = createRequire(import.meta.url);
 const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook') as {
@@ -74,18 +75,14 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
       const sig = getHeader(req, EventWebhookHeader.SIGNATURE());
       const ts = getHeader(req, EventWebhookHeader.TIMESTAMP());
       if (!sig || !ts || !ewh.verifySignature(pub, rawBody, sig, ts)) {
-        console.error('[sendgrid/webhook] signature verification failed');
+        logger.error('[sendgrid/webhook] signature verification failed', {});
         return res.status(401).type('text/plain').send('invalid signature');
       }
     } else if (process.env.NODE_ENV === 'production') {
-      console.error(
-        '[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY is required in production',
-      );
+      logger.error('[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY is required in production', {});
       return res.status(401).type('text/plain').send('verification required');
     } else {
-      console.warn(
-        '[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY unset — webhook is not verified (dev only)',
-      );
+      logger.warn('[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY unset — webhook is not verified (dev only)', {});
     }
 
     let events: SgEvent[];
@@ -105,7 +102,7 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
         try {
           await handleProspectSendGridEvent(prisma, ev);
         } catch (e) {
-          console.error('[sendgrid/webhook] prospect event error', (e as Error).message);
+          logger.error('[sendgrid/webhook] prospect event error', { error: e });
         }
       }
 
@@ -120,7 +117,7 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
             linkClicked: ev.url,
           });
         } catch (e) {
-          console.error('[sendgrid/webhook] campaign event error', (e as Error).message);
+          logger.error('[sendgrid/webhook] campaign event error', { error: e });
         }
       }
     }

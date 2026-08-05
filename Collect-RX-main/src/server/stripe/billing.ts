@@ -20,6 +20,7 @@ import {
 } from './subscriptionPlans.js';
 import { billingTierForStripePrice } from '../../billing/tiers.js';
 import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
+import { logger } from '../observability/logger.js';
 
 export function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -285,10 +286,10 @@ export async function handlePlatformBillingWebhook(
       if (priceId && !billingTier) {
         // Fail closed: the practice keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
-        console.error(
-          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
-            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Practice tier left unchanged.',
-        );
+        logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
+          priceId,
+          hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
+        });
       }
       await db.$transaction([
         db.practice.update({
@@ -347,10 +348,10 @@ export async function handlePlatformBillingWebhook(
       if (priceId && !billingTier) {
         // Fail closed: the practice keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
-        console.error(
-          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
-            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Practice tier left unchanged.',
-        );
+        logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
+          priceId,
+          hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
+        });
       }
       await db.$transaction([
         db.practice.update({

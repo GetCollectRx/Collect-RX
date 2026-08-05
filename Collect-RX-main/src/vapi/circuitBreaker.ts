@@ -12,6 +12,7 @@
  * separate systems and must keep working even if Vapi's breaker is OPEN.
  */
 import { dispatchOpsAlert } from '../server/observability/opsAlerts.js';
+import { logger } from '../server/observability/logger.js';
 
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 export type FailureReason = 'timeout' | '5xx' | '4xx' | 'network' | 'unknown';
@@ -228,7 +229,7 @@ function onVapiCircuitStateChange(from: CircuitState, to: CircuitState): void {
     detail: `Vapi circuit breaker transitioned ${from} → OPEN after repeated failures.`,
     source: 'vapi-circuit-breaker',
   }).catch((err) => {
-    console.error('[vapiCircuitBreaker] failed to dispatch vapi_circuit_open alert:', (err as Error).message);
+    logger.error('[vapiCircuitBreaker] failed to dispatch vapi_circuit_open alert', { error: err });
   });
 }
 

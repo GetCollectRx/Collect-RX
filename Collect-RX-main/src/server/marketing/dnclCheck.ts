@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import type { PrismaClient, Prospect } from '@prisma/client';
 import { logProspectActivity } from './prospectActivity.js';
+import { logger } from '../observability/logger.js';
 
 let cachedPhoneSet: Set<string> | null = null;
 let cachedPhoneSetPath: string | null = null;
@@ -17,7 +18,7 @@ function loadLocalDnclSet(): Set<string> | null {
   if (!path) return null;
   if (cachedPhoneSet && cachedPhoneSetPath === path) return cachedPhoneSet;
   if (!existsSync(path)) {
-    console.warn('[dncl] DNCL_PHONE_LIST_PATH file not found:', path);
+    logger.warn('[dncl] DNCL_PHONE_LIST_PATH file not found', { detail: path });
     return null;
   }
   const lines = readFileSync(path, 'utf8').split(/\r?\n/);
@@ -43,7 +44,7 @@ async function checkDnclViaApi(phone: string): Promise<boolean | null> {
       body: JSON.stringify({ phone: normalizePhoneDigits(phone) }),
     });
     if (!res.ok) {
-      console.warn('[dncl] API check failed', res.status);
+      logger.warn('[dncl] API check failed', { status: res.status });
       return null;
     }
     const data = (await res.json()) as { listed?: boolean; onList?: boolean };
@@ -51,7 +52,7 @@ async function checkDnclViaApi(phone: string): Promise<boolean | null> {
     if (typeof data.onList === 'boolean') return data.onList;
     return null;
   } catch (err) {
-    console.warn('[dncl] API check error', (err as Error).message);
+    logger.warn('[dncl] API check error', { error: err });
     return null;
   }
 }

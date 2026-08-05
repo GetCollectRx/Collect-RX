@@ -26,6 +26,7 @@ import { generateAllProposals } from './ruleProposer.js';
 import { applyProposal } from './ruleApplicator.js';
 import { getLedgerSummary } from './adaptationLedger.js';
 import type { SelfTuningCycleSummary, RuleProposal } from './types.js';
+import { logger } from '../../observability/logger.js';
 
 export interface SelfTunerOptions {
   windowDays?: number;
@@ -59,7 +60,7 @@ export async function runSelfTuningCycle(
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
 
-  console.log(`[selfTuner] Starting cycle ${cycleId} (window: ${windowDays}d, dryRun: ${dryRun})`);
+  logger.info('[selfTuner] Starting cycle', { cycleId, windowDays, dryRun });
 
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 1: Observe
@@ -69,16 +70,16 @@ export async function runSelfTuningCycle(
   let reconciliationVariances: Awaited<ReturnType<typeof analyzeReconciliationVariance>> = [];
 
   try {
-    console.log('[selfTuner] Phase 1: Observing call outcomes...');
+    logger.info('[selfTuner] Phase 1: Observing call outcomes...', {});
     outcomeSignals = await analyzeAllCarriers(prisma, windowDays);
     const totalSamples = outcomeSignals.reduce((s, o) => s + o.sampleSize, 0);
-    console.log(`[selfTuner] Observed ${totalSamples} call attempts across ${outcomeSignals.length} carriers`);
+    logger.info('[selfTuner] Observed call attempts', { totalSamples, carrierCount: outcomeSignals.length });
   } catch (err) {
     errors.push(`Outcome analysis failed: ${(err as Error).message}`);
   }
 
   try {
-    console.log('[selfTuner] Phase 1b: Scanning transcripts for block phrase signals...');
+    logger.info('[selfTuner] Phase 1b: Scanning transcripts for block phrase signals...', {});
     blockPhraseSignals = await extractBlockPhraseSignals(prisma, windowDays * 3); // Wider window for phrases
   } catch (err) {
     errors.push(`Block phrase extraction failed: ${(err as Error).message}`);
@@ -86,20 +87,22 @@ export async function runSelfTuningCycle(
 
   let recallObservations: Awaited<ReturnType<typeof detectRecallIntervalDrift>> = [];
   try {
-    console.log('[selfTuner] Phase 1c: Detecting recall interval drift...');
+    logger.info('[selfTuner] Phase 1c: Detecting recall interval drift...', {});
     const CARRIER_IDS = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
     const driftResults = await Promise.all(
       CARRIER_IDS.map((id) => detectRecallIntervalDrift(prisma, id, windowDays * 2)),
     );
     recallObservations = driftResults.flat();
-    console.log(`[selfTuner] Found ${recallObservations.filter((o) => o.isDrift).length} recall interval drifts`);
+    logger.info('[selfTuner] Found recall interval drifts', {
+      count: recallObservations.filter((o) => o.isDrift).length,
+    });
   } catch (err) {
     errors.push(`Recall drift analysis failed: ${(err as Error).message}`);
   }
 
   if (practiceId) {
     try {
-      console.log('[selfTuner] Phase 1d: Analyzing reconciliation variance...');
+      logger.info('[selfTuner] Phase 1d: Analyzing reconciliation variance...', {});
       reconciliationVariances = await analyzeReconciliationVariance(prisma, practiceId, windowDays * 3);
     } catch (err) {
       errors.push(`Reconciliation analysis failed: ${(err as Error).message}`);
@@ -109,7 +112,7 @@ export async function runSelfTuningCycle(
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 2: Propose
   // ──────────────────────────────────────────────────────────────────────────
-  console.log('[selfTuner] Phase 2: Generating proposals...');
+  logger.info('[selfTuner] Phase 2: Generating proposals...', {});
   const proposals = generateAllProposals({
     outcomeSignals,
     recallObservations,
@@ -120,7 +123,11 @@ export async function runSelfTuningCycle(
   const lowRisk = proposals.filter((p) => p.riskLevel === 'LOW');
   const mediumHighRisk = proposals.filter((p) => p.riskLevel !== 'LOW');
 
-  console.log(`[selfTuner] Generated ${proposals.length} proposals: ${lowRisk.length} LOW, ${mediumHighRisk.length} MEDIUM/HIGH`);
+  logger.info('[selfTuner] Generated proposals', {
+    total: proposals.length,
+    low: lowRisk.length,
+    mediumHigh: mediumHighRisk.length,
+  });
 
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 3: Apply (LOW-risk only, up to maxAutoApply)
@@ -131,7 +138,7 @@ export async function runSelfTuningCycle(
   let proposalsRejected = 0;
 
   if (!dryRun) {
-    console.log(`[selfTuner] Phase 3: Applying up to ${maxAutoApply} LOW-risk proposals...`);
+    logger.info('[selfTuner] Phase 3: Applying LOW-risk proposals', { maxAutoApply });
     for (const proposal of lowRisk.slice(0, maxAutoApply)) {
       try {
         const result = await applyProposal(cycleId, proposal, { skipTests });
@@ -182,11 +189,11 @@ export async function runSelfTuningCycle(
     errors,
   };
 
-  console.log('[selfTuner] Cycle complete:', JSON.stringify({
+  logger.info('[selfTuner] Cycle complete', {
     applied: proposalsAutoApplied,
     pending: pendingChanges.length,
     errors: errors.length,
-  }));
+  });
 
   return summary;
 }

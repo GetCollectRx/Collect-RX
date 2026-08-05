@@ -10,6 +10,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { runComplianceAudit } from '../compliance/auditAgent.js';
+import { logger } from '../observability/logger.js';
 
 export const complianceRouter = Router();
 
@@ -27,7 +28,7 @@ complianceRouter.get('/audit', authenticate, async (req, res) => {
     res.json(report);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[compliance] audit failed:', message);
+    logger.error('[compliance] audit failed', { error: message });
     res.status(500).json({ error: 'Compliance audit failed', detail: message });
   }
 });

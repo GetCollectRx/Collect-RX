@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import type { JobsOptions } from 'bullmq';
 import { getArQueue } from './arQueue.js';
+import { logger } from '../observability/logger.js';
 
 const RULES_EVERY_MS = 60_000;
 const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
@@ -29,7 +30,7 @@ export async function registerArJobSchedulers(): Promise<void> {
     return;
   }
   if (process.env.DISABLE_SCHEDULER === '1' || process.env.DISABLE_SCHEDULER === 'true') {
-    console.warn('[registerSchedulers] DISABLE_SCHEDULER is set — skipping Bull repeatables');
+    logger.warn('[registerSchedulers] DISABLE_SCHEDULER is set — skipping Bull repeatables', {});
     return;
   }
 
@@ -59,9 +60,9 @@ export async function registerArJobSchedulers(): Promise<void> {
   );
   if (learningOn) {
     if (!cron.validate(learningPattern)) {
-      console.error(
-        `[registerSchedulers] Invalid LEARNING_CRON "${learningPattern}" — LEARNING_CYCLE not registered`,
-      );
+      logger.error('[registerSchedulers] Invalid LEARNING_CRON — LEARNING_CYCLE not registered', {
+        pattern: learningPattern,
+      });
     } else {
       await q.add('LEARNING_CYCLE', {}, { repeat: { pattern: learningPattern }, ...JOB_RETRY_OPTS });
     }
@@ -78,9 +79,9 @@ export async function registerArJobSchedulers(): Promise<void> {
   );
   if (marketingLearningOn && process.env.MARKETING_LOOP_ENABLED !== '0') {
     if (!cron.validate(marketingLearningPattern)) {
-      console.error(
-        `[registerSchedulers] Invalid MARKETING_LEARNING_CRON "${marketingLearningPattern}" — MARKETING_LEARNING_CYCLE not registered`,
-      );
+      logger.error('[registerSchedulers] Invalid MARKETING_LEARNING_CRON — MARKETING_LEARNING_CYCLE not registered', {
+        pattern: marketingLearningPattern,
+      });
     } else {
       await q.add(
         'MARKETING_LEARNING_CYCLE',
@@ -90,12 +91,15 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
-  console.log(
-    `[registerSchedulers] Bull repeatables: RULES every ${RULES_EVERY_MS}ms, TRIAGE_CREDENTIAL_HEALTH daily, DLQ_RETENTION_SWEEP daily` +
-      (learningOn ? `, LEARNING cron "${learningPattern}"` : '') +
-      (process.env.MARKETING_LOOP_ENABLED !== '0'
-        ? `, MARKETING every ${marketingEveryMs}ms` +
-          (marketingLearningOn ? `, MARKETING_LEARNING cron "${marketingLearningPattern}"` : '')
-        : ''),
-  );
+  logger.info('[registerSchedulers] Bull repeatables registered', {
+    rulesEveryMs: RULES_EVERY_MS,
+    triageCredentialHealth: 'daily',
+    dlqRetentionSweep: 'daily',
+    learningCron: learningOn ? learningPattern : null,
+    marketingEveryMs: process.env.MARKETING_LOOP_ENABLED !== '0' ? marketingEveryMs : null,
+    marketingLearningCron:
+      process.env.MARKETING_LOOP_ENABLED !== '0' && marketingLearningOn
+        ? marketingLearningPattern
+        : null,
+  });
 }

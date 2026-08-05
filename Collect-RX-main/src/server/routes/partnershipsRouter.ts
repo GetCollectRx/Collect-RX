@@ -31,6 +31,7 @@ import {
 import { startTrialOnboarding, runTrialOnboardingTick } from '../marketing/trialOnboarding.js';
 import { sendSuggestedReply } from '../marketing/replyIntelligence.js';
 import { sendPostDemoFollowUp } from '../marketing/postDemoFollowUp.js';
+import { logger } from '../observability/logger.js';
 
 export function createPartnershipsRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -268,7 +269,7 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
             prospect.id,
             body.stage as ProspectStage,
           ).catch((err) => {
-            console.warn('[hubspot] stage sync failed', (err as Error).message);
+            logger.warn('[hubspot] stage sync failed', { error: err });
           });
         }
       }

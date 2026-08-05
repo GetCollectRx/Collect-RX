@@ -41,7 +41,7 @@ export function startDeskQueueEngine(prisma: PrismaClient): void {
     }
     isTickRunning = true;
     currentTick = runDeskQueueTick(prisma)
-      .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
+      .catch((err) => { logger.error('[deskQueueEngine] tick error', { error: err }); })
       .finally(() => { isTickRunning = false; currentTick = null; });
   };
   tickTimer = setInterval(fire, 60_000);
@@ -73,9 +73,7 @@ export async function drainDeskQueueEngine(timeoutMs: number): Promise<void> {
   });
   await Promise.race([inFlight, timeout]);
   if (timedOut) {
-    console.error(
-      `[deskQueueEngine] shutdown: in-flight tick did not finish within ${timeoutMs}ms — proceeding anyway`,
-    );
+    logger.error('[deskQueueEngine] shutdown: in-flight tick did not finish — proceeding anyway', { timeoutMs });
   }
 }
 
@@ -485,7 +483,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
-      console.warn('[deskQueueEngine] plan gate blocked dispatch', {
+      logger.warn('[deskQueueEngine] plan gate blocked dispatch', {
         practiceId,
         reason: planGate.reason,
       });

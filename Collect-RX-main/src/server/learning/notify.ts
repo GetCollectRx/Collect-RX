@@ -1,11 +1,12 @@
 import type { CycleSummary } from './types.js';
+import { logger } from '../observability/logger.js';
 
 async function sendSms(message: string): Promise<void> {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, ALERT_SMS_TO } =
     process.env;
 
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || !ALERT_SMS_TO) {
-    console.warn('[learning/notify] Twilio env vars not set — skipping SMS');
+    logger.warn('[learning/notify] Twilio env vars not set — skipping SMS', {});
     return;
   }
 
@@ -28,7 +29,7 @@ async function sendEmail(
 ): Promise<void> {
   const apiKey = process.env.SENDGRID_API_KEY?.trim();
   if (!apiKey || to.length === 0) {
-    console.warn('[learning/notify] Email skipped: no API key or recipients');
+    logger.warn('[learning/notify] Email skipped: no API key or recipients', {});
     return;
   }
 
@@ -46,14 +47,14 @@ async function sendEmail(
       html: html || `<p>${text.replace(/\n/g, '<br>')}</p>`,
     });
   } catch (err) {
-    console.error('[learning/notify] Email failed:', (err as Error).message);
+    logger.error('[learning/notify] Email failed', { error: err });
   }
 }
 
 async function sendSlackWebhook(payload: Record<string, unknown>): Promise<void> {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL?.trim();
   if (!webhookUrl) {
-    console.warn('[learning/notify] Slack skipped: no webhook URL');
+    logger.warn('[learning/notify] Slack skipped: no webhook URL', {});
     return;
   }
 
@@ -65,10 +66,10 @@ async function sendSlackWebhook(payload: Record<string, unknown>): Promise<void>
     });
 
     if (!response.ok) {
-      console.error(`[learning/notify] Slack webhook failed: ${response.status}`);
+      logger.error('[learning/notify] Slack webhook failed', { status: response.status });
     }
   } catch (err) {
-    console.error('[learning/notify] Slack request failed:', (err as Error).message);
+    logger.error('[learning/notify] Slack request failed', { error: err });
   }
 }
 
@@ -101,7 +102,7 @@ export async function sendLearningCycleSms(summary: CycleSummary): Promise<boole
     await sendSms(message);
     return true;
   } catch (err) {
-    console.error('[learning/notify] SMS failed:', (err as Error).message);
+    logger.error('[learning/notify] SMS failed', { error: err });
     return false;
   }
 }

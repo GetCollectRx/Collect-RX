@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
+import { logger } from '../observability/logger.js';
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.
@@ -59,7 +60,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
 
       return res.json({ practices: summaries });
     } catch (e) {
-      console.error('group practices-summary error:', e);
+      logger.error('group practices-summary error', { error: e });
       return res.status(500).json({ error: 'Failed to load group summary' });
     }
   });
@@ -77,7 +78,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
       const data = await listProposedCarrierLessons(prisma, carrierId as import('@prisma/client').CarrierId | undefined);
       return res.json({ lessons: data });
     } catch (e) {
-      console.error('group carrier-lessons error:', e);
+      logger.error('group carrier-lessons error', { error: e });
       return res.status(500).json({ error: 'Failed to load proposed lessons' });
     }
   });

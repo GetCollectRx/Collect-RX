@@ -1,3 +1,5 @@
+import { logger } from '../observability/logger.js';
+
 // Baseline phrases require a carrier action or detection statement. Generic
 // IVR language such as "automated system" or "bot menu" is not a block signal.
 // The self-tuner may add new phrases to the learned-rules/block-phrases.json
@@ -35,7 +37,9 @@ export function loadLearnedBlockPhrasesIntoRuntime(learnedPhrases: string[]): vo
   const merged = Array.from(new Set([...CARRIER_BLOCK_PHRASES_BASELINE, ...safeLearnedPhrases]));
   _activeBlockPhrases = merged;
   if (safeLearnedPhrases.length > 0) {
-    console.log(`[carrierBlockPhrases] Loaded ${safeLearnedPhrases.length} learned phrase(s) from self-tuner`);
+    logger.info('[carrierBlockPhrases] Loaded learned phrase(s) from self-tuner', {
+      count: safeLearnedPhrases.length,
+    });
   }
 }
 

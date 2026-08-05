@@ -2,6 +2,7 @@
  * Dispatch ops alerts with clear impact + suggested fixes (SMS, email, webhook).
  */
 import { getAlertDefinition, type AlertDefinition, type AlertSeverity } from './alertCatalog.js';
+import { logger } from './logger.js';
 
 export interface OpsAlertPayload {
   alertId: string;
@@ -166,8 +167,9 @@ export async function dispatchOpsAlert(payload: OpsAlertPayload): Promise<{
   skippedCooldown: boolean;
 }> {
   if (!opsAlertsEnabled()) {
-    console.warn('[opsAlerts] OPS_ALERTS_ENABLED is not set — alert logged only');
-    console.warn(formatOpsAlertText(payload));
+    logger.warn('[opsAlerts] OPS_ALERTS_ENABLED is not set — alert logged only', {
+      text: formatOpsAlertText(payload),
+    });
     return { sent: false, channels: [], skippedCooldown: false };
   }
   if (!shouldSendAlert(payload)) {
@@ -182,24 +184,25 @@ export async function dispatchOpsAlert(payload: OpsAlertPayload): Promise<{
 
   if (await sendSms(text).catch(() => false)) channels.push('sms');
   if (await sendEmail(subject, text, html).catch((e) => {
-    console.error('[opsAlerts] email failed:', (e as Error).message);
+    logger.error('[opsAlerts] email failed', { error: e });
     return false;
   })) {
     channels.push('email');
   }
   if (await sendWebhook(text, payload, def).catch((e) => {
-    console.error('[opsAlerts] webhook failed:', (e as Error).message);
+    logger.error('[opsAlerts] webhook failed', { error: e });
     return false;
   })) {
     channels.push('webhook');
   }
 
   if (channels.length === 0) {
-    console.error('[opsAlerts] No channel delivered — configure ALERT_SMS_TO, OPS_ALERT_EMAIL_TO, or OPS_ALERT_WEBHOOK_URL');
-    console.error(text);
+    logger.error('[opsAlerts] No channel delivered — configure ALERT_SMS_TO, OPS_ALERT_EMAIL_TO, or OPS_ALERT_WEBHOOK_URL', {
+      text,
+    });
   } else {
     lastSent.set(alertKey(payload), Date.now());
-    console.log(`[opsAlerts] Sent ${payload.alertId} via ${channels.join(', ')}`);
+    logger.info('[opsAlerts] Sent', { alertId: payload.alertId, channels });
   }
 
   return { sent: channels.length > 0, channels, skippedCooldown: false };

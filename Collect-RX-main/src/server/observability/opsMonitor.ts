@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { getMetrics } from './metrics.js';
 import { dispatchOpsAlert } from './opsAlerts.js';
+import { logger } from './logger.js';
 import {
   getQueueHealth,
   evaluateQueueHealthAlerts,
@@ -69,7 +70,7 @@ export function startOpsMonitor(prisma: PrismaClient): void {
         });
       }
     } catch (err) {
-      console.error('[opsMonitor] queue health check failed:', err);
+      logger.error('[opsMonitor] queue health check failed', { error: err });
     }
   };
 
@@ -78,5 +79,5 @@ export function startOpsMonitor(prisma: PrismaClient): void {
     void tick();
   }, intervalMs).unref?.();
 
-  console.log(`[opsMonitor] Started (interval ${intervalMs}ms)`);
+  logger.info('[opsMonitor] Started', { intervalMs });
 }

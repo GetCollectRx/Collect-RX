@@ -1,5 +1,6 @@
 import { createRequire } from 'module';
 import type { Prospect } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 const require = createRequire(import.meta.url);
 
@@ -58,7 +59,7 @@ export async function sendHotLeadAlert(
 async function sendSlackHotLead(title: string, body: string, link: string): Promise<void> {
   const url = process.env.SLACK_MARKETING_WEBHOOK_URL?.trim();
   if (!url) {
-    console.log('[hotLeadAlerts] Slack not configured:', title, body);
+    logger.info('[hotLeadAlerts] Slack not configured', { title, body });
     return;
   }
 
@@ -84,10 +85,10 @@ async function sendSlackHotLead(title: string, body: string, link: string): Prom
       }),
     });
     if (!res.ok) {
-      console.error('[hotLeadAlerts] Slack webhook failed', res.status);
+      logger.error('[hotLeadAlerts] Slack webhook failed', { status: res.status });
     }
   } catch (err) {
-    console.error('[hotLeadAlerts] Slack error', (err as Error).message);
+    logger.error('[hotLeadAlerts] Slack error', { error: err });
   }
 }
 
@@ -99,7 +100,7 @@ async function sendEmailHotLead(
 ): Promise<void> {
   const to = process.env.MARKETING_ALERT_EMAIL?.trim();
   if (!to || !process.env.SENDGRID_API_KEY) {
-    if (!to) console.log('[hotLeadAlerts] MARKETING_ALERT_EMAIL not set');
+    if (!to) logger.info('[hotLeadAlerts] MARKETING_ALERT_EMAIL not set', {});
     return;
   }
 
@@ -116,6 +117,6 @@ async function sendEmailHotLead(
       html: `<p>${body.replace(/\n/g, '<br>')}</p><p><a href="${link}">View prospect</a></p>`,
     });
   } catch (err) {
-    console.error('[hotLeadAlerts] email error', (err as Error).message);
+    logger.error('[hotLeadAlerts] email error', { error: err });
   }
 }

@@ -5,6 +5,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 export interface PracticeNotification {
   practiceId: string;
@@ -45,7 +46,7 @@ async function sendEmail(
 ): Promise<boolean> {
   const apiKey = process.env.SENDGRID_API_KEY?.trim();
   if (!apiKey || to.length === 0) {
-    console.warn('[practiceNotificationService] Email skipped: no API key or recipients');
+    logger.warn('[practiceNotificationService] Email skipped: no API key or recipients', {});
     return false;
   }
 
@@ -64,7 +65,7 @@ async function sendEmail(
     });
     return true;
   } catch (err) {
-    console.error('[practiceNotificationService] Email failed:', (err as Error).message);
+    logger.error('[practiceNotificationService] Email failed', { error: err });
     return false;
   }
 }
@@ -74,7 +75,7 @@ async function sendSms(message: string, recipients?: string[]): Promise<boolean>
   const alertTo = recipients || process.env.ALERT_SMS_TO?.trim()?.split(',').map(n => n.trim()).filter(Boolean) || [];
 
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || alertTo.length === 0) {
-    console.warn('[practiceNotificationService] SMS skipped: missing config or recipients');
+    logger.warn('[practiceNotificationService] SMS skipped: missing config or recipients', {});
     return false;
   }
 
@@ -88,7 +89,7 @@ async function sendSms(message: string, recipients?: string[]): Promise<boolean>
     );
     return true;
   } catch (err) {
-    console.error('[practiceNotificationService] SMS failed:', (err as Error).message);
+    logger.error('[practiceNotificationService] SMS failed', { error: err });
     return false;
   }
 }
@@ -96,7 +97,7 @@ async function sendSms(message: string, recipients?: string[]): Promise<boolean>
 async function sendSlackWebhook(payload: Record<string, unknown>): Promise<boolean> {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL?.trim();
   if (!webhookUrl) {
-    console.warn('[practiceNotificationService] Slack skipped: no webhook URL');
+    logger.warn('[practiceNotificationService] Slack skipped: no webhook URL', {});
     return false;
   }
 
@@ -108,12 +109,12 @@ async function sendSlackWebhook(payload: Record<string, unknown>): Promise<boole
     });
 
     if (!response.ok) {
-      console.error(`[practiceNotificationService] Slack webhook failed: ${response.status}`);
+      logger.error('[practiceNotificationService] Slack webhook failed', { status: response.status });
       return false;
     }
     return true;
   } catch (err) {
-    console.error('[practiceNotificationService] Slack request failed:', (err as Error).message);
+    logger.error('[practiceNotificationService] Slack request failed', { error: err });
     return false;
   }
 }
@@ -138,11 +139,12 @@ export async function sendPracticeNotification(
       },
     });
 
-    console.log(
-      `[notification] Practice ${notification.practiceId} notified: ${notification.type}`,
-    );
+    logger.info('[notification] Practice notified', {
+      practiceId: notification.practiceId,
+      type: notification.type,
+    });
   } catch (err) {
-    console.error('[practiceNotificationService] Failed to store notification:', err);
+    logger.error('[practiceNotificationService] Failed to store notification', { error: err });
     throw err;
   }
 }
@@ -207,7 +209,7 @@ export async function sendCdcpReconsiderationNotification(
       });
     }
   } catch (err) {
-    console.error('[practiceNotificationService] CDCP notification error:', err);
+    logger.error('[practiceNotificationService] CDCP notification error', { error: err });
   }
 }
 
@@ -298,7 +300,7 @@ export async function sendLearningCycleSummaryNotification(
       ],
     });
   } catch (err) {
-    console.error('[practiceNotificationService] Learning cycle notification error:', err);
+    logger.error('[practiceNotificationService] Learning cycle notification error', { error: err });
   }
 }
 
@@ -354,6 +356,6 @@ export async function sendCriticalAlert(
       ],
     });
   } catch (err) {
-    console.error('[practiceNotificationService] Critical alert error:', err);
+    logger.error('[practiceNotificationService] Critical alert error', { error: err });
   }
 }
