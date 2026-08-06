@@ -286,6 +286,7 @@ export function normalizePmsClaimRow(
       'Denial Reason',
       'Reason Code',
       'denial_code',
+      'denial_reason',
       'denial_reason_code',
       'EOB Code',
     ),
