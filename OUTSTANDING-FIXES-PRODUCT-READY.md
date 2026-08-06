@@ -339,4 +339,14 @@ The Denial & Documentation Recovery Hub initially uses staff attestations, carri
 
 ---
 
-*Last updated: Phase 10 (manual UX/dev-experience audit, 2026-08-06) + Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*
+## Phase 11 — Ops hardening code gaps found verifying PATH-TO-DELIVERY Group F (2026-08-06)
+
+*Goal: Group F ("Ops hardening") checklist items are operator-owned (create the Sentry project, wire the DSN secret), but the in-repo code they depend on needs to actually be correct first. Checking that surfaced a real gap.*
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P11-01 | ~~**Server-side Sentry was fully implemented but never called — only the frontend was wired up**~~ | **Fixed.** `src/server/observability/sentryNode.ts` (`initSentry()`, `installSentryExpressErrorHandler()`) was correctly written — no-ops without `SENTRY_DSN`, proper Express integration — but nothing in `src/server/index.ts` or `src/server/workerEntry.ts` ever called it. `src/main.tsx` calls the frontend equivalent (`sentryClient.ts`) correctly, which made the gap easy to miss: Sentry looked "done" from the browser side. In production, with a real `SENTRY_DSN` configured exactly as Group F's checklist asks for, every backend error — API crashes, unhandled rejections, failed webhooks, failed background jobs — would still have gone completely unreported; only frontend/browser errors would ever reach Sentry. Fixed by calling `initSentry()` at the top of both entry points (before other app setup, matching the module's own doc comment) and `installSentryExpressErrorHandler(app)` after all routes/the 404 fallback, before the app's own error-response handler. Also added a `captureFatal()` helper (capture + bounded 2s flush, since the process exits immediately after) and wired it into `index.ts`'s `uncaughtException`/`unhandledRejection` handlers and `workerEntry.ts`'s `worker.on('failed', ...)` — the highest-value errors to actually see, since the process is already crashing or a job already failed by the time they fire. Verified live: server boots cleanly both with and without `SENTRY_DSN` set. New `src/server/observability/sentryNode.test.ts` — functional tests of the module itself, plus a source-text check that both entry points actually call it (a string-match check alone would only prove the declaration exists, not that anything uses it, which is exactly this bug); confirmed 2 of 5 fail pre-fix. Full suite (1460 tests, 167 files), typecheck, and lint all green. |
+
+---
+
+*Last updated: Phase 11 (Sentry wiring, 2026-08-06) + Phase 10 (manual UX/dev-experience audit, 2026-08-06) + Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*

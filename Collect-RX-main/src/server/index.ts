@@ -59,6 +59,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
+import { captureFatal, initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
 import { prisma } from '../lib/prisma';
 // Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
 // H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
@@ -151,6 +152,11 @@ import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js
 import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
+
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Must run before
+// other app setup so it can wrap what follows.
+initSentry();
+
 const app = express();
 app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -168,11 +174,15 @@ const e2eMode = (() => {
 })();
 process.on('uncaughtException', (err) => {
   console.error('[server] FATAL: uncaughtException —', err);
-  if (!e2eMode) process.exit(1);
+  if (!e2eMode) {
+    void captureFatal(err).finally(() => process.exit(1));
+  }
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[server] FATAL: unhandledRejection —', reason);
-  if (!e2eMode) process.exit(1);
+  if (!e2eMode) {
+    void captureFatal(reason).finally(() => process.exit(1));
+  }
 });
 
 // Redirect bare domain to www so collectrx.ca/* → www.collectrx.ca/*
@@ -485,6 +495,11 @@ app.get('*', (req: Request, res: Response) => {
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ success: false, error: 'Not found' });
 });
+
+// Must run after all routes/the 404 fallback, before the app's own error
+// handler below — Sentry.setupExpressErrorHandler re-throws to the next
+// error middleware after capturing, it doesn't send a response itself.
+installSentryExpressErrorHandler(app);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global error handler
