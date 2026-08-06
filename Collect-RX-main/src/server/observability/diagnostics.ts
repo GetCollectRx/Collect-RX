@@ -48,7 +48,13 @@ async function checkDatabase(prisma: PrismaClient): Promise<DatabaseDiagnostics>
   }
 }
 
-async function checkBullMq(prisma: PrismaClient): Promise<BullMqDiagnostics> {
+/**
+ * Exported for reuse by /api/health/metrics (P1.3 — BullMQ job counts + DLQ
+ * backlog belong in the metrics endpoint too, not only the auth-gated
+ * diagnostics one) so both routes share one implementation instead of two
+ * copies of the same REDIS_URL check + dynamic import + DLQ count.
+ */
+export async function getBullMqDiagnostics(prisma: PrismaClient): Promise<BullMqDiagnostics> {
   if (!(process.env.REDIS_URL || '').trim()) {
     return { configured: false };
   }
@@ -68,7 +74,7 @@ export async function buildDiagnosticsSnapshot(prisma: PrismaClient): Promise<Di
   const [database, deskQueue, bullmq] = await Promise.all([
     checkDatabase(prisma),
     getQueueHealth(prisma).catch((err: unknown) => ({ error: errorMessage(err) })),
-    checkBullMq(prisma),
+    getBullMqDiagnostics(prisma),
   ]);
 
   return {

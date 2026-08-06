@@ -42,7 +42,7 @@
 //   - PostgreSQL: in production DATABASE_URL must require TLS (sslmode=require or stricter); see databaseTls.ts
 //   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
 //   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
-//   - GET /api/health/metrics: deployment fingerprint redacted in production unless HEALTH_METRICS_TOKEN + Bearer header
+//   - GET /api/health/metrics: deployment fingerprint redacted in production unless HEALTH_METRICS_TOKEN + Bearer header; also carries desk-queue (`queue`) and BullMQ/DLQ (`bullmq`) snapshots
 //   - GET /api/health/live: event-loop lag liveness (503 "blocked" if the loop is stuck)
 //   - GET /api/diagnostics: Vapi breaker + DB latency + desk queue + BullMQ/DLQ snapshot; requires HEALTH_METRICS_TOKEN bearer in production
 //   - EMR_SYNC_WEBHOOK_URL validated at boot (prod) and each outbox batch — https + non-internal host in production
@@ -379,13 +379,31 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
 
 app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response) => {
   const body = buildPublicHealthMetricsBody(req);
-  try {
-    const { getQueueHealth } = await import('./observability/queueHealth.js');
-    res.json({ ...body, queue: await getQueueHealth(prisma) });
-  } catch (err) {
-    logger.error('[health/metrics] queue health unavailable', { error: err });
-    res.json({ ...body, queue: { error: 'unavailable' } });
-  }
+
+  const queue = await (async () => {
+    try {
+      const { getQueueHealth } = await import('./observability/queueHealth.js');
+      return await getQueueHealth(prisma);
+    } catch (err) {
+      logger.error('[health/metrics] queue health unavailable', { error: err });
+      return { error: 'unavailable' };
+    }
+  })();
+
+  // P1.3 — BullMQ job counts + DLQ backlog, isolated from the desk-queue
+  // check above: a Redis outage must not blank out the (unrelated) desk
+  // queue signal, and vice versa.
+  const bullmq = await (async () => {
+    try {
+      const { getBullMqDiagnostics } = await import('./observability/diagnostics.js');
+      return await getBullMqDiagnostics(prisma);
+    } catch (err) {
+      logger.error('[health/metrics] bullmq diagnostics unavailable', { error: err });
+      return { configured: true, error: 'unavailable' };
+    }
+  })();
+
+  res.json({ ...body, queue, bullmq });
 });
 
 // P1.2 — liveness beyond "process is up": event-loop lag sampled continuously

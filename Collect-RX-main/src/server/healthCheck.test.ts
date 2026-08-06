@@ -74,7 +74,12 @@ describe('GET /api/health/ready', () => {
 })
 
 describe('GET /api/health/metrics', () => {
-  it('returns 200 with a metrics body and queue health', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('returns 200 with a metrics body, queue health, and bullmq (unconfigured)', async () => {
+    vi.stubEnv('REDIS_URL', '')
     const res = await request(app).get('/api/health/metrics')
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
@@ -90,6 +95,7 @@ describe('GET /api/health/metrics', () => {
       consecutiveTickFailures: 0,
       lastTickFailureAt: null,
     })
+    expect(res.body.bullmq).toEqual({ configured: false })
   })
 
   it('falls back to queue: { error } when queue health lookup throws', async () => {
@@ -99,6 +105,19 @@ describe('GET /api/health/metrics', () => {
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
     expect(res.body.queue).toEqual({ error: 'unavailable' })
+  })
+
+  it('reports bullmq job counts and DLQ pending count when REDIS_URL is set', async () => {
+    vi.stubEnv('REDIS_URL', 'redis://localhost:6379')
+    const spy = vi.spyOn(prisma.workerDeadLetter, 'count').mockResolvedValueOnce(7)
+    const res = await request(app).get('/api/health/metrics')
+    expect(res.status).toBe(200)
+    expect(res.body.bullmq).toEqual({
+      configured: true,
+      jobCounts: { active: 0, waiting: 2, delayed: 1, failed: 0, completed: 40 },
+      dlqPending: 7,
+    })
+    spy.mockRestore()
   })
 })
 
