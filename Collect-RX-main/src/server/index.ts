@@ -60,6 +60,7 @@ import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
 import { captureFatal, initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
+import { checkRlsRoleSafety, getCachedRlsRoleSafety } from './observability/rlsRoleSafety.js';
 import { prisma } from '../lib/prisma';
 // Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
 // H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
@@ -354,10 +355,25 @@ app.get('/api/health', healthLimiter, async (_req: Request, res: Response) => {
 app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'not_ready' });
+    return;
   }
+  // See docs/operations/HUMAN-DECISIONS-PENDING.md #3 — a superuser/BYPASSRLS
+  // DB role makes tenant-isolation RLS a silent no-op. Only enforced where the
+  // boot-time check actually ran (production); staging/local dev report ready
+  // regardless, since developers routinely connect as a local superuser.
+  if (process.env.NODE_ENV === 'production') {
+    const rls = getCachedRlsRoleSafety();
+    if (rls.checked && !rls.safe) {
+      res.status(503).json({
+        status: 'not_ready',
+        error: 'Postgres role fails RLS safety check (superuser or BYPASSRLS) — tenant isolation is a no-op',
+      });
+      return;
+    }
+  }
+  res.json({ status: 'ready' });
 });
 
 app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response) => {
@@ -669,6 +685,17 @@ async function boot() {
   } catch (err) {
     console.error('[server] PHI vault initialization failed; refusing to start:', err);
     process.exit(1);
+  }
+
+  // docs/operations/HUMAN-DECISIONS-PENDING.md #3: a superuser/BYPASSRLS
+  // connection makes every RLS tenant-isolation policy a silent no-op. Cache
+  // the role's actual attributes so /api/health/ready can fail loudly instead
+  // — checked in every NODE_ENV (Fly sets NODE_ENV=production on both staging
+  // and prod) so this fires before real traffic ever gets routed here, but
+  // never blocks boot itself: a slow/flaky check here shouldn't turn into an
+  // outage on top of whatever it's trying to catch.
+  if (process.env.NODE_ENV === 'production') {
+    void checkRlsRoleSafety(prisma);
   }
 
   void afterListen(server).catch((err) => {
