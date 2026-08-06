@@ -11,6 +11,7 @@ import {
   billingSkipPracticeIds,
   defaultSubscriptionPlan,
   getSubscriptionUsageState,
+  isKnownPlanId,
   resolvePracticeSubscriptionPlan,
   subscriptionEnforceEnabled,
   subscriptionPlanById,
@@ -192,13 +193,17 @@ export async function createBillingCheckoutSession(
   db: PrismaClient,
   requestedPlanId?: string
 ): Promise<{ url: string }> {
-  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
-  if (requestedPlanId && !plan) {
+  if (requestedPlanId && !isKnownPlanId(requestedPlanId)) {
     throw new Error(`Unknown plan "${requestedPlanId}" — valid plans are core, growth, scale`);
   }
+  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
   const price = plan?.priceId ?? subscriptionPriceId();
   if (!price) {
-    throw new Error('Stripe subscription price is not configured');
+    throw new Error(
+      requestedPlanId
+        ? `Plan "${requestedPlanId}" has no Stripe price configured — set STRIPE_PRICE_${requestedPlanId.toUpperCase()}`
+        : 'Stripe subscription price is not configured',
+    );
   }
   const stripe = getStripe();
   const practice = await db.practice.findUnique({ where: { id: practiceId } });
