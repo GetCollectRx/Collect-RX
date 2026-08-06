@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
+import { validateVapiWebhookPayloadSafe, type VapiWebhookPayloadValidated } from '../../vapi/webhookValidator.js';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
 import {
   applyRecoveryAfterCall,
@@ -571,7 +572,15 @@ export async function handleVapiWebhook(
   }
 
   const bodyHash = hashBody(buf);
-  const payload = req.body as VapiWebhookPayload;
+
+  // Validate payload schema strictly — reject any malformed webhooks before processing
+  const validation = validateVapiWebhookPayloadSafe(req.body);
+  if (!validation.valid) {
+    console.warn(`[vapi-webhook] Payload validation failed: ${validation.error}`);
+    res.status(400).json({ error: 'Invalid webhook payload', detail: validation.error });
+    return;
+  }
+  const payload = validation.payload;
 
   const existing = await prisma.processedVapiWebhook.findUnique({ where: { bodyHash } });
   if (existing) {
@@ -581,7 +590,7 @@ export async function handleVapiWebhook(
 
   if (payload.type === 'call.ended' || payload.type === 'call.failed') {
     try {
-      await processCallEnded(payload, prisma, req.body);
+      await processCallEnded(payload as VapiWebhookPayload, prisma, req.body);
       await prisma.processedVapiWebhook.create({ data: { bodyHash } });
     } catch (err) {
       console.error('[vapi-webhook] processCallEnded failed:', err);
@@ -592,6 +601,6 @@ export async function handleVapiWebhook(
     await prisma.processedVapiWebhook.create({ data: { bodyHash } });
   }
 
-  const out = responseForVapiMessage(payload);
+  const out = responseForVapiMessage(payload as VapiWebhookPayload);
   res.status(200).json(out);
 }
