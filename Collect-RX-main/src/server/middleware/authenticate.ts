@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
-import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
+import { getUserRole, type AuthJwtPayload, type UserAuthPayload, type BriefAuthFields } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { runWithRlsContext } from '../db/rlsContext.js';
@@ -54,9 +54,16 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
     const payload = verifyAuthToken(raw);
     const briefRole = getUserRole(payload);
+    // Auditors are provisioned with practiceId: null and scoped instead via
+    // AuditorGrant (see set-persona-test-passwords.mjs) — they were missing
+    // here, so every real auditor session 401'd on the very first request
+    // after login (GET /api/auth/me, which every page load triggers), even
+    // though login itself succeeded. See OUTSTANDING-FIXES-PRODUCT-READY.md
+    // P10-09.
     const crossPractice =
       briefRole === 'billing_ops_manager' ||
       briefRole === 'platform_admin' ||
+      briefRole === 'auditor' ||
       payload.role === 'platform_dev';
 
     if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
@@ -77,7 +84,13 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
     // Accountant token expiry — must be checked against DB since the JWT itself
     // has a 90-day TTL but the practice can revoke access before that via tokenExpiresAt.
-    if (payload.role === 'accountant') {
+    // Only for real practice-layer accountants: auditor (a PlatformUser, different
+    // table entirely) also carries the legacy role: 'accountant' via
+    // signBriefSessionToken's PracticeRoleMap, so without the platformUserSession
+    // guard this looked up a PlatformUser's id in the practice `User` table, found
+    // nothing, and 401'd every real auditor session on their first authenticated
+    // request. See OUTSTANDING-FIXES-PRODUCT-READY.md P10-09.
+    if (payload.role === 'accountant' && !(payload as BriefAuthFields).platformUserSession) {
       const userId = (payload as UserAuthPayload).userId;
       prisma.user.findUnique({ where: { id: userId }, select: { tokenExpiresAt: true, isActive: true } })
         .then((user) => {

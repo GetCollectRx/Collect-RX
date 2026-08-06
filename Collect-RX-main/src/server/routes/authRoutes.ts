@@ -413,12 +413,23 @@ export function createAuthRouter(prisma: PrismaClient): Router {
               select: { id: true, name: true, timezone: true },
             })
           : null;
+        // Must match respondPlatformUserLogin's mapping below — this collapsed
+        // platform_admin into 'group_admin' (billing_ops_manager's bucket)
+        // instead of 'platform_dev', so authRoleToBriefPersona() on the client
+        // silently demoted a platform_admin to billing_ops_manager on every
+        // full page load (any deep link, refresh, or bookmark), locking them
+        // out of every actual admin screen they'd just logged into — the
+        // backend session/API auth is unaffected (it reads userRole from the
+        // cookie, not this field), but the frontend nav breaks completely.
+        // See OUTSTANDING-FIXES-PRODUCT-READY.md P10-09.
         const legacyRole =
           userRole === 'auditor'
             ? ('accountant' as const)
-            : userRole === 'billing_ops_manager' || userRole === 'platform_admin'
+            : userRole === 'billing_ops_manager'
               ? ('group_admin' as const)
-              : ('practice_owner' as const);
+              : userRole === 'platform_admin'
+                ? ('platform_dev' as const)
+                : ('practice_owner' as const);
         return res.json({
           role: legacyRole,
           userRole,
