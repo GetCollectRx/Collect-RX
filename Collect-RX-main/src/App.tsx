@@ -7,6 +7,7 @@ const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
 const Changelog = lazy(() => import('./pages/Changelog'))
 const PilotDemo = lazy(() => import('./pages/PilotDemo'))
 import { PracticeProvider, usePractice } from './context/PracticeContext'
+import { isPracticeGroupAdmin } from './lib/personaRole'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { PlanUsageBanner } from './components/PlanUsageBanner'
 import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
@@ -89,16 +90,6 @@ function isPostAuthEntryPath(pathname: string): boolean {
   return path === '/' || path === '/login'
 }
 
-/**
- * Practice-user group admins (sessionUser present) home on the PHI-free
- * GroupDashboard. Platform billing-ops/admin sessions also carry the legacy
- * shim role 'group_admin' but have no sessionUser — they keep the
- * billing-ops persona home (/portfolio), whose APIs accept their JWT.
- */
-function isPracticeGroupAdmin(role: string | null, sessionUser: unknown): boolean {
-  return role === 'group_admin' && sessionUser != null
-}
-
 function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
   return groupAdmin ? '/group-dashboard' : HOME_ROUTE[userRole]
 }
@@ -130,11 +121,11 @@ function AppHomeFallback() {
 }
 
 function GroupAdminRoute({ children }: { children: ReactNode }) {
-  const { authState, role } = usePractice()
+  const { authState, role, sessionUser } = usePractice()
   if (authState === 'anon') {
     return <Navigate to="/login" replace />
   }
-  if (authState === 'ready' && role !== 'group_admin') {
+  if (authState === 'ready' && !isPracticeGroupAdmin(role, sessionUser)) {
     return <AppHomeFallback />
   }
   return <>{children}</>

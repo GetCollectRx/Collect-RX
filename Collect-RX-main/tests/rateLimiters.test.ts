@@ -202,6 +202,60 @@ describe.skipIf(!dbReady)('strictLimiter — 10 requests / min on expensive writ
   }, 30_000);
 });
 
+describe.skipIf(!dbReady)('strictLimiter must not leak onto unrelated /api routes', () => {
+  let userIdToReset: string | undefined;
+
+  afterEach(async () => {
+    await clearLimiterState(strictLimiter, 'strict', userIdToReset ? [sessionKey(userIdToReset)] : []);
+    userIdToReset = undefined;
+  });
+
+  it('15 reads of an unrelated GET route never 429 and never touch the strict counter', async () => {
+    // Regression test: src/server/routes/earlyAccessRoutes.ts used to call
+    // `r.use(strictLimiter)` with no path, and that router is mounted at
+    // `app.use('/api', createEarlyAccessRouter(prisma))` — Express runs
+    // path-less router.use() middleware for every request that enters the
+    // router, whether or not any route inside it ends up matching. That
+    // meant strictLimiter (10 req/min) was silently counting *every* /api
+    // request in the whole app against one shared per-user counter, not
+    // just POST /api/early-access. A user loading a handful of ordinary
+    // pages (each firing more than 10 XHRs) would start getting 429s across
+    // the entire product within seconds. Fixed by scoping strictLimiter to
+    // the one route it's meant to protect: r.post('/early-access',
+    // strictLimiter, ...).
+    const owner = await createPracticeWithOwnerForTests(prisma);
+    userIdToReset = owner.user.id;
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = 'false';
+    try {
+      const login = await request(app).post('/api/auth/login').send({ email: owner.email, password: owner.password });
+      const cookie = cookieHeaderFrom(login);
+
+      const statuses: number[] = [];
+      for (let i = 0; i < 15; i++) {
+        const res = await request(app).get('/api/canadian/compliance/disclosures').set('Cookie', cookie);
+        statuses.push(res.status);
+      }
+      expect(statuses.every((s) => s !== 429)).toBe(true);
+      expect(statuses.every((s) => s === 200)).toBe(true);
+
+      const redisUrl = process.env.REDIS_URL?.trim();
+      if (redisUrl) {
+        const redis = new IORedis(redisUrl);
+        try {
+          const keys = await redis.keys(`collectrx:rl:strict:${sessionKey(owner.user.id)}`);
+          expect(keys.length).toBe(0);
+        } finally {
+          await redis.quit();
+        }
+      }
+    } finally {
+      process.env.VITEST = originalVitest;
+      await cleanupPracticeWithUsers(prisma, owner.practice.id);
+    }
+  }, 30_000);
+});
+
 describe.skipIf(!dbReady)('sessionStandardLimiter — 600 requests / min per signed-in user', () => {
   let userIdToReset: string | undefined;
 
