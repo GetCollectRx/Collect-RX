@@ -44,7 +44,7 @@ const vapiAnalysisSchema = z.object({
   summary: z.string().optional(),
   successEvaluation: z.string().optional(),
   collectrx: collectrxWebhookStructuredSchema.optional(),
-  structuredData: z.record(z.unknown()).optional(),
+  structuredData: z.record(z.string(), z.unknown()).optional(),
 });
 
 // Main webhook payload schema

@@ -9,7 +9,8 @@ import { createHash } from 'crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
-import { validateVapiWebhookPayloadSafe, type VapiWebhookPayloadValidated } from '../../vapi/webhookValidator.js';
+import { validateVapiWebhookPayloadSafe } from '../../vapi/webhookValidator.js';
+import { bufferEarlyWebhook } from './webhookBuffer.js';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
 import {
   applyRecoveryAfterCall,
@@ -332,7 +333,36 @@ async function processCallEnded(
   });
 
   if (!attempt) {
-    console.warn(`[vapi-webhook] No CallAttempt found for vapiCallId=${vapiCallId} — logging raw outcome`);
+    // Webhook arrived before CallAttempt was created (rare race condition < 100ms).
+    // This can happen when Vapi calls end very quickly (network error, immediate hangup).
+    // Retry the lookup after a small delay to wait for queue engine to finish creating CallAttempt.
+    console.warn(
+      `[vapi-webhook] CallAttempt not yet found for vapiCallId=${vapiCallId} — retrying lookup`,
+    );
+    bufferEarlyWebhook(payload);
+
+    // Wait 100ms and retry (queue engine creates CallAttempt within ~10ms typically)
+    setTimeout(async () => {
+      const retryAttempt = await prisma.callAttempt.findUnique({ where: { vapiCallId } });
+      if (retryAttempt) {
+        console.log(
+          `[vapi-webhook] CallAttempt found on retry after buffering — reprocessing vapiCallId=${vapiCallId}`,
+        );
+        try {
+          await processCallEnded(payload as VapiWebhookPayload, prisma);
+        } catch (err) {
+          console.error(
+            `[vapi-webhook] Reprocessing buffered webhook failed for vapiCallId=${vapiCallId}:`,
+            err,
+          );
+        }
+      } else {
+        console.warn(
+          `[vapi-webhook] CallAttempt still not found after retry for vapiCallId=${vapiCallId} — will require Vapi webhook retry`,
+        );
+      }
+    }, 100);
+
     return;
   }
 

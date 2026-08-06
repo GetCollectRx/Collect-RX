@@ -78,9 +78,15 @@ describe('Graceful Shutdown — Queue Engine Teardown', () => {
     let tickCompleted = false;
 
     // Start a simulated tick (will run for 500ms)
+    // Note: Don't call simulateTickInProgress with isTickRunning already true, as it has a guard
+    // Instead, manually simulate the tick behavior
     isTickRunning = true;
-    const tickPromise = simulateTickInProgress(tickDuration).then(() => {
-      tickCompleted = true;
+    const tickPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        isTickRunning = false;
+        tickCompleted = true;
+        resolve();
+      }, tickDuration);
     });
 
     // Immediately try to stop (before tick finishes)
@@ -90,12 +96,16 @@ describe('Graceful Shutdown — Queue Engine Teardown', () => {
     expect(tickCompleted).toBe(false);
     expect(isTickRunning).toBe(true);
 
-    // Advance time to let tick complete
-    vi.advanceTimersByTime(tickDuration);
-    await tickPromise;
-    await stopPromise;
+    // Advance time enough for tick to complete AND for stopQueueEngine's polling loop to wake up
+    // Tick needs 500ms + stopQueueEngine polling needs at least 100ms for setTimeout
+    vi.advanceTimersByTime(600);
+    await vi.runAllTimersAsync();
 
-    // Now tick is complete and stopQueueEngine has returned
+    // Both should complete now
+    await expect(tickPromise).resolves.toBeUndefined();
+    await expect(stopPromise).resolves.toBeUndefined();
+
+    // Tick is complete and stopQueueEngine has returned
     expect(tickCompleted).toBe(true);
     expect(isTickRunning).toBe(false);
   });
