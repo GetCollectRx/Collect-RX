@@ -31,6 +31,7 @@ Per-incident runbooks for the CollectRx API/worker in production. Each follows t
 | [`desktop-connector-sync-issues.md`](./desktop-connector-sync-issues.md) | `connector_stale`, `connector_sync_failed` | High |
 | [`cogs-breaker-tripped.md`](./cogs-breaker-tripped.md) | `cogs_breaker` | High |
 | [`ops-alerting-disabled.md`](./ops-alerting-disabled.md) | `ops_alerting_disabled` | Critical (nothing else will page anyone until this is fixed) |
+| [`deploy-rollback.md`](./deploy-rollback.md) | (procedure, not an alert ID) | — used after a deploy-correlated regression from any of the above |
 
 **Deliberately not given a dedicated runbook:** `typescript`, `tests`, `env`, `ci_failure`, `auth-guard`, `live`, `metrics` — these fire from `npm run diagnose` / CI, not from production traffic; the alert catalog's own `suggestedFixes` (run the named script, read its output) is already the complete runbook for a build-time failure. `recovery-practice-attention` is a practice-facing nudge (open gates, payment traces due), not an operator incident. If any of these starts happening in a way that genuinely needs an on-call runbook, write one then — don't pre-build for a failure mode that hasn't shown up.
 
