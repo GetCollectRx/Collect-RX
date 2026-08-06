@@ -542,6 +542,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       continue;
     }
 
+    // ── CALL ATTEMPT DEDUPLICATION ────────────────────────────────────────────
+    // Guard against queue engine tick running twice on the same claim
+    // (timing edge case or crash recovery). If a CallAttempt was already created
+    // for this claim within the last ~24 hours, skip it — Vapi call was already made.
+    // This prevents duplicate calls to carriers, which would trigger CARRIER_BLOCK.
+    const recentCallAttempt = await prisma.callAttempt.findFirst({
+      where: {
+        claimId: next.claimId,
+        initiatedAt: {
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+        },
+      },
+      orderBy: { initiatedAt: 'desc' },
+    });
+    if (recentCallAttempt) {
+      console.warn(
+        `[deskQueueEngine] CallAttempt already exists for claimId=${next.claimId} ` +
+          `(initiated ${Math.round((Date.now() - recentCallAttempt.initiatedAt.getTime()) / 1000)}s ago) — ` +
+          `skipping to prevent duplicate call`,
+      );
+      continue;
+    }
+
     const carrierConfig = CARRIER_CONFIGS[next.claim.carrierId];
 
     const practice = await prisma.practice.findUnique({
