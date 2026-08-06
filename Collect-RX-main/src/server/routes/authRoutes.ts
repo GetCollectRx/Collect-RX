@@ -45,6 +45,35 @@ import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 
 const BCRYPT_ROUNDS = 12;
 
+type PracticeListRow = { id: string; name: string; timezone: string };
+
+/**
+ * Practices an auditor may see, per their `AuditorGrant` rows — a global
+ * grant (`practiceId: null`) sees every practice, a scoped grant sees only
+ * the practices it names. Mirrors `assertAuditorPracticeGrant` in
+ * `middleware/grantChecks.ts`, which already enforces this same grant table
+ * on per-practice data routes; this just extends it to the practices-list
+ * surfaced by `/me` and login so an auditor with a real grant isn't shown an
+ * empty list despite being authorized to read the data behind it.
+ */
+async function auditorPractices(prisma: PrismaClient, auditorUserId: string): Promise<PracticeListRow[]> {
+  const grants = await prisma.auditorGrant.findMany({ where: { auditorUserId } });
+  if (grants.length === 0) return [];
+  if (grants.some((g) => g.practiceId === null)) {
+    return prisma.practice.findMany({
+      select: { id: true, name: true, timezone: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+  const practiceIds = grants.map((g) => g.practiceId).filter((id): id is string => id !== null);
+  if (practiceIds.length === 0) return [];
+  return prisma.practice.findMany({
+    where: { id: { in: practiceIds } },
+    select: { id: true, name: true, timezone: true },
+    orderBy: { name: 'asc' },
+  });
+}
+
 async function buildSessionHealth(prisma: PrismaClient) {
   const health = await runSessionHealthCheck(prisma);
   if (!health.ok) {
@@ -188,9 +217,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           select: { id: true, name: true, timezone: true },
           orderBy: { name: 'asc' },
         })
-      : practice
-        ? [practice]
-        : [];
+      : userRole === 'auditor'
+        ? await auditorPractices(prisma, user.id)
+        : practice
+          ? [practice]
+          : [];
 
     return res.json({
       userRole,
@@ -400,12 +431,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
               select: { id: true, name: true, timezone: true },
               orderBy: { name: 'asc' },
             })
-          : platformUser.practiceId
-            ? await prisma.practice.findMany({
-                where: { id: platformUser.practiceId },
-                select: { id: true, name: true, timezone: true },
-              })
-            : [];
+          : userRole === 'auditor'
+            ? await auditorPractices(prisma, platformUser.id)
+            : platformUser.practiceId
+              ? await prisma.practice.findMany({
+                  where: { id: platformUser.practiceId },
+                  select: { id: true, name: true, timezone: true },
+                })
+              : [];
         const ctx = practiceIdFromRequestHints(req) ?? platformUser.practiceId ?? practices[0]?.id;
         const practice = ctx
           ? await prisma.practice.findUnique({
