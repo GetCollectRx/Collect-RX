@@ -10,7 +10,7 @@ import { appendAuditLog } from '../audit/auditLog.js';
 import type { Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { isPlatformDev, authUserId } from '../accessControl/types.js';
-import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
+import { requireCanEditPracticeAdmin, requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { reviewLesson } from '../learning/carrierLessons.js';
 
 const router = Router();
@@ -79,7 +79,7 @@ router.get('/settings', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/settings', async (req: Request, res: Response) => {
+router.put('/settings', requireCanEditPracticeAdmin, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const body = req.body as { settings?: Prisma.JsonObject };
@@ -150,7 +150,7 @@ router.get('/practice-identity', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/practice-identity', async (req: Request, res: Response) => {
+router.put('/practice-identity', requireCanEditPracticeAdmin, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const body = req.body as {

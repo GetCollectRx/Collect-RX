@@ -44,7 +44,7 @@ type AuditEntry = {
 }
 
 export default function Admin() {
-  const { practiceId } = usePractice()
+  const { practiceId, isReadOnly } = usePractice()
   const [savingCarriers, setSavingCarriers] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [carriers, setCarriers] = useState<Record<string, CarrierFlags>>(defaultFlags)
@@ -183,6 +183,12 @@ export default function Admin() {
           {' · '}
           <Link to="/admin/sync" className="text-crx-600 hover:underline">PMS sync ops →</Link>
         </p>
+        {isReadOnly && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+            Read-only view, changes are disabled. Ask an office manager to update carrier configuration or practice
+            identity.
+          </p>
+        )}
       </div>
 
       {toast && <InlineToast toast={toast} />}
@@ -243,7 +249,7 @@ export default function Admin() {
                 variant="primary"
                 size="sm"
                 onClick={saveIdentity}
-                disabled={!practiceId || identitySaving}
+                disabled={!practiceId || identitySaving || isReadOnly}
                 loading={identitySaving}
               >
                 Save identity
@@ -459,7 +465,7 @@ export default function Admin() {
           Call windows: Mon–Fri 8am–5pm Eastern. Max 3 attempts per claim.
         </p>
         <div className="mt-4">
-          <Button variant="primary" size="sm" onClick={saveCarrierSettings} disabled={!practiceId || savingCarriers} loading={savingCarriers}>
+          <Button variant="primary" size="sm" onClick={saveCarrierSettings} disabled={!practiceId || savingCarriers || isReadOnly} loading={savingCarriers}>
             Save carrier settings
           </Button>
         </div>
