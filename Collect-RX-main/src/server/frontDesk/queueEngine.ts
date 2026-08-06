@@ -44,10 +44,29 @@ export function startDeskQueueEngine(prisma: PrismaClient): void {
     .finally(() => { isTickRunning = false; });
 }
 
-export function stopDeskQueueEngine(): void {
+/**
+ * Stop the queue engine and wait for any in-flight tick to complete.
+ * Called during graceful shutdown to prevent orphaned calls or claims
+ * left in inconsistent states. Waits up to 90 seconds (longest tick + margin).
+ */
+export async function stopDeskQueueEngine(): Promise<void> {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+
+  // Wait for any in-flight tick to complete before returning
+  // (isTickRunning is set to true at the start of each tick and false in finally)
+  const maxWaitMs = 90_000;
+  const startWait = Date.now();
+  while (isTickRunning && Date.now() - startWait < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (isTickRunning) {
+    logger.warn('[deskQueueEngine] In-flight tick did not complete within 90s — forcing shutdown');
+  } else if (Date.now() - startWait > 100) {
+    logger.info(`[deskQueueEngine] Waited ${Date.now() - startWait}ms for in-flight tick to complete`);
   }
 }
 

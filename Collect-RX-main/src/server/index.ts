@@ -145,7 +145,7 @@ import { createDemoBookingWebhookRouter } from './routes/demoBookingWebhookRoute
 import { startMarketingLoopInProcess, startMarketingLearningInProcess } from './marketing/marketingScheduler.js';
 import { startEmailCampaignScheduler } from './marketing/emailCampaignScheduler.js';
 import { attachDeskWebSocket } from './frontDesk/deskWs.js';
-import { startDeskQueueEngine } from './frontDesk/queueEngine.js';
+import { startDeskQueueEngine, stopDeskQueueEngine } from './frontDesk/queueEngine.js';
 import { complianceRouter } from './routes/complianceRoutes.js';
 import { complianceWorkspaceRouter } from './routes/complianceWorkspaceRoutes.js';
 import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js';
@@ -675,6 +675,13 @@ if (isMainModule()) {
 
   process.on('SIGTERM', async () => {
     console.log('[server] SIGTERM received — shutting down gracefully');
+    try {
+      // Stop queue engine first — waits for any in-flight tick to complete
+      await stopDeskQueueEngine();
+      console.log('[server] Queue engine stopped');
+    } catch (err) {
+      console.error('[server] Error stopping queue engine:', err);
+    }
     await prisma.$disconnect();
     process.exit(0);
   });
