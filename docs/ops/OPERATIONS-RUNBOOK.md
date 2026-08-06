@@ -9,7 +9,9 @@
 
 - `GET /api/health` — liveness (no DB).
 - `GET /api/health/ready` — readiness; **503** if database unreachable.
-- `GET /api/health/metrics` — in-process request/error/latency counters.
+- `GET /api/health/live` — process liveness; **503** `blocked` if event-loop lag crosses `HEALTH_LIVE_BLOCKED_MS` (default 2000ms).
+- `GET /api/health/metrics` — in-process request/error/latency counters + desk-queue health.
+- `GET /api/diagnostics` — one-stop incident view: Vapi circuit breaker, DB latency, desk-queue tick health, BullMQ/DLQ depth. Requires `Authorization: Bearer <HEALTH_METRICS_TOKEN>` in production (fails closed if the token was never configured).
 - Alarms, backups, Sentry, deploy/rollback, smoke: [PHASE6-OPS.md](../operations/PHASE6-OPS.md).
 
 ## Database

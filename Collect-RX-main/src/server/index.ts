@@ -43,6 +43,8 @@
 //   - Helmet (HSTS, etc.); CSP off for Vite SPA — tighten if you serve only JSON from this process
 //   - Optional Node HTTPS: TLS_KEY_PATH + TLS_CERT_PATH → strict TLS 1.2+ (else HTTP behind proxy TLS)
 //   - GET /api/health/metrics: deployment fingerprint redacted in production unless HEALTH_METRICS_TOKEN + Bearer header
+//   - GET /api/health/live: event-loop lag liveness (503 "blocked" if the loop is stuck)
+//   - GET /api/diagnostics: Vapi breaker + DB latency + desk queue + BullMQ/DLQ snapshot; requires HEALTH_METRICS_TOKEN bearer in production
 //   - EMR_SYNC_WEBHOOK_URL validated at boot (prod) and each outbox batch — https + non-internal host in production
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -78,7 +80,8 @@ import {
   assertPhiEncryptionAtRestConfigured,
 } from './crypto/phiEncryptionKey.js';
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
-import { buildPublicHealthMetricsBody } from './healthMetricsExposure.js';
+import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken } from './healthMetricsExposure.js';
+import { getEventLoopHealth } from './observability/eventLoopHealth.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
 import { runWithRlsBypass } from './db/rlsContext.js';
@@ -382,6 +385,41 @@ app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response
   } catch (err) {
     logger.error('[health/metrics] queue health unavailable', { error: err });
     res.json({ ...body, queue: { error: 'unavailable' } });
+  }
+});
+
+// P1.2 — liveness beyond "process is up": event-loop lag sampled continuously
+// in the background (eventLoopHealth.ts), read here rather than measured
+// inline (measuring inline would just add the lag it's observing to the
+// response). /api/health/ready only proves the DB is reachable; this proves
+// the process can actually service a request promptly.
+app.get('/api/health/live', healthLimiter, (_req: Request, res: Response) => {
+  const eventLoop = getEventLoopHealth();
+  res.status(eventLoop.blocked ? 503 : 200).json({
+    status: eventLoop.blocked ? 'blocked' : 'alive',
+    uptimeSec: Math.floor(process.uptime()),
+    eventLoopDelayMs: { mean: eventLoop.meanMs, p99: eventLoop.p99Ms, max: eventLoop.maxMs },
+  });
+});
+
+// P1.2 — one-stop incident-response snapshot: Vapi circuit breaker, DB
+// latency, desk-queue tick health, BullMQ depths + DLQ backlog, event-loop
+// lag. Gated more strictly than /api/health/metrics (which is public and
+// only redacts one field) because this exposes materially more operational
+// detail — in production it is unreachable at all without a valid
+// HEALTH_METRICS_TOKEN bearer, even if the token itself was never configured.
+app.get('/api/diagnostics', healthLimiter, async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production' && !hasValidHealthMetricsToken(req)) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+  try {
+    const { buildDiagnosticsSnapshot } = await import('./observability/diagnostics.js');
+    const snapshot = await buildDiagnosticsSnapshot(prisma);
+    res.json({ success: true, ...snapshot });
+  } catch (err) {
+    logger.error('[diagnostics] snapshot failed', { error: err });
+    res.status(500).json({ success: false, error: 'diagnostics unavailable' });
   }
 });
 
