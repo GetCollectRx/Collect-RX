@@ -221,6 +221,31 @@
 
 ---
 
+## Phase 10 — Manual UX / dev-experience audit (2026-08-06)
+
+*Goal: Everything this repo's docs and UI promise, verified by actually running the app end to end — not just by CI passing.*
+
+**Status (2026-08-06):** Triggered by a live walkthrough — Postgres + Redis stood up locally, a generic demo practice seeded, and every core screen driven in a real browser as a practice owner. Found the primary local dev workflow (`npm run dev`) completely broken and one revenue page crashing outright; both were invisible to CI because CI runs the production build, not the dev server. **P10-01–P10-03 are fixed** (commit `9baec99` on `claude/app-testing-requirements-3s2x8o`). **P10-04 onward are net-new backlog** from this pass, not yet done. This phase only covers the core practice-owner AR loop (dashboard, claims, claim detail, escalations, pre-visit, pre-treatment estimate, billing, settings, CSV import) — front-desk, admin, and several other surfaces are explicitly untested (see P10-08–P10-10).
+
+| ID | Task | Definition of done |
+|----|------|-------------------|
+| P10-01 | ~~**Dev-mode crash: `lazy` used before its import in `App.tsx`**~~ | **Fixed.** `npm run dev` rendered a blank white screen on every route (`Cannot access 'lazy' before initialization`) because `lazy(...)` was called at module scope above `import { lazy, ... } from 'react'`. Vite's dev-mode CJS-interop transform doesn't hoist that the way real ESM does. Production builds were unaffected. Reordered the import. |
+| P10-02 | ~~**Dev-mode crash: Billing page `process is not defined`**~~ | **Fixed.** `src/billing/tiers.ts` read `process.env.STRIPE_*` at module scope but is imported by client bundles (Landing, ProductOnePager, and `SubscriptionUsageCard` on `/billing`). Vite's production build shims `process.env` to `{}` for the browser, masking it; the dev server doesn't. Guarded with a `typeof process !== 'undefined'` check. |
+| P10-03 | ~~**Demo seed: escalated claims missing from the Escalations page**~~ | **Fixed.** `seed-demo.ts` set `claim.status = 'ESCALATED'` on 6 claims but never wrote a matching `call_escalations` row — the table the dedicated `/escalations` page actually queries. Page showed "No open escalations" for a practice with $12,100 across 6 escalated claims, visible everywhere else in the UI. Added the missing rows to the seed. |
+| P10-04 | **Audit real code paths for the claim-status / `call_escalations` desync** | P10-03 was a seed-data bug, but it exposed that `insurance_claims.status` and `call_escalations` are two independent sources of truth with nothing enforcing they agree. Confirm every backend path that transitions a claim to `ESCALATED` (webhook handlers, dispatch/retry logic, manual staff actions) writes the matching `call_escalations` row in the same transaction — not just the seed script. Add a DB constraint, a single service-layer helper both paths must go through, or an integration test that fails if they drift, so this can't silently recur in production the way it did in demo data. |
+| P10-05 | **Fix `Collect-RX-main/README.md` demo credentials** | README states the demo login is `demo@collectrx-test.local` / `CollectRx2026!`. `seed-demo.ts` has **no default password** and throws (`"SEED_PRACTICE_PASSWORD is required (min 8 chars) — no default password."`) if it isn't set. Anyone following the README's own Quick Start hits a hard failure, not that login. Update the doc to state a `SEED_PRACTICE_PASSWORD` must be set (matching the root README, which already gets this right), or add a real dev-only default gated to non-production. |
+| P10-06 | **One-command local bootstrap (`npm run setup`)** | No script currently takes a clean clone to a running app. Getting there today means: reading `.env.example`'s comments, reconciling a Postgres port mismatch by hand (see P10-07), generating `JWT_SECRET`/`PHI_ENCRYPTION_KEY` yourself, and picking your own seed password. New script should check for Docker, run `docker compose up -d` if available (else prompt for an existing `DATABASE_URL`), generate missing secrets into `.env`, run migrate + seed, and print the login it just created. DoD: one command, no manual secret generation, no silent port mismatch. |
+| P10-07 | **Reconcile `.env.example` `DATABASE_URL` port vs. native Postgres default** | `.env.example` defaults to port `5433` (assumes `docker compose up -d`), but a native `apt`/Homebrew Postgres install defaults to `5432` with nothing to flag the mismatch — `prisma migrate dev` just fails to connect with a generic error. Either have `scripts/dev.mjs` detect and warn on a connection failure with the likely fix, or make the port choice unmissable before first migrate. |
+| P10-08 | **Audit front-desk role screens** | `/console` (Live Console) and `/history` (Call History) — not walked in this pass. Same rigor as P10-01–03: log in as `front_desk`, drive every screen, confirm role-scoped URLs actually block other routes (not just hide nav links). |
+| P10-09 | **Audit Admin / platform-admin screens** | `/admin`, `/admin/health`, `/admin/users`, `/admin/break-glass`, `/admin/integrations`, `/admin/staff`, `/admin/partnerships`, `/admin/partnerships/:id` — not walked in this pass. Break-glass in particular should leave a verifiable audit trail. |
+| P10-10 | **Audit AR Command Center, Group Dashboard, CDCP 2026, and report pages** | `/ar-command-center`, `/group-dashboard`, `/pre-visit` (CDCP deadlines / adjudication graph / KPIs tabs), `/reports/aging`, `/reports/carriers`, `/reports/queue` — rendered but not exercised with real interaction in this pass. |
+| P10-11 | **Audit claim-detail sub-features not exercised** | The "Denial & documentation" evidence checklist and "Export evidence pack (JSON)" button, and the Claims list's "Blocked gates" / "Denials & docs" / "Needs human" tab filters — seen rendered empty but not exercised end-to-end with data that populates them. |
+| P10-12 | **Sweep for other dual-source-of-truth tables like `call_escalations`** | The P10-03/P10-04 bug pattern — a page reads a narrow side table that isn't guaranteed to stay in sync with the claim's primary status — may repeat elsewhere (e.g. `work_queue` vs `insurance_claims.status`, `call_attempts.outcome` vs claim status). Worth a deliberate audit rather than finding each instance by accident, one broken page at a time. |
+
+**How P10-01–03 were found:** local Postgres 16 + Redis, `npm run demo:seed`, and a real Chromium session (Playwright) driven through login → dashboard → work queue → claims → claim detail → escalations → pre-visit → pre-treatment estimate (filled and generated a real result) → billing → settings → CSV import (uploaded and previewed the sample template). CI never catches P10-01/02 because it runs the production build (`npm run start` / `vite preview`), not `npm run dev` — the two have materially different module-resolution behavior for `process.env` and import ordering.
+
+---
+
 ## Appendix A — Epics to split (too large for one ticket)
 
 - **[L] P1-02** may spawn: migrate data model, re-point CI, move env, and redirect docs.
@@ -228,6 +253,7 @@
 - **[L] P3-32** full PMS integration: multi-quarter; keep spike separate.
 - **[L] P5-06** HIPAA: often many sub-tasks after assessment.
 - **[L] P5-11** pen test: scheduling + full remediation pass.
+- **[L] P10-09/P10-10** admin + secondary-surface audit: several unrelated screens bundled under two IDs for tracking; split per screen once triaged.
 
 ---
 
@@ -310,4 +336,4 @@ The Denial & Documentation Recovery Hub initially uses staff attestations, carri
 
 ---
 
-*Last updated: Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*
+*Last updated: Phase 10 (manual UX/dev-experience audit, 2026-08-06) + Phase 9 (GTM & polish) + Phase 8 (background jobs) + Phase 7 + Phase 3 review matrix (Appendix C). Re-number tickets in your issue tracker; keep this file as a roadmap outline.*
