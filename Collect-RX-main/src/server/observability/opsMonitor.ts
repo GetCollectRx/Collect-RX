@@ -14,8 +14,16 @@ import {
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Same three-state defaulting as `opsAlertsEnabled()` — see its comment for why. */
+export function opsMonitorEnabled(): boolean {
+  const raw = (process.env.OPS_MONITOR_ENABLED || '').trim().toLowerCase();
+  if (['1', 'true', 'yes'].includes(raw)) return true;
+  if (['0', 'false', 'no'].includes(raw)) return false;
+  return process.env.NODE_ENV === 'production';
+}
+
 export function startOpsMonitor(prisma: PrismaClient): void {
-  if (!['1', 'true', 'yes'].includes((process.env.OPS_MONITOR_ENABLED || '').trim().toLowerCase())) {
+  if (!opsMonitorEnabled()) {
     return;
   }
 

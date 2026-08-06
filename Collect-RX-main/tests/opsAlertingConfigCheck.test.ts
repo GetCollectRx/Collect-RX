@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAlertDefinition } from '../src/server/observability/alertCatalog.js';
 import { checkOpsAlertingConfigured } from '../src/server/observability/startupHealthScan.js';
+import { opsMonitorEnabled } from '../src/server/observability/opsMonitor.js';
 import {
   shouldAlertOnJobExhaustion,
   buildJobFailureAlertDetail,
@@ -67,6 +68,41 @@ describe('checkOpsAlertingConfigured', () => {
     vi.stubEnv('SENDGRID_API_KEY', '');
     const result = checkOpsAlertingConfigured();
     expect(result.ok).toBe(true);
+  });
+
+  it('P1.1: monitor + alerts default on in production even with both env vars unset, so only a missing channel fails the check', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OPS_MONITOR_ENABLED', '');
+    vi.stubEnv('OPS_ALERTS_ENABLED', '');
+    vi.stubEnv('ALERT_SMS_TO', '');
+    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', '');
+    vi.stubEnv('OPS_ALERT_EMAIL_TO', '');
+    vi.stubEnv('SENDGRID_API_KEY', '');
+    vi.stubEnv('OPS_ALERT_WEBHOOK_URL', '');
+    expect(opsMonitorEnabled()).toBe(true);
+    const result = checkOpsAlertingConfigured();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('delivery channel');
+    expect(result.detail).not.toContain('OPS_MONITOR_ENABLED');
+    expect(result.detail).not.toContain('OPS_ALERTS_ENABLED');
+  });
+
+  it('P1.1: monitor + alerts stay off outside production when both env vars are unset', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('OPS_MONITOR_ENABLED', '');
+    vi.stubEnv('OPS_ALERTS_ENABLED', '');
+    vi.stubEnv('OPS_ALERT_WEBHOOK_URL', 'https://hooks.example.com/x');
+    const result = checkOpsAlertingConfigured();
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('OPS_MONITOR_ENABLED');
+    expect(result.detail).toContain('OPS_ALERTS_ENABLED');
+  });
+
+  it('P1.1: an explicit "0" opts out of monitoring even in production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OPS_MONITOR_ENABLED', '0');
+    expect(opsMonitorEnabled()).toBe(false);
   });
 });
 

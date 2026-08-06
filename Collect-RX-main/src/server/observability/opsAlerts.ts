@@ -19,8 +19,18 @@ const cooldownMs = () =>
 
 const lastSent = new Map<string, number>();
 
+/**
+ * Explicit '1'/'true'/'yes' → on. Explicit '0'/'false'/'no' → off. Unset →
+ * defaults on in production (an unsupervised pilot must not silently ship
+ * with alerting off because nobody set the env var) and off elsewhere (dev/
+ * test should not page anyone by default). Same three-state shape as
+ * `startupScanEnabled()` in `startupHealthScan.ts`.
+ */
 export function opsAlertsEnabled(): boolean {
-  return ['1', 'true', 'yes'].includes((process.env.OPS_ALERTS_ENABLED || '').trim().toLowerCase());
+  const raw = (process.env.OPS_ALERTS_ENABLED || '').trim().toLowerCase();
+  if (['1', 'true', 'yes'].includes(raw)) return true;
+  if (['0', 'false', 'no'].includes(raw)) return false;
+  return process.env.NODE_ENV === 'production';
 }
 
 function alertKey(payload: OpsAlertPayload): string {

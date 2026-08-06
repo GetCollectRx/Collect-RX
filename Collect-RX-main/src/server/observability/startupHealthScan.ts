@@ -5,6 +5,8 @@ import { readdirSync } from 'fs';
 import { join } from 'path';
 import type { PrismaClient } from '@prisma/client';
 import { getAlertDefinition } from './alertCatalog.js';
+import { opsAlertsEnabled } from './opsAlerts.js';
+import { opsMonitorEnabled } from './opsMonitor.js';
 
 export interface StartupCheckResult {
   id: string;
@@ -100,16 +102,18 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
 }
 
 /**
- * This check deliberately reads raw env vars rather than importing
- * opsAlertsEnabled()/opsMonitor's gate — it exists specifically to catch the
- * case where ongoing ops alerting is OFF, so it must not depend on that same
- * config to fire. It rides the startup digest email instead (SendGrid +
- * STARTUP_ALERT_EMAIL_TO), which is independent of OPS_ALERTS_ENABLED.
+ * Reuses the real `opsAlertsEnabled()`/`opsMonitorEnabled()` gates rather than
+ * re-deriving on/off from raw env vars — both now default on in production,
+ * so a second, independent truthy-check here would silently drift out of
+ * sync with the actual gates (reporting "missing OPS_MONITOR_ENABLED" for a
+ * production boot where monitoring is in fact already running by default).
+ * This check's own delivery path is still independent of OPS_ALERTS_ENABLED:
+ * it rides the startup digest email (SendGrid + STARTUP_ALERT_EMAIL_TO), not
+ * the ops-alert dispatch channel it's reporting on.
  */
 export function checkOpsAlertingConfigured(): StartupCheckResult {
-  const truthy = (v: string | undefined) => ['1', 'true', 'yes'].includes((v || '').trim().toLowerCase());
-  const monitorOn = truthy(process.env.OPS_MONITOR_ENABLED);
-  const alertsOn = truthy(process.env.OPS_ALERTS_ENABLED);
+  const monitorOn = opsMonitorEnabled();
+  const alertsOn = opsAlertsEnabled();
   const hasSmsChannel = Boolean(
     process.env.ALERT_SMS_TO && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN,
   );
