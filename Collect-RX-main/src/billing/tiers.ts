@@ -13,6 +13,12 @@
 
 import type { BillingTier } from '@prisma/client';
 
+// This module is imported by client bundles (LandingPage, ProductOnePager, SubscriptionUsageCard)
+// as well as the server. `process` only exists under Node — Vite's production build shims
+// `process.env` to `{}` for the browser, but the dev server does not, so guard it here too.
+const env: Record<string, string | undefined> =
+  typeof process !== 'undefined' && process.env ? process.env : {};
+
 export interface TierConfig {
   name: string;
   price: number;
@@ -55,10 +61,10 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     // core/growth/scale rename — honor them so an old env never produces a
     // price ID that fails to map back to a minute pool.
     stripePriceId:
-      process.env.STRIPE_PRICE_CORE ||
-      process.env.STRIPE_PRACTICE_STARTER_PRICE_ID ||
-      process.env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
-    stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_CORE,
+      env.STRIPE_PRICE_CORE ||
+      env.STRIPE_PRACTICE_STARTER_PRICE_ID ||
+      env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
+    stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_CORE,
     infraCostPerMonth: 138, // 1,200 min x $0.115
     stripeFeePerMonth: 29, // 0.7% Stripe Billing + 2.9% card
     grossMargin: '79%',
@@ -74,8 +80,8 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     dailyCapMinutes: 300,
     hardStopAtLimit: false,
     stripePriceId:
-      process.env.STRIPE_PRICE_GROWTH || process.env.STRIPE_PRACTICE_PROFESSIONAL_PRICE_ID,
-    stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_GROWTH,
+      env.STRIPE_PRICE_GROWTH || env.STRIPE_PRACTICE_PROFESSIONAL_PRICE_ID,
+    stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_GROWTH,
     infraCostPerMonth: 322, // 2,800 min x $0.115
     stripeFeePerMonth: 72,
     grossMargin: '80%',
@@ -91,8 +97,8 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     dailyCapMinutes: null, // No daily cap on Scale
     hardStopAtLimit: false,
     stripePriceId:
-      process.env.STRIPE_PRICE_SCALE || process.env.STRIPE_PRACTICE_ENTERPRISE_PRICE_ID,
-    stripeOveragePriceId: process.env.STRIPE_OVERAGE_PRICE_SCALE,
+      env.STRIPE_PRICE_SCALE || env.STRIPE_PRACTICE_ENTERPRISE_PRICE_ID,
+    stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_SCALE,
     infraCostPerMonth: 460, // 4,000 min x $0.115
     stripeFeePerMonth: 90,
     grossMargin: '78%',

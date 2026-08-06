@@ -1,3 +1,4 @@
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
@@ -52,7 +53,6 @@ import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
 import { HOME_ROUTE, type UserRole } from './types/userRole'
 import { StartupScreen } from './components/StartupScreen'
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 const ProductUsageAnalytics = lazy(() => import('./pages/ProductUsageAnalytics'))
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
