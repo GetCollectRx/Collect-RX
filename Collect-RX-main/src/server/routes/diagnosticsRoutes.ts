@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { getVapiMetrics } from '../../vapi/metrics.js';
 import { getState as getCircuitBreakerState, resetCircuitBreaker } from '../../vapi/circuitBreaker.js';
+import { piiVault } from '../../pii-vault.js';
 
 const router = Router();
 
@@ -91,6 +92,72 @@ router.post('/vapi-reset-circuit-breaker', async (_req: Request, res: Response) 
     timestamp: new Date().toISOString(),
     action: 'Circuit breaker manually reset',
     state: getCircuitBreakerState(),
+  });
+});
+
+/**
+ * GET /api/admin/diagnostics/phi-vault-health
+ *
+ * Real-time PHI Vault memory health: token count, expiration tracking, GC pressure.
+ * For on-call: if expiredTokens is high or oldestActiveToken is >120 days old, vault has stale data.
+ */
+router.get('/phi-vault-health', async (_req: Request, res: Response) => {
+  const stats = piiVault.stats();
+  const phiVaultGcIntervalMs = Math.max(60_000, Number(process.env.PHI_VAULT_GC_INTERVAL_MS || 60 * 60 * 1000));
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    vault: {
+      activeTokens: stats.activeTokens,
+      expiredTokens: stats.expiredTokens,
+      totalTokensIssued: stats.totalTokensIssued,
+      oldestActiveTokenAge: stats.oldestActiveToken
+        ? Math.round((new Date().getTime() - stats.oldestActiveToken.getTime()) / (24 * 60 * 60 * 1000))
+        : null, // days
+    },
+    configuration: {
+      maxVaultSize: Number(process.env.PHI_VAULT_MAX_TOKENS || 100_000),
+      tokenTtlDays: Number(process.env.PHI_VAULT_TTL_DAYS || 120),
+      gcIntervalMs: phiVaultGcIntervalMs,
+    },
+    diagnosis: [
+      stats.expiredTokens > 1000
+        ? {
+            severity: 'medium',
+            issue: `${stats.expiredTokens} expired tokens in memory (high GC lag)`,
+            action: 'Run manual GC or lower PHI_VAULT_GC_INTERVAL_MS for high-volume practices',
+          }
+        : null,
+      stats.activeTokens > (Number(process.env.PHI_VAULT_MAX_TOKENS || 100_000) * 0.9)
+        ? {
+            severity: 'high',
+            issue: `Vault at ${Math.round((100 * stats.activeTokens) / Number(process.env.PHI_VAULT_MAX_TOKENS || 100_000))}% capacity`,
+            action: 'Monitor token lifecycle. Claims may fail to dispatch if vault is full.',
+          }
+        : null,
+    ].filter(Boolean),
+  });
+});
+
+/**
+ * POST /api/admin/diagnostics/phi-vault-gc
+ *
+ * Manually trigger PHI Vault garbage collection.
+ * Expired tokens are normally cleaned up every 1 hour (or PHI_VAULT_GC_INTERVAL_MS).
+ * Use this to force cleanup if vault is approaching capacity.
+ */
+router.post('/phi-vault-gc', async (_req: Request, res: Response) => {
+  const purged = piiVault.gc();
+  const stats = piiVault.stats();
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    action: 'Manual garbage collection triggered',
+    result: {
+      purgedTokens: purged,
+      activeTokensAfter: stats.activeTokens,
+      expiredTokensAfter: stats.expiredTokens,
+    },
   });
 });
 

@@ -546,11 +546,14 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   // H-6: legacy vault (services/pii-vault.ts, 24h TTL, simple string tokens) GC removed —
   // the legacy tokenize/detokenize functions are no longer called and the legacy vault
   // accumulates no new entries, so purging it is a no-op and creates misleading log output.
+  // Configurable via PHI_VAULT_GC_INTERVAL_MS (default: 1 hour). In high-volume practices,
+  // lower this to 5-15 minutes to avoid accumulating expired tokens.
+  const phiVaultGcIntervalMs = Math.max(60_000, Number(process.env.PHI_VAULT_GC_INTERVAL_MS || 60 * 60 * 1000));
   claimsPiiVault.gc();
   setInterval(() => {
     const purgedMain = claimsPiiVault.gc();
     if (purgedMain > 0) console.log(`[piiVault] GC: purged ${purgedMain} PHI token(s)`);
-  }, 60 * 60 * 1000);
+  }, phiVaultGcIntervalMs);
 
   if (process.env.REDIS_URL) {
     registerArJobSchedulers().catch((err) => {

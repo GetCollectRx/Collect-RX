@@ -137,6 +137,51 @@ curl -s "https://collect-rx.fly.dev/api/admin/diagnostics/vapi-health" \
 
 ---
 
+## Command: Check PHI Vault Health (1 minute)
+
+If Vapi is healthy but claims are failing to dispatch, check if the PHI Vault has memory pressure:
+
+```bash
+curl -s "https://collect-rx.fly.dev/api/admin/diagnostics/phi-vault-health" \
+  -H "Authorization: Bearer $HEALTH_METRICS_TOKEN" | jq .
+```
+
+**Response looks like:**
+```json
+{
+  "timestamp": "2026-08-05T06:35:12Z",
+  "vault": {
+    "activeTokens": 2500,
+    "expiredTokens": 150,
+    "totalTokensIssued": 5200,
+    "oldestActiveTokenAge": 95
+  },
+  "configuration": {
+    "maxVaultSize": 100000,
+    "tokenTtlDays": 120,
+    "gcIntervalMs": 3600000
+  },
+  "diagnosis": []
+}
+```
+
+**What to look for:**
+
+| Scenario | Meaning | Action |
+|----------|---------|--------|
+| `expiredTokens: 0` | Vault is clean | No action needed |
+| `expiredTokens: >1000` | High GC lag; expired tokens waiting for cleanup | Run manual GC: `curl -X POST ... /phi-vault-gc` or lower `PHI_VAULT_GC_INTERVAL_MS` |
+| `activeTokens: >90000` (with max 100k) | Vault near capacity | Monitor token lifecycle; create new claims cautiously |
+| `oldestActiveTokenAge: 120+` | Tokens at or past 120-day TTL | Investigate why old tokens haven't expired; may indicate expired() logic bug |
+
+**Manual GC (if vault is backing up):**
+```bash
+curl -X POST "https://collect-rx.fly.dev/api/admin/diagnostics/phi-vault-gc" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+```
+
+---
+
 ## Second Command: Check Queue State (1 minute)
 
 If Vapi looks healthy but queue is still backed up:
@@ -255,6 +300,13 @@ VAPI_HTTP_TIMEOUT_MS=30000        # Default: 30s
 # Circuit breaker config
 VAPI_CB_FAILURE_THRESHOLD=5       # Trip after 5 consecutive timeouts
 VAPI_CB_RECOVERY_TIMEOUT_MS=120000  # Attempt recovery after 2 minutes
+
+# PHI Vault config (encrypted token storage for call dispatch)
+PHI_VAULT_TTL_DAYS=120            # Token lifetime (must outlive 90-day claim lifecycle)
+PHI_VAULT_MAX_TOKENS=100000       # Max tokens in memory; enforced at tokenize()
+PHI_VAULT_GC_INTERVAL_MS=3600000  # Garbage collection interval (default: 1 hour)
+# For high-volume practices (>5 claims/sec), reduce to 300000 (5 min) to avoid
+# accumulating expired tokens in memory between GC cycles.
 
 # OPS monitoring + alerting (REQUIRED for on-call paging)
 OPS_MONITOR_ENABLED=1             # Enable monitor loop
