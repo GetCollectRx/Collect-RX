@@ -61,18 +61,23 @@ export function getVapiMetrics(): VapiMetricsSnapshot {
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : null;
 
-  const p95Duration = durations.length
-    ? durations[Math.floor(durations.length * 0.95)]
-    : null;
+  // Linear interpolation for percentiles (standard statistical method)
+  const percentile = (arr: number[], p: number): number | null => {
+    if (!arr.length) return null;
+    const h = (p / 100) * (arr.length - 1);
+    const lower = Math.floor(h);
+    const upper = Math.ceil(h);
+    if (lower === upper) return arr[lower];
+    const weight = h - lower;
+    return Math.round(arr[lower] * (1 - weight) + arr[upper] * weight);
+  };
 
-  const p99Duration = durations.length
-    ? durations[Math.floor(durations.length * 0.99)]
-    : null;
-
+  const p95Duration = percentile(durations, 95);
+  const p99Duration = percentile(durations, 99);
   const maxDuration = durations.length ? durations[durations.length - 1] : null;
 
   return {
-    recentCalls: callHistory.slice(-20), // Last 20 for the endpoint
+    recentCalls: recentCalls.slice(-20), // Last 20 within 1-minute window
     callsLastMinute: recentCalls.length,
     timeoutsLastMinute: timeouts,
     timeoutRateLastMinute: recentCalls.length ? timeouts / recentCalls.length : 0,

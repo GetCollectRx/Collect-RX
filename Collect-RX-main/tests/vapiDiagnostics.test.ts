@@ -5,7 +5,7 @@
  * during real failures.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   recordVapiCall,
   getVapiMetrics,
@@ -72,19 +72,29 @@ describe('Vapi Circuit Breaker', () => {
     });
 
     it('recovers HALF_OPEN → CLOSED after success threshold', () => {
-      // Trip circuit
-      for (let i = 0; i < 5; i++) recordTimeout();
-      expect(getState().state).toBe('OPEN');
+      vi.useFakeTimers();
+      try {
+        // Trip circuit
+        for (let i = 0; i < 5; i++) recordTimeout();
+        expect(getState().state).toBe('OPEN');
 
-      // Manually test recovery path: success count should close after threshold
-      // (In real system, time would elapse first to trigger HALF_OPEN)
-      recordSuccess();
-      recordSuccess();
+        // Advance time past recovery timeout to trigger HALF_OPEN
+        vi.advanceTimersByTime(121_000); // Recovery timeout is 120s by default
 
-      // After 2 successes (success threshold), should close
-      const state = getState();
-      expect(state.state).toBe('CLOSED');
-      expect(state.consecutiveTimeouts).toBe(0);
+        // Auto-transition to HALF_OPEN when calling getState()
+        expect(getState().state).toBe('HALF_OPEN');
+
+        // Record 2 successes to close
+        recordSuccess();
+        recordSuccess();
+
+        // After 2 successes (success threshold), should close
+        const state = getState();
+        expect(state.state).toBe('CLOSED');
+        expect(state.consecutiveTimeouts).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('reopens if HALF_OPEN fails', () => {
@@ -209,8 +219,8 @@ describe('Vapi Metrics', () => {
       const metrics = getVapiMetrics();
       expect(metrics.callsLastMinute).toBe(10);
       expect(metrics.avgDurationMsLastMinute).toBe(550); // Average of 100..1000
-      expect(metrics.p95DurationMsLastMinute).toBe(950); // 95th percentile
-      expect(metrics.p99DurationMsLastMinute).toBe(990); // 99th percentile
+      expect(metrics.p95DurationMsLastMinute).toBe(955); // 95th percentile (linear interpolation)
+      expect(metrics.p99DurationMsLastMinute).toBe(991); // 99th percentile (linear interpolation)
       expect(metrics.maxDurationMsLastMinute).toBe(1000);
     });
 
