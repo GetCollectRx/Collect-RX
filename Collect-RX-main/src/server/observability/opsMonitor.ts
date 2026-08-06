@@ -10,6 +10,7 @@ import {
   evaluateQueueHealthAlerts,
   defaultQueueHealthThresholds,
 } from './queueHealth.js';
+import { isCircuitOpen, getState as getCircuitBreakerState } from '../../vapi/circuitBreaker.js';
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -27,6 +28,16 @@ export function startOpsMonitor(prisma: PrismaClient): void {
       await dispatchOpsAlert({
         alertId: 'database_readiness',
         detail: (err as Error).message,
+        source: 'ops-monitor',
+      });
+    }
+
+    // Vapi circuit breaker — alert on-call immediately if the circuit trips
+    if (isCircuitOpen()) {
+      const breaker = getCircuitBreakerState();
+      await dispatchOpsAlert({
+        alertId: 'vapi_circuit_breaker_open',
+        detail: `${breaker.consecutiveTimeouts} consecutive timeouts. Recovery attempt at ${breaker.nextRecoveryAttempt?.toISOString()}. ${breaker.explanation}`,
         source: 'ops-monitor',
       });
     }
