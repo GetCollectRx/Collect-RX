@@ -14,6 +14,7 @@
   "main": "electron-shell/main.js",
   "scripts": {
     "postinstall": "node scripts/ensure-electron-symlink.cjs",
+    "setup": "node scripts/setup.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "dev:backend": "tsx watch src/server/index.ts",

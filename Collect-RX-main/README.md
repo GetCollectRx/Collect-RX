@@ -20,16 +20,31 @@ This system sits alongside the practice's PMS (practice management software — 
 - Node.js 18+ and npm
 - Windows, Mac, or Linux
 
-### Setup (3 minutes)
+### Setup (one command)
 
 ```bash
-# 0. From repository root: install workspaces (PostgreSQL must be running separately unless you use Docker)
-cd .. && npm install && cd Collect-RX-main
+cd .. && npm install && cd Collect-RX-main   # from repository root: install workspaces
+npm run setup                                # .env, Postgres, migrate, seed, prints login
+npm run dev
+```
 
+`npm run setup` does everything by itself: creates `.env` from `.env.example` if it's missing, brings
+up Postgres — via `docker compose up -d` if Docker is available, otherwise it checks for (and if
+needed, provisions the role/database on) a native Postgres on port 5432 — does the same for Redis,
+generates `JWT_SECRET` / `PHI_ENCRYPTION_KEY` / a seed password if they're not already set, runs
+`prisma generate` + `migrate deploy`, seeds the demo practice, and prints the login it just created.
+It's safe to re-run (e.g. after `git pull`) — it only fills in what's missing, never overwrites a
+value already in `.env`. Flags: `npm run setup -- --minimal` seeds an empty baseline practice instead
+of the rich demo data; `npm run setup -- --reset` wipes and reseeds the demo practice.
+
+<details>
+<summary>Prefer to do it by hand, or already have your own Postgres set up?</summary>
+
+```bash
 # 1. Environment — `.env` is not in git (secrets). Copy the template to create it:
 cp .env.example .env
-# Set DATABASE_URL to your PostgreSQL (e.g. Fly Postgres) and JWT_SECRET
-# Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead
+# Set DATABASE_URL to your PostgreSQL (e.g. Fly Postgres), JWT_SECRET, and SEED_PRACTICE_PASSWORD.
+# Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead.
 
 # 2. Prisma client + migrations (PostgreSQL; do not use db:push in prod — use migrate deploy)
 npm run db:generate
@@ -41,6 +56,8 @@ npm run db:seed
 # 4. Start the application (runs both backend and frontend)
 npm run dev
 ```
+
+</details>
 
 ### Desktop app (Electron)
 
