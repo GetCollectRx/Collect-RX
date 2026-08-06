@@ -111,6 +111,7 @@ import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
+import { createDiagnosticsRouter } from './routes/diagnosticsRoutes.js';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
@@ -407,6 +408,7 @@ registerEmailCampaignRoutes(app, prisma);
 registerCampaignRoutes(app, prisma);
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
+app.use('/api/admin/diagnostics', createDiagnosticsRouter());
 app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication

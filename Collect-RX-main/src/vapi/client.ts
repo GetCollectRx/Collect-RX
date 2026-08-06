@@ -210,6 +210,10 @@ function getPhoneNumberId(): string {
   return id;
 }
 
+import logger from '../logger.cjs';
+import { recordVapiCall } from './metrics.js';
+import { isCircuitOpen, recordTimeout, recordSuccess } from './circuitBreaker.js';
+
 // A hung connection here would hang the queue-engine tick promise forever —
 // the isTickRunning latch never releases and dispatch dies for all practices
 // until restart. Every Vapi request must have a finite deadline.
@@ -221,22 +225,49 @@ async function vapiRequest<T>(
   body?: unknown,
 ): Promise<T> {
   const url = `${VAPI_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
-  });
+  const startTime = Date.now();
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '(no body)');
-    throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '(no body)');
+      throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
+    }
+
+    recordSuccess();
+    return res.json() as Promise<T>;
+  } catch (err) {
+    const durationMs = Date.now() - startTime;
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+
+    if (isTimeout) {
+      recordTimeout();
+      logger.error('[vapiRequest] REQUEST TIMEOUT', {
+        method,
+        path,
+        timeoutMs: VAPI_HTTP_TIMEOUT_MS,
+        durationMs,
+      });
+    } else {
+      logger.error('[vapiRequest] REQUEST FAILED', {
+        method,
+        path,
+        error: (err as Error).message,
+        durationMs,
+      });
+    }
+
+    throw err;
   }
-
-  return res.json() as Promise<T>;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +287,17 @@ async function vapiRequest<T>(
  * linking this Vapi call back to the CollectRx DB.
  */
 export async function initiateCall(params: VapiCallParams): Promise<VapiCallResult> {
+  // Check circuit breaker first
+  if (isCircuitOpen()) {
+    const error = new Error('[VapiClient] Circuit breaker is OPEN — Vapi API degraded, fast-failing');
+    logger.error('VAPI_CIRCUIT_BREAKER_OPEN', {
+      claimId: params.claimId,
+      carrierId: params.carrierId,
+      practiceId: params.practiceId,
+    });
+    throw error;
+  }
+
   const {
     claimId,
     carrierId,
@@ -289,6 +331,8 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     languagePreference,
     carrierIvrInstructions,
   } = params;
+
+  const initiatedAt = new Date();
 
   // Guard: only dial known carrier claims lines
   const allowedNumbers = new Set(
@@ -369,11 +413,41 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     },
   };
 
-  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
-  return {
-    ...result,
-    vapiCallId: result.vapiCallId ?? result.id ?? '',
-  };
+  try {
+    const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+    const completedAt = new Date();
+
+    recordVapiCall({
+      practiceId,
+      claimId,
+      carrierId,
+      initiatedAt,
+      completedAt,
+      durationMs: completedAt.getTime() - initiatedAt.getTime(),
+      status: 'success',
+    });
+
+    return {
+      ...result,
+      vapiCallId: result.vapiCallId ?? result.id ?? '',
+    };
+  } catch (err) {
+    const completedAt = new Date();
+    const durationMs = completedAt.getTime() - initiatedAt.getTime();
+
+    recordVapiCall({
+      practiceId,
+      claimId,
+      carrierId,
+      initiatedAt,
+      completedAt,
+      durationMs,
+      status: err instanceof Error && err.name === 'AbortError' ? 'timeout' : 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+
+    throw err;
+  }
 }
 
 export interface VapiPreVisitCallParams {
@@ -402,6 +476,19 @@ export interface VapiPreVisitCallParams {
  * CDCP predetermination checks dial the CDCP Contact Centre (1-888-888-8110).
  */
 export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Promise<VapiCallResult> {
+  // Check circuit breaker first
+  if (isCircuitOpen()) {
+    const error = new Error('[VapiClient] Circuit breaker is OPEN — Vapi API degraded, fast-failing');
+    logger.error('VAPI_CIRCUIT_BREAKER_OPEN', {
+      preVisitType: params.preVisitType,
+      carrierId: params.carrierId,
+      practiceId: params.practiceId,
+    });
+    throw error;
+  }
+
+  const initiatedAt = new Date();
+
   const carrierPhone = params.cdcpContext
     ? CDCP_CONTACT_CENTRE_PHONE
     : CARRIER_PHONE_MAP[params.carrierId];
@@ -459,11 +546,39 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
     },
   };
 
-  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
-  return {
-    ...result,
-    vapiCallId: result.vapiCallId ?? result.id ?? '',
-  };
+  try {
+    const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+    const completedAt = new Date();
+
+    recordVapiCall({
+      practiceId: params.practiceId,
+      carrierId: params.carrierId,
+      initiatedAt,
+      completedAt,
+      durationMs: completedAt.getTime() - initiatedAt.getTime(),
+      status: 'success',
+    });
+
+    return {
+      ...result,
+      vapiCallId: result.vapiCallId ?? result.id ?? '',
+    };
+  } catch (err) {
+    const completedAt = new Date();
+    const durationMs = completedAt.getTime() - initiatedAt.getTime();
+
+    recordVapiCall({
+      practiceId: params.practiceId,
+      carrierId: params.carrierId,
+      initiatedAt,
+      completedAt,
+      durationMs,
+      status: err instanceof Error && err.name === 'AbortError' ? 'timeout' : 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+
+    throw err;
+  }
 }
 
 /**
