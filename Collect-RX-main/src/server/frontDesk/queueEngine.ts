@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { isCircuitOpen, getState as getCircuitBreakerState } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -294,6 +295,19 @@ async function settleBlockedCandidate(
 
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
+
+  // Safety gate: if Vapi circuit breaker is OPEN (API degraded or down),
+  // stop dispatching to prevent cascade failure. Claims stay in queue
+  // and will retry when Vapi recovers.
+  if (isCircuitOpen()) {
+    const breaker = getCircuitBreakerState();
+    logger.warn('[deskQueueEngine] Vapi circuit breaker is OPEN — deferring all dispatch this tick', {
+      state: breaker.state,
+      consecutiveTimeouts: breaker.consecutiveTimeouts,
+      explanation: breaker.explanation,
+    });
+    return;
+  }
 
   // Fleet-wide lease: if another replica already holds it this cycle, skip —
   // it, not this process, is running the tick body right now.

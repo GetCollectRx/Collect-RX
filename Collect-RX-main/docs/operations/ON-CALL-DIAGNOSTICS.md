@@ -182,9 +182,27 @@ fly logs -a collect-rx --tail 100 | grep "token expired\|PHI"
 
 ---
 
+## Automatic Circuit Breaker Protection
+
+**Good news:** The queue engine automatically stops dispatching when the circuit breaker is OPEN.
+
+When Vapi times out 5+ times consecutively:
+1. Circuit breaker trips to OPEN (visible in diagnostics endpoint)
+2. Next queue tick skips dispatch entirely (all claims remain PENDING, no forced calls)
+3. Queue waits 120s (configurable), then attempts recovery (HALF_OPEN)
+4. When Vapi recovers, circuit breaker auto-closes and dispatch resumes
+
+**You do NOT need to manually pause the queue if Vapi is down.** The circuit breaker handles cascade prevention automatically.
+
+Manual intervention is only needed if:
+- Circuit breaker is stuck (shows future `nextRecoveryAttempt` but Vapi is already healthy) → use manual reset (see below)
+- You need to pause a specific practice for administrative reasons (not API degradation)
+
+---
+
 ## Pausing/Resuming the Queue
 
-If Vapi is confirmed down and you need to stop the queue from trying:
+If you need to manually stop the queue for a practice (administrative hold or recovery procedures):
 
 ```bash
 # Pause queue for a practice (to prevent cascading errors)
@@ -285,7 +303,10 @@ fly logs -a collect-rx --tail 100 | grep -E "vapi|timeout|error"
 
 # Decision:
 # IF: circuitBreaker.state == OPEN && timeoutRateLastMinute > 50%
-#   → Vapi is down. Check status.vapi.ai. Pause queue if needed.
+#   → Vapi is down. Check status.vapi.ai. 
+#   → Queue is ALREADY PAUSED (circuit breaker auto-defers). No action needed.
+#   → Manual reset: use vapi-reset-circuit-breaker endpoint if Vapi recovers but
+#     circuit breaker stays stuck.
 # 
 # ELSE IF: circuitBreaker.state == CLOSED && avgDurationMs < 5000
 #   → Vapi is fine. Problem is database, queue engine, or PHI tokens.
