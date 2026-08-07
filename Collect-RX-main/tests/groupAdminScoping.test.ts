@@ -116,6 +116,65 @@ describe.skipIf(!dbReady)('GET /api/group/practices-summary — cross-org isolat
       await cleanupPracticeWithUsers(prisma, solo.practice.id);
     }
   });
+
+  it('outstandingAR reflects real open-claim balances, not the hardcoded 0 it used to be', async () => {
+    // Regression: this field was hardcoded to 0 under a comment claiming
+    // "Patient AR removed — CollectRx is insurance-only" — but insurance AR
+    // is the current product (only patient/client payment collection was
+    // retired, see CLAUDE.md), so the group_admin role's own home route
+    // showed "$0 Outstanding AR" for every location regardless of actual
+    // claim balances.
+    const owner = await createPracticeWithOwnerForTests(prisma);
+    let orgId: string | undefined;
+    try {
+      const { orgId: id, cookie } = await createOrg(owner.email, owner.password, 'AR Total Org');
+      orgId = id;
+
+      await prisma.insuranceClaim.createMany({
+        data: [
+          {
+            practiceId: owner.practice.id,
+            carrierId: 'sun_life' as const,
+            claimNumber: 'AR-OPEN-1',
+            patientToken: 'tok-ar-1',
+            billedAmount: 400,
+            outstandingAmount: 400,
+            daysOutstanding: 20,
+            status: 'PENDING',
+          },
+          {
+            practiceId: owner.practice.id,
+            carrierId: 'sun_life' as const,
+            claimNumber: 'AR-OPEN-2',
+            patientToken: 'tok-ar-2',
+            billedAmount: 250,
+            outstandingAmount: 250,
+            daysOutstanding: 35,
+            status: 'ESCALATED',
+          },
+          {
+            practiceId: owner.practice.id,
+            carrierId: 'sun_life' as const,
+            claimNumber: 'AR-RESOLVED-1',
+            patientToken: 'tok-ar-3',
+            billedAmount: 300,
+            outstandingAmount: 0,
+            daysOutstanding: 10,
+            status: 'RESOLVED',
+          },
+        ],
+      });
+
+      const res = await request(app).get('/api/group/practices-summary').set('Cookie', cookie);
+      expect(res.status).toBe(200);
+      expect(res.body.practices).toHaveLength(1);
+      expect(res.body.practices[0].outstandingAR).toBe(650);
+    } finally {
+      if (orgId) await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
+      await prisma.insuranceClaim.deleteMany({ where: { practiceId: owner.practice.id } });
+      await cleanupPracticeWithUsers(prisma, owner.practice.id);
+    }
+  });
 });
 
 describe.skipIf(!dbReady)('GET /api/group/compliance/export — cross-org isolation', () => {
