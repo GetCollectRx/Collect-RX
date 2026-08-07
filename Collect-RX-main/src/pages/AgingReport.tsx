@@ -10,8 +10,6 @@ import { LivingStatCard } from '../components/dashboard/LivingStatCard'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import type { AgingBucket, CarrierAgingRow } from '../types/practiceSettings'
 
-type Timeframe = '30d' | '90d' | 'all'
-
 function fmtMoney(cents: number): string {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100)
 }
@@ -36,7 +34,6 @@ function exportCsv(rows: CarrierAgingRow[], buckets: AgingBucket[]) {
 
 export default function AgingReport() {
   const { practiceId, loading: practiceLoading } = usePractice()
-  const [timeframe, setTimeframe] = useState<Timeframe>('30d')
   const [buckets, setBuckets] = useState<AgingBucket[]>([])
   const [carrierRows, setCarrierRows] = useState<CarrierAgingRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -47,7 +44,7 @@ export default function AgingReport() {
     setLoading(true)
     setError(null)
     apiFetchJson<{ success: boolean; data: { buckets: AgingBucket[]; carrierRows: CarrierAgingRow[] } }>(
-      `/api/practices/${practiceId}/reports/aging?timeframe=${timeframe}`,
+      `/api/practices/${practiceId}/reports/aging`,
     )
       .then((res) => {
         setBuckets(res.data.buckets)
@@ -55,7 +52,7 @@ export default function AgingReport() {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
-  }, [practiceId, timeframe])
+  }, [practiceId])
 
   const totalClaims = useMemo(() => buckets.reduce((s, b) => s + b.claimCount, 0), [buckets])
   const busy = practiceLoading || (loading && buckets.length === 0)
@@ -88,16 +85,6 @@ export default function AgingReport() {
             <p className="crx-sub mt-0.5">Open claims by age bucket and carrier</p>
           </div>
           <div className="flex items-center gap-2">
-            {(['30d', '90d', 'all'] as Timeframe[]).map((tf) => (
-              <Button
-                key={tf}
-                size="sm"
-                variant={timeframe === tf ? 'primary' : 'secondary'}
-                onClick={() => setTimeframe(tf)}
-              >
-                {tf === 'all' ? 'All time' : tf}
-              </Button>
-            ))}
             <Button
               size="sm"
               variant="secondary"

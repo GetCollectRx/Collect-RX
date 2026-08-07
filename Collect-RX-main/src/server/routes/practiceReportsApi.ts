@@ -61,8 +61,7 @@ export function createPracticeReportsRouter(): Router {
           return;
         }
         const practiceId = practiceIdFromSession(req);
-        const timeframe = (req.query.timeframe as '30d' | '90d' | 'all') || '30d';
-        const data = await computeAgingReport(prisma, practiceId, timeframe);
+        const data = await computeAgingReport(prisma, practiceId);
         res.json({ success: true, data });
       } catch (err) {
         res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -153,7 +152,7 @@ export function createPracticeReportsRouter(): Router {
           res.send(html);
           return;
         }
-        const { buckets } = await computeAgingReport(prisma, practiceId, '30d');
+        const { buckets } = await computeAgingReport(prisma, practiceId);
         const rows = [
           ['Bucket', 'Amount (CAD cents)', 'Claims', '% of total'],
           ...buckets.map((b) => [
@@ -189,7 +188,7 @@ export function createPracticeReportsRouter(): Router {
       }
       const practiceId = practiceIdFromSession(req);
       const [aging, queue, carriers, openEscalations, recentCalls] = await Promise.all([
-        computeAgingReport(prisma, practiceId, '30d'),
+        computeAgingReport(prisma, practiceId),
         computeQueueStats(prisma, practiceId),
         computeCarrierStats(prisma, practiceId, '30d'),
         prisma.callEscalation.count({ where: { practiceId, status: 'open' } }),
