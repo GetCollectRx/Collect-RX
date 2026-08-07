@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authUserId, isAuditor } from '../accessControl/types.js'
-import type { PracticeRole } from '../accessControl/types.js'
+import { authUserId, isAuditor, type PracticeRole } from '../accessControl/types.js'
 import type { CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
