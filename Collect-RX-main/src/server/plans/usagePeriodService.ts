@@ -443,16 +443,29 @@ export async function getUsageSnapshot(prisma: PrismaClient, practiceId: string)
   if (!practice) return null;
 
   const tier = tierFor(practice);
-  const [usage, todayMinutes, recovered] = await Promise.all([
+  const [usage, todayMinutes, resolvedClaims] = await Promise.all([
     getOrCreateUsagePeriod(prisma, practice),
     getTodayMinutes(prisma, practiceId),
-    prisma.insuranceClaim.aggregate({
+    prisma.insuranceClaim.findMany({
       where: { practiceId, status: 'RESOLVED' },
-      _sum: { outstandingAmount: true },
+      select: { billedAmount: true, outstandingAmount: true },
     }),
   ]);
 
-  const lifetimeRecoveredCents = Math.round(Number(recovered._sum.outstandingAmount ?? 0) * 100);
+  // Recovered = billedAmount - outstandingAmount, NOT outstandingAmount
+  // itself: transitionClaimRecovery.ts zeroes outstandingAmount as part of
+  // the RESOLVED transition, so summing outstandingAmount here always
+  // yielded 0 regardless of how much was actually recovered. Reproduced
+  // live on /billing: "Lifetime AR recovered: $0.00" for a practice whose
+  // 25 resolved claims actually totaled $41,270 recovered. Matches the
+  // same billedAmount-minus-outstandingAmount formula already used
+  // correctly for this exact metric in analytics.ts's practice-performance
+  // route.
+  const lifetimeRecovered = resolvedClaims.reduce(
+    (sum, c) => sum + Math.max(0, Number(c.billedAmount) - Number(c.outstandingAmount)),
+    0,
+  );
+  const lifetimeRecoveredCents = Math.round(lifetimeRecovered * 100);
 
   return { practice, tier, usage, todayMinutes, lifetimeRecoveredCents };
 }
