@@ -231,7 +231,7 @@ export async function transitionClaimRecovery(
     // treating the claim as outstanding, triggering phantom payment re-verification.
     await prisma.insuranceClaim.update({
       where: { id: input.claimId },
-      data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0 },
+      data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0, resolvedAt: now },
     });
 
     await clearAllOpenRecoveryActions(prisma, input.claimId);
@@ -288,6 +288,10 @@ export async function transitionClaimRecovery(
           recoveryRoute: route.route,
           outstandingAmount: newOutstanding,
           paymentExpectedBy: null,
+          // routeForSyncPaymentVerified() always resolves to RESOLVED today —
+          // stamping unconditionally is correct now and harmless if that
+          // constant ever changes (resolvedAt on a non-RESOLVED claim is inert).
+          resolvedAt: route.claimStatus === 'RESOLVED' ? now : undefined,
         },
       }),
       prisma.callQueue.updateMany({
@@ -323,7 +327,7 @@ export async function transitionClaimRecovery(
     await prisma.$transaction([
       prisma.insuranceClaim.update({
         where: { id: input.claimId },
-        data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0 },
+        data: { status: 'RESOLVED', recoveryRoute: 'STOP', outstandingAmount: 0, resolvedAt: now },
       }),
       prisma.callQueue.updateMany({
         where: { claimId: input.claimId },

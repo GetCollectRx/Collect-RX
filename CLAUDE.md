@@ -166,7 +166,7 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time
 - Maximum 3 call attempts per claim
-- Claims under 30 days old: do not enter queue
+- Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
 - Claims over 90 days old: skip AI, escalate to human immediately
 - Billing/usage limits (trial caps, overage-pending, payment failure) also pause calling — see the Billing lifecycle section in `docs/operations/PATH-TO-DELIVERY.md`
 

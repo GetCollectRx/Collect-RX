@@ -21,6 +21,7 @@ import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisit
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { runDataRetentionAcrossPractices } from './jobs/dataRetentionJob.js';
 
 assertPostgresTlsInProduction();
 
@@ -143,6 +144,22 @@ const worker = new Worker(
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
         console.log(`[worker] TRIAGE_CREDENTIAL_HEALTH checked ${checked} credential(s)`);
+      } else if (job.name === 'DATA_RETENTION') {
+        const results = await runDataRetentionAcrossPractices(prisma);
+        const ran = results.filter((r) => r.ran);
+        const errored = results.filter((r) => r.errors.length > 0);
+        if (ran.length > 0 || errored.length > 0) {
+          console.log(
+            `[worker] DATA_RETENTION ran for ${ran.length} practice(s): ` +
+              `${ran.reduce((s, r) => s + r.claimsPurged, 0)} claim(s), ` +
+              `${ran.reduce((s, r) => s + r.auditLogRowsPurged, 0)} audit log row(s), ` +
+              `${ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0)} PHI access event row(s) purged` +
+              (errored.length > 0 ? `; ${errored.length} practice(s) hit errors` : ''),
+          );
+          for (const r of errored) {
+            console.error(`[worker] DATA_RETENTION errors for practice ${r.practiceId}:`, r.errors);
+          }
+        }
       } else if (job.name === 'REMINDER_CYCLE') {
         console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
       } else if (job.name === 'LEARNING_CYCLE') {

@@ -298,11 +298,11 @@ export async function checkCarrierAuthorizationGate(
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
  *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject, > 90 → escalate)
- *   5. TELUS-specific minimum days (when applicable)
+ *   4. Per-carrier minimum days outstanding (32 for most carriers, 21 for TELUS — reject if under)
+ *   5. Days outstanding > 90 → escalate to human
  *   6. Max attempts (>= 3 → reject)
- *   7. Subscription monthly claim limit
- *   8. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
+ * Subscription monthly claim limit is enforced separately by canMakeCall() — not part of this function.
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -344,28 +344,31 @@ export async function validateDispatch(
     return authGate;
   }
 
-  // 4. Claims under 30 days old — do not queue
+  // 4. Per-carrier minimum wait — data-driven from carrier-configs.json
+  // (21 days for TELUS AdjudiCare, 32 for all other carriers). A single
+  // carrier-specific gate replaces the old global 30-day floor, which sat in
+  // front of the TELUS check and made it unreachable, and which was also 2
+  // days looser than the configured 32-day minimum for every other carrier.
   const config = CARRIER_CONFIGS[carrierId];
-  if (daysOutstanding < 30) {
-    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
+  if (daysOutstanding < config.minWaitDays) {
+    return {
+      allowed: false,
+      code: 'CLAIM_TOO_YOUNG',
+      reason: `${config.displayName} requires minimum ${config.minWaitDays} days outstanding (currently ${daysOutstanding})`,
+    };
   }
 
-  // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
-  if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
-    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
-  }
-
-  // 6. Claims over 90 days — escalate to human, skip AI
+  // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 7. Max 3 attempts
+  // 6. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

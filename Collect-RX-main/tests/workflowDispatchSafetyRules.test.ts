@@ -124,7 +124,7 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
     expect(result.allowed).toBe(true);
   });
 
-  it('rejects a claim under 30 days outstanding — too early to call', async () => {
+  it('rejects a claim under the carrier minimum days outstanding — too early to call', async () => {
     const result = await validateDispatch(prisma, {
       practiceId,
       claimId: sunLifeClaimId,
@@ -135,7 +135,7 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
       claimStatus: 'PENDING',
     });
     expect(result.allowed).toBe(false);
-    expect(result.reason).toMatch(/30 days/);
+    expect(result.reason).toMatch(/32 days/);
   });
 
   it('rejects a claim over 90 days outstanding — escalate to a human instead of the AI', async () => {
@@ -285,35 +285,56 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
     expect(result.reason).toMatch(/practice AR, not another carrier call/);
   });
 
-  it(
-    'TELUS claims are still gated by the global 30-day floor, not the documented TELUS-specific 21-day minimum',
-    async () => {
-      // CLAUDE.md and CARRIER_CONFIGS both describe TELUS's minimum as day 21 (vs. day 32 for
-      // other carriers). But validateDispatch's global floor (`daysOutstanding < 30`) runs before
-      // the TELUS-specific check, so a 25-day-old TELUS claim is rejected by the *global* rule,
-      // not the TELUS one — the TELUS branch is effectively unreachable under the current 30-day
-      // global floor. This test pins that actual behavior.
-      const result = await validateDispatch(prisma, {
-        practiceId,
-        claimId: telusClaimId,
-        carrierId: 'telus_adjudicare',
-        daysOutstanding: 25,
-        attemptsSoFar: 0,
-        scheduledFor: TUESDAY_10AM_ET,
-        claimStatus: 'PENDING',
-      });
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toMatch(/30 days/);
-      expect(result.reason).not.toMatch(/TELUS requires minimum/);
-    },
-  );
+  it('TELUS claims dispatch at day 21, per CARRIER_CONFIGS\' TELUS-specific minimum', async () => {
+    // validateDispatch now gates on config.minWaitDays per carrier instead of a
+    // hardcoded global floor, so a 25-day-old TELUS claim clears TELUS's 21-day
+    // minimum even though it would still be too young for every other carrier.
+    const result = await validateDispatch(prisma, {
+      practiceId,
+      claimId: telusClaimId,
+      carrierId: 'telus_adjudicare',
+      daysOutstanding: 25,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(result.allowed).toBe(true);
+  });
 
-  it('a standard (non-TELUS) claim at exactly 30 days is allowed, despite CARRIER_CONFIGS documenting a 32-day minimum for this carrier', async () => {
+  it('rejects a TELUS claim under the TELUS-specific 21-day minimum', async () => {
+    const result = await validateDispatch(prisma, {
+      practiceId,
+      claimId: telusClaimId,
+      carrierId: 'telus_adjudicare',
+      daysOutstanding: 15,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/TELUS AdjudiCare requires minimum 21 days/);
+  });
+
+  it('rejects a standard (non-TELUS) claim at day 30 — under this carrier\'s 32-day minimum', async () => {
     const result = await validateDispatch(prisma, {
       practiceId,
       claimId: sunLifeClaimId,
       carrierId: 'sun_life',
       daysOutstanding: 30,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/Sun Life Financial requires minimum 32 days/);
+  });
+
+  it('allows a standard (non-TELUS) claim at exactly its 32-day minimum', async () => {
+    const result = await validateDispatch(prisma, {
+      practiceId,
+      claimId: sunLifeClaimId,
+      carrierId: 'sun_life',
+      daysOutstanding: 32,
       attemptsSoFar: 0,
       scheduledFor: TUESDAY_10AM_ET,
       claimStatus: 'PENDING',

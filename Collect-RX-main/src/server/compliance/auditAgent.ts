@@ -54,6 +54,83 @@ function envSet(key: string): boolean {
   return !!process.env[key]?.trim();
 }
 
+/**
+ * Recursively lists .ts/.tsx source files under `dir`, excluding test files —
+ * used by coverage checks below that need to scan every real call site rather
+ * than assert a single file contains a pattern somewhere.
+ */
+function listSrcFiles(dir: string, out: string[] = []): string[] {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      listSrcFiles(full, out);
+    } else if (entry.isFile() && /\.tsx?$/.test(entry.name) && !entry.name.includes('.test.')) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Strips `//` line comments and `/* *\/` block comments so the coverage scan
+ * below matches real calls, not the many `piiVault.detokenize()` mentions in
+ * doc comments this codebase uses to document the PHI contract at call sites
+ * that don't actually call it. Not a real parser — doesn't understand strings
+ * containing `//` — but adequate for this codebase's comment style and far
+ * fewer false positives than matching raw source text.
+ */
+function stripComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n');
+}
+
+/**
+ * Coverage check (not a presence check): finds every source file that calls
+ * `piiVault.detokenize(` and reports which of those files never call
+ * `appendPhiAccessEvent(` at all. This is what a substring check on
+ * audit/auditLog.ts alone cannot catch — that a logging *function* exists
+ * says nothing about whether every PHI-touching call site actually calls it.
+ * File-level, not call-site-level: a file that logs once but detokenizes
+ * twice would still read as covered. Good enough to catch what actually
+ * regressed this codebase (whole call sites with zero logging), not a
+ * substitute for a real lint rule enforcing call-site pairing.
+ */
+function findDetokenizeCoverageGap(): { total: number; missing: string[] } {
+  const canonicalVaultFile = srcPath('pii-vault.ts');
+  const files = listSrcFiles(srcPath());
+  const missing: string[] = [];
+  let total = 0;
+  for (const file of files) {
+    if (file === canonicalVaultFile) continue; // detokenize is defined here, not called
+    let raw: string;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    const content = stripComments(raw);
+    if (!content.includes('.detokenize(')) continue;
+    total++;
+    // appendPhiAccessEvent may be imported but never called; requiring the
+    // call form `appendPhiAccessEvent(` (not just the import line) avoids
+    // crediting a file that imports it and never actually logs.
+    if (!content.includes('appendPhiAccessEvent(')) {
+      missing.push(path.relative(ROOT, file));
+    }
+  }
+  return { total, missing };
+}
+
 function check(
   id: string,
   domain: ComplianceDomain,
@@ -72,12 +149,22 @@ function check(
 // ---------------------------------------------------------------------------
 
 function checkPhiBoundary(): ComplianceCheck[] {
-  const piiVault = readSrc('services', 'pii-vault.ts');
+  // The canonical PHI vault is src/pii-vault.ts — AES-256-GCM, DB-persisted,
+  // rehydrated on boot, and the only one any production code path calls.
+  // services/pii-vault.ts is an explicitly deprecated/orphaned duplicate (see
+  // its own file header) whose tokenize()/detokenize()/TOKEN_TTL_MS/
+  // purgeExpired() are dead code nothing calls — checking it here would
+  // silently keep passing after that dead code is deleted, and silently miss
+  // real drift in the vault nothing actually uses is checked against. The
+  // one exception is handlePostCallAudioDeletion(), which by design still
+  // lives in the legacy file (see its header) — A5 below reads that file.
+  const piiVault = readSrc('pii-vault.ts');
+  const legacyPiiVault = readSrc('services', 'pii-vault.ts');
   const vapiClient = readSrc('vapi', 'client.ts');
   const results: ComplianceCheck[] = [];
 
   // A1 — Tokenization before Vapi
-  const hasTokenize = piiVault.includes('export function tokenize(') || piiVault.includes('export const piiVault');
+  const hasTokenize = piiVault.includes('tokenize(phi: PatientPHI') && piiVault.includes('export const piiVault');
   const vapiUsesToken = vapiClient.includes('patientToken') && !vapiClient.includes('dateOfBirth') && !vapiClient.includes('healthCardNumber') && !vapiClient.includes('firstName');
   results.push(check(
     'A1', 'PHI_BOUNDARY', ['PHIPA', 'PIPEDA'],
@@ -85,8 +172,8 @@ function checkPhiBoundary(): ComplianceCheck[] {
     'Patient identifiers are converted to UUID tokens before reaching Vapi voice agents.',
     hasTokenize && vapiUsesToken ? 'pass' : 'fail',
     hasTokenize
-      ? 'PIIVault.tokenize() present; Vapi payload uses patientToken (UUID) — no real PHI fields found in VapiCallParams.'
-      : 'MISSING: pii-vault.ts tokenize() function not found.',
+      ? 'PIIVault.tokenize() present in src/pii-vault.ts; Vapi payload uses patientToken (UUID) — no real PHI fields found in VapiCallParams.'
+      : 'MISSING: tokenize() not found in the canonical src/pii-vault.ts.',
     {
       recommendation: hasTokenize && vapiUsesToken ? undefined : 'Implement PIIVault tokenization before every Vapi call.',
       reference: 'PHIPA s.37 — Disclosure limitations; PIPEDA Principle 4.5 — Limiting use',
@@ -94,7 +181,7 @@ function checkPhiBoundary(): ComplianceCheck[] {
   ));
 
   // A2 — Detokenization server-side only
-  const hasDetokenize = piiVault.includes('export function detokenize(');
+  const hasDetokenize = piiVault.includes('detokenize(token: string');
   const vapiWebhook = readSrc('server', 'vapi', 'vapiWebhook.ts');
   const _detokenOnBackend = vapiWebhook.includes('detokenize') || vapiWebhook.includes('piiVault');
   void _detokenOnBackend;
@@ -104,46 +191,59 @@ function checkPhiBoundary(): ComplianceCheck[] {
     'Real patient IDs are resolved from tokens only server-side, never in transit to Vapi.',
     hasDetokenize ? 'pass' : 'fail',
     hasDetokenize
-      ? 'detokenize() function present in pii-vault.ts; webhook handler calls piiVault.'
-      : 'MISSING: detokenize() not found.',
+      ? 'detokenize() function present in src/pii-vault.ts; webhook handler calls piiVault.'
+      : 'MISSING: detokenize() not found in the canonical src/pii-vault.ts.',
     { reference: 'PHIPA s.37; PIPEDA Principle 4.5' },
   ));
 
-  // A3 — Token TTL caps PHI exposure window
-  const hasTTL = piiVault.includes('TOKEN_TTL_MS') && piiVault.includes('24 * 60 * 60 * 1000');
+  // A3 — Token TTL caps PHI exposure window. The vault intentionally uses a
+  // long, claim-lifecycle TTL (default 120 days via PHI_VAULT_TTL_DAYS, not
+  // 24h — see the comment above TOKEN_TTL_MS in pii-vault.ts for why: claims
+  // legally wait 30+ days before their first call and automated recovery
+  // runs to day 90, so a short TTL strands claims). This check verifies a
+  // *finite, configurable* bound exists — it does not assert a specific
+  // number, since the correct number is a product/legal call, not a
+  // hardcoded constant this tool should silently re-assert.
+  const hasConfigurableTTL = piiVault.includes('PHI_VAULT_TTL_DAYS') && piiVault.includes('TOKEN_TTL_MS');
+  const hasEncryptedRest = piiVault.includes('encryptPhi') && piiVault.includes('aes-256-gcm');
   results.push(check(
     'A3', 'PHI_BOUNDARY', ['PHIPA', 'PIPEDA'],
-    'Token TTL limits PHI exposure window to 24 hours',
-    'UUID tokens auto-expire, bounding the window during which a compromised token could be misused.',
-    hasTTL ? 'pass' : 'warn',
-    hasTTL ? 'TOKEN_TTL_MS = 24h found in pii-vault.ts.' : 'Token TTL not found — verify expiry is enforced.',
+    'Token TTL bounds the PHI exposure window and is encrypted at rest while live',
+    'UUID tokens auto-expire on a finite, env-configurable TTL, and the PHI behind them is AES-256-GCM encrypted at rest for the token\'s lifetime.',
+    hasConfigurableTTL && hasEncryptedRest ? 'pass' : 'warn',
+    hasConfigurableTTL
+      ? `TOKEN_TTL_MS derived from PHI_VAULT_TTL_DAYS (env-configurable, default 120 days) found in src/pii-vault.ts.${hasEncryptedRest ? ' AES-256-GCM encryption at rest confirmed.' : ' WARNING: encryption at rest not confirmed.'}`
+      : 'Token TTL not found — verify expiry is enforced.',
     {
-      recommendation: hasTTL ? undefined : 'Set TOKEN_TTL_MS to 24h or less and purge expired tokens hourly.',
+      recommendation: hasConfigurableTTL && hasEncryptedRest ? undefined : 'Ensure TOKEN_TTL_MS is finite and PHI is encrypted at rest for its duration.',
       reference: 'PIPEDA Principle 4.5 — Limiting retention',
     },
   ));
 
   // A4 — Expired token purge runs periodically
-  const hasPurge = piiVault.includes('export function purgeExpired(');
+  const hasGc = piiVault.includes('gc(): number');
   const indexTs = readSrc('server', 'index.ts');
-  const purgeCalledOnBoot = indexTs.includes('purgeExpired');
+  const gcCalledOnBoot = indexTs.includes('claimsPiiVault.gc()') && indexTs.includes('setInterval');
   results.push(check(
     'A4', 'PHI_BOUNDARY', ['PHIPA', 'PIPEDA'],
     'Expired tokens purged on boot and periodically',
-    'Stale tokens are swept from the in-memory vault to minimize exposure.',
-    hasPurge && purgeCalledOnBoot ? 'pass' : 'warn',
-    hasPurge
-      ? `purgeExpired() present. ${purgeCalledOnBoot ? 'Called at boot in index.ts.' : 'WARNING: not found in index.ts boot sequence — verify hourly purge is scheduled.'}`
-      : 'MISSING: purgeExpired() not found.',
+    'Stale tokens are swept from the in-memory vault (and the encrypted DB store) to minimize exposure.',
+    hasGc && gcCalledOnBoot ? 'pass' : 'warn',
+    hasGc
+      ? `gc() present in src/pii-vault.ts. ${gcCalledOnBoot ? 'Called at boot and hourly via setInterval in index.ts.' : 'WARNING: not found in index.ts boot sequence — verify hourly purge is scheduled.'}`
+      : 'MISSING: gc() not found in the canonical src/pii-vault.ts.',
     {
-      recommendation: !purgeCalledOnBoot ? 'Call piiVault.purgeExpired() on boot and schedule hourly via setInterval.' : undefined,
+      recommendation: !gcCalledOnBoot ? 'Call piiVault.gc() on boot and schedule hourly via setInterval.' : undefined,
     },
   ));
 
-  // A5 — Zero-retention audio: recordings deleted after transcript+eval
-  const hasAudioDeletion = piiVault.includes('handlePostCallAudioDeletion') && piiVault.includes('isReadyForAudioDeletion');
-  const hasVapiDeletion = piiVault.includes("vapiRes.ok || vapiRes.status === 404");
-  const hasTwilioDeletion = piiVault.includes("twilioRes.ok || twilioRes.status === 404");
+  // A5 — Zero-retention audio: recordings deleted after transcript+eval.
+  // handlePostCallAudioDeletion() genuinely still lives in the legacy file by
+  // design (its header explains why) — this one intentionally reads
+  // legacyPiiVault, not the canonical vault.
+  const hasAudioDeletion = legacyPiiVault.includes('handlePostCallAudioDeletion') && legacyPiiVault.includes('isReadyForAudioDeletion');
+  const hasVapiDeletion = legacyPiiVault.includes("vapiRes.ok || vapiRes.status === 404");
+  const hasTwilioDeletion = legacyPiiVault.includes("twilioRes.ok || twilioRes.status === 404");
   results.push(check(
     'A5', 'PHI_BOUNDARY', ['PHIPA', 'PIPEDA', 'Quebec-Law-25'],
     'Zero-retention audio: call recordings deleted after transcript extraction + evaluation',
@@ -151,7 +251,7 @@ function checkPhiBoundary(): ComplianceCheck[] {
     hasAudioDeletion && hasVapiDeletion && hasTwilioDeletion ? 'pass' : 'fail',
     hasAudioDeletion
       ? 'handlePostCallAudioDeletion() + isReadyForAudioDeletion() present; both Vapi and Twilio DELETE calls implemented.'
-      : 'MISSING: audio deletion handler not found in pii-vault.ts.',
+      : 'MISSING: audio deletion handler not found in services/pii-vault.ts.',
     {
       recommendation: !hasAudioDeletion ? 'Implement handlePostCallAudioDeletion() and call it from the call.ended webhook after eval completes.' : undefined,
       reference: 'PHIPA s.13 — Retention and disposal; PIPEDA Principle 4.5',
@@ -402,6 +502,31 @@ function checkAuditTrail(): ComplianceCheck[] {
       : 'MISSING: appendAuditLog not found.',
     {
       recommendation: !hasAuditLogSchema ? 'Ensure AuditLog Prisma migration is applied to the production database.' : undefined,
+      reference: 'PHIPA s.12 — Audit logging requirement; PIPEDA Accountability',
+    },
+  ));
+
+  // D1b — Coverage, not just presence: every file that calls
+  // piiVault.detokenize() must also call appendPhiAccessEvent(). This is the
+  // check that would have caught the real 2026-08 gap (4 of 6 detokenize call
+  // sites never logged) — D1 alone (a substring match on auditLog.ts) cannot,
+  // because the logging function existing says nothing about who calls it.
+  const { total: detokenizeCallSites, missing: uncoveredDetokenizeSites } = findDetokenizeCoverageGap();
+  const detokenizeCoverageComplete = detokenizeCallSites > 0 && uncoveredDetokenizeSites.length === 0;
+  results.push(check(
+    'D1b', 'AUDIT_TRAIL', ['PHIPA', 'PIPEDA'],
+    'Every PHI detokenization call site logs a PhiAccessEvent',
+    'Scans src/ for every file calling .detokenize( and verifies each also calls appendPhiAccessEvent() — a coverage check, not a single presence check.',
+    detokenizeCoverageComplete ? 'pass' : 'fail',
+    detokenizeCallSites === 0
+      ? 'WARNING: no .detokenize( call sites found — verify this scan is running from the right working directory.'
+      : detokenizeCoverageComplete
+        ? `All ${detokenizeCallSites} file(s) calling .detokenize( also call appendPhiAccessEvent().`
+        : `${uncoveredDetokenizeSites.length} of ${detokenizeCallSites} file(s) call .detokenize( without ever calling appendPhiAccessEvent(): ${uncoveredDetokenizeSites.join(', ')}`,
+    {
+      recommendation: detokenizeCoverageComplete
+        ? undefined
+        : `Add appendPhiAccessEvent() at the detokenize call site(s) in: ${uncoveredDetokenizeSites.join(', ')}.`,
       reference: 'PHIPA s.12 — Audit logging requirement; PIPEDA Accountability',
     },
   ));

@@ -97,6 +97,14 @@ export interface VapiCallParams {
   /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
   languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
+  /**
+   * Stable per-attempt key (e.g. `${claimId}:${attemptNumber}`) — sent as the
+   * Idempotency-Key header so a retry of the *same* attempt (after a timeout
+   * whose outcome is unknown) can't create a second outbound call to the
+   * carrier for that attempt. Optional so existing callers don't break;
+   * callers that dispatch real carrier calls should always pass one.
+   */
+  idempotencyKey?: string;
 }
 
 export interface VapiCallResult {
@@ -215,21 +223,51 @@ function getPhoneNumberId(): string {
 // until restart. Every Vapi request must have a finite deadline.
 const VAPI_HTTP_TIMEOUT_MS = Math.max(5_000, Number(process.env.VAPI_HTTP_TIMEOUT_MS || 30_000));
 
+/**
+ * Thrown when a Vapi request fails before we received any HTTP response —
+ * a client-side timeout (AbortSignal) or a network-level failure (DNS,
+ * connection reset, etc.). In this case Vapi may or may not have received
+ * and processed the request; unlike a normal rejection (a response with a
+ * non-2xx status, which means Vapi definitely did NOT create the call),
+ * an ambiguous outcome must not be treated as safe to blindly retry —
+ * callers should hold the dispatch slot rather than releasing it for an
+ * immediate auto-retry that could dial the carrier twice.
+ */
+export class VapiAmbiguousOutcomeError extends Error {
+  constructor(method: string, path: string, cause: unknown) {
+    super(
+      `[VapiClient] ${method} ${path} — no response received (timeout or network failure); ` +
+        `Vapi call may or may not have been created: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+    this.name = 'VapiAmbiguousOutcomeError';
+  }
+}
+
 async function vapiRequest<T>(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
   body?: unknown,
+  options?: { idempotencyKey?: string },
 ): Promise<T> {
   const url = `${VAPI_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json',
+        ...(options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // fetch() itself throwing means no response ever arrived — genuinely
+    // ambiguous, as opposed to the !res.ok branch below where Vapi *did*
+    // respond and told us definitively that nothing was created.
+    throw new VapiAmbiguousOutcomeError(method, path, err);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '(no body)');
@@ -288,6 +326,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practicePhone,
     languagePreference,
     carrierIvrInstructions,
+    idempotencyKey,
   } = params;
 
   // Guard: only dial known carrier claims lines
@@ -369,7 +408,9 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     },
   };
 
-  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload, {
+    idempotencyKey,
+  });
   return {
     ...result,
     vapiCallId: result.vapiCallId ?? result.id ?? '',
@@ -395,6 +436,8 @@ export interface VapiPreVisitCallParams {
   practicePhone: string;
   languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
+  /** See VapiCallParams.idempotencyKey — same rationale, stable per dispatch attempt. */
+  idempotencyKey?: string;
 }
 
 /**
@@ -459,7 +502,9 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
     },
   };
 
-  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload);
+  const result = await vapiRequest<VapiCallResult & { id?: string }>('POST', '/call', payload, {
+    idempotencyKey: params.idempotencyKey,
+  });
   return {
     ...result,
     vapiCallId: result.vapiCallId ?? result.id ?? '',

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { initiateCall, endVapiCall, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -82,6 +82,10 @@ const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is auto
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
 const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+// Ambiguous outcome (request timed out / network failure — Vapi may or may not
+// have created the call) gets a longer cooldown than a confirmed rejection:
+// retrying too soon risks dialing the carrier twice for the same attempt.
+const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
@@ -645,6 +649,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
+      // Stable for this attempt — a retry of the same attempt (after an
+      // ambiguous timeout) reuses it; the next real attempt gets a new one.
+      idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
@@ -656,17 +663,25 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     try {
       vapiResult = await initiateCall(callParams);
     } catch (dispatchErr) {
-      logger.error('[deskQueueEngine] Vapi dispatch failed — deferring claim', {
-        claimId: next.claimId,
-        carrierId: next.claim.carrierId,
-        error: dispatchErr,
-      });
+      const ambiguous = dispatchErr instanceof VapiAmbiguousOutcomeError;
+      logger.error(
+        ambiguous
+          ? '[deskQueueEngine] Vapi dispatch outcome unknown (timeout/network) — deferring with a longer cooldown'
+          : '[deskQueueEngine] Vapi dispatch failed — deferring claim',
+        {
+          claimId: next.claimId,
+          carrierId: next.claim.carrierId,
+          error: dispatchErr,
+        },
+      );
       await deferQueueEntry(
         prisma,
         next.id,
-        DEFER_DISPATCH_FAILURE_MS,
-        'TRANSIENT_DISPATCH_FAILURE',
-        'The system will retry during the next scheduled dispatch window.',
+        ambiguous ? DEFER_AMBIGUOUS_DISPATCH_MS : DEFER_DISPATCH_FAILURE_MS,
+        ambiguous ? 'VAPI_DISPATCH_OUTCOME_UNKNOWN' : 'TRANSIENT_DISPATCH_FAILURE',
+        ambiguous
+          ? 'Vapi did not confirm whether the call was created before timing out. Verify in the Vapi dashboard before the next automatic retry.'
+          : 'The system will retry during the next scheduled dispatch window.',
       );
       continue;
     }

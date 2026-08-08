@@ -32,6 +32,7 @@ vi.mock('../../src/carriers/adapter.js', () => ({
 vi.mock('../../src/vapi/client.js', () => ({
   initiateCall: (...args: unknown[]) => initiateCallMock(...args),
   endVapiCall: vi.fn(),
+  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
 }));
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
@@ -94,6 +95,7 @@ vi.mock('../../src/logger.cjs', () => ({
 }));
 
 import { runDeskQueueTick } from '../../src/server/frontDesk/queueEngine.js';
+import { VapiAmbiguousOutcomeError } from '../../src/vapi/client.js';
 
 interface QueueEntryFixture {
   id: string;
@@ -488,6 +490,32 @@ describe('runDeskQueueTick resilience', () => {
         args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
     );
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    expect(initiateCallMock).toHaveBeenCalledTimes(2);
+    expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('defers a claim with a longer cooldown and a distinct code when the Vapi outcome is ambiguous (timeout/network)', async () => {
+    const failing = queueEntry('1');
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([failing, eligible]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    initiateCallMock
+      .mockRejectedValueOnce(new VapiAmbiguousOutcomeError('POST', '/call', new Error('timeout')))
+      .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    const [{ data }] = deferCall as [{ data: { dispatchDeferralCode: string; scheduledFor: Date } }];
+    expect(data.dispatchDeferralCode).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
+    // Ambiguous cooldown (60min) must be longer than the confirmed-failure cooldown (15min).
+    const deferredMinutes = (data.scheduledFor.getTime() - Date.now()) / 60_000;
+    expect(deferredMinutes).toBeGreaterThan(45);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });

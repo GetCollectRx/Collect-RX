@@ -16,6 +16,7 @@ import { canMakeCall } from '../plans/planBridge.js';
 import type { PreVisitJobPayload } from './preVisitJobs.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { tryTelusTx23PreVisit } from './electronicPreVisit.js';
+import { appendPhiAccessEvent } from '../audit/auditLog.js';
 
 const MAX_PRE_VISIT_ATTEMPTS = 3;
 
@@ -74,6 +75,13 @@ export async function dispatchPreVisitCall(
     return { skipped: true, reason: 'detokenize_failed' };
   }
   const phi = phiResult.phi;
+  await appendPhiAccessEvent(prisma, {
+    practiceId: payload.practiceId,
+    operation: 'detokenize_for_carrier_call',
+    recordType: 'AppointmentVerification',
+    recordId: verification.id,
+    purpose: 'pre_visit_dispatch',
+  });
 
   const settings = await getPracticeSettings(prisma, payload.practiceId);
   const practice = await prisma.practice.findUnique({
