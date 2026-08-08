@@ -157,6 +157,23 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
 
   beforeAll(async () => {
     if (!dbReady) return;
+    // The `isWithinCallWindow` mock two blocks up cannot actually reach
+    // validateDispatch()'s internal call to it: both are defined in the same
+    // module (adapter.ts), and validateDispatch's reference to
+    // isWithinCallWindow is bound at module-load time, not through the
+    // mockable exports namespace — a well-known limitation of vi.mock's
+    // named-export overrides for same-module calls. That mock was therefore
+    // always a no-op, and this suite only ever passed by accident of *when*
+    // CI happened to run — reproduced directly: this failed for real when CI
+    // ran at 17:33 America/New_York, one call-window minute past 17:00.
+    // Freezing the clock is the actual fix: it controls what `new Date()`
+    // returns inside validateDispatch itself, so it can't be defeated by
+    // module-internal binding. Tuesday 10:00 America/New_York, verified via
+    // Intl.DateTimeFormat (same anchor tests/workflowDispatchSafetyRules.test.ts
+    // uses). shouldAdvanceTime keeps this file's wall-clock-bound assertion
+    // (elapsedMs < 15s) meaningful instead of trivially reading ~0.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-04-14T14:00:00Z'));
     // queue_engine_lease is a global singleton row (by design — one lease
     // for the whole fleet). A previous test process can leave it live for up
     // to LEASE_TTL_MS under ITS OWN instance ID; a fresh `vitest run` is a
@@ -171,6 +188,7 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   afterAll(async () => {
     await cleanupFleet(fleet);
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+    vi.useRealTimers();
   });
 
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
