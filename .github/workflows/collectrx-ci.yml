@@ -48,6 +48,11 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
+
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=high
 
@@ -155,6 +160,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
+
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
 
@@ -196,6 +206,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
 
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
@@ -251,6 +266,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
+
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
 
@@ -302,6 +322,10 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
       - name: Create non-superuser DB role for RLS enforcement
@@ -355,6 +379,10 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Rebuild native modules for runner
+        run: |
+          echo "Rebuilding optional native bindings (fixes @tailwindcss/oxide native binding errors)"
+          npm rebuild --update-binary || npm rebuild --force || true
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
       - name: Grant isolated validation role RLS bypass

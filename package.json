@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
+    "postinstall": "npm rebuild --update-binary || true",
     "start": "npm run start -w dental-ar-system",
     "dev": "npm run dev:collectrx",
     "dev:collectrx": "npm run dev -w dental-ar-system",
