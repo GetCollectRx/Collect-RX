@@ -82,7 +82,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     // to another practice's claims/PHI. Also re-checks isActive on every request,
     // and (accountant only) tokenExpiresAt, since the JWT's own TTL can outlive a
     // practice's revocation of that access.
-    if (payload.role !== 'platform_dev' && !crossPractice) {
+    //
+    // Brief/impersonation sessions (`platformUserSession: true`, from
+    // signBriefSessionToken — auditor, and platform-staff previews of a practice
+    // role) carry a platform_users row id in `userId`, not a User row, so this
+    // lookup would always miss and wrongly 401 them. Their practiceId is assigned
+    // server-side by platform logic rather than user-forgeable like a normal
+    // login JWT's claims, so skipping this particular check for them is safe.
+    if (payload.role !== 'platform_dev' && !crossPractice && !payload.platformUserSession) {
       const { userId, practiceId } = payload as UserAuthPayload;
       prisma.user.findUnique({ where: { id: userId }, select: { practiceId: true, tokenExpiresAt: true, isActive: true } })
         .then((user) => {

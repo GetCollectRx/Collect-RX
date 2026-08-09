@@ -21,6 +21,7 @@ import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisit
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { processDailyDigestJob } from './jobs/dailyDigestJob.js';
 
 assertPostgresTlsInProduction();
 
@@ -160,6 +161,9 @@ const worker = new Worker(
       } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
         const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
         if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
+      } else if (job.name === 'DAILY_DIGEST') {
+        const result = await processDailyDigestJob(job);
+        console.log(`[worker] ${result}`);
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }

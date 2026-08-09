@@ -13,6 +13,8 @@ import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
+import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -68,7 +70,7 @@ router.get('/runs/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const slug = req.params.pmsVendor;
@@ -124,7 +126,7 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
   }
 });
 
-router.post('/import/eob', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/eob', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     if (!req.file?.buffer) {

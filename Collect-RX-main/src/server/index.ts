@@ -98,8 +98,9 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
-import { createOrganizationRouter, createOrganizationPublicRouter } from './routes/organizationRoutes';
 import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
+import { createOrgAdminRouter } from './routes/orgAdminRoutes';
+import { createSsoRouter } from './routes/ssoRoutes';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
@@ -108,6 +109,8 @@ import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
+import holdParkTestRouter     from '../webhooks/holdParkTest';
+import { attachHoldParkAudioStream } from '../webhooks/holdParkAudioStream';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
@@ -298,6 +301,21 @@ app.use(
   claimsValidatorRouter,
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Hold-Park billing test, temporary, engineering test only (see
+// src/webhooks/holdParkTest.ts). This URL is also this Vapi phone number's
+// server.url, so it receives Vapi's own JSON server-events in addition to
+// Twilio's application/x-www-form-urlencoded voice webhook; both parsers are
+// needed, each only acts on its own content-type and leaves the other alone.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/hold-park',
+  webhookLimiter,
+  express.json(),
+  express.urlencoded({ extended: false }),
+  holdParkTestRouter,
+);
+
 app.post(
   '/api/webhooks/sendgrid',
   webhookLimiter,
@@ -378,9 +396,9 @@ app.use('/api', anonStandardLimiter);
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
-app.use('/api/organizations', createOrganizationPublicRouter(prisma));
-app.use('/api/organizations', createOrganizationRouter(prisma));
+app.use('/api/admin',      createOrgAdminRouter(prisma));
 app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
@@ -568,6 +586,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
+  attachHoldParkAudioStream(server);
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);

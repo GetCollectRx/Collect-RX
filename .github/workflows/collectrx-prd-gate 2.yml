@@ -1,0 +1,90 @@
+name: CollectRx PRD Gate
+
+on:
+  pull_request:
+    branches: [prd]
+
+concurrency:
+  group: prd-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+  JWT_SECRET: github-actions-ci-placeholder-not-for-production
+  VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
+  NODE_OPTIONS: --max-old-space-size=6144
+
+jobs:
+  enforce-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-dev sources
+        if: github.head_ref != 'dev'
+        run: |
+          echo "PRs to prd must come from dev. Source branch was: ${{ github.head_ref }}"
+          exit 1
+
+  prd-checks:
+    needs: enforce-source-branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d prisma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        working-directory: Collect-RX-main
+        run: npm run db:generate
+
+      - name: Prisma migrate deploy
+        working-directory: Collect-RX-main
+        run: npm run db:migrate
+
+      - name: Typecheck
+        working-directory: Collect-RX-main
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: Collect-RX-main
+        run: npm run lint
+
+      - name: Unit & integration tests
+        working-directory: Collect-RX-main
+        env:
+          CI: "true"
+        run: npm test
+
+      - name: Frontend build
+        working-directory: Collect-RX-main
+        run: npx vite build
+
+      - name: Upload test report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: prd-gate-junit
+          path: Collect-RX-main/test-results/junit.xml
+          if-no-files-found: ignore

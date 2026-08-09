@@ -5,7 +5,10 @@
 # See https://fly.io/docs/reference/configuration/
 #
 # Process groups:
-# app - serves HTTP traffic, autostop/autostart, min 1 running.
+# app - serves HTTP traffic, always on (auto_stop_machines = false), min 1
+# running. Autostop was tried and dropped: the hold-park transfer endpoint
+# needs to be warm at an unpredictable moment mid carrier call, and a cold
+# start (HTTP 000 on the first request) is not acceptable there.
 # worker - background job/queue worker (Dockerfile.worker), runs
 # `npm run worker` (same BullMQ entrypoint). Always on. Not
 # referenced in [http_service].processes so autostop does not
@@ -33,7 +36,7 @@ worker = 'npm run worker'
 [http_service]
 internal_port = 3000
 force_https = true
-auto_stop_machines = true
+auto_stop_machines = false
 auto_start_machines = true
 min_machines_running = 1
 processes = ['app']

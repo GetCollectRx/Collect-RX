@@ -86,7 +86,7 @@ describe('IDOR practice scope audit', () => {
 
   it('platform-level routers are authenticated and role-gated (not merely session practiceId scoped)', () => {
     const roleGatePattern =
-      /requirePlatformAdmin|authorizeRole\(|role\s*!==|getUserRole\(|isPlatformAdmin\(|isAuditor\(/;
+      /requirePlatformAdmin|authorizeRole\(|role\s*!==|getUserRole\(|isPlatformAdmin\(|isAuditor\(|hasMinRole\(/;
     for (const rel of PLATFORM_ROLE_GATED_ROUTE_FILES) {
       const src = readFileSync(join(ROOT, rel), 'utf8');
       expect(
