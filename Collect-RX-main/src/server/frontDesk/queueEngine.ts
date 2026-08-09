@@ -158,12 +158,27 @@ interface PracticeServeOrder {
  * lastServedAt touch inside the loop below.
  */
 export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
-  return prisma.$queryRaw<PracticeServeOrder[]>`
-    SELECT p.id
-    FROM "Practice" p
-    LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
-    ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
-  `;
+  // This ordering is inherently cross-practice by design — fairness across the whole
+  // fleet requires seeing every practice's last-served time, not just one tenant's.
+  // `$queryRaw` is a raw top-level Prisma Client method, not a model operation, so it
+  // is NOT intercepted by the collectrx-rls extension (src/lib/prismaRls.ts) the way
+  // `.create()`/`.findMany()` etc. are — calling it directly leaves `app.rls_bypass`
+  // unset on whatever pooled connection it runs on. `practice_desk_state` has FORCE
+  // ROW LEVEL SECURITY, so an unset bypass silently filters every row from the LEFT
+  // JOIN, making every practice appear "never served" and collapsing this into
+  // meaningless UUID tie-break order — found via adversarial ordering tests
+  // (tests/queueEngineFairnessAndLease.test.ts) reproducing even in full isolation.
+  // Set the bypass explicitly, scoped to this one query's own transaction.
+  const [, order] = await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`,
+    prisma.$queryRaw<PracticeServeOrder[]>`
+      SELECT p.id
+      FROM "Practice" p
+      LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+      ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+    `,
+  ]);
+  return order;
 }
 
 async function deferQueueEntry(

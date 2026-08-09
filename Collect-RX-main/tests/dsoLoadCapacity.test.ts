@@ -176,9 +176,31 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
     initiateCallMock.mockClear();
 
+    // validateDispatch's call-window guard only allows Mon–Fri 8am–5pm Eastern —
+    // correct production behavior, but it means this test depends on real
+    // wall-clock time unless pinned. Freeze to a known weekday business hour
+    // (2026-08-03 is a Monday) so this test's result doesn't depend on when it
+    // runs — shouldAdvanceTime keeps the clock ticking forward in real time from
+    // that point, so the elapsed-time measurement below stays meaningful.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-08-03T14:00:00.000Z')); // 10:00 EDT, Monday
+
+    // validateDispatch prefers each queue entry's own `scheduledFor` over the
+    // system clock — those rows were stamped with real (pre-freeze) time in
+    // beforeAll, so they need bumping to the frozen business hour too.
+    await prisma.callQueue.updateMany({
+      where: { practiceId: { in: fleet.map((p) => p.id) } },
+      data: { scheduledFor: new Date() },
+    });
+
     const start = Date.now();
-    await runDeskQueueTick(prisma);
-    const elapsedMs = Date.now() - start;
+    let elapsedMs: number;
+    try {
+      await runDeskQueueTick(prisma);
+      elapsedMs = Date.now() - start; // measured under the still-advancing fake clock
+    } finally {
+      vi.useRealTimers();
+    }
 
     // Every one of the 20 real, independently-tokenized, fully-authorized
     // claims made it all the way through: RLS-scoped candidate fetch, PHI
