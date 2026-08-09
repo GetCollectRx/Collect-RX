@@ -1,5 +1,5 @@
 /**
- * PHI webhook guard — known gap found during pre-pilot validation (2026-08-09).
+ * PHI webhook guard — found and strengthened during pre-pilot validation (2026-08-09).
  *
  * The core PHI/Vapi boundary (metadata = UUID token only, PHI only in ephemeral
  * `variables`) is enforced by initiateCall() and is covered by
@@ -7,9 +7,10 @@
  * boundary — src/services/guardrails/webhookGuard.ts — which is supposed to catch a PHI
  * leak if the boundary is ever violated by a code path that hasn't been audited yet.
  *
- * The guard only checks 3 regexes: a bare 10-digit number, and two DOB formats
- * (YYYY-MM-DD, MM/DD/YYYY). It has no concept of a patient name at all. These tests are
- * RED by design: they demonstrate realistic PHI shapes the guard does not catch.
+ * It's still a regex-based best-effort net, not a substitute for the real boundary —
+ * a sufficiently unusual PHI shape can still slip past it. What changed: bare/separated
+ * HCN formats, month-name DOBs, an explicit name-shape heuristic, and a full-transcript
+ * scan instead of a 5-line sample.
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -44,48 +45,70 @@ describe('webhookGuardScanMetadata — control cases the guard DOES catch', () =
   });
 });
 
-describe('GAP: webhookGuardScanMetadata misses realistic PHI shapes', () => {
-  it('MISSES a full patient name with no digits at all', async () => {
+describe('FIXED: webhookGuardScanMetadata now catches previously-missed PHI shapes', () => {
+  it('catches a full patient name with no digits at all', async () => {
     const result = await webhookGuardScanMetadata(
       payload({
         metadata: { carrierId: 'x', patientToken: 't', practiceId: 'p', note: 'Patient is Jane Elizabeth Doe' } as never,
       }),
     );
-    // GAP: the guard has zero name-pattern detection. A leaked patient name in any
-    // metadata field is invisible to this safety net.
-    expect(result.hasPhi).toBe(false);
+    expect(result.hasPhi).toBe(true);
   });
 
-  it('MISSES a DOB in a common non-ISO, non-slash spoken/written format', async () => {
+  it('catches a DOB in a common non-ISO, non-slash spoken/written format', async () => {
     const result = await webhookGuardScanMetadata(
       payload({ metadata: { carrierId: 'x', patientToken: 't', practiceId: 'p', note: 'DOB: March 3, 1985' } as never }),
     );
-    // GAP: only YYYY-MM-DD and MM/DD/YYYY are covered. "Month D, YYYY" — a very common
-    // way a transcript or summary would render a spoken date of birth — is invisible.
-    expect(result.hasPhi).toBe(false);
+    expect(result.hasPhi).toBe(true);
   });
 
-  it('MISSES a health card number formatted with separators (e.g. 1234-567-890)', async () => {
+  it('catches a reversed-order DOB ("3 March 1985")', async () => {
+    const result = await webhookGuardScanMetadata(
+      payload({ metadata: { carrierId: 'x', patientToken: 't', practiceId: 'p', note: 'born 3 March 1985' } as never }),
+    );
+    expect(result.hasPhi).toBe(true);
+  });
+
+  it('catches a health card number formatted with separators (e.g. 1234-567-890)', async () => {
     const result = await webhookGuardScanMetadata(
       payload({ metadata: { carrierId: 'x', patientToken: 't', practiceId: 'p', note: 'HCN 1234-567-890' } as never }),
     );
-    // GAP: the 10-digit regex requires an unbroken \b\d{10}\b run. Provincial health
-    // card numbers are frequently rendered with separators and won't match.
+    expect(result.hasPhi).toBe(true);
+  });
+
+  it('catches a bare "DOB:" label regardless of the date shape after it', async () => {
+    const result = await webhookGuardScanMetadata(
+      payload({ metadata: { carrierId: 'x', patientToken: 't', practiceId: 'p', note: 'DOB: sometime in 1985' } as never }),
+    );
+    expect(result.hasPhi).toBe(true);
+  });
+
+  it('still passes clean, non-PHI metadata', async () => {
+    const result = await webhookGuardScanMetadata(
+      payload({ metadata: { carrierId: 'sun_life', patientToken: 't', practiceId: 'p', claimId: 'claim-1' } as never }),
+    );
     expect(result.hasPhi).toBe(false);
   });
 });
 
-describe('GAP: webhookGuardScanPayload only samples the first 5 transcript lines', () => {
-  it('MISSES PHI that appears after line 5 of the transcript', async () => {
+describe('FIXED: webhookGuardScanPayload now scans the full transcript, not a 5-line sample', () => {
+  it('catches PHI that appears well after line 5 of the transcript', async () => {
     const leadingLines = Array.from({ length: 5 }, (_, i) => `Line ${i + 1}: general call chatter, nothing sensitive.`);
     const transcriptWithLatePhi = [...leadingLines, 'Line 6: for verification, DOB is 1985-06-12'].join('\n');
 
     const result = await webhookGuardScanPayload(
       payload({ transcript: transcriptWithLatePhi, analysis: { summary: '', successEvaluation: '' } }),
     );
-    // GAP: the function comment says "we'll audit the full transcript post-call; just flag
-    // obvious patterns here" — but no code path in this repo actually performs that fuller
-    // audit. The 5-line sample is the only check that runs, so PHI beyond line 5 is missed.
-    expect(result.hasPhi).toBe(false);
+    expect(result.hasPhi).toBe(true);
+  });
+
+  it('catches PHI dozens of lines into a long transcript', async () => {
+    const leadingLines = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}: general call chatter, nothing sensitive.`);
+    const transcriptWithLatePhi = [...leadingLines, 'Line 41: patient is Jane Elizabeth Doe'].join('\n');
+
+    const result = await webhookGuardScanPayload(
+      payload({ transcript: transcriptWithLatePhi, analysis: { summary: '', successEvaluation: '' } }),
+    );
+    expect(result.hasPhi).toBe(true);
   });
 });

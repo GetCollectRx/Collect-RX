@@ -1,15 +1,12 @@
 /**
- * CARRIER_BLOCK detection — known gap found during pre-pilot validation (2026-08-09).
+ * CARRIER_BLOCK detection — found and broadened during pre-pilot validation (2026-08-09).
  *
  * `classifyOutcome()` (src/outcome/processor.ts) detects a carrier block via a fixed
  * regex/phrase list (BLOCK_SIGNAL_PATTERNS + LEGACY_CARRIER_BLOCK_INCLUDES). That list
- * is necessarily incomplete — a carrier rep can phrase a block in wording that was never
- * observed and added to the list, and calls will keep going out to a carrier that has
- * already flagged automation. This is the single most operationally dangerous gap in the
- * pipeline per CLAUDE.md's own framing ("the most critical operational safety rule").
- *
- * These tests are RED by design: they demonstrate real-sounding block phrasing that a
- * carrier rep could plausibly say, which the current classifier does NOT catch.
+ * is inherently incomplete — a carrier rep can phrase a block in wording nobody's seen
+ * yet — so this stays a living list, not a closed problem. The five phrasings below were
+ * the first gap found; patterns were added to catch them and their close variants. This
+ * file is meant to keep growing as new real-world phrasing surfaces.
  */
 import { describe, expect, it } from 'vitest';
 import { classifyOutcome } from '../src/outcome/processor.js';
@@ -35,19 +32,27 @@ describe('CARRIER_BLOCK detection — covered phrasing (control, should pass tod
   });
 });
 
-describe('GAP: plausible carrier block phrasing NOT on the fixed pattern list goes undetected', () => {
+describe('FIXED: previously-missed carrier block phrasing is now caught', () => {
   it.each([
     "we're going to have to end this call, our system doesn't allow automated dialers",
     "I need to transfer this to our fraud and security team before we continue",
     "our compliance team has asked us not to speak with auto-dialers going forward",
     "I can tell this isn't a real person calling, so I can't help you today",
     'please remove this line from your calling system, we will not answer again',
-  ])('MISSES: "%s"', (phrase) => {
+  ])('detects: "%s"', (phrase) => {
     const result = classifyOutcome(payloadWithTranscript(`Rep: ${phrase}.`));
-    // GAP: carrierBlockDetected is false here even though a human operator would
-    // immediately recognize this as the carrier objecting to automation. In production
-    // this means calls keep dispatching to a carrier that has already objected, until
-    // (if ever) this exact wording gets manually added to BLOCK_SIGNAL_PATTERNS.
-    expect(result.carrierBlockDetected).toBe(false);
+    expect(result.carrierBlockDetected).toBe(true);
+  });
+});
+
+describe('Still worth watching — variants not yet covered (informational, not asserted red)', () => {
+  it.each([
+    'we have flagged this line as suspicious and are escalating internally',
+    'our vendor risk team is reviewing all calls from this number',
+  ])('may or may not be caught today — no pattern claims to cover it: "%s"', (phrase) => {
+    // Not asserted either way — recorded here as a reminder that this list is never
+    // "done." If a future change happens to start catching these, that's a bonus, not
+    // a requirement; if it doesn't, that's expected and not a regression.
+    classifyOutcome(payloadWithTranscript(`Rep: ${phrase}.`));
   });
 });

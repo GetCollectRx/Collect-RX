@@ -45,8 +45,8 @@ describe('IVR_Navigator and Hold_Sentinel never speak a disclosure to a machine/
   });
 });
 
-describe('src/vapi/client.ts disclosure_message variable — dead-code finding', () => {
-  it('is computed and sent to Vapi, but no assistant firstMessage in the deployed squad references it', async () => {
+describe('FIXED: the insurance-claims initiateCall() no longer computes an unused disclosure_message', () => {
+  it('assistantOverrides.variableValues has no disclosure_message key — Claims_Agent\'s hardcoded firstMessage is the only disclosure source', async () => {
     vi.resetModules();
     process.env.VAPI_API_KEY = 'test-key';
     process.env.VAPI_SQUAD_ID = 'squad-test';
@@ -81,18 +81,26 @@ describe('src/vapi/client.ts disclosure_message variable — dead-code finding',
     });
 
     const overrides = capturedBody!.assistantOverrides as { variableValues: Record<string, unknown> };
-    expect(typeof overrides.variableValues.disclosure_message).toBe('string');
-    expect(overrides.variableValues.disclosure_message).toContain('Fixture Dental');
+    expect('disclosure_message' in overrides.variableValues).toBe(false);
 
-    // GAP (informational, not a compliance failure — Claims_Agent's hardcoded firstMessage
-    // above already satisfies ADAD Rule 4 independently): the disclosure_message variable
-    // built here is never referenced by name ({{disclosure_message}}) anywhere in
-    // vapi-squad-config.json. It's live, PHI-adjacent business logic with no consumer —
-    // worth removing or actually wiring in, so the two disclosure texts can't drift apart.
     const configText = JSON.stringify(squadConfig);
     expect(configText.includes('{{disclosure_message}}')).toBe(false);
 
     vi.unstubAllGlobals();
     process.env = { ...ENV_BACKUP };
+  });
+});
+
+describe('initiatePreVisitCall() is a separate flow — its disclosure_message is real and still wired to vapi-previsit-config.json', () => {
+  it('vapi-previsit-config.json actually references {{disclosure_message}}', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const previsitConfig = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'vapi-previsit-config.json'), 'utf8'),
+    );
+    const configText = JSON.stringify(previsitConfig);
+    // Unlike the insurance-claims squad above, this config genuinely consumes the
+    // variable — do not remove initiatePreVisitCall()'s disclosure_message construction.
+    expect(configText.includes('{{disclosure_message}}')).toBe(true);
   });
 });
