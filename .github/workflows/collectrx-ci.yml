@@ -19,6 +19,25 @@ env:
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
+  branch-up-to-date:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify branch is up to date with ${{ github.base_ref }}
+        run: |
+          git fetch origin "${{ github.base_ref }}" --quiet
+          if ! git merge-base --is-ancestor "origin/${{ github.base_ref }}" HEAD; then
+            behind="$(git rev-list --count HEAD.."origin/${{ github.base_ref }}")"
+            echo "::error::This branch is $behind commit(s) behind '${{ github.base_ref }}'. Merge or rebase '${{ github.base_ref }}' into this branch before merging — a stale branch can reintroduce dependency vulnerabilities or build fixes that were already patched on '${{ github.base_ref }}' (this is what caused PR #59 to fail npm audit on already-fixed js-yaml/react-router advisories)."
+            exit 1
+          fi
+          echo "Branch is up to date with ${{ github.base_ref }}."
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
