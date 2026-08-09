@@ -34,10 +34,18 @@ function cookieHeaderFrom(res: request.Response): string {
   return Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
 }
 
-async function createOrg(ownerEmail: string, ownerPassword: string, orgName: string) {
+/**
+ * Self-serve org creation doesn't exist (admin-assisted only — see
+ * src/server/routes/orgAdminRoutes.ts's header comment), so fixture orgs are
+ * built directly via Prisma: an Organization, the owner's practice attached
+ * to it, and an org_admin OrganizationMember row for the owner.
+ */
+async function createOrg(ownerEmail: string, ownerPassword: string, orgName: string, practiceId: string, userId: string) {
+  const organization = await prisma.organization.create({ data: { name: orgName } });
+  await prisma.organizationPractice.create({ data: { organizationId: organization.id, practiceId } });
+  await prisma.organizationMember.create({ data: { organizationId: organization.id, userId, role: 'org_admin' } });
   const login = await request(app).post('/api/auth/login').send({ email: ownerEmail, password: ownerPassword });
-  const createRes = await request(app).post('/api/organizations').set('Cookie', cookieHeaderFrom(login)).send({ name: orgName });
-  return { orgId: createRes.body.organization.id as string, cookie: cookieHeaderFrom(createRes) };
+  return { orgId: organization.id, cookie: cookieHeaderFrom(login) };
 }
 
 describe.skipIf(!dbReady)('GET /api/group/practices-summary — cross-org isolation', () => {
@@ -47,8 +55,8 @@ describe.skipIf(!dbReady)('GET /api/group/practices-summary — cross-org isolat
     let orgAId: string | undefined;
     let orgBId: string | undefined;
     try {
-      const { orgId: idA, cookie: cookieA } = await createOrg(ownerA.email, ownerA.password, 'Org A');
-      const { orgId: idB, cookie: cookieB } = await createOrg(ownerB.email, ownerB.password, 'Org B');
+      const { orgId: idA, cookie: cookieA } = await createOrg(ownerA.email, ownerA.password, 'Org A', ownerA.practice.id, ownerA.user.id);
+      const { orgId: idB, cookie: cookieB } = await createOrg(ownerB.email, ownerB.password, 'Org B', ownerB.practice.id, ownerB.user.id);
       orgAId = idA;
       orgBId = idB;
 
@@ -125,8 +133,8 @@ describe.skipIf(!dbReady)('GET /api/group/compliance/export — cross-org isolat
     let orgAId: string | undefined;
     let orgBId: string | undefined;
     try {
-      const { orgId: idA, cookie: cookieA } = await createOrg(ownerA.email, ownerA.password, 'Compliance Org A');
-      const { orgId: idB } = await createOrg(ownerB.email, ownerB.password, 'Compliance Org B');
+      const { orgId: idA, cookie: cookieA } = await createOrg(ownerA.email, ownerA.password, 'Compliance Org A', ownerA.practice.id, ownerA.user.id);
+      const { orgId: idB } = await createOrg(ownerB.email, ownerB.password, 'Compliance Org B', ownerB.practice.id, ownerB.user.id);
       orgAId = idA;
       orgBId = idB;
 
