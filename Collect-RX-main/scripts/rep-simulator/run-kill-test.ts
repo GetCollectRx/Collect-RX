@@ -14,7 +14,12 @@
 //      call so a runaway test run can never overspend. Mirrors the
 //      CARRIER_BLOCK "check before proceeding" idiom in
 //      src/carriers/adapter.ts.
-//   2. VAPI_API_KEY presence check — fails loud with a clear message and a
+//   2. --confirm-live-dial presence check — this script places a REAL phone
+//      call to a real company's real claims line (see below). Having a Vapi
+//      credential lying around in the environment must never be sufficient
+//      by itself to trigger that; a human has to type the flag on this
+//      specific invocation. Fails loud, names the exact flag, if absent.
+//   3. VAPI_API_KEY presence check — fails loud with a clear message and a
 //      non-zero exit code. This script never fakes a success path when it
 //      cannot actually dispatch a call.
 //
@@ -22,13 +27,20 @@
 // present this dials the carrier's real published claims line (same numbers
 // as CARRIER_PHONE_MAP in src/vapi/client.ts / scripts/ivr-research/
 // research-call.cjs) using fabricated placeholder identity data — never real
-// patient PHI. That is why the cost ceiling and isSynthetic/testRunId
-// tagging exist: this is a controlled, bounded, clearly-labeled rehearsal
-// call, not a real claim follow-up.
+// patient PHI. This is a real phone call to a real insurance company's real
+// claims line, deliberately designed to probe whether they detect
+// automation — that is inherently a carrier-relationship risk (see
+// CARRIER_BLOCK in CLAUDE.md, "the most critical operational safety rule"),
+// which is why it requires the explicit --confirm-live-dial flag below in
+// addition to a Vapi credential: possessing a key must never be sufficient
+// on its own to authorize dialing an external company. The cost ceiling and
+// isSynthetic/testRunId tagging exist so that once confirmed, the call stays
+// a controlled, bounded, clearly-labeled rehearsal, not a real claim
+// follow-up.
 //
 // Usage:
-//   npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield --run-id <uuid>
-//   npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield   # generates a run id
+//   npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield --run-id <uuid> --confirm-live-dial
+//   npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield   # generates a run id; still requires --confirm-live-dial to actually dial
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
@@ -59,9 +71,13 @@ export class UsageError extends Error {}
 /** Thrown instead of a fake success path when no live Vapi credential is available. */
 export class MissingVapiApiKeyError extends Error {}
 
+/** Thrown when --confirm-live-dial was not passed — a Vapi key alone must never authorize dialing a real carrier line. */
+export class LiveDialNotConfirmedError extends Error {}
+
 export interface KillTestArgs {
   carrierId: CarrierId;
   testRunId: string;
+  confirmedLiveDial: boolean;
 }
 
 export interface KillTestOutcome {
@@ -82,6 +98,7 @@ function isSupportedCarrier(value: string): value is CarrierId {
 export function parseArgs(argv: readonly string[]): KillTestArgs {
   let carrier: string | undefined;
   let runId: string | undefined;
+  let confirmedLiveDial = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -91,20 +108,22 @@ export function parseArgs(argv: readonly string[]): KillTestArgs {
     } else if (token === '--run-id') {
       runId = argv[i + 1];
       i += 1;
+    } else if (token === '--confirm-live-dial') {
+      confirmedLiveDial = true;
     }
   }
 
   if (!carrier) {
     throw new UsageError(
       `--carrier is required. Supported carriers: ${SUPPORTED_CARRIERS.join(', ')}. ` +
-        'Example: npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield --run-id <uuid>',
+        'Example: npx tsx scripts/rep-simulator/run-kill-test.ts --carrier green_shield --run-id <uuid> --confirm-live-dial',
     );
   }
   if (!isSupportedCarrier(carrier)) {
     throw new UsageError(`Unknown carrier "${carrier}". Supported carriers: ${SUPPORTED_CARRIERS.join(', ')}.`);
   }
 
-  return { carrierId: carrier, testRunId: runId ?? randomUUID() };
+  return { carrierId: carrier, testRunId: runId ?? randomUUID(), confirmedLiveDial };
 }
 
 async function findOrCreateSyntheticPractice(): Promise<{ id: string }> {
@@ -219,9 +238,17 @@ async function dispatchSyntheticCall(carrierId: CarrierId, testRunId: string): P
  * access — see tests/repSimulatorKillTest.test.ts.
  */
 export async function runKillTest(argv: readonly string[]): Promise<KillTestOutcome> {
-  const { carrierId, testRunId } = parseArgs(argv);
+  const { carrierId, testRunId, confirmedLiveDial } = parseArgs(argv);
 
   const costSummary = await assertUnderTestCallCostCeiling(prisma, { testRunId, carrierId });
+
+  if (!confirmedLiveDial) {
+    throw new LiveDialNotConfirmedError(
+      `Refusing to dial ${carrierId}'s real claims line for test run ${testRunId} without explicit confirmation. ` +
+        'This places a real phone call to a real company. Re-run with --confirm-live-dial once you specifically ' +
+        'intend to place this call right now.',
+    );
+  }
 
   if (!process.env.VAPI_API_KEY) {
     throw new MissingVapiApiKeyError(
@@ -239,6 +266,7 @@ function describeFailure(err: unknown): string {
   if (err instanceof TestCallCostCeilingExceededError) {
     return `[rep-simulator] Cost ceiling guard blocked this run: ${err.message}`;
   }
+  if (err instanceof LiveDialNotConfirmedError) return `[rep-simulator] ${err.message}`;
   if (err instanceof MissingVapiApiKeyError) return `[rep-simulator] ${err.message}`;
   return `[rep-simulator] Fatal: ${err instanceof Error ? err.message : String(err)}`;
 }

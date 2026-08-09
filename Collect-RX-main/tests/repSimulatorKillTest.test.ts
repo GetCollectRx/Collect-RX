@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/lib/prisma.js';
 import {
+  LiveDialNotConfirmedError,
   MissingVapiApiKeyError,
   parseArgs,
   runKillTest,
@@ -59,24 +60,49 @@ describe('parseArgs', () => {
     const parsed = parseArgs(['--carrier', 'green_shield', '--run-id', runId]);
     expect(parsed.testRunId).toBe(runId);
   });
+
+  it('defaults confirmedLiveDial to false — a Vapi key must never be sufficient on its own', () => {
+    const parsed = parseArgs(['--carrier', 'green_shield']);
+    expect(parsed.confirmedLiveDial).toBe(false);
+  });
+
+  it('sets confirmedLiveDial only when --confirm-live-dial is explicitly passed', () => {
+    const parsed = parseArgs(['--carrier', 'green_shield', '--confirm-live-dial']);
+    expect(parsed.confirmedLiveDial).toBe(true);
+  });
 });
 
 describe.skipIf(!dbReady)('runKillTest — guard chain without a live Vapi credential', () => {
-  it('fails loud with MissingVapiApiKeyError, not a fake success, when VAPI_API_KEY is unset', async () => {
+  it('refuses to dial without --confirm-live-dial, even if VAPI_API_KEY happens to be set', async () => {
+    process.env.VAPI_API_KEY = 'sandbox-would-be-real-key';
     const runId = randomUUID();
     await expect(runKillTest(['--carrier', 'green_shield', '--run-id', runId])).rejects.toBeInstanceOf(
-      MissingVapiApiKeyError,
+      LiveDialNotConfirmedError,
     );
+  });
+
+  it('names the required flag and the real-phone-call risk in the confirmation failure message', async () => {
+    const runId = randomUUID();
+    await expect(runKillTest(['--carrier', 'green_shield', '--run-id', runId])).rejects.toThrow(
+      /--confirm-live-dial/,
+    );
+  });
+
+  it('fails loud with MissingVapiApiKeyError, not a fake success, once confirmed but VAPI_API_KEY is unset', async () => {
+    const runId = randomUUID();
+    await expect(
+      runKillTest(['--carrier', 'green_shield', '--run-id', runId, '--confirm-live-dial']),
+    ).rejects.toBeInstanceOf(MissingVapiApiKeyError);
   });
 
   it('names the missing env var and the run/carrier in the failure message', async () => {
     const runId = randomUUID();
-    await expect(runKillTest(['--carrier', 'green_shield', '--run-id', runId])).rejects.toThrow(
-      /VAPI_API_KEY not set, cannot dispatch a live call/,
-    );
+    await expect(
+      runKillTest(['--carrier', 'green_shield', '--run-id', runId, '--confirm-live-dial']),
+    ).rejects.toThrow(/VAPI_API_KEY not set, cannot dispatch a live call/);
   });
 
-  it('checks the cost ceiling before the missing-key check — a bad --carrier still fails on args first', async () => {
+  it('checks the cost ceiling before the confirmation/missing-key checks — a bad --carrier still fails on args first', async () => {
     await expect(runKillTest(['--carrier', 'not_a_real_carrier'])).rejects.toBeInstanceOf(UsageError);
   });
 });
