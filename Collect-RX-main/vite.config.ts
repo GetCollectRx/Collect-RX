@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { builtinModules } from 'node:module'
@@ -7,6 +8,19 @@ import tailwindcss from '@tailwindcss/vite'
 
 const workspaceDir = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(workspaceDir, '..')
+
+// Force a single physical copy of react/react-dom — this is an npm workspace
+// member, and without this a hoisting mismatch can leave a second copy under
+// this package's own node_modules, breaking context/hooks across chunks.
+// The Docker build installs this package standalone (no parent workspace),
+// so react lives directly under workspaceDir there instead of repoRoot —
+// resolve whichever one actually exists rather than assuming the monorepo
+// layout unconditionally.
+function resolveHoisted(pkg: string): string {
+  const atRepoRoot = path.join(repoRoot, 'node_modules', pkg)
+  if (fs.existsSync(atRepoRoot)) return atRepoRoot
+  return path.join(workspaceDir, 'node_modules', pkg)
+}
 
 // Backstop for the eslint.config.js path-based rule: walks the actual Rollup
 // module graph (so it can't be fooled by re-exports or barrel files) and fails
@@ -87,8 +101,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {
-        react: path.join(repoRoot, 'node_modules/react'),
-        'react-dom': path.join(repoRoot, 'node_modules/react-dom'),
+        react: resolveHoisted('react'),
+        'react-dom': resolveHoisted('react-dom'),
       },
     },
     plugins: [
