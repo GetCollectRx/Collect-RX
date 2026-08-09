@@ -22,12 +22,16 @@ test('public landing page renders real content, not a blank crashed shell', asyn
   const pageErrors = trackPageErrors(page);
   await page.goto('/');
 
+  // Wait for the lazily-loaded MarketingSite chunk to actually mount before
+  // measuring body content — otherwise this can catch the Suspense fallback
+  // ("Loading…") instead of a real crash. If the bundle throws, this times
+  // out and fails just as loudly.
+  await expect(page.getByText(/CollectRx/i).first()).toBeVisible({ timeout: 10_000 });
+
   // A crashed React root leaves <body> essentially empty. Assert real, specific
-  // marketing copy is present — this fails the way the original bug did if the
-  // bundle throws before mounting.
+  // marketing copy is present.
   const bodyText = await page.locator('body').innerText();
   expect(bodyText.length).toBeGreaterThan(200);
-  await expect(page.getByText(/CollectRx/i).first()).toBeVisible();
 
   expect(pageErrors, `Uncaught page errors on landing load: ${pageErrors.join(' | ')}`).toEqual([]);
 });
