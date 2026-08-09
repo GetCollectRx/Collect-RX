@@ -277,6 +277,44 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });
 
+  // Regression for OUTSTANDING-FIXES-PRODUCT-READY.md P10-04: this guard code
+  // shared the same switch case as MAX_ATTEMPTS but the call_escalations write
+  // was gated to MAX_ATTEMPTS only, so 90-day-aged claims were marked ESCALATED
+  // everywhere except the dedicated Escalations page, which reads that table.
+  it('escalates an over-90-days head claim, writes a call_escalations row, and dispatches the next eligible claim', async () => {
+    const aged = queueEntry('1', { daysOutstanding: 94 });
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([aged, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: 'ESCALATE_OVER_90',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+      })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({
+      where: { id: 'claim-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+        attemptNumber: 0,
+      }),
+    });
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
   it('completes an APPROVED_PENDING_PAYMENT head entry and dispatches the next eligible claim', async () => {
     const approved = queueEntry('1', { status: 'APPROVED_PENDING_PAYMENT' });
     const eligible = queueEntry('2');

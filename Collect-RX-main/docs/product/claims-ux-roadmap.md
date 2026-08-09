@@ -55,8 +55,8 @@ This roadmap consolidates 24 recommendations from the Claims UX review. All item
 
 ## Demo walkthrough
 
-**Login:** `demo@collectrx-test.local` / `CollectRx2026!`  
-**Seed:** `npm run demo:seed`
+**Login:** `demo@collectrx-test.local` / your `SEED_PRACTICE_PASSWORD` — no default password, the seed script requires one.
+**Seed:** `SEED_PRACTICE_PASSWORD=your_own_password npm run demo:seed`
 
 | Claim ref | Story |
 |-----------|--------|

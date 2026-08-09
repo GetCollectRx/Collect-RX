@@ -3,8 +3,12 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { captureFatal, initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Same as index.ts;
+// this is a separate Node process so it needs its own init.
+initSentry();
 
 import type { PrismaClient } from '@prisma/client';
 import { Worker, type ConnectionOptions } from 'bullmq';
@@ -174,6 +178,7 @@ const worker = new Worker(
 
 worker.on('failed', (job, err) => {
   console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+  void captureFatal(err);
 });
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);

@@ -54,9 +54,16 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
     const payload = verifyAuthToken(raw);
     const briefRole = getUserRole(payload);
+    // Auditors are provisioned with practiceId: null and scoped instead via
+    // AuditorGrant (see set-persona-test-passwords.mjs) — they were missing
+    // here, so every real auditor session 401'd on the very first request
+    // after login (GET /api/auth/me, which every page load triggers), even
+    // though login itself succeeded. See OUTSTANDING-FIXES-PRODUCT-READY.md
+    // P10-09.
     const crossPractice =
       briefRole === 'billing_ops_manager' ||
       briefRole === 'platform_admin' ||
+      briefRole === 'auditor' ||
       payload.role === 'platform_dev';
 
     if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
@@ -81,7 +88,8 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     // that user's true practice (however it was produced) must not grant access
     // to another practice's claims/PHI. Also re-checks isActive on every request,
     // and (accountant only) tokenExpiresAt, since the JWT's own TTL can outlive a
-    // practice's revocation of that access.
+    // practice's revocation of that access. See OUTSTANDING-FIXES-PRODUCT-READY.md
+    // P10-09 for why the accountant check is guarded separately below.
     //
     // Brief/impersonation sessions (`platformUserSession: true`, from
     // signBriefSessionToken — auditor, and platform-staff previews of a practice

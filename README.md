@@ -30,20 +30,22 @@ The **repository root** `src/api` + `src/frontend` stack is a **prototype** with
 ## Quick start (canonical: Collect-RX-main)
 
 ```bash
-npm install                       # at repo root — links the Collect-RX-main workspace
-cp Collect-RX-main/.env.example Collect-RX-main/.env
-# Set DATABASE_URL to your existing PostgreSQL (e.g. postgresql://user:pass@localhost:5432/collectrx)
-# and JWT_SECRET. Only use `docker compose up -d` at repo root if you want Docker Postgres instead.
-npm run db:generate:collectrx
-npm run db:migrate:dev:collectrx  # apply prisma/migrations to your database
-npm run db:seed:collectrx
+npm install              # at repo root — links the Collect-RX-main workspace
+npm run setup:collectrx  # .env, Postgres (Docker if available, else native), migrate, seed, prints login
 npm run dev
 ```
 
-- **Frontend:** http://localhost:5173 (log in with seed practice password — `SEED_PRACTICE_PASSWORD` in dev, see [Collect-RX-main/README](Collect-RX-main/README.md))
+`npm run setup:collectrx` is one command end to end: creates `.env` from the example if missing,
+brings up Postgres (and Redis if available) without you picking a port by hand, generates
+`JWT_SECRET`/`PHI_ENCRYPTION_KEY`/a seed password if they're not already set, runs migrations, seeds
+the demo practice, and prints the login it just created. Safe to re-run after a `git pull` — it never
+overwrites a value already in `.env`. Flags: `-- --minimal` for an empty baseline practice instead of
+the rich demo data, `-- --reset` to wipe and reseed the demo practice.
+
+- **Frontend:** http://localhost:5173 (login printed by `npm run setup:collectrx`, or see `SEED_PRACTICE_PASSWORD` in `Collect-RX-main/.env`)
 - **API:** http://localhost:3000
 
-Database and migrations: [docs/DATABASE.md](docs/DATABASE.md). Details: [Collect-RX-main/README.md](Collect-RX-main/README.md).
+Prefer to do it by hand, or need details on what the script automates? [Collect-RX-main/README.md](Collect-RX-main/README.md) has the manual steps. Database and migrations: [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Quick start (root prototype — not canonical)
 

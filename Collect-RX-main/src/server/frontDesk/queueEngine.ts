@@ -305,6 +305,7 @@ async function settleBlockedCandidate(
     id: string;
     practiceId: string;
     claimId: string;
+    attempts: number;
     claim: {
       claimNumber: string;
       carrierId: keyof typeof CARRIER_CONFIGS;
@@ -316,7 +317,7 @@ async function settleBlockedCandidate(
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -327,29 +328,36 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      // The Escalations page (front-desk queue) reads call_escalations, not
+      // insurance_claims.status — every path that sets ESCALATED here must also
+      // write this row or the claim goes invisible to the one screen built to
+      // work it (see OUTSTANDING-FIXES-PRODUCT-READY.md P10-04).
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : guardReason ?? 'Claim aged past 90 days — escalate to human';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          attemptNumber: guardCode === 'MAX_ATTEMPTS' ? 3 : entry.attempts,
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
-        }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({

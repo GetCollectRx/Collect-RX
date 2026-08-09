@@ -19,9 +19,8 @@ interface EarlyAccessLead {
  */
 export function createEarlyAccessRouter(prisma: PrismaClient): Router {
   const r = Router();
-  r.use(strictLimiter);
 
-  r.post('/early-access', async (req: Request, res: Response) => {
+  r.post('/early-access', strictLimiter, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const email = typeof body.email === 'string' ? body.email.trim() : '';

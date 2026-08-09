@@ -13,11 +13,11 @@
 
 import type { BillingTier, CarrierId } from '@prisma/client';
 
-// This module is imported by browser-bundled pages (LandingPage, pricingContent)
-// as well as server code. `process` doesn't exist in the browser outside a
-// production build's bundler shim, so guard the reference rather than crash
-// the whole module graph in dev / anywhere else unbundled.
-const env: Record<string, string | undefined> = typeof process !== 'undefined' ? process.env : {};
+// This module is imported by client bundles (LandingPage, ProductOnePager, SubscriptionUsageCard,
+// pricingContent) as well as server code. `process` only exists under Node — Vite's production
+// build shims `process.env` to `{}` for the browser, but the dev server does not, so guard it here.
+const env: Record<string, string | undefined> =
+  typeof process !== 'undefined' && process.env ? process.env : {};
 
 export interface TierConfig {
   name: string;

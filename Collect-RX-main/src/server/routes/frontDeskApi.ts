@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getUserRole, authUserId, isAuditor } from '../accessControl/types.js'
+import { authUserId, isAuditor, type PracticeRole } from '../accessControl/types.js'
 import type { CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -431,12 +431,33 @@ router.get('/:practiceId/escalations', async (req: Request, res: Response) => {
   }
 });
 
+// Raw PracticeRole values allowed to resolve escalations — mirrors
+// canResolveEscalations in src/lib/useRoleAccess.ts. Checked against the raw
+// role (auth.role), not getUserRole()'s brief UserRole persona:
+// practiceRoleToBrief() collapses office_manager, billing_coordinator, AND
+// associate_dentist into the same brief 'practice_owner' bucket for coarse
+// routing, so a brief-persona check here let associate_dentist (a clinical
+// role useRoleAccess.ts marks isReadOnly: true / canResolveEscalations:
+// false) resolve escalations by accident — including 'written_off', which
+// flips the claim to DENIED and drops it from the call queue. Reproduced
+// live via a direct PUT as an associate_dentist session before this fix.
+// group_admin covers both the raw PracticeRole and real billing_ops_manager
+// PlatformUser sessions (their JWT's `role` field is set to 'group_admin'
+// for PracticeRole-shaped compatibility — see respondPlatformUserLogin).
+const ESCALATION_RESOLVER_ROLES: PracticeRole[] = [
+  'front_desk',
+  'practice_owner',
+  'office_manager',
+  'billing_coordinator',
+  'group_admin',
+];
+
 router.put('/:practiceId/escalations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const role = getUserRole(req.auth ?? req.practiceAuth);
-    if (!role || !['front_desk', 'practice_owner', 'billing_ops_manager'].includes(role)) {
+    const rawRole = (req.auth ?? req.practiceAuth)?.role;
+    if (!rawRole || rawRole === 'platform_dev' || !ESCALATION_RESOLVER_ROLES.includes(rawRole)) {
       return res.status(403).json({ success: false, error: 'Cannot resolve escalations with this role' });
     }
   const { resolution, notes } = req.body as { resolution?: EscalationResolution; notes?: string };

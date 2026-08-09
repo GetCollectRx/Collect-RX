@@ -65,6 +65,22 @@ export async function syncWorkItemsForPractice(
     },
   });
 
+  // Close WorkItems whose source claim left the open set (resolved, written
+  // off, soft-deleted) — the upsert loop below only ever reopens/refreshes
+  // items for claims still in `claims`, so without this an already-resolved
+  // claim's WorkItem stays 'open' forever and the priority queue shows it as
+  // still actionable indefinitely.
+  const openClaimIds = claims.map((c) => c.id);
+  await prisma.workItem.updateMany({
+    where: {
+      practiceId,
+      status: 'open',
+      itemType: 'insurance',
+      ...(openClaimIds.length > 0 ? { sourceId: { notIn: openClaimIds } } : {}),
+    },
+    data: { status: 'closed' },
+  });
+
   const scored = claims.map((c) => {
     const input = buildPriorityScoreInput(c, referenceDate);
     return { claim: c, input, total: scoreClaim(input).total };

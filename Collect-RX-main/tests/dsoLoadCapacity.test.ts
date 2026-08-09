@@ -54,10 +54,20 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
 // not flaky depending on when CI happens to run it. validateDispatch and
 // CARRIER_CONFIGS stay real — this test's whole point is exercising the real
 // dispatch guard chain, not bypassing it.
-vi.mock('../src/carriers/adapter.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/carriers/adapter.js')>();
-  return { ...actual, isWithinCallWindow: () => true };
-});
+//
+// This used to be `vi.mock('../src/carriers/adapter.js', ...)` overriding the
+// exported isWithinCallWindow — but validateDispatch calls isWithinCallWindow
+// as a same-module local reference (both live in adapter.ts), and ES module
+// self-calls are bound at the local scope, not through the export object, so
+// vi.mock's replacement never actually intercepted it. That made this test
+// genuinely flaky for 15 of 24 hours a day — reproduced directly: it fails
+// with 0/20 dispatched and an OUTSIDE_CALL_WINDOW rejection whenever run
+// outside 08:00-17:00 Eastern, exactly the flakiness this comment claimed to
+// prevent. adapter.ts ships a purpose-built, non-production-only escape hatch
+// for this (callWindowForced() / COLLECTRX_FORCE_CALL_WINDOW) — use that
+// instead, which works because isWithinCallWindow reads it on every call
+// rather than being swapped out at the module-export boundary.
+process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
 
 process.env.VAPI_MAX_CONCURRENT_CALLS = '500';
 process.env.VAPI_CONCURRENCY_RESERVE = '0';
@@ -84,6 +94,12 @@ try {
 }
 
 afterAll(async () => {
+  // vitest.config.ts runs the suite in one sequential process (maxWorkers: 1)
+  // — leaving this set would make isWithinCallWindow always return true for
+  // every later file, silently breaking tests that assert real business-hour
+  // rejection (e.g. tests/phase-5/carrier-adapter.test.ts's Sat/Sun/early/late
+  // isWithinCallWindow cases).
+  delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
   await prisma.$disconnect().catch(() => undefined);
 });
 
