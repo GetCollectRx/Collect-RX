@@ -378,6 +378,65 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
   });
 
+  it('defers a carrier-concurrency-capped head claim (jittered, short) and dispatches the next eligible claim', async () => {
+    const capped = queueEntry('1');
+    const eligible = queueEntry('2', { carrierId: 'manulife' });
+    const prisma = tickPrisma([capped, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: 'CARRIER_CONCURRENCY_LIMIT',
+        reason: '5 calls already active to sun_life fleet-wide (limit 5). Waiting for a slot to free up.',
+      })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    // Fleet-wide congestion is a short, jittered wait (3–5 min) — not the same
+    // multi-hour class of defer as a staff-action or claim-age gate, and not
+    // an exact round number either (see the dispatch-failure jitter test).
+    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
+    // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
+    // tick must not stop, unlike a practice-wide rejection.
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('builds a fleet-wide per-carrier active-call snapshot and passes it into validateDispatch', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    // findMany serves two different queries this tick (stale-attempt watchdog
+    // vs. the carrier snapshot) — discriminate on the `claim` select, since
+    // only the snapshot query selects through the claim relation. Two other
+    // in-flight attempts elsewhere in the fleet, both against sun_life — this
+    // is the exact query a multi-location practice's other locations feed into.
+    prisma.callAttempt.findMany = vi.fn(async (args: { select?: { claim?: unknown } }) => {
+      if (args?.select?.claim) {
+        return [{ claim: { carrierId: 'sun_life' } }, { claim: { carrierId: 'sun_life' } }];
+      }
+      return [];
+    });
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        carrierActiveCounts: new Map([['sun_life', 2]]),
+      }),
+    );
+  });
+
   it('stops the whole practice on a practice-wide rejection without touching later candidates', async () => {
     const capped = queueEntry('1');
     const untouched = queueEntry('2');
@@ -526,6 +585,11 @@ describe('runDeskQueueTick resilience', () => {
         args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
     );
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    // Jittered, not a fixed 15 minutes — every claim that failed around the
+    // same transient outage must not all re-dial on the same exact clock.
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    expect(deferredInMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(20 * 60 * 1000);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });

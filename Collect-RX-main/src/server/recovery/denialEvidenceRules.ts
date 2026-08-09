@@ -3,6 +3,9 @@
  * Clinical files remain in the PMS; staff attest that required items exist.
  */
 
+import type { DenialCategory } from '../../types/denial.js';
+export type { DenialCategory } from '../../types/denial.js';
+
 export interface DenialEvidenceRequirement {
   evidenceType: string;
   description: string;
@@ -76,4 +79,77 @@ export function evidenceRequirementsForDenial(params: {
     seen.add(item.evidenceType);
     return true;
   });
+}
+
+export function categorizeDenial(params: {
+  denialReasonCode?: string | null;
+  denialReasonText?: string | null;
+  outcomeDetail?: string | null;
+}): DenialCategory {
+  const code = (params.denialReasonCode ?? '').trim().toUpperCase();
+  const text = ((params.denialReasonText ?? '') + (params.outcomeDetail ?? '')).toLowerCase();
+
+  if (
+    code.includes('FREQ') ||
+    text.includes('frequency') ||
+    text.includes('too soon') ||
+    text.includes('within')
+  ) {
+    return 'frequency_limit';
+  }
+
+  if (code.includes('COB') || text.includes('coordination of benefits') || text.includes('other insurance')) {
+    return 'coordination_of_benefits';
+  }
+
+  if (
+    code.includes('DOC') ||
+    text.includes('documentation') ||
+    text.includes('missing') ||
+    text.includes('supporting') ||
+    text.includes('receipt')
+  ) {
+    return 'missing_documentation';
+  }
+
+  if (
+    code.includes('EXCL') ||
+    text.includes('exclusion') ||
+    text.includes('not covered') ||
+    text.includes('not eligible')
+  ) {
+    return 'plan_exclusion';
+  }
+
+  if (code.includes('MAX') || text.includes('annual maximum') || text.includes('lifetime maximum')) {
+    return 'annual_maximum_reached';
+  }
+
+  if (code.includes('DED') || text.includes('deductible') || text.includes('plan deductible')) {
+    return 'deductible_not_met';
+  }
+
+  if (code.includes('PROV') || text.includes('provider') || text.includes('not in network')) {
+    return 'provider_not_eligible';
+  }
+
+  if (
+    code.includes('PAID') ||
+    text.includes('already paid') ||
+    text.includes('duplicate') ||
+    text.includes('previously paid')
+  ) {
+    return 'claim_already_paid';
+  }
+
+  if (
+    code.includes('REVIEW') ||
+    code.includes('MANUAL') ||
+    text.includes('under review') ||
+    text.includes('manual review')
+  ) {
+    return 'manual_review_pending';
+  }
+
+  return 'other';
 }

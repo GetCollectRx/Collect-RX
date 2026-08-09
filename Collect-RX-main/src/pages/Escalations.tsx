@@ -61,15 +61,15 @@ export default function Escalations() {
   const busy = practiceLoading || (loading && items.length === 0)
 
   return (
-    <DataState loading={busy} error={error} isEmpty={!busy && items.length === 0} emptyTitle="No open escalations">
-      <div className="page-enter p-6 space-y-6 max-w-[1400px]">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Escalations</h1>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-            Claims requiring staff action
-          </p>
-        </div>
+    <div className="page-enter p-6 space-y-6 max-w-[1400px]">
+      <div>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Escalations</h1>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
+          Claims requiring staff action
+        </p>
+      </div>
 
+      <DataState loading={busy} error={error} isEmpty={!busy && items.length === 0} emptyTitle="No open escalations">
         <Card padding="none">
           <div className="p-5 pb-0">
             <CardHeader title="Open escalations" subtitle={`${items.length} pending`} />
@@ -124,7 +124,7 @@ export default function Escalations() {
             </Table>
           </TableContainer>
         </Card>
-      </div>
-    </DataState>
+      </DataState>
+    </div>
   )
 }

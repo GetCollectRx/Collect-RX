@@ -7,26 +7,30 @@ type CommandItem = {
   label: string
   hint?: string
   path: string
+  /** Omit to allow every authenticated role. Matched against raw session
+   * role first (distinguishes office_manager/billing_coordinator, which
+   * collapse to the practice_owner persona) then the persona (userRole),
+   * mirroring the allowedRoles on each route in App.tsx. */
   roles?: string[]
 }
 
 const COMMANDS: CommandItem[] = [
-  { id: 'dashboard', label: 'Dashboard', path: '/dashboard' },
-  { id: 'import', label: 'Import claims CSV', hint: 'Onboarding', path: '/import' },
-  { id: 'claims', label: 'Claims', path: '/insurance' },
-  { id: 'queue', label: 'Priority queue', path: '/insurance?tab=queue' },
-  { id: 'blocked', label: 'Blocked gates', path: '/insurance?tab=blocked' },
-  { id: 'ar', label: 'AR command center', path: '/ar-command-center' },
+  { id: 'dashboard', label: 'Dashboard', path: '/dashboard', roles: ['practice_owner', 'office_manager', 'billing_ops_manager'] },
+  { id: 'import', label: 'Import claims CSV', hint: 'Onboarding', path: '/import', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'claims', label: 'Claims', path: '/insurance', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'queue', label: 'Priority queue', path: '/insurance?tab=queue', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'blocked', label: 'Blocked gates', path: '/insurance?tab=blocked', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'ar', label: 'AR command center', path: '/ar-command-center', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin'] },
   { id: 'console', label: 'Live console', path: '/console', roles: ['front_desk'] },
-  { id: 'aging', label: 'Aging report', path: '/reports/aging' },
-  { id: 'carriers', label: 'Carrier stats', path: '/reports/carriers' },
-  { id: 'settings', label: 'Practice settings', path: '/settings' },
+  { id: 'aging', label: 'Aging report', path: '/reports/aging', roles: ['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'carriers', label: 'Carrier stats', path: '/reports/carriers', roles: ['practice_owner', 'office_manager', 'auditor', 'billing_ops_manager', 'platform_admin'] },
+  { id: 'settings', label: 'Practice settings', path: '/settings', roles: ['practice_owner', 'office_manager', 'platform_admin'] },
   { id: 'guide', label: 'How it works', path: '/guide' },
 ]
 
 export function CommandPalette() {
   const navigate = useNavigate()
-  const { userRole, isFrontDesk } = usePractice()
+  const { userRole, role } = usePractice()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -34,13 +38,13 @@ export function CommandPalette() {
   const items = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return COMMANDS.filter((c) => {
-      if (c.roles?.includes('front_desk') && !isFrontDesk && userRole !== 'front_desk') {
+      if (c.roles && !c.roles.includes(role ?? '') && !c.roles.includes(userRole ?? '')) {
         return false
       }
       if (!needle) return true
       return c.label.toLowerCase().includes(needle) || c.hint?.toLowerCase().includes(needle)
     })
-  }, [q, isFrontDesk, userRole])
+  }, [q, role, userRole])
 
   const close = useCallback(() => {
     setOpen(false)

@@ -239,9 +239,56 @@ export function createPracticeReportsRouter(): Router {
       const pms = await getPracticePmsContext(prisma, practiceId);
       const practice = await prisma.practice.findUnique({
         where: { id: practiceId },
-        select: { id: true, name: true, timezone: true },
+        select: { id: true, name: true, timezone: true, recoveryMode: true },
       });
       res.json({ success: true, data: { practice, settings, pms } });
+    } catch (err) {
+      res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  }));
+
+  /**
+   * PATCH /:practiceId/recovery-mode — switch between CSV-first reconciliation
+   * (default) and PMS-writeback confirmation. PMS_WRITEBACK only makes sense
+   * for a practice whose active PMS connector actually emits writeback events
+   * (see recoveryMode.ts / emrSyncOutbox.ts) — CSV-only practices stay on
+   * CSV_FIRST since nothing would ever clear a PMS_WRITEBACK wait.
+   */
+  router.patch('/:practiceId/recovery-mode', blockFrontDeskReports, blockAuditorWrites, withGrantChecks(async (req, res) => {
+    try {
+      if (queryPracticeConflictsSession(req, req.params.practiceId)) {
+        res.status(403).json({ success: false, error: 'practiceId does not match session' });
+        return;
+      }
+      const practiceId = practiceIdFromSession(req);
+      const auth = req.auth!;
+      if (!isPracticeOwner(auth) && !isPlatformAdmin(auth)) {
+        res.status(403).json({ success: false, error: 'Only practice owner or platform admin may update recovery mode' });
+        return;
+      }
+      const recoveryMode = req.body?.recoveryMode;
+      if (recoveryMode !== 'CSV_FIRST' && recoveryMode !== 'PMS_WRITEBACK') {
+        res.status(400).json({ success: false, error: 'recoveryMode must be CSV_FIRST or PMS_WRITEBACK' });
+        return;
+      }
+      if (recoveryMode === 'PMS_WRITEBACK') {
+        const { getPracticePmsContext } = await import('../pms/practicePmsContext.js');
+        const { PMS_VENDOR_PROFILES } = await import('../pms/pmsRegistry.js');
+        const pms = await getPracticePmsContext(prisma, practiceId);
+        if (!PMS_VENDOR_PROFILES[pms.vendorId].supportsDesktopConnector) {
+          res.status(422).json({
+            success: false,
+            error: `PMS writeback requires a connected desktop-sync PMS vendor — ${pms.displayName} does not support it`,
+          });
+          return;
+        }
+      }
+      const practice = await prisma.practice.update({
+        where: { id: practiceId },
+        data: { recoveryMode },
+        select: { recoveryMode: true },
+      });
+      res.json({ success: true, data: practice });
     } catch (err) {
       res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
     }
@@ -268,6 +315,26 @@ export function createPracticeReportsRouter(): Router {
         return;
       }
       res.status(500).json({ success: false, error: msg });
+    }
+  }));
+
+  router.get('/:practiceId/latency', blockFrontDeskReports, withGrantChecks(async (req, res) => {
+    try {
+      if (queryPracticeConflictsSession(req, req.params.practiceId)) {
+        res.status(403).json({ success: false, error: 'practiceId does not match session' });
+        return;
+      }
+      const windowDays = Math.min(parseInt(req.query.window as string) || 7, 90);
+      const { getLatencyMetricsByCarrier, getLatencyHealthStatus } = await import(
+        '../learning/vapiLatencyTracker.js'
+      );
+      const [byCarrier, health] = await Promise.all([
+        getLatencyMetricsByCarrier(prisma, windowDays),
+        getLatencyHealthStatus(prisma, windowDays),
+      ]);
+      res.json({ success: true, data: { byCarrier, health, window: windowDays } });
+    } catch (err) {
+      res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
     }
   }));
 

@@ -17,6 +17,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import {
   analyzeEvidenceGap,
 } from '../services/cdcp/evidenceMapper.js';
@@ -36,7 +37,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
   // ── POST /api/cdcp/denied-claims ────────────────────────────────────────────
   // Called by Abeldent sync when Transaction 11 denials are detected
-  router.post('/denied-claims', async (req: Request, res: Response) => {
+  router.post('/denied-claims', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const { claims } = req.body as { claims: CdcpDeniedClaim[] };
 
@@ -47,6 +48,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const practiceId = req.practiceAuth?.practiceId;
       if (!practiceId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
       }
 
       const { ingestCdcpDeniedClaimsToPrisma } = await import('../recovery/cdcpPrismaQueue.js');
@@ -70,6 +76,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const practiceId = req.practiceAuth?.practiceId;
       if (!practiceId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
       }
 
       const { listCdcpQueueFromPrisma } = await import('../recovery/cdcpPrismaQueue.js');
@@ -123,7 +134,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   });
 
   // ── PATCH /api/cdcp/reconsiderations/:id ────────────────────────────────────
-  router.patch('/reconsiderations/:id', async (req: Request, res: Response) => {
+  router.patch('/reconsiderations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, assignedAdjudicatorId, confirmationNumber, notes, submissionMethod } = req.body;
@@ -241,7 +252,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   });
 
   // ── POST /api/cdcp/reconsiderations ─────────────────────────────────────────
-  router.post('/reconsiderations', async (req: Request, res: Response) => {
+  router.post('/reconsiderations', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const practiceId = req.practiceAuth?.practiceId;
       if (!practiceId) {
@@ -306,7 +317,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   });
 
   // ── POST /api/cdcp/kpi ──────────────────────────────────────────────────────
-  router.post('/kpi', async (req: Request, res: Response) => {
+  router.post('/kpi', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const practiceId = req.practiceAuth?.practiceId;
       if (!practiceId) {

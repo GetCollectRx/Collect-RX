@@ -1,17 +1,23 @@
 /**
- * DSO/Organization onboarding — POST /api/organizations, invite-practice,
- * and the consent-based accept flow. Every attach must originate from the
- * accepting practice's own owner session; an inviter must never be able to
- * attach a practice they don't own.
+ * DSO/Organization cross-org isolation for the co-admin invite path
+ * (POST /api/auth/invite, role: 'group_admin' — src/server/routes/authRoutes.ts).
+ *
+ * Self-serve organization creation does not exist yet (admin-assisted only,
+ * see src/server/routes/orgAdminRoutes.ts's own header comment — "Self-serve
+ * org creation is a later phase"), so these tests build fixture
+ * Organizations directly via Prisma rather than through an HTTP create route,
+ * and focus on the real attack surface: an org_admin targeting a sibling
+ * practice by id must be validated against their actual org membership
+ * (callerAdminOrganizationId + OrganizationPractice), never trusted from the
+ * request body.
  *
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable (see
  * tests/app.integration.test.ts for the same pattern).
  */
-import { randomUUID } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it, afterAll } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../src/server/index.js';
-import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
 
 let dbReady = false;
 try {
@@ -40,255 +46,81 @@ async function login(email: string, password: string): Promise<string> {
   return cookieHeaderFrom(res);
 }
 
-async function cleanupOrg(organizationId: string | null | undefined): Promise<void> {
-  if (!organizationId) return;
-  await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
+/** Fixture: an Organization with one org_admin (group_admin User role) and one member practice. */
+async function createOrgFixture(orgName: string) {
+  const home = await createPracticeWithOwnerForTests(prisma, { role: 'group_admin' });
+  const organization = await prisma.organization.create({ data: { name: orgName } });
+  await prisma.organizationPractice.create({ data: { organizationId: organization.id, practiceId: home.practice.id } });
+  await prisma.organizationMember.create({ data: { organizationId: organization.id, userId: home.user.id, role: 'org_admin' } });
+  return { organization, admin: home };
 }
 
-describe.skipIf(!dbReady)('POST /api/organizations (create)', () => {
-  it('creates a group, attaches the caller practice, and upgrades the caller to group_admin', async () => {
-    const { practice, email, password, user } = await createPracticeWithOwnerForTests(prisma);
-    let orgId: string | undefined;
+async function cleanupOrgFixture(organizationId: string, practiceIds: string[]) {
+  await prisma.inviteToken.deleteMany({ where: { organizationId } });
+  await prisma.organizationMember.deleteMany({ where: { organizationId } });
+  await prisma.organizationPractice.deleteMany({ where: { organizationId } });
+  await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
+  for (const practiceId of practiceIds) {
+    await cleanupPracticeWithUsers(prisma, practiceId);
+  }
+}
+
+describe.skipIf(!dbReady)('POST /api/auth/invite — DSO co-admin / cross-org isolation', () => {
+  it('a genuine org_admin can invite a co-admin targeting a sibling practice in their own org', async () => {
+    const { organization: orgA, admin: adminA } = await createOrgFixture('Fixture Org A');
+    const siblingA = await createPracticeWithOwnerForTests(prisma);
+    await prisma.organizationPractice.create({ data: { organizationId: orgA.id, practiceId: siblingA.practice.id } });
     try {
-      const cookie = await login(email, password);
-      const createRes = await request(app)
-        .post('/api/organizations')
+      const cookie = await login(adminA.email, FIXTURE_PRACTICE_PASSWORD);
+      const res = await request(app)
+        .post('/api/auth/invite')
         .set('Cookie', cookie)
-        .send({ name: `Fixture Group ${Date.now()}` });
-      expect(createRes.status).toBe(201);
-      orgId = createRes.body.organization?.id;
-      expect(orgId).toBeTruthy();
+        .send({ email: `invitee-${Date.now()}@fixture.test`, role: 'group_admin', practiceId: siblingA.practice.id });
 
-      const orgPractice = await prisma.organizationPractice.findUnique({ where: { practiceId: practice.id } });
-      expect(orgPractice?.organizationId).toBe(orgId);
-
-      const member = await prisma.organizationMember.findUnique({
-        where: { organizationId_userId: { organizationId: orgId!, userId: user.id } },
-      });
-      expect(member?.role).toBe('org_admin');
-
-      const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
-      expect(updatedUser?.role).toBe('group_admin');
-
-      const mineRes = await request(app).get('/api/organizations/mine').set('Cookie', cookie);
-      expect(mineRes.status).toBe(200);
-      expect(mineRes.body.organizations).toHaveLength(1);
-      expect(mineRes.body.organizations[0].practices).toEqual([{ id: practice.id, name: practice.name }]);
+      expect(res.status).toBe(200);
     } finally {
-      await cleanupOrg(orgId);
-      await cleanupPracticeWithUsers(prisma, practice.id);
+      await cleanupOrgFixture(orgA.id, [adminA.practice.id, siblingA.practice.id]);
     }
   });
 
-  it('rejects creating a second group for a practice already in one', async () => {
-    const { practice, email, password } = await createPracticeWithOwnerForTests(prisma);
-    let orgId: string | undefined;
+  it('rejects invite-practice from a GENUINE org_admin of a DIFFERENT org — the real IDOR case', async () => {
+    const { organization: orgA, admin: adminA } = await createOrgFixture('Fixture Org A');
+    const { organization: orgB, admin: adminB } = await createOrgFixture('Fixture Org B');
     try {
-      const cookie = await login(email, password);
-      const first = await request(app).post('/api/organizations').set('Cookie', cookie).send({ name: 'First Group' });
-      orgId = first.body.organization?.id;
+      const cookie = await login(adminA.email, FIXTURE_PRACTICE_PASSWORD);
 
-      const second = await request(app).post('/api/organizations').set('Cookie', cookie).send({ name: 'Second Group' });
-      expect(second.status).toBe(409);
-    } finally {
-      await cleanupOrg(orgId);
-      await cleanupPracticeWithUsers(prisma, practice.id);
-    }
-  });
-
-  it('rejects a below-owner role from creating a group', async () => {
-    const { practice, email, password } = await createPracticeWithOwnerForTests(prisma, { role: 'front_desk' });
-    try {
-      const cookie = await login(email, password);
-      const res = await request(app).post('/api/organizations').set('Cookie', cookie).send({ name: 'Nope' });
-      expect(res.status).toBe(403);
-    } finally {
-      await cleanupPracticeWithUsers(prisma, practice.id);
-    }
-  });
-});
-
-describe.skipIf(!dbReady)('invite-practice + consent-based accept', () => {
-  it('lets the invited owner accept, and never lets the inviter attach the practice directly', async () => {
-    const inviter = await createPracticeWithOwnerForTests(prisma);
-    const invitee = await createPracticeWithOwnerForTests(prisma);
-    let orgId: string | undefined;
-    try {
-      let inviterCookie = await login(inviter.email, inviter.password);
-      const createRes = await request(app)
-        .post('/api/organizations')
-        .set('Cookie', inviterCookie)
-        .send({ name: `Fixture DSO ${Date.now()}` });
-      orgId = createRes.body.organization?.id;
-      // The create response reissues the session cookie with role=group_admin
-      // (see ensureGroupAdminRole) — must use the fresh cookie from here on,
-      // exactly as a browser would apply the updated Set-Cookie automatically.
-      inviterCookie = cookieHeaderFrom(createRes);
-
-      const inviteRes = await request(app)
-        .post(`/api/organizations/${orgId}/invite-practice`)
-        .set('Cookie', inviterCookie)
-        .send({ email: invitee.email });
-      expect(inviteRes.status).toBe(200);
-      expect(inviteRes.body.invited).toBe(true);
-
-      // The inviter's own action never created the OrganizationPractice row for the invitee.
-      const notYetAttached = await prisma.organizationPractice.findUnique({ where: { practiceId: invitee.practice.id } });
-      expect(notYetAttached).toBeNull();
-
-      const tokenRow = await prisma.organizationInviteToken.findFirst({
-        where: { organizationId: orgId, inviteeEmail: invitee.email, usedAt: null },
-        orderBy: { createdAt: 'desc' },
-      });
-      expect(tokenRow).not.toBeNull();
-
-      const previewRes = await request(app).get(`/api/organizations/invite/${tokenRow!.token}`);
-      expect(previewRes.status).toBe(200);
-      expect(previewRes.body.inviteeEmail).toBe(invitee.email);
-
-      // A third party (not logged in as the invitee) can preview but not accept as themselves.
-      const wrongPersonCookie = inviterCookie;
-      const wrongAccept = await request(app)
-        .post(`/api/organizations/invite/${tokenRow!.token}/accept`)
-        .set('Cookie', wrongPersonCookie);
-      expect(wrongAccept.status).toBe(403);
-
-      const inviteeCookie = await login(invitee.email, invitee.password);
-      const acceptRes = await request(app)
-        .post(`/api/organizations/invite/${tokenRow!.token}/accept`)
-        .set('Cookie', inviteeCookie);
-      expect(acceptRes.status).toBe(200);
-      expect(acceptRes.body.joined).toBe(true);
-
-      const nowAttached = await prisma.organizationPractice.findUnique({ where: { practiceId: invitee.practice.id } });
-      expect(nowAttached?.organizationId).toBe(orgId);
-
-      const usedToken = await prisma.organizationInviteToken.findUnique({ where: { id: tokenRow!.id } });
-      expect(usedToken?.usedAt).not.toBeNull();
-
-      // Double-accept is rejected.
-      const secondAccept = await request(app)
-        .post(`/api/organizations/invite/${tokenRow!.token}/accept`)
-        .set('Cookie', inviteeCookie);
-      expect(secondAccept.status).toBe(410);
-    } finally {
-      await cleanupOrg(orgId);
-      await cleanupPracticeWithUsers(prisma, inviter.practice.id);
-      await cleanupPracticeWithUsers(prisma, invitee.practice.id);
-    }
-  });
-
-  it('rejects invite-practice from someone who is not an admin of that group', async () => {
-    const orgOwner = await createPracticeWithOwnerForTests(prisma);
-    const outsider = await createPracticeWithOwnerForTests(prisma);
-    let orgId: string | undefined;
-    try {
-      const ownerCookie = await login(orgOwner.email, orgOwner.password);
-      const createRes = await request(app).post('/api/organizations').set('Cookie', ownerCookie).send({ name: 'Owned Group' });
-      orgId = createRes.body.organization?.id;
-
-      const outsiderCookie = await login(outsider.email, outsider.password);
+      // adminA (org_admin of A) tries to target adminB's practice — which belongs to org B, not A.
       const res = await request(app)
-        .post(`/api/organizations/${orgId}/invite-practice`)
-        .set('Cookie', outsiderCookie)
-        .send({ email: 'someone@fixture.test' });
-      expect(res.status).toBe(403);
-    } finally {
-      await cleanupOrg(orgId);
-      await cleanupPracticeWithUsers(prisma, orgOwner.practice.id);
-      await cleanupPracticeWithUsers(prisma, outsider.practice.id);
-    }
-  });
+        .post('/api/auth/invite')
+        .set('Cookie', cookie)
+        .send({ email: `attacker-target-${Date.now()}@fixture.test`, role: 'group_admin', practiceId: adminB.practice.id });
 
-  it('rejects invite-practice from a GENUINE group_admin of a DIFFERENT org — the real IDOR case', async () => {
-    // The "not an admin" test above uses an outsider who never holds
-    // group_admin role at all, so it only proves authorizeRole('group_admin')
-    // rejects them — it never reaches (and never proved correct) the
-    // isOrgAdminMember() membership check inside the handler. This is the
-    // adversarial case that actually exercises it: the attacker legitimately
-    // owns their OWN org (so they genuinely hold group_admin role) and tries
-    // to invite a practice into a DIFFERENT org they don't belong to.
-    const orgAOwner = await createPracticeWithOwnerForTests(prisma);
-    const orgBOwner = await createPracticeWithOwnerForTests(prisma);
-    let orgAId: string | undefined;
-    let orgBId: string | undefined;
-    try {
-      const ownerACookie = await login(orgAOwner.email, orgAOwner.password);
-      const createA = await request(app).post('/api/organizations').set('Cookie', ownerACookie).send({ name: 'Org A' });
-      orgAId = createA.body.organization?.id;
-
-      const ownerBCookie = await login(orgBOwner.email, orgBOwner.password);
-      const createB = await request(app).post('/api/organizations').set('Cookie', ownerBCookie).send({ name: 'Org B' });
-      orgBId = createB.body.organization?.id;
-      // The fresh session cookie reissued on create carries the real group_admin role.
-      const attackerCookie = cookieHeaderFrom(createB);
-
-      const res = await request(app)
-        .post(`/api/organizations/${orgAId}/invite-practice`)
-        .set('Cookie', attackerCookie)
-        .send({ email: 'someone@fixture.test' });
       expect(res.status).toBe(403);
 
-      // No invite token was created for org A as a side effect of the rejected attempt.
-      const leaked = await prisma.organizationInviteToken.findFirst({ where: { organizationId: orgAId } });
+      // No invite token was created for org B as a side effect of the attempt.
+      const leaked = await prisma.inviteToken.findFirst({ where: { organizationId: orgB.id } });
       expect(leaked).toBeNull();
     } finally {
-      await cleanupOrg(orgAId);
-      await cleanupOrg(orgBId);
-      await cleanupPracticeWithUsers(prisma, orgAOwner.practice.id);
-      await cleanupPracticeWithUsers(prisma, orgBOwner.practice.id);
+      await cleanupOrgFixture(orgA.id, [adminA.practice.id]);
+      await cleanupOrgFixture(orgB.id, [adminB.practice.id]);
     }
   });
 
-  it('rejects an expired invite and an already-in-a-group practice trying to accept', async () => {
-    const orgOwner = await createPracticeWithOwnerForTests(prisma);
-    const alreadyGrouped = await createPracticeWithOwnerForTests(prisma);
-    let orgId: string | undefined;
-    let otherOrgId: string | undefined;
+  it('rejects a co-admin invite from someone who is not an org_admin', async () => {
+    const { organization: orgA, admin: adminA } = await createOrgFixture('Fixture Org A');
+    // A plain practice_owner, not an org_admin of anything.
+    const outsider = await createPracticeWithOwnerForTests(prisma);
     try {
-      let ownerCookie = await login(orgOwner.email, orgOwner.password);
-      const createRes = await request(app).post('/api/organizations').set('Cookie', ownerCookie).send({ name: 'Group A' });
-      orgId = createRes.body.organization?.id;
-      ownerCookie = cookieHeaderFrom(createRes);
+      const cookie = await login(outsider.email, FIXTURE_PRACTICE_PASSWORD);
+      const res = await request(app)
+        .post('/api/auth/invite')
+        .set('Cookie', cookie)
+        .send({ email: `someone-${Date.now()}@fixture.test`, role: 'group_admin' });
 
-      // Expired token, never accepted.
-      const expiredToken = randomUUID();
-      await prisma.organizationInviteToken.create({
-        data: {
-          organizationId: orgId!,
-          inviteeEmail: 'nobody@fixture.test',
-          token: expiredToken,
-          expiresAt: new Date(Date.now() - 60_000),
-          createdBy: 'system',
-        },
-      });
-      const expiredPreview = await request(app).get(`/api/organizations/invite/${expiredToken}`);
-      expect(expiredPreview.status).toBe(410);
-
-      // alreadyGrouped's own group — trying to accept an invite into Group A should 409.
-      const otherCookie = await login(alreadyGrouped.email, alreadyGrouped.password);
-      const otherOrgRes = await request(app).post('/api/organizations').set('Cookie', otherCookie).send({ name: 'Group B' });
-      otherOrgId = otherOrgRes.body.organization?.id;
-
-      const inviteRes = await request(app)
-        .post(`/api/organizations/${orgId}/invite-practice`)
-        .set('Cookie', ownerCookie)
-        .send({ email: alreadyGrouped.email });
-      const tokenRow = await prisma.organizationInviteToken.findFirst({
-        where: { organizationId: orgId, inviteeEmail: alreadyGrouped.email, usedAt: null },
-        orderBy: { createdAt: 'desc' },
-      });
-      expect(inviteRes.status).toBe(200);
-
-      const acceptRes = await request(app)
-        .post(`/api/organizations/invite/${tokenRow!.token}/accept`)
-        .set('Cookie', otherCookie);
-      expect(acceptRes.status).toBe(409);
+      expect(res.status).toBe(403);
     } finally {
-      await cleanupOrg(orgId);
-      await cleanupOrg(otherOrgId);
-      await cleanupPracticeWithUsers(prisma, orgOwner.practice.id);
-      await cleanupPracticeWithUsers(prisma, alreadyGrouped.practice.id);
+      await cleanupOrgFixture(orgA.id, [adminA.practice.id]);
+      await cleanupPracticeWithUsers(prisma, outsider.practice.id);
     }
   });
 });

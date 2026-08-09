@@ -16,6 +16,7 @@ import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
+import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -198,7 +199,15 @@ export function tpaSupportsTransaction23(cdanetCarrierId: string): boolean {
 /**
  * Check whether calls to a carrier are currently blocked for a practice.
  *
- * Returns `{ allowed: false }` if any active (resumed_at IS NULL) block exists.
+ * Returns `{ allowed: false }` if any active (resumed_at IS NULL) block exists
+ * — either on this practice directly, or on a sibling practice under the same
+ * Organization (DSO / multi-location group). CarrierBlockEvent is keyed only
+ * on (practiceId, carrierId), so without the sibling check, one location
+ * tripping automation detection would leave every other location in the same
+ * group blind and still dialing the same carrier on the same voice model —
+ * exactly the correlated risk a multi-location customer introduces that a
+ * single-practice pilot never surfaces.
+ *
  * Must be checked before every Vapi call dispatch — no exceptions.
  */
 export async function checkCarrierBlock(
@@ -221,6 +230,85 @@ export async function checkCarrierBlock(
       code: 'CARRIER_BLOCK',
       reason: `CARRIER_BLOCK active for ${carrierId} since ${activeBlock.blockedAt.toISOString()}. ` +
               `Resume via POST /api/carriers/${carrierId}/unblock after investigation.`,
+    };
+  }
+
+  // This practice's own organization membership is readable under its own
+  // RLS scope (it is that practice's own row) — no bypass needed here.
+  const orgMemberships = await prisma.organizationPractice.findMany({
+    where: { practiceId },
+    select: { organizationId: true },
+  });
+
+  if (orgMemberships.length > 0) {
+    const organizationIds = orgMemberships.map((m) => m.organizationId);
+    // A sibling practice's CarrierBlockEvent row belongs to a DIFFERENT
+    // practiceId — reading it while scoped to this practice's own RLS
+    // context would return zero rows under enforced RLS, not "no block
+    // found" but a wrongly-scoped negative. Bypass only this specific
+    // cross-practice read; every other query in this function stays scoped.
+    const { runWithRlsBypass } = await import('../server/db/rlsContext.js');
+    const siblingBlock = await runWithRlsBypass(async () => {
+      const siblingMemberships = await prisma.organizationPractice.findMany({
+        where: { organizationId: { in: organizationIds }, practiceId: { not: practiceId } },
+        select: { practiceId: true },
+      });
+      const siblingPracticeIds = [...new Set(siblingMemberships.map((m) => m.practiceId))];
+      if (siblingPracticeIds.length === 0) return null;
+
+      return prisma.carrierBlockEvent.findFirst({
+        where: {
+          carrierId,
+          resumedAt: null,
+          practiceId: { in: siblingPracticeIds },
+        },
+        orderBy: { blockedAt: 'desc' },
+      });
+    });
+
+    if (siblingBlock) {
+      return {
+        allowed: false,
+        code: 'CARRIER_BLOCK',
+        reason:
+          `Another location in your organization tripped CARRIER_BLOCK for ${carrierId} ` +
+          `on ${siblingBlock.blockedAt.toISOString()} — pausing this location's ${carrierId} ` +
+          'calls as an organization-wide precaution until an authorized staff member reviews it.',
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Fleet-wide concurrency ceiling per carrier. Several practices dialing the
+ * same carrier at once reads as scraping/DDoS to carrier IVR security, not
+ * organic volume, even when each individual practice is well within its own
+ * limits — this is exactly the failure mode a multi-location group (several
+ * practices sharing the same dominant carriers) introduces.
+ *
+ * The active-call snapshot must be gathered fleet-wide, outside any single
+ * practice's RLS scope (see runWithRlsBypass in queueEngine.ts) — a query run
+ * inside a practice-scoped RLS context would silently narrow to that one
+ * practice's calls, defeating the point of a fleet-wide ceiling. Callers that
+ * cannot supply a snapshot (e.g. a staff-initiated single-call trigger) skip
+ * this guard rather than risk a wrongly-scoped count.
+ */
+export function checkCarrierConcurrency(
+  carrierId: CarrierId,
+  carrierActiveCounts: Map<CarrierId, number> | undefined,
+): DispatchGuard {
+  if (!carrierActiveCounts) return { allowed: true };
+
+  const limit = CARRIER_CONCURRENCY_LIMITS[carrierId] ?? DEFAULT_CARRIER_CONCURRENCY_LIMIT;
+  const active = carrierActiveCounts.get(carrierId) ?? 0;
+
+  if (active >= limit) {
+    return {
+      allowed: false,
+      code: 'CARRIER_CONCURRENCY_LIMIT',
+      reason: `${active} calls already active to ${carrierId} fleet-wide (limit ${limit}). Waiting for a slot to free up.`,
     };
   }
 
@@ -296,13 +384,14 @@ export async function checkCarrierAuthorizationGate(
 /**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
- *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject, > 90 → escalate)
- *   5. TELUS-specific minimum days (when applicable)
- *   6. Max attempts (>= 3 → reject)
- *   7. Subscription monthly claim limit
- *   8. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   2. Fleet-wide per-carrier concurrency ceiling (when a snapshot is supplied)
+ *   3. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
+ *   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   5. Days outstanding (< 30 → reject, > 90 → escalate)
+ *   6. TELUS-specific minimum days (when applicable)
+ *   7. Max attempts (>= 3 → reject)
+ *   8. Subscription monthly claim limit
+ *   9. Call window (Mon–Fri 08:00–17:00 Eastern)
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -315,15 +404,21 @@ export async function validateDispatch(
     scheduledFor?: Date;
     /** Required: workflow rules (e.g. no carrier dial for `APPROVED_PENDING_PAYMENT`). */
     claimStatus: ClaimStatus;
+    /** Fleet-wide active-call-per-carrier snapshot, gathered outside RLS scope. Omit to skip the concurrency guard. */
+    carrierActiveCounts?: Map<CarrierId, number>;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
   if (!blockGuard.allowed) return blockGuard;
 
-  // 2. Carrier approved but payment not received — follow up in practice AR, not another carrier dial
+  // 2. Fleet-wide per-carrier concurrency ceiling
+  const concurrencyGuard = checkCarrierConcurrency(carrierId, carrierActiveCounts);
+  if (!concurrencyGuard.allowed) return concurrencyGuard;
+
+  // 3. Carrier approved but payment not received — follow up in practice AR, not another carrier dial
   if (claimStatus === 'APPROVED_PENDING_PAYMENT') {
     return {
       allowed: false,
@@ -344,28 +439,28 @@ export async function validateDispatch(
     return authGate;
   }
 
-  // 4. Claims under 30 days old — do not queue
+  // 5. Claims under 30 days old — do not queue
   const config = CARRIER_CONFIGS[carrierId];
   if (daysOutstanding < 30) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 5. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
+  // 6. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
   if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
   }
 
-  // 6. Claims over 90 days — escalate to human, skip AI
+  // 7. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 7. Max 3 attempts
+  // 8. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 9. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);
@@ -460,6 +555,7 @@ export const carrierAdapter = {
   CARRIER_CONFIGS,
   TELUS_TPA_CONFIGS,
   checkCarrierBlock,
+  checkCarrierConcurrency,
   checkCarrierAuthorizationGate,
   validateDispatch,
   getTelusTpa,

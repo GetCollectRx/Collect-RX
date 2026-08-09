@@ -110,13 +110,13 @@ interface FleetPractice {
   claimId: string;
 }
 
-async function seedDispatchablePractice(): Promise<FleetPractice> {
+async function seedDispatchablePractice(carrierId: CarrierId): Promise<FleetPractice> {
   const practice = await createPracticeForTests(prisma);
 
   const settings = defaultPracticeSettings();
   settings.voiceAgentEnabled = true;
   settings.carrierConfigs = settings.carrierConfigs.map((c) =>
-    c.carrierId === 'sun_life'
+    c.carrierId === carrierId
       ? { ...c, authorizationSubmitted: true, providerNumber: `PN-LOAD-${practice.id.slice(0, 8)}` }
       : c,
   );
@@ -136,7 +136,7 @@ async function seedDispatchablePractice(): Promise<FleetPractice> {
   const claim = await prisma.insuranceClaim.create({
     data: {
       practiceId: practice.id,
-      carrierId: 'sun_life' as CarrierId,
+      carrierId,
       claimNumber: `LOAD-${practice.id.slice(0, 8)}`,
       patientToken,
       billedAmount: 250,
@@ -181,7 +181,16 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     // for up to 90s after any prior run. Reproduced directly: back-to-back
     // invocations of this file failed every time until this reset was added.
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
-    fleet = await Promise.all(Array.from({ length: FLEET_SIZE }, () => seedDispatchablePractice()));
+    // Spread across all 6 carriers (4 max per carrier well under
+    // CARRIER_CONCURRENCY_LIMITS' fleet-wide cap of 5/carrier — see
+    // src/billing/tiers.ts) so that real, intentional guard doesn't throttle
+    // this test's own fleet before it can prove the pipeline dispatches all
+    // 20; per-carrier scarcity has its own dedicated coverage in
+    // tests/queueEngineFairnessAndLease.test.ts.
+    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
+    fleet = await Promise.all(
+      Array.from({ length: FLEET_SIZE }, (_, i) => seedDispatchablePractice(CARRIERS[i % CARRIERS.length])),
+    );
   }, 60_000);
 
   afterAll(async () => {
@@ -192,9 +201,31 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
     initiateCallMock.mockClear();
 
+    // validateDispatch's call-window guard only allows Mon–Fri 8am–5pm Eastern —
+    // correct production behavior, but it means this test depends on real
+    // wall-clock time unless pinned. Freeze to a known weekday business hour
+    // (2026-08-03 is a Monday) so this test's result doesn't depend on when it
+    // runs — shouldAdvanceTime keeps the clock ticking forward in real time from
+    // that point, so the elapsed-time measurement below stays meaningful.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-08-03T14:00:00.000Z')); // 10:00 EDT, Monday
+
+    // validateDispatch prefers each queue entry's own `scheduledFor` over the
+    // system clock — those rows were stamped with real (pre-freeze) time in
+    // beforeAll, so they need bumping to the frozen business hour too.
+    await prisma.callQueue.updateMany({
+      where: { practiceId: { in: fleet.map((p) => p.id) } },
+      data: { scheduledFor: new Date() },
+    });
+
     const start = Date.now();
-    await runDeskQueueTick(prisma);
-    const elapsedMs = Date.now() - start;
+    let elapsedMs: number;
+    try {
+      await runDeskQueueTick(prisma);
+      elapsedMs = Date.now() - start; // measured under the still-advancing fake clock
+    } finally {
+      vi.useRealTimers();
+    }
 
     // Every one of the 20 real, independently-tokenized, fully-authorized
     // claims made it all the way through: RLS-scoped candidate fetch, PHI

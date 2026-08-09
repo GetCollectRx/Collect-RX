@@ -1,8 +1,8 @@
 /**
  * CollectRx Billing — Tier Definitions
  *
- * Real cost per minute delivered: ~$0.115
- * (Vapi $0.05 + GPT-5 Mini $0.02 + Deepgram Nova 3 $0.01 + Tara TTS $0.02 + Twilio $0.015 + hosting $0.01)
+ * Real cost per minute delivered: ~$0.135 (see UNIT_ECONOMICS below for the
+ * sourced breakdown — Claude Haiku/Sonnet + 11Labs voice, not GPT-5 Mini/Tara).
  *
  * Pricing targets ~78%+ gross margin on paid tiers at realistic usage.
  * Overage priced at $0.25/min (Core/Growth) and $0.20/min (Scale) — profitable above cost.
@@ -11,11 +11,11 @@
  * values anywhere else — read from TIERS / WARNINGS / CALL_TIMEOUTS / OVERAGE.
  */
 
-import type { BillingTier } from '@prisma/client';
+import type { BillingTier, CarrierId } from '@prisma/client';
 
-// This module is imported by client bundles (LandingPage, ProductOnePager, SubscriptionUsageCard)
-// as well as the server. `process` only exists under Node — Vite's production build shims
-// `process.env` to `{}` for the browser, but the dev server does not, so guard it here too.
+// This module is imported by client bundles (LandingPage, ProductOnePager, SubscriptionUsageCard,
+// pricingContent) as well as server code. `process` only exists under Node — Vite's production
+// build shims `process.env` to `{}` for the browser, but the dev server does not, so guard it here.
 const env: Record<string, string | undefined> =
   typeof process !== 'undefined' && process.env ? process.env : {};
 
@@ -45,7 +45,7 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     dailyCapMinutes: 50,
     hardStopAtLimit: true,
     trialDays: 30,
-    infraCostPerMonth: 58, // 500 min x $0.115
+    infraCostPerMonth: 68, // 500 min x $0.135
     grossMargin: null, // Acquisition cost — not a revenue tier
     description: 'Full access, 30 days, no card required',
   },
@@ -54,7 +54,7 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     name: 'Core',
     price: 799,
     includedMinutes: 1200,
-    overageRatePerMinute: 0.25, // Cost $0.115 — $0.135 margin per overage min
+    overageRatePerMinute: 0.25, // Cost $0.135 — $0.115 margin per overage min
     dailyCapMinutes: 100,
     hardStopAtLimit: false,
     // Legacy deployments configured STARTER/standard price envs before the
@@ -65,9 +65,9 @@ export const TIERS: Record<BillingTier, TierConfig> = {
       env.STRIPE_PRACTICE_STARTER_PRICE_ID ||
       env.STRIPE_PRACTICE_SUBSCRIPTION_PRICE_ID,
     stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_CORE,
-    infraCostPerMonth: 138, // 1,200 min x $0.115
+    infraCostPerMonth: 162, // 1,200 min x $0.135
     stripeFeePerMonth: 29, // 0.7% Stripe Billing + 2.9% card
-    grossMargin: '79%',
+    grossMargin: '80%',
     targetCustomer: 'Solo dentist, 1 location',
     description: '1,200 minutes/month. Best for practices with 20–40 outstanding claims.',
   },
@@ -76,15 +76,15 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     name: 'Growth',
     price: 1999,
     includedMinutes: 2800,
-    overageRatePerMinute: 0.25, // Cost $0.115 — $0.135 margin per overage min
+    overageRatePerMinute: 0.25, // Cost $0.135 — $0.115 margin per overage min
     dailyCapMinutes: 300,
     hardStopAtLimit: false,
     stripePriceId:
       env.STRIPE_PRICE_GROWTH || env.STRIPE_PRACTICE_PROFESSIONAL_PRICE_ID,
     stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_GROWTH,
-    infraCostPerMonth: 322, // 2,800 min x $0.115
+    infraCostPerMonth: 378, // 2,800 min x $0.135
     stripeFeePerMonth: 72,
-    grossMargin: '80%',
+    grossMargin: '81%',
     targetCustomer: '2–3 dentist practice',
     description: '2,800 minutes/month. Best for practices with 50–100 outstanding claims.',
   },
@@ -99,7 +99,7 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     stripePriceId:
       env.STRIPE_PRICE_SCALE || env.STRIPE_PRACTICE_ENTERPRISE_PRICE_ID,
     stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_SCALE,
-    infraCostPerMonth: 460, // 4,000 min x $0.115
+    infraCostPerMonth: 540, // 4,000 min x $0.135
     stripeFeePerMonth: 90,
     grossMargin: '78%',
     targetCustomer: 'Group practice, DSO',
@@ -144,6 +144,23 @@ export const CARRIER_TIMEOUTS: Record<string, number> = {
   default: 30,
 };
 
+// Fleet-wide ceiling on simultaneous calls to a single carrier, across every
+// practice. Without this, several practices' queues can all dial the same
+// carrier at once — a burst pattern carrier IVR security treats as scraping
+// or a DDoS attempt, not organic call volume. Layered on top of the global
+// vapiSlotBudget() in queueEngine.ts, which caps total concurrency but not
+// per-carrier concentration.
+export const CARRIER_CONCURRENCY_LIMITS: Record<CarrierId, number> = {
+  sun_life: 5,
+  canada_life: 5,
+  manulife: 5,
+  green_shield: 5,
+  rbc: 5,
+  telus_adjudicare: 5,
+};
+
+export const DEFAULT_CARRIER_CONCURRENCY_LIMIT = 5;
+
 // Per-practice COGS circuit breaker. Delivery cost is metered minutes ×
 // UNIT_ECONOMICS.costPerMinute; crossing these fractions of the subscription
 // price throttles, then pauses, so losing money on a practice is structurally
@@ -161,17 +178,30 @@ export const OVERAGE = {
   confirmationExpiryHours: 24, // Auto-decline overage if not confirmed in 24h
 };
 
-// Margin summary (for founder reference — not used in application logic).
+// Margin summary — feeds COGS_BREAKER (usagePeriodService.ts evaluateCogsBreaker),
+// so this is a conservative ceiling for margin protection, not a per-call bill.
+//
+// Sourced from the Vapi dashboard's per-assistant cost breakdown (captured
+// 2026-07-23), replacing a stale "GPT-5 Mini + Tara" breakdown that actually
+// described the Sarah test-simulator persona, not the production squad. Real
+// squad: Deepgram Nova 2/3 (STT) throughout; Claude Haiku 4.5 on Hold_Sentinel
+// (~$0.09/min all Vapi-side, incl. Vapi's own platform fee); Claude Sonnet 4.5
+// + 11Labs voice on IVR_Navigator/Claims_Agent/Escalation_Closer/
+// Resolution_Closer (~$0.11-0.13/min Vapi-side — Claims_Agent highest, since
+// it carries most of a call's talk time). Twilio telephony and CollectRx
+// hosting are separate line items Vapi's own dashboard doesn't include.
+//
+// Nothing in CollectRx today tracks which agent handled which portion of a
+// given call's duration, so this stays a blended estimate — not a per-call
+// reconciliation — until that instrumentation exists.
 export const UNIT_ECONOMICS = {
-  costPerMinute: 0.115,
+  costPerMinute: 0.135,
   breakdown: {
-    vapi: 0.05,
-    gpt5Mini: 0.02,
-    deepgramNova3: 0.01,
-    taraVoice: 0.02,
+    vapiHoldSentinelHaiku: 0.09, // interim hold-wait agent (Claude Haiku 4.5)
+    vapiTalkingSonnet: 0.13,     // Claims_Agent / IVR_Navigator / closers (Claude Sonnet 4.5 + 11Labs)
     twilio: 0.015,
     hosting: 0.01,
   },
-  overageMinMargin: 0.085, // $0.20 overage (Scale) - $0.115 cost
-  overageMaxMargin: 0.135, // $0.25 overage (Core/Growth) - $0.115 cost
+  overageMinMargin: 0.065, // $0.20 overage (Scale) - $0.135 cost
+  overageMaxMargin: 0.115, // $0.25 overage (Core/Growth) - $0.135 cost
 };

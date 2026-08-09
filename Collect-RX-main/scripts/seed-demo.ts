@@ -15,13 +15,12 @@
  */
 
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { prisma } from '../src/lib/prisma.js';
+import { runWithRlsBypass } from '../src/server/db/rlsContext.js';
 import { syncWorkItemsForPractice } from '../src/server/services/workQueueService.js';
 import { computeWorkQueueRankScore } from '../src/lib/workQueuePriority.js';
-
-const prisma = new PrismaClient();
 
 const DEMO_PRACTICE_NAME = 'CollectRx Demo Practice';
 const DEMO_EMAIL = 'demo@collectrx-test.local';
@@ -1077,6 +1076,6 @@ async function main() {
   console.log('\n✨  Seed complete. Log in as ' + DEMO_EMAIL + ' → /work-queue or /pre-visit\n');
 }
 
-main()
+runWithRlsBypass(main)
   .catch((e) => { console.error('❌', e); process.exit(1); })
   .finally(() => prisma.$disconnect());
