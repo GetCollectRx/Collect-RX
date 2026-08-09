@@ -859,6 +859,16 @@ model CallAttempt {
   validationPassed     Boolean?     @map("validation_passed")
   /// Full validator output JSON (violations, safety_score, carrier_block_risk, etc.)
   validationResult     Json?        @map("validation_result")
+  /// True only for Rep Simulator kill-test calls (see scripts/rep-simulator/).
+  /// Never true for a real carrier dispatch — default false is the only value
+  /// production dispatch code should ever write.
+  isSynthetic          Boolean      @default(false) @map("is_synthetic")
+  /// Groups every CallAttempt produced by one Rep Simulator run so the cost
+  /// guard (testCallCostGuard.ts) can sum spend per run. Null for real calls.
+  testRunId            String?      @map("test_run_id")
+  /// Which simulated carrier-rep persona the harness dialed, e.g.
+  /// "green_shield_carrier_rep". Null for real calls.
+  repPersona           String?      @map("rep_persona")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
   guardrailAudits GuardrailAudit[]
@@ -868,6 +878,7 @@ model CallAttempt {
   @@index([vapiCallId])
   @@index([outcome])
   @@index([initiatedAt(sort: Desc)])
+  @@index([testRunId])
   @@map("call_attempts")
 }
 
