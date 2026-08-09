@@ -3,8 +3,12 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { captureFatal, initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Same as index.ts;
+// this is a separate Node process so it needs its own init.
+initSentry();
 
 import type { PrismaClient } from '@prisma/client';
 import { Worker, type ConnectionOptions } from 'bullmq';
@@ -18,8 +22,8 @@ import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
 import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisitJobs.js';
-import { dispatchPreVisitCall } from './preVisit/preVisitDispatch.js';
-import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
+import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
 import { processDailyDigestJob } from './jobs/dailyDigestJob.js';
 
@@ -124,6 +128,17 @@ async function handlePreVisitCdcpPredet(db: PrismaClient, payload: PreVisitJobPa
   }
 }
 
+async function handlePreVisitTelusTx23(db: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await runWithPracticeRls(payload.practiceId, async () =>
+    dispatchTelusTx23Check(db, payload),
+  );
+  if (result.resolved) {
+    console.log('[worker] PRE_VISIT_TELUS_TX23 resolved');
+  } else {
+    console.log('[worker] PRE_VISIT_TELUS_TX23 unresolved:', result.reason);
+  }
+}
+
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
@@ -145,8 +160,10 @@ const worker = new Worker(
         await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
         await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
+      } else if (job.name === 'PRE_VISIT_TELUS_TX23') {
+        await handlePreVisitTelusTx23(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
-        const n = await sweepUpcomingAppointments(prisma);
+        const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
         if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
       } else if (job.name === 'DAILY_DIGEST') {
         const result = await processDailyDigestJob(job);
@@ -161,6 +178,7 @@ const worker = new Worker(
 
 worker.on('failed', (job, err) => {
   console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+  void captureFatal(err);
 });
 
 console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);

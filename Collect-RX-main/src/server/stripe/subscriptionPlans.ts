@@ -17,14 +17,6 @@ export type SubscriptionUsageState = {
   limitReached: boolean;
 };
 
-export type SubscriptionCapacityGuard = {
-  allowed: boolean;
-  code?: string;
-  reason?: string;
-  usage?: SubscriptionUsageState | null;
-  plan?: SubscriptionPlanSnapshot | null;
-};
-
 type PracticeSubscriptionFields = {
   subscriptionStatus?: string | null;
   subscriptionPriceId?: string | null;
@@ -48,13 +40,17 @@ export function billingSkipPracticeIds(): Set<string> {
   );
 }
 
-export function subscriptionClaimLimitEnforceEnabled(): boolean {
-  const raw = process.env.SUBSCRIPTION_CLAIM_LIMIT_ENFORCE;
-  if (raw === undefined) return true;
-  return raw === '1' || raw.toLowerCase() === 'true';
-}
-
 const PAID_TIER_IDS: BillingTier[] = ['core', 'growth', 'scale'];
+
+/**
+ * True for any recognized plan id, regardless of whether it currently has a
+ * configured Stripe price — distinguishes "you typed a plan that doesn't
+ * exist" from "this plan exists but nobody set STRIPE_PRICE_<ID> yet",
+ * which need different error messages (see createBillingCheckoutSession).
+ */
+export function isKnownPlanId(planId: string | null | undefined): planId is BillingTier {
+  return !!planId && (PAID_TIER_IDS as string[]).includes(planId);
+}
 
 let warnedLegacyPlanConfig = false;
 
@@ -184,49 +180,5 @@ export async function getSubscriptionUsageState(
       remainingClaims,
       limitReached: plan.monthlyClaimLimit !== null && usedClaims >= plan.monthlyClaimLimit,
     },
-  };
-}
-
-export async function validateSubscriptionClaimCapacity(
-  db: PrismaClient,
-  params: { practiceId: string; claimId?: string; now?: Date },
-): Promise<SubscriptionCapacityGuard> {
-  if (!subscriptionClaimLimitEnforceEnabled()) return { allowed: true };
-  if (billingSkipPracticeIds().has(params.practiceId)) return { allowed: true };
-
-  const practice = await db.practice.findUnique({
-    where: { id: params.practiceId },
-    select: {
-      subscriptionStatus: true,
-      subscriptionPriceId: true,
-      subscriptionPlanId: true,
-      subscriptionCurrentPeriodStart: true,
-      subscriptionCurrentPeriodEnd: true,
-    },
-  });
-  const { plan, usage } = await getSubscriptionUsageState(db, params.practiceId, practice, params.now);
-  if (!plan || !usage || plan.monthlyClaimLimit === null) return { allowed: true, plan, usage };
-  if (params.claimId) {
-    const { start, end } = subscriptionUsageWindow(practice, params.now ?? new Date());
-    const alreadyAddressedThisPeriod = await db.callAttempt.findFirst({
-      where: {
-        claimId: params.claimId,
-        initiatedAt: { gte: start, lt: end },
-        claim: { practiceId: params.practiceId },
-      },
-      select: { id: true },
-    });
-    if (alreadyAddressedThisPeriod) return { allowed: true, plan, usage };
-  }
-  if (!usage.limitReached) return { allowed: true, plan, usage };
-
-  return {
-    allowed: false,
-    code: 'SUBSCRIPTION_CLAIM_LIMIT_REACHED',
-    plan,
-    usage,
-    reason:
-      `${plan.displayName} plan monthly claim limit reached ` +
-      `(${usage.usedClaims}/${plan.monthlyClaimLimit}). The next claim period starts ${usage.periodEnd.slice(0, 10)}.`,
   };
 }

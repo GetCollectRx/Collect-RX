@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
@@ -193,6 +194,88 @@ function vapiSlotBudget(): number {
   return Math.max(0, limit - Math.max(0, reserve));
 }
 
+// This process's identity for the QueueEngineLease row — diagnostic only,
+// the claim itself is decided by the atomic UPDATE below, not by comparing IDs.
+const ENGINE_INSTANCE_ID = `${process.pid}-${randomUUID()}`;
+const LEASE_ID = 'global';
+// Longer than the 60s tick interval so a live tick's lease survives to cover
+// the next scheduled fire (no gap where a second replica could sneak in),
+// but a crashed process's stale lease still clears within two ticks.
+const LEASE_TTL_MS = 90_000;
+
+/**
+ * Atomically claim the fleet-wide dispatch lease. Only one replica's tick
+ * body may run at a time — the in-process isTickRunning guard alone only
+ * protects a single Node process, not a horizontally-scaled deployment.
+ * Uses the same claim-row idiom as ProcessedVapiWebhook rather than a native
+ * Postgres advisory lock: session-level advisory locks are tied to the
+ * physical connection that acquired them, and a pooled connection can route
+ * the matching unlock call through a different one, silently failing to
+ * release — a DB row with a WHERE-guarded UPSERT has no such gotcha.
+ *
+ * The WHERE guard must also let this same instance renew its own still-live
+ * lease — LEASE_TTL_MS (90s) is deliberately longer than the 60s tick
+ * interval so a slow tick's lease survives to the next scheduled fire, but
+ * without the locked_by clause below, that same margin means this process's
+ * OWN next tick would see its own lease as still "held" and skip forever:
+ * on a single-machine deployment (the only thing running today) every tick
+ * after the first would silently never dispatch again. Caught by
+ * tests/dsoLoadCapacity.test.ts running two real consecutive ticks — every
+ * other lease test either reset the row between cases or mocked $executeRaw
+ * outright, so this never showed up until something ran the real sequence.
+ */
+export async function claimTickLease(
+  prisma: PrismaClient,
+  instanceId: string = ENGINE_INSTANCE_ID,
+): Promise<boolean> {
+  const affected = await prisma.$executeRaw`
+    INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
+    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    ON CONFLICT (id) DO UPDATE
+    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+        locked_by = ${instanceId},
+        updated_at = now()
+    WHERE queue_engine_lease.locked_until IS NULL
+       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_by = ${instanceId}
+  `;
+  return affected > 0;
+}
+
+interface PracticeServeOrder {
+  id: string;
+}
+
+/**
+ * Practices ordered so the one that's gone longest without a turn (or never
+ * had one) goes first. A practice only keeps its place in line if the loop
+ * never reached it this tick (slot budget exhausted first) — see the
+ * lastServedAt touch inside the loop below.
+ */
+export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
+  // This ordering is inherently cross-practice by design — fairness across the whole
+  // fleet requires seeing every practice's last-served time, not just one tenant's.
+  // `$queryRaw` is a raw top-level Prisma Client method, not a model operation, so it
+  // is NOT intercepted by the collectrx-rls extension (src/lib/prismaRls.ts) the way
+  // `.create()`/`.findMany()` etc. are — calling it directly leaves `app.rls_bypass`
+  // unset on whatever pooled connection it runs on. `practice_desk_state` has FORCE
+  // ROW LEVEL SECURITY, so an unset bypass silently filters every row from the LEFT
+  // JOIN, making every practice appear "never served" and collapsing this into
+  // meaningless UUID tie-break order — found via adversarial ordering tests
+  // (tests/queueEngineFairnessAndLease.test.ts) reproducing even in full isolation.
+  // Set the bypass explicitly, scoped to this one query's own transaction.
+  const [, order] = await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`,
+    prisma.$queryRaw<PracticeServeOrder[]>`
+      SELECT p.id
+      FROM "Practice" p
+      LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+      ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+    `,
+  ]);
+  return order;
+}
+
 async function deferQueueEntry(
   prisma: PrismaClient,
   queueEntryId: string,
@@ -222,6 +305,7 @@ async function settleBlockedCandidate(
     id: string;
     practiceId: string;
     claimId: string;
+    attempts: number;
     claim: {
       claimNumber: string;
       carrierId: keyof typeof CARRIER_CONFIGS;
@@ -233,7 +317,7 @@ async function settleBlockedCandidate(
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -244,29 +328,36 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      // The Escalations page (front-desk queue) reads call_escalations, not
+      // insurance_claims.status — every path that sets ESCALATED here must also
+      // write this row or the claim goes invisible to the one screen built to
+      // work it (see OUTSTANDING-FIXES-PRODUCT-READY.md P10-04).
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : guardReason ?? 'Claim aged past 90 days — escalate to human';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          attemptNumber: guardCode === 'MAX_ATTEMPTS' ? 3 : entry.attempts,
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
-        }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({
@@ -341,9 +432,18 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
+  // Fleet-wide lease: if another replica already holds it this cycle, skip —
+  // it, not this process, is running the tick body right now.
+  if (!(await runWithRlsBypass(() => claimTickLease(prisma)))) {
+    logger.warn('[deskQueueEngine] another replica holds the dispatch lease — skipping this tick', {
+      instanceId: ENGINE_INSTANCE_ID,
+    });
+    return;
+  }
+
   const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
-      prisma.practice.findMany({ select: { id: true } }),
+      orderPracticesByFairness(prisma),
       prisma.callAttempt.count({ where: { completedAt: null } }),
       // Fleet-wide per-carrier snapshot for the concurrency guard below. Must
       // be gathered here, outside any single practice's RLS scope — a query
@@ -399,6 +499,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // loop — isolate each practice's tick.
     try {
     await runWithPracticeRls(practiceId, async () => {
+    // Reaching this point spends this practice's fairness turn for the tick —
+    // it sorts to the back of orderPracticesByFairness next time, same as
+    // every other practice the loop got to (paused or not). A practice the
+    // loop never reaches (slot budget ran out first) keeps its older
+    // timestamp and moves to the front instead.
+    await prisma.practiceDeskState.upsert({
+      where: { practiceId },
+      create: { practiceId, lastServedAt: new Date() },
+      update: { lastServedAt: new Date() },
+    });
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
 
     // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────

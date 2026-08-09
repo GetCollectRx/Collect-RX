@@ -35,6 +35,7 @@ import { piiVault } from '../pii-vault.js';
 import logger from '../logger.cjs';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
+import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -945,6 +946,9 @@ router.get('/denials', async (req: Request, res: Response) => {
 router.get('/claims/:id/evidence', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+      return res.status(403).json({ success: false, error: 'Denial hub is disabled for this practice' });
+    }
     const claim = await prisma.insuranceClaim.findFirst({
       where: { id: req.params.id, practiceId, deletedAt: null },
       select: { id: true },
@@ -964,6 +968,9 @@ router.get('/claims/:id/evidence', async (req: Request, res: Response) => {
 router.post('/claims/:id/evidence/:evidenceType/attest', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+      return res.status(403).json({ success: false, error: 'Denial hub is disabled for this practice' });
+    }
     const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
     const evidenceType = req.params.evidenceType.trim().slice(0, 80);
@@ -991,6 +998,9 @@ router.post('/claims/:id/evidence/:evidenceType/attest', async (req: Request, re
 router.post('/claims/:id/submissions', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+      return res.status(403).json({ success: false, error: 'Denial hub is disabled for this practice' });
+    }
     const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
     const method = typeof req.body?.method === 'string' ? req.body.method.trim().slice(0, 80) : '';
@@ -1015,6 +1025,9 @@ router.post('/claims/:id/submissions', async (req: Request, res: Response) => {
 router.get('/claims/:id/evidence-pack', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+      return res.status(403).json({ success: false, error: 'Denial hub is disabled for this practice' });
+    }
     const claim = await prisma.insuranceClaim.findFirst({
       where: { id: req.params.id, practiceId, deletedAt: null },
       select: {

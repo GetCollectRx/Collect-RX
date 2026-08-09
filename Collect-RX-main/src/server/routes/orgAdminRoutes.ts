@@ -25,7 +25,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
   r.use(authenticate);
   r.use(authorizeRole('platform_dev'));
 
-  r.post('/organizations', authLimiter, async (req: Request, res: Response) => {
+  r.post('/', authLimiter, async (req: Request, res: Response) => {
     try {
       const parsed = createOrganizationBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
@@ -103,7 +103,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
    * specs/phase-4-enterprise-it-compliance.md (support-assisted setup, no
    * self-serve config UI).
    */
-  r.post('/organizations/:organizationId/sso-config', authLimiter, async (req: Request, res: Response) => {
+  r.post('/:organizationId/sso-config', authLimiter, async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.params;
       const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
@@ -137,7 +137,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
   });
 
   /** GET status only — never returns the decrypted cert/entryPoint over the wire. */
-  r.get('/organizations/:organizationId/sso-config', async (req: Request, res: Response) => {
+  r.get('/:organizationId/sso-config', async (req: Request, res: Response) => {
     try {
       const connection = await getOrganizationSsoConnectionByOrgId(prisma, req.params.organizationId);
       if (!connection) return res.json({ configured: false });
@@ -162,7 +162,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
    * separate endpoint (unaffected by any org's SSO enforcement), so this is
    * the actual break-glass path. Mandatory reason, always recorded.
    */
-  r.post('/organizations/:organizationId/sso/break-glass', authLimiter, async (req: Request, res: Response) => {
+  r.post('/:organizationId/sso/break-glass', authLimiter, async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.params;
       const config = await prisma.organizationSsoConfig.findUnique({ where: { organizationId } });

@@ -131,6 +131,13 @@ function queueEntry(id: string, claimOverrides: Record<string, unknown> = {}): Q
 
 function tickPrisma(candidates: QueueEntryFixture[]) {
   const prisma = {
+    // runDeskQueueTick fetches the ordered practice list via $queryRaw
+    // (orderPracticesByFairness) and claims the fleet-wide lease via
+    // $executeRaw (claimTickLease) — tests that need to control which
+    // practices are iterated, and in what order, override $queryRaw the
+    // same way they used to override practice.findMany.
+    $executeRaw: vi.fn(async () => 1),
+    $queryRaw: vi.fn(async () => [{ id: 'p1' }]),
     practice: {
       findMany: vi.fn(async () => [{ id: 'p1' }]),
       findUnique: vi.fn(async () => ({
@@ -141,7 +148,10 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         practiceAddress: null,
       })),
     },
-    practiceDeskState: { findUnique: vi.fn(async () => null) },
+    practiceDeskState: {
+      findUnique: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({})),
+    },
     callQueue: {
       count: vi.fn(async () => 0),
       findMany: vi.fn(async () => candidates),
@@ -261,6 +271,44 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
         claimId: 'claim-1',
         reason: 'Maximum automated call attempts reached',
         attemptNumber: 3,
+      }),
+    });
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  // Regression for OUTSTANDING-FIXES-PRODUCT-READY.md P10-04: this guard code
+  // shared the same switch case as MAX_ATTEMPTS but the call_escalations write
+  // was gated to MAX_ATTEMPTS only, so 90-day-aged claims were marked ESCALATED
+  // everywhere except the dedicated Escalations page, which reads that table.
+  it('escalates an over-90-days head claim, writes a call_escalations row, and dispatches the next eligible claim', async () => {
+    const aged = queueEntry('1', { daysOutstanding: 94 });
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([aged, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: 'ESCALATE_OVER_90',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+      })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({
+      where: { id: 'claim-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+        attemptNumber: 0,
       }),
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
@@ -549,7 +597,7 @@ describe('runDeskQueueTick resilience', () => {
   it('continues to the next practice when one practice tick throws', async () => {
     const eligible = queueEntry('1');
     const prisma = tickPrisma([eligible]);
-    prisma.practice.findMany.mockResolvedValue([{ id: 'p-bad' }, { id: 'p1' }]);
+    prisma.$queryRaw.mockResolvedValue([{ id: 'p-bad' }, { id: 'p1' }]);
     prisma.practiceDeskState.findUnique
       .mockRejectedValueOnce(new Error('db hiccup for p-bad'))
       .mockResolvedValueOnce(null);

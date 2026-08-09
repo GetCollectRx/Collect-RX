@@ -14,6 +14,22 @@ function appBaseUrl(): string {
   return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
 }
 
+/**
+ * Call once at process startup in production. Without SENDGRID_API_KEY,
+ * sendPasswordResetEmail() silently falls back to console-logging the reset
+ * URL instead of emailing it — safe for local dev, dangerous in production
+ * (an operator would believe reset emails are going out when they are not).
+ * Mirrors assertJwtConfigAtStartup() in ../authToken.ts.
+ */
+export function assertPasswordResetEmailConfigAtStartup(): void {
+  if (process.env.NODE_ENV === 'production' && !process.env.SENDGRID_API_KEY) {
+    throw new Error(
+      'SENDGRID_API_KEY is required in production (password reset emails would otherwise ' +
+      'silently log the reset URL to the console instead of sending it)',
+    );
+  }
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   displayName: string,

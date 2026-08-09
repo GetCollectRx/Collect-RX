@@ -92,6 +92,37 @@ describe('subscriptionPlanCatalog', () => {
   });
 });
 
+describe('createBillingCheckoutSession — error messages for the two distinct failure modes', () => {
+  it('rejects a genuinely unknown plan id with "Unknown plan"', async () => {
+    process.env.STRIPE_PRICE_CORE = 'price_core';
+    const { createBillingCheckoutSession } = await import('../src/server/stripe/billing.js');
+    await expect(
+      createBillingCheckoutSession('practice-1', {} as never, 'not-a-real-plan'),
+    ).rejects.toThrow(/^Unknown plan "not-a-real-plan"/);
+  });
+
+  it(
+    'says a real plan id has no Stripe price configured, instead of falsely claiming it is unknown',
+    async () => {
+      // Regression: with STRIPE_PRICE_CORE unset, subscriptionPlanCatalog() is
+      // empty (fail-closed, tested above), so subscriptionPlanById('core')
+      // used to return null and the old code treated that identically to a
+      // typo'd plan id — "Unknown plan \"core\" — valid plans are core,
+      // growth, scale", a self-contradicting message that sends whoever reads
+      // it looking for a spelling bug instead of a missing env var. Reproduced
+      // live on /billing in local dev, where Stripe price envs are unset by
+      // design.
+      const { createBillingCheckoutSession } = await import('../src/server/stripe/billing.js');
+      await expect(
+        createBillingCheckoutSession('practice-1', {} as never, 'core'),
+      ).rejects.toThrow(/no Stripe price configured/);
+      await expect(
+        createBillingCheckoutSession('practice-1', {} as never, 'core'),
+      ).rejects.not.toThrow(/Unknown plan/);
+    },
+  );
+});
+
 describe('maxCallDurationSeconds — 45-minute absolute ceiling', () => {
   it('caps every carrier at or below 45 minutes', async () => {
     const { maxCallDurationSeconds } = await import('../src/vapi/client.js');

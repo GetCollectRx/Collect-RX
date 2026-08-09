@@ -20,16 +20,31 @@ This system sits alongside the practice's PMS (practice management software — 
 - Node.js 18+ and npm
 - Windows, Mac, or Linux
 
-### Setup (3 minutes)
+### Setup (one command)
 
 ```bash
-# 0. From repository root: install workspaces (PostgreSQL must be running separately unless you use Docker)
-cd .. && npm install && cd Collect-RX-main
+cd .. && npm install && cd Collect-RX-main   # from repository root: install workspaces
+npm run setup                                # .env, Postgres, migrate, seed, prints login
+npm run dev
+```
 
+`npm run setup` does everything by itself: creates `.env` from `.env.example` if it's missing, brings
+up Postgres — via `docker compose up -d` if Docker is available, otherwise it checks for (and if
+needed, provisions the role/database on) a native Postgres on port 5432 — does the same for Redis,
+generates `JWT_SECRET` / `PHI_ENCRYPTION_KEY` / a seed password if they're not already set, runs
+`prisma generate` + `migrate deploy`, seeds the demo practice, and prints the login it just created.
+It's safe to re-run (e.g. after `git pull`) — it only fills in what's missing, never overwrites a
+value already in `.env`. Flags: `npm run setup -- --minimal` seeds an empty baseline practice instead
+of the rich demo data; `npm run setup -- --reset` wipes and reseeds the demo practice.
+
+<details>
+<summary>Prefer to do it by hand, or already have your own Postgres set up?</summary>
+
+```bash
 # 1. Environment — `.env` is not in git (secrets). Copy the template to create it:
 cp .env.example .env
-# Set DATABASE_URL to your PostgreSQL (e.g. Fly Postgres) and JWT_SECRET
-# Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead
+# Set DATABASE_URL to your PostgreSQL (e.g. Fly Postgres), JWT_SECRET, and SEED_PRACTICE_PASSWORD.
+# Optional: from repo root, `docker compose up -d` if you want Postgres in Docker instead.
 
 # 2. Prisma client + migrations (PostgreSQL; do not use db:push in prod — use migrate deploy)
 npm run db:generate
@@ -41,6 +56,8 @@ npm run db:seed
 # 4. Start the application (runs both backend and frontend)
 npm run dev
 ```
+
+</details>
 
 ### Desktop app (Electron)
 
@@ -71,9 +88,15 @@ Packaged builds load `https://www.collectrx.ca` by default. For local testing of
 
 Download page: `/download` in the web app. CI: [`.github/workflows/collectrx-electron-installers.yml`](../.github/workflows/collectrx-electron-installers.yml).
 
-Log in at the app URL using the **seeded practice** credentials (see `SEED_PRACTICE_PASSWORD` / `src/server/seed.ts` for dev defaults). For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
+Log in at the app URL using the **seeded practice** credentials — the login is whatever `SEED_PRACTICE_PASSWORD` was set to when you ran `db:seed` (`src/server/seed.ts` has no default; it requires the var). For a one-command path from the repo root, use `npm run dev` in the **platform** root (see [../README.md](../README.md)).
 
-**CollectRx demo practice (`npm run demo:seed`):** Creates the generic demo practice with realistic AR and pre-visit data that walks through the call-to-resolution loop — one live call, a practice gate, a recall-due claim, and a high-value aging Manulife claim. Login: `demo@collectrx-test.local` / `CollectRx2026!`. Re-run with `npm run demo:seed -- --reset` to wipe and reseed. See [docs/architecture/call-to-resolution.md](docs/architecture/call-to-resolution.md).
+**CollectRx demo practice (`npm run demo:seed`):** Creates the generic demo practice with realistic AR and pre-visit data that walks through the call-to-resolution loop — one live call, a practice gate, a recall-due claim, and a high-value aging Manulife claim. Login is `demo@collectrx-test.local` / whatever you set `SEED_PRACTICE_PASSWORD` to — there is **no default password**; the script requires it (min 8 chars) and exits without one:
+
+```bash
+SEED_PRACTICE_PASSWORD=your_own_password npm run demo:seed
+```
+
+Re-run with `npm run demo:seed -- --reset` to wipe and reseed. See [docs/architecture/call-to-resolution.md](docs/architecture/call-to-resolution.md).
 
 **Automated tests (P7):** `npm test` (Vitest: unit + API/Stripe mock integration). **When something breaks:** `npm run diagnose` prints a subsystem report (typecheck → env → DB → tests → optional live smoke). **Notify on-call:** `npm run diagnose -- --alert` with `OPS_ALERTS_ENABLED=1` (SMS/email/Slack with impact + fixes). See [../docs/operations/BREAKAGE-DIAGNOSIS.md](../docs/operations/BREAKAGE-DIAGNOSIS.md) and [../docs/operations/OPS-ALERTS.md](../docs/operations/OPS-ALERTS.md). E2E: `npm run build` then `npm start` (port 3000), set `E2E_PRACTICE_ID` from `npm run e2e:print-id` after a seed, then `npm run e2e` (Playwright). Details, k6 load example, and i18n decision: [../docs/operations/PHASE7-QA.md](../docs/operations/PHASE7-QA.md), [../docs/product/I18N-DECISION.md](../docs/product/I18N-DECISION.md).
 

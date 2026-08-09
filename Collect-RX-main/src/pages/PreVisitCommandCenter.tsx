@@ -58,7 +58,13 @@ interface Phase5Kpis {
   source: 'live' | 'insufficient_data';
 }
 
-type Tab = 'overview' | 'verifications' | 'deadlines' | 'adjudication' | 'kpis';
+export type Tab = 'overview' | 'verifications' | 'deadlines' | 'adjudication' | 'kpis';
+
+export const VALID_TABS: readonly Tab[] = ['overview', 'verifications', 'deadlines', 'adjudication', 'kpis'];
+
+export function isValidTab(value: string | null): value is Tab {
+  return value !== null && (VALID_TABS as readonly string[]).includes(value);
+}
 
 function statusColor(status: string): string {
   if (status === 'GREEN') return '#16a34a';
@@ -114,7 +120,8 @@ const KPI_LABELS: Array<{ key: keyof Phase5Kpis; label: string; unit: string }> 
 export default function PreVisitCommandCenter() {
   const { practiceId } = usePractice();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get('tab') as Tab) || 'overview';
+  const rawTab = searchParams.get('tab');
+  const tab = isValidTab(rawTab) ? rawTab : 'overview';
   const [deadlines, setDeadlines] = useState<CdcpCase[]>([]);
   const [verifications, setVerifications] = useState<VerificationRow[]>([]);
   const [graph, setGraph] = useState<AdjudicationGraph | null>(null);

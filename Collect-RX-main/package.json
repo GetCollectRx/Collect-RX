@@ -1,6 +1,6 @@
 {
   "name": "dental-ar-system",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "CollectRx — dental practice A/R execution (canonical app)",
   "author": "CollectRx",
   "repository": {
@@ -14,6 +14,7 @@
   "main": "electron-shell/main.js",
   "scripts": {
     "postinstall": "node scripts/ensure-electron-symlink.cjs",
+    "setup": "node scripts/setup.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "dev:backend": "tsx watch src/server/index.ts",
@@ -81,7 +82,9 @@
     "abeldent:discover": "node scripts/discover-schema.cjs",
     "abeldent:validate-queries": "node scripts/sync-query-builder.cjs --discovery schema-discovery.json --map schema-map.json --validate",
     "abeldent:emit-queries": "node scripts/sync-query-builder.cjs --map schema-map.json --emit-queries queries.generated.json",
-    "ivr-research:call": "node scripts/ivr-research/research-call.cjs"
+    "ivr-research:call": "node scripts/ivr-research/research-call.cjs",
+    "vapi:squad-check": "tsx scripts/sync-vapi-squad.ts",
+    "vapi:squad-push": "tsx scripts/sync-vapi-squad.ts --push"
   },
   "dependencies": {
     "@aws-sdk/client-ssm": "^3.1035.0",
@@ -99,6 +102,7 @@
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.48.0",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
@@ -119,7 +123,7 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.18.1",
     "stripe": "^21.0.1",
-    "tsx": "^4.7.0",
+    "tsx": "^4.23.1",
     "twilio": "^5.13.1",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0",
@@ -136,6 +140,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
@@ -166,6 +171,9 @@
     "vitest": "^3.0.0",
     "wait-on": "^7.2.0",
     "xml-crypto": "^6.1.2"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0"
   },
   "build": {
     "appId": "com.collectrx.app",

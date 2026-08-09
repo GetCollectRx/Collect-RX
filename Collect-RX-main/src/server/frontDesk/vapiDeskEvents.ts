@@ -257,8 +257,8 @@ async function processCallEndedDesk(
     const subjectId = attemptAfter?.id ?? existing?.id ?? vapiCallId;
     if (payload.transcript) {
       // Check the opening utterance (first ~300 chars ≈ 20 seconds of speech).
-      // Match the actual disclosure message phrases from client.ts
-      // disclosure_message — use multi-phrase match to avoid false positives
+      // Match the actual disclosure phrases from Claims_Agent.firstMessage in
+      // vapi-squad-config.json — use multi-phrase match to avoid false positives
       // (e.g. carrier saying "this call appears to be automated" should NOT verify).
       // Require 'automated calling' or 'automated calling system' — the canonical phrase.
       const opening = payload.transcript.slice(0, 300).toLowerCase();

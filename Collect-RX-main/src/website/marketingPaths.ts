@@ -69,10 +69,7 @@ export const MARKETING_PAGE_TITLES: Record<MarketingPageId, string> = {
 /** Nav tabs shown in the marketing header (excludes demo — separate product route). */
 export const MARKETING_NAV_TABS: { id: MarketingPageId; label: string; path: string }[] = [
   { id: 'how-it-works', label: 'How it Works', path: MARKETING_PATHS.howItWorks },
-  { id: 'roi', label: 'ROI Calculator', path: MARKETING_PATHS.roi },
-  { id: 'pricing', label: 'Pricing', path: MARKETING_PATHS.pricing },
   { id: 'features', label: 'Features', path: MARKETING_PATHS.features },
+  { id: 'pricing', label: 'Pricing', path: MARKETING_PATHS.pricing },
   { id: 'carriers', label: 'Carriers', path: MARKETING_PATHS.carriers },
-  { id: 'compliance', label: 'Compliance', path: MARKETING_PATHS.compliance },
-  { id: 'about', label: 'About', path: MARKETING_PATHS.about },
 ]

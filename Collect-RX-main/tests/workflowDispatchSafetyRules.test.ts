@@ -7,7 +7,10 @@
  * are deterministic regardless of when/where they run. 2026-04-14 is a Tuesday and
  * 2026-04-18 is a Saturday (verified against America/New_York via Intl.DateTimeFormat).
  *
- * DB-dependent — skipped with a warning if DATABASE_URL is unreachable.
+ * DB-dependent — this suite gates the most safety-critical rules in the codebase (CARRIER_BLOCK,
+ * claim-age gating, max attempts, call-window enforcement), so it must NEVER silently no-op. If
+ * DATABASE_URL is unreachable, this file throws instead of skipping — see the top-level `await`
+ * below — so CI fails loud rather than reporting a false "0 failures" pass.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CarrierId } from '@prisma/client';
@@ -17,15 +20,14 @@ import { validateDispatch } from '../src/carriers/adapter.js';
 import { applyCarrierBlock, clearCarrierBlock } from '../src/server/frontDesk/carrierBlockService.js';
 import { defaultPracticeSettings, updatePracticeSettings } from '../src/server/services/practiceSettingsService.js';
 
-let dbReady = false;
 try {
   await prisma.$connect();
   await prisma.$queryRaw`SELECT 1`;
-  dbReady = true;
 } catch (e) {
-  console.warn(
-    '[workflowDispatchSafetyRules] DATABASE_URL unreachable — skipping:',
-    (e as Error).message,
+  throw new Error(
+    'workflowDispatchSafetyRules requires a live DATABASE_URL — this safety-critical suite ' +
+      '(CARRIER_BLOCK, claim-age gating, max-attempts, call-window enforcement) must not ' +
+      `silently skip. Original error: ${(e as Error).message}`,
   );
 }
 
@@ -36,7 +38,7 @@ const SATURDAY_10AM_ET = new Date('2026-04-18T14:00:00Z');
 const TUESDAY_5AM_ET = new Date('2026-04-14T09:00:00Z');
 const TUESDAY_7PM_ET = new Date('2026-04-14T23:00:00Z');
 
-describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch()', () => {
+describe('Safety-critical dispatch gating — validateDispatch()', () => {
   let practiceId: string;
   let sunLifeClaimId: string;
   let canadaLifeClaimId: string;

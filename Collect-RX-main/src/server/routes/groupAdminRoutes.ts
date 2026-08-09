@@ -79,10 +79,21 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
             totalClaims,
             resolvedClaims,
             activeUsers,
+            openOutstanding,
           ] = await runWithPracticeRls(p.id, () => Promise.all([
             prisma.insuranceClaim.count({ where: { practiceId: p.id } }),
             prisma.insuranceClaim.count({ where: { practiceId: p.id, status: { in: ['RESOLVED', 'APPROVED_PENDING_PAYMENT'] } } }),
             prisma.user.count({ where: { practiceId: p.id, isActive: true } }),
+            // Insurance AR is the current product (see CLAUDE.md) — only
+            // patient/client payment collection was retired. This was
+            // hardcoded to 0 under a comment claiming otherwise, so the
+            // group_admin role's own home route (useRoleAccess.ts) showed
+            // "$0 Outstanding AR" across every location regardless of
+            // actual claim balances.
+            prisma.insuranceClaim.aggregate({
+              where: { practiceId: p.id, status: { notIn: ['RESOLVED'] } },
+              _sum: { outstandingAmount: true },
+            }),
           ]));
 
           return {
@@ -93,7 +104,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
             totalClaims,
             resolvedClaims,
             resolutionRate: totalClaims > 0 ? Math.round((resolvedClaims / totalClaims) * 100) : 0,
-            outstandingAR: 0, // Patient AR removed — CollectRx is insurance-only
+            outstandingAR: Number(openOutstanding._sum.outstandingAmount ?? 0),
             activeUsers,
           };
         }),
