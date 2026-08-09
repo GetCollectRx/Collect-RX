@@ -7,6 +7,13 @@ vi.mock('../src/carriers/adapter.js', () => ({
 vi.mock('../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: (fn: () => Promise<unknown>) => fn(),
 }));
+vi.mock('../src/server/frontDesk/queueEngine.js', () => ({
+  getDeskQueueTickHealth: vi.fn(() => ({
+    lastSuccessfulTickAt: null,
+    consecutiveTickFailures: 0,
+    lastTickFailureAt: null,
+  })),
+}));
 
 import {
   getQueueHealth,
@@ -23,6 +30,9 @@ function snapshot(overrides: Partial<QueueHealthSnapshot>): QueueHealthSnapshot 
     openCallAttempts: 0,
     oldestOpenAttemptAgeMinutes: null,
     withinCallWindow: true,
+    lastSuccessfulTickAt: null,
+    consecutiveTickFailures: 0,
+    lastTickFailureAt: null,
     ...overrides,
   };
 }
@@ -93,6 +103,8 @@ describe('getQueueHealth', () => {
     expect(health.openCallAttempts).toBe(1);
     expect(health.oldestOpenAttemptAgeMinutes).toBeGreaterThanOrEqual(9);
     expect(health.withinCallWindow).toBe(true);
+    expect(health.lastSuccessfulTickAt).toBeNull();
+    expect(health.consecutiveTickFailures).toBe(0);
   });
 
   it('returns null ages on an empty queue', async () => {

@@ -30,6 +30,7 @@ import {
 } from '../agents/eventAgents.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
+import { logger } from '../observability/logger.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -264,10 +265,10 @@ async function fireCarrierBlockProtocol(
   practiceId: string,
   carrierId: string,
 ): Promise<void> {
-  console.error(
-    `[CARRIER_BLOCK] 🚨 Block detected — carrier=${carrierId} practice=${practiceId} ` +
-    `Suspending ALL calls to this carrier immediately.`,
-  );
+  logger.error('[CARRIER_BLOCK] Block detected — suspending ALL calls to this carrier immediately', {
+    carrierId,
+    practiceId,
+  });
 
   await prisma.carrierBlockEvent.create({
     data: { practiceId, carrierId: carrierId as import('@prisma/client').CarrierId },
@@ -290,7 +291,7 @@ async function fireCarrierBlockProtocol(
         data: { status: 'BLOCKED' },
       }),
     ]);
-    console.error(`[CARRIER_BLOCK] Blocked ${claimIds.length} claims/queue entries for carrier=${carrierId}`);
+    logger.error('[CARRIER_BLOCK] Blocked claims/queue entries', { count: claimIds.length, carrierId });
   }
 }
 
@@ -301,7 +302,7 @@ async function processCallEnded(
 ): Promise<void> {
   const vapiCallId = payload.call.id;
   if (!vapiCallId) {
-    console.error('[vapi-webhook] call.ended missing call.id — cannot process outcome');
+    logger.error('[vapi-webhook] call.ended missing call.id — cannot process outcome', {});
     return;
   }
 
@@ -331,7 +332,7 @@ async function processCallEnded(
   });
 
   if (!attempt) {
-    console.warn(`[vapi-webhook] No CallAttempt found for vapiCallId=${vapiCallId} — logging raw outcome`);
+    logger.warn('[vapi-webhook] No CallAttempt found — logging raw outcome', { vapiCallId });
     return;
   }
 
@@ -345,16 +346,14 @@ async function processCallEnded(
   });
 
   if (attempt.completedAt && attempt.outcome && recoveryApplied) {
-    console.log(
-      `[vapi-webhook] call already processed: vapiCallId=${vapiCallId} outcome=${attempt.outcome}`,
-    );
+    logger.info('[vapi-webhook] call already processed', { vapiCallId, outcome: attempt.outcome });
     return;
   }
 
   if (attempt.completedAt && attempt.outcome && !recoveryApplied) {
-    console.warn(
-      `[vapi-webhook] Re-running recovery for vapiCallId=${vapiCallId} — call marked complete but ROUTE_ASSIGNED missing`,
-    );
+    logger.warn('[vapi-webhook] Re-running recovery — call marked complete but ROUTE_ASSIGNED missing', {
+      vapiCallId,
+    });
   }
 
   const { claim } = attempt;
@@ -382,10 +381,10 @@ async function processCallEnded(
     proposedClaimStatus !== 'ESCALATED' &&
     ['RESOLVED', 'DENIED', 'APPROVED_PENDING_PAYMENT'].includes(proposedClaimStatus)
   ) {
-    console.warn(
-      `[vapi-webhook] Held unconfirmed financial outcome: claimId=${claim.id} ` +
-      `proposed=${proposedClaimStatus} → ESCALATED`,
-    );
+    logger.warn('[vapi-webhook] Held unconfirmed financial outcome — escalated', {
+      claimId: claim.id,
+      proposed: proposedClaimStatus,
+    });
     try {
       const { createEscalation } = await import('../services/escalationService.js');
       await createEscalation(prisma, {
@@ -399,7 +398,7 @@ async function processCallEnded(
         callAttemptId: attempt.id,
       });
     } catch (escErr) {
-      console.error('[vapi-webhook] escalation create failed (non-fatal):', escErr);
+      logger.error('[vapi-webhook] escalation create failed (non-fatal)', { error: escErr });
     }
   }
 
@@ -451,7 +450,7 @@ async function processCallEnded(
       await linkRecoveryActionToCdcpCase(prisma, claim.id, cdcpHit.caseId);
     }
   } catch (cdcpErr) {
-    console.error('[vapi-webhook] CDCP structured signal (non-fatal):', cdcpErr);
+    logger.error('[vapi-webhook] CDCP structured signal (non-fatal)', { error: cdcpErr });
   }
 
   await emitRecoveryTerminalEmrEvent(prisma, claim, decision.claimStatus, processed);
@@ -476,10 +475,10 @@ async function processCallEnded(
   try {
     const deletionResult = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
     if (deletionResult.errors.length > 0) {
-      console.error(
-        '[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio:',
-        { vapiCallId, errors: deletionResult.errors },
-      );
+      logger.error('[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio', {
+        vapiCallId,
+        errors: deletionResult.errors,
+      });
       // Write to audit log so the compliance team can investigate and retry.
       await appendAuditLog(prisma, {
         practiceId: claim.practiceId,
@@ -488,11 +487,11 @@ async function processCallEnded(
         subjectId: attempt.id,
         details: { vapiCallId, errors: deletionResult.errors, recordingUrl },
       }).catch((auditErr: unknown) => {
-        console.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log:', auditErr);
+        logger.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log', { error: auditErr });
       });
     }
   } catch (deletionErr: unknown) {
-    console.error('[vapi-webhook] post-call audio deletion threw unexpectedly:', deletionErr);
+    logger.error('[vapi-webhook] post-call audio deletion threw unexpectedly', { error: deletionErr });
   }
 
   // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────
@@ -528,11 +527,14 @@ async function processCallEnded(
     }
   }
 
-  console.log(
-    `[vapi-webhook] call.ended processed: vapiCallId=${vapiCallId} ` +
-    `claimId=${claim.id} outcome=${processed.outcome} route=${decision.route} ` +
-    `claimStatus=${decision.claimStatus} recall=${decision.scheduledRecallAt?.toISOString() ?? 'none'}`,
-  );
+  logger.info('[vapi-webhook] call.ended processed', {
+    vapiCallId,
+    claimId: claim.id,
+    outcome: processed.outcome,
+    route: decision.route,
+    claimStatus: decision.claimStatus,
+    recall: decision.scheduledRecallAt?.toISOString() ?? 'none',
+  });
 }
 
 /** Recovery-aware call.ended handler — used by production webhook and tests. */
@@ -584,7 +586,7 @@ export async function handleVapiWebhook(
       await processCallEnded(payload, prisma, req.body);
       await prisma.processedVapiWebhook.create({ data: { bodyHash } });
     } catch (err) {
-      console.error('[vapi-webhook] processCallEnded failed:', err);
+      logger.error('[vapi-webhook] processCallEnded failed', { error: err });
       res.status(500).json({ error: 'Call processing failed' });
       return;
     }

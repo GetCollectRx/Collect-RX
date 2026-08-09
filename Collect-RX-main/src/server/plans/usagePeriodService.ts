@@ -9,6 +9,7 @@
  *     until the practice confirms overage charges via confirmOverage().
  */
 import type { Practice, PrismaClient, UsagePeriod } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 import {
   billingTierForStripePrice,
   CALL_TIMEOUTS,
@@ -141,9 +142,10 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   // tier, or whose subscription never activated must not get a minute pool.
   if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
     if (!tier.stripePriceId) {
-      console.error(
-        `[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured for tier=${practice.billingTier} — blocking practice=${practice.id}`,
-      );
+      logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured — blocking', {
+        billingTier: practice.billingTier,
+        practiceId: practice.id,
+      });
       return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
     }
     if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
@@ -152,10 +154,12 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     if (practice.subscriptionPriceId) {
       const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
       if (tierForPrice !== practice.billingTier) {
-        console.error(
-          `[planGate] subscription price ${practice.subscriptionPriceId} maps to tier=${tierForPrice ?? 'none'} ` +
-            `but practice=${practice.id} is on tier=${practice.billingTier} — blocking until reconciled`,
-        );
+        logger.error('[planGate] subscription price maps to a different tier — blocking until reconciled', {
+          subscriptionPriceId: practice.subscriptionPriceId,
+          mappedTier: tierForPrice ?? 'none',
+          practiceId: practice.id,
+          billingTier: practice.billingTier,
+        });
         return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
       }
     }
@@ -199,11 +203,12 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
   if (cogs === 'pause') {
     await pauseCalls(prisma, practice.id, 'cogs_breaker');
-    console.error(
-      `[cogsBreaker] delivery cost crossed ${Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100)}% ` +
-        `of subscription price — pausing calls for practice=${practice.id} ` +
-        `(${usage.minutesConsumed} min consumed on ${practice.billingTier})`,
-    );
+    logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
+      pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
+      practiceId: practice.id,
+      minutesConsumed: usage.minutesConsumed,
+      billingTier: practice.billingTier,
+    });
     try {
       const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
       await dispatchOpsAlert({
@@ -212,7 +217,7 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
         detail: `${usage.minutesConsumed} min consumed on ${practice.billingTier} tier`,
       });
     } catch (alertErr) {
-      console.error('[cogsBreaker] ops alert dispatch failed (non-fatal):', alertErr);
+      logger.error('[cogsBreaker] ops alert dispatch failed (non-fatal)', { error: alertErr });
     }
     return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
   }
@@ -311,10 +316,12 @@ async function maybeDispatchDailySpendAlert(
   const todayBefore = todayAfter - minutesJustBilled;
   if (todayBefore >= thresholdMinutes || todayAfter < thresholdMinutes) return;
 
-  console.error(
-    `[dailySpendAlert] practice=${practice.id} burned ${todayAfter} min today — ` +
-      `over ${Math.round(CALL_TIMEOUTS.dailySpendAlertPct * 100)}% of the ${tier.includedMinutes}-min monthly allowance in one day`,
-  );
+  logger.error('[dailySpendAlert] practice burned an outsized share of monthly allowance in one day', {
+    practiceId: practice.id,
+    todayMinutes: todayAfter,
+    thresholdPct: Math.round(CALL_TIMEOUTS.dailySpendAlertPct * 100),
+    includedMinutes: tier.includedMinutes,
+  });
   try {
     const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
     await dispatchOpsAlert({
@@ -323,7 +330,7 @@ async function maybeDispatchDailySpendAlert(
       detail: `${todayAfter} min in one day on ${practice.billingTier} (monthly allowance ${tier.includedMinutes} min)`,
     });
   } catch (alertErr) {
-    console.error('[dailySpendAlert] ops alert dispatch failed (non-fatal):', alertErr);
+    logger.error('[dailySpendAlert] ops alert dispatch failed (non-fatal)', { error: alertErr });
   }
 }
 

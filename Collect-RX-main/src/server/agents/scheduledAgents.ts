@@ -26,6 +26,7 @@ import cron from 'node-cron';
 import type { PrismaClient } from '@prisma/client';
 import { runAgent } from './agentRunner.js';
 import { sendWeeklyPilotReports, weeklyPilotReportEnabled } from '../reports/weeklyPilotReport.js';
+import { logger } from '../observability/logger.js';
 
 type AgentContextBuilder = (prisma: PrismaClient) => Promise<Record<string, unknown>>;
 
@@ -346,18 +347,20 @@ const WEEKLY_PILOT_REPORT_CRON = '0 7 * * 1';
 
 function registerWeeklyPilotReport(prisma: PrismaClient): void {
   if (!weeklyPilotReportEnabled()) {
-    console.warn('[ScheduledAgents] WEEKLY_PILOT_REPORT_ENABLED is not set — weekly report cron skipped');
+    logger.warn('[ScheduledAgents] WEEKLY_PILOT_REPORT_ENABLED is not set — weekly report cron skipped', {});
     return;
   }
   cron.schedule(WEEKLY_PILOT_REPORT_CRON, () => {
     sendWeeklyPilotReports(prisma)
       .then((r) => {
-        console.warn(
-          `[ScheduledAgents] weekly pilot report: ${r.sent} sent, ${r.skippedNoOwner} skipped (no owner), ${r.failed} failed`,
-        );
+        logger.warn('[ScheduledAgents] weekly pilot report', {
+          sent: r.sent,
+          skippedNoOwner: r.skippedNoOwner,
+          failed: r.failed,
+        });
       })
       .catch((err) => {
-        console.error('[ScheduledAgents] weekly pilot report run failed:', err);
+        logger.error('[ScheduledAgents] weekly pilot report run failed', { error: err });
       });
   });
 }
@@ -366,18 +369,18 @@ export function startScheduledAgents(prisma: PrismaClient): void {
   registerWeeklyPilotReport(prisma);
 
   if (!isAgentSystemEnabled()) {
-    console.log('[ScheduledAgents] AGENTS_ENABLED is not set — skipping cron registration');
+    logger.info('[ScheduledAgents] AGENTS_ENABLED is not set — skipping cron registration', {});
     return;
   }
 
   if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
-    console.warn('[ScheduledAgents] GEMINI_API_KEY not set — agents will fail at runtime');
+    logger.warn('[ScheduledAgents] GEMINI_API_KEY not set — agents will fail at runtime', {});
   }
 
   let registered = 0;
   for (const agent of SCHEDULED_AGENTS) {
     if (!cron.validate(agent.cron)) {
-      console.error(`[ScheduledAgents] invalid cron "${agent.cron}" for ${agent.name} — skipped`);
+      logger.error('[ScheduledAgents] invalid cron — skipped', { cron: agent.cron, agent: agent.name });
       continue;
     }
     cron.schedule(agent.cron, () => {
@@ -385,11 +388,11 @@ export function startScheduledAgents(prisma: PrismaClient): void {
         .buildContext(prisma)
         .then((ctx) => runAgent(agent.name, ctx, prisma))
         .catch((err) => {
-          console.error(`[ScheduledAgents] ${agent.name} failed:`, err);
+          logger.error('[ScheduledAgents] agent failed', { agent: agent.name, error: err });
         });
     });
     registered++;
   }
 
-  console.log(`[ScheduledAgents] registered ${registered} autonomous agents`);
+  logger.info('[ScheduledAgents] registered autonomous agents', { registered });
 }

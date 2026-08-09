@@ -1,3 +1,5 @@
+import { logger } from '../observability/logger.js';
+
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
   const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
@@ -28,10 +30,10 @@ export async function sendInviteEmail(opts: {
   const sg = getSendGrid();
 
   if (!sg) {
-    console.log(
-      `[invite] SENDGRID_API_KEY not set — skipping email.\n` +
-      `  To: ${opts.toEmail}\n  Accept URL: ${acceptUrl}`,
-    );
+    logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {
+      to: opts.toEmail,
+      acceptUrl,
+    });
     return;
   }
 

@@ -8,6 +8,7 @@ import {
   startupScanEnabled,
 } from './startupHealthScan.js';
 import { sendStartupFailureDigest } from './startupAlerts.js';
+import { logger } from './logger.js';
 
 export async function runStartupScanOnBoot(prisma: PrismaClient, port: number): Promise<void> {
   if (!startupScanEnabled()) {
@@ -19,14 +20,16 @@ export async function runStartupScanOnBoot(prisma: PrismaClient, port: number): 
     process.env.SERVER_URL ||
     `http://127.0.0.1:${port}`;
 
-  console.log('[startupScan] Running health scan…');
+  logger.info('[startupScan] Running health scan…', {});
 
   const internal = await runInternalStartupChecks(prisma);
   const failedInternal = internal.filter((r) => !r.ok);
   if (failedInternal.length) {
-    failedInternal.forEach((r) => console.warn(`[startupScan] ✗ ${r.label}: ${r.detail ?? ''}`));
+    logger.warn('[startupScan] internal checks failed', {
+      failures: failedInternal.map((r) => ({ label: r.label, detail: r.detail ?? '' })),
+    });
   } else {
-    console.log('[startupScan] Internal checks passed');
+    logger.info('[startupScan] Internal checks passed', {});
   }
 
   // Brief delay so listen socket is accepting connections
@@ -37,9 +40,11 @@ export async function runStartupScanOnBoot(prisma: PrismaClient, port: number): 
   const all = [...internal, ...http];
   const failed = all.filter((r) => !r.ok);
   if (failed.length === 0) {
-    console.log('[startupScan] HTTP smoke passed');
+    logger.info('[startupScan] HTTP smoke passed', {});
   } else {
-    failed.forEach((r) => console.warn(`[startupScan] ✗ ${r.label}: ${r.detail ?? ''}`));
+    logger.warn('[startupScan] HTTP smoke failed', {
+      failures: failed.map((r) => ({ label: r.label, detail: r.detail ?? '' })),
+    });
   }
 
   await sendStartupFailureDigest(all, { host, source: 'api-server-boot' });

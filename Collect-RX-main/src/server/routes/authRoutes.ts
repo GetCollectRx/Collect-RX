@@ -42,13 +42,16 @@ import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js'
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
+import { logger } from '../observability/logger.js';
 
 const BCRYPT_ROUNDS = 12;
 
 async function buildSessionHealth(prisma: PrismaClient) {
   const health = await runSessionHealthCheck(prisma);
   if (!health.ok) {
-    console.warn('[sessionHealth] Login health check failed:', health.checks.filter((c) => !c.ok && !c.skipped));
+    logger.warn('[sessionHealth] Login health check failed', {
+      failedChecks: health.checks.filter((c) => !c.ok && !c.skipped),
+    });
   }
   return health;
 }
@@ -232,7 +235,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
       return respondPracticeLogin(req, res, user);
     } catch (e) {
-      console.error('Dev demo login error:', e);
+      logger.error('[authRoutes] Dev demo login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -269,7 +272,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.status(401).json({ error: 'Invalid credentials' });
     } catch (e) {
-      console.error('Login error:', e);
+      logger.error('[authRoutes] Login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -314,7 +317,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         health,
       });
     } catch (e) {
-      console.error('Platform dev login error:', e);
+      logger.error('[authRoutes] Platform dev login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -336,7 +339,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
       return respondPlatformUserLogin(req, res, user);
     } catch (e) {
-      console.error('Platform user login error:', e);
+      logger.error('[authRoutes] Platform user login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -353,7 +356,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const health = await buildSessionHealth(prisma);
       return res.json(health);
     } catch (e) {
-      console.error('session-health error:', e);
+      logger.error('[authRoutes] session-health error', { error: e });
       return res.status(500).json({ error: 'Health check failed' });
     }
   });
@@ -463,7 +466,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
       });
     } catch (e) {
-      console.error('me error:', e);
+      logger.error('[authRoutes] me error', { error: e });
       return res.status(500).json({ error: 'Failed' });
     }
   });
@@ -490,7 +493,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
       return res.json({ users });
     } catch (e) {
-      console.error('list users error:', e);
+      logger.error('[authRoutes] list users error', { error: e });
       return res.status(500).json({ error: 'Failed to list users' });
     }
   });
@@ -547,7 +550,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.status(201).json({ user });
     } catch (e) {
-      console.error('create user error:', e);
+      logger.error('[authRoutes] create user error', { error: e });
       return res.status(500).json({ error: 'Failed to create user' });
     }
   });
@@ -599,7 +602,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ user: updated });
     } catch (e) {
-      console.error('update user error:', e);
+      logger.error('[authRoutes] update user error', { error: e });
       return res.status(500).json({ error: 'Failed to update user' });
     }
   });
@@ -630,7 +633,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       await prisma.user.update({ where: { id: target.id }, data: { isActive: false } });
       return res.json({ ok: true });
     } catch (e) {
-      console.error('deactivate user error:', e);
+      logger.error('[authRoutes] deactivate user error', { error: e });
       return res.status(500).json({ error: 'Failed to deactivate user' });
     }
   });
@@ -666,7 +669,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ ok: true });
     } catch (e) {
-      console.error('change password error:', e);
+      logger.error('[authRoutes] change password error', { error: e });
       return res.status(500).json({ error: 'Failed to change password' });
     }
   });
@@ -693,7 +696,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
       return res.json({ user: updated });
     } catch (e) {
-      console.error('promote owner error:', e);
+      logger.error('[authRoutes] promote owner error', { error: e });
       return res.status(500).json({ error: 'Failed to promote user' });
     }
   });
@@ -734,14 +737,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
       void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
-        console.error('[password-reset] email send failed', e);
+        logger.error('[password-reset] email send failed', { error: e });
       });
 
-      console.log(`[password-reset] token issued for ${email}`);
+      // email is redacted automatically by the structured logger — see
+      // safeMeta() in observability/logger.ts — rather than left in a raw
+      // template string the way this line used to log it.
+      logger.info('[password-reset] token issued', { email });
 
       return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
     } catch (e) {
-      console.error('reset-password request error:', e);
+      logger.error('[authRoutes] reset-password request error', { error: e });
       return res.status(500).json({ error: 'Failed to process request' });
     }
   });
@@ -775,7 +781,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ ok: true });
     } catch (e) {
-      console.error('reset-password confirm error:', e);
+      logger.error('[authRoutes] reset-password confirm error', { error: e });
       return res.status(500).json({ error: 'Failed to reset password' });
     }
   });
@@ -832,7 +838,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         userRole: 'owner',
       });
     } catch (e) {
-      console.error('register error:', e);
+      logger.error('[authRoutes] register error', { error: e });
       return res.status(500).json({ error: 'Registration failed' });
     }
   });
@@ -869,7 +875,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
       return res.json({ invited: true });
     } catch (e) {
-      console.error('invite error:', e);
+      logger.error('[authRoutes] invite error', { error: e });
       return res.status(500).json({ error: 'Failed to send invite' });
     }
   });
@@ -886,7 +892,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'This invite has expired' });
       return res.json({ email: invite.email, role: invite.role, practiceName: invite.practice.name });
     } catch (e) {
-      console.error('invite lookup error:', e);
+      logger.error('[authRoutes] invite lookup error', { error: e });
       return res.status(500).json({ error: 'Failed to look up invite' });
     }
   });
@@ -932,7 +938,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       setUserAuthCookie(res, sessionAuth);
       return res.status(201).json({ user, role: user.role });
     } catch (e) {
-      console.error('accept-invite error:', e);
+      logger.error('[authRoutes] accept-invite error', { error: e });
       return res.status(500).json({ error: 'Failed to create account' });
     }
   });

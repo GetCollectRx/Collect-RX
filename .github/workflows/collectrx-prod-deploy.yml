@@ -14,6 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Copy root package-lock.json to workspace
@@ -33,3 +37,20 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy -c fly.toml -a collect-rx --remote-only
+
+      # P2.2 — Fly's own health-check-gated rollout (fly.toml's [[http_service.checks]]
+      # against /api/health/ready, combined with release_command's migrate-deploy gate)
+      # already blocks a release that can't reach the DB from ever taking traffic; this
+      # is a deeper, post-traffic check (deployed successfully, but is it actually
+      # correct?) that flyctl's own health check can't see. A failure here does NOT
+      # undo the deploy — it fails this workflow run (and pages via OPS_ALERT_WEBHOOK_URL
+      # if configured) so a human decides whether to roll back. See
+      # docs/runbooks/deploy-rollback.md for the rollback procedure.
+      - name: Post-deploy smoke (production)
+        working-directory: Collect-RX-main
+        env:
+          SMOKE_BASE_URL: https://collect-rx.fly.dev
+          OPS_ALERTS_ENABLED: '1'
+          OPS_ALERTS_ON_SMOKE_FAIL: '1'
+          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
+        run: npm run smoke:live
