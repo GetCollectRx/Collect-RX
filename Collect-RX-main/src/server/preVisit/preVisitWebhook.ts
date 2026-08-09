@@ -129,10 +129,11 @@ export async function processPreVisitCallEnded(
       const elig = eligibilityStatus?.toLowerCase();
       const snapStatus =
         elig === 'eligible' ? 'active' : elig === 'ineligible' ? 'inactive' : 'unknown';
+      // patientId is the PMS record ID; patientToken is the PIIVault UUID. The
+      // pre-visit pipeline only ever has the token, so patientId is left unset.
       await prisma.eligibilitySnapshot.create({
         data: {
           practiceId: verification.practiceId,
-          patientId: verification.patientToken,
           patientToken: verification.patientToken,
           carrier: verification.carrierId,
           status: snapStatus as 'active' | 'inactive' | 'unknown',

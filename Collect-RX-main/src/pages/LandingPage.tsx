@@ -96,8 +96,7 @@ const STYLES = `
   }
   .lp-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 80px; }
   .lp-logo-mark {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: var(--green);
+    width: 28px; height: 28px;
     display: grid; place-items: center; flex-shrink: 0;
   }
   .lp-logo-mark svg { width: 15px; height: 15px; fill: none; stroke: #fcfcfa; stroke-width: 2.5; }
@@ -1943,7 +1942,7 @@ export default function LandingPage() {
           <div className="lp-nav-inner">
             <Link to={MARKETING_PATHS.home} className="lp-logo" style={{ textDecoration: 'none' }}>
               <div className="lp-logo-mark">
-                <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
+                <img src="/collectrx-mark.png" alt="CollectRx" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
               <span className="lp-logo-text">Collect<span>Rx</span></span>
             </Link>
@@ -1951,7 +1950,7 @@ export default function LandingPage() {
               {MARKETING_NAV_TABS.map(tab => (
                 <Link key={tab.id} to={tab.path} className={navClass(tab.id)}>{tab.label}</Link>
               ))}
-              <Link to={MARKETING_PATHS.demo} className="lp-nav-link">Product demo</Link>
+              <Link to={MARKETING_PATHS.download} className="lp-nav-link">Download</Link>
             </div>
             <div className="lp-nav-right">
               <button
@@ -1981,7 +1980,7 @@ export default function LandingPage() {
               {tab.label}
             </Link>
           ))}
-          <Link to={MARKETING_PATHS.demo} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Product demo</Link>
+          <Link to={MARKETING_PATHS.download} className="lp-nav-link" onClick={() => setMenuOpen(false)}>Download</Link>
           <Link
             to={MARKETING_PATHS.signup}
             className="lp-btn-primary"
@@ -2334,7 +2333,7 @@ export default function LandingPage() {
               <div>
                 <div className="lp-logo">
                   <div className="lp-logo-mark">
-                    <img src="/collectrx-logo.png" alt="CollectRx" style={{ width: '100%', height: '100%' }} />
+                    <img src="/collectrx-mark.png" alt="CollectRx" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   </div>
                   <span className="lp-logo-text">Collect<span>Rx</span></span>
                 </div>
@@ -2350,6 +2349,7 @@ export default function LandingPage() {
                   <Link to={MARKETING_PATHS.compliance}>Compliance</Link>
                   <Link to={MARKETING_PATHS.pricing}>Pricing</Link>
                   <Link to={MARKETING_PATHS.roi}>ROI Calculator</Link>
+                  <Link to={MARKETING_PATHS.download}>Download desktop app</Link>
                 </div>
                 <div className="lp-footer-col">
                   <h4>Access</h4>

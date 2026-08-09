@@ -1,13 +1,37 @@
 import {
   parseGithubReleaseAssets,
   PILOT_DESKTOP_RELEASE,
+  PILOT_RELEASE_TAG,
   proxyDesktopAssetUrl,
   type DesktopReleaseInfo,
 } from '../../lib/desktopReleases.js';
 
 const GITHUB_REPO = 'GetCollectRx/Collect-RX';
-const DEFAULT_RELEASE_TAG = process.env.DESKTOP_RELEASE_TAG?.trim() || 'v1.0.0-pilot';
+const PINNED_RELEASE_TAG = process.env.DESKTOP_RELEASE_TAG?.trim() || '';
 const CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Serve the latest published release by default so the download page tracks new
+ * versions automatically. Set DESKTOP_RELEASE_TAG to pin a specific tag (e.g. a
+ * controlled pilot rollout).
+ */
+function primaryReleaseUrl(): string {
+  return PINNED_RELEASE_TAG
+    ? `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${PINNED_RELEASE_TAG}`
+    : `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+}
+
+/**
+ * Last-resort release used when the primary lookup returns nothing. When
+ * tracking "latest", `/releases/latest` 404s if only pre-release/draft releases
+ * exist — fall back to the known pilot tag so downloads never regress. When a
+ * tag is explicitly pinned, the primary already targets it, so no fallback.
+ */
+function fallbackReleaseUrl(): string | null {
+  return PINNED_RELEASE_TAG
+    ? null
+    : `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${PILOT_RELEASE_TAG}`;
+}
 
 type GithubAsset = { id: number; name: string; size?: number; browser_download_url: string };
 type GithubRelease = {
@@ -55,12 +79,19 @@ async function fetchReleaseWithAssets(): Promise<GithubRelease | null> {
   const cached = await resolveGithubRelease();
   if (cached?.assets?.length) return cached;
 
-  const byTag = await fetchGithubRelease(
-    `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`,
-  );
+  const byTag = await fetchGithubRelease(primaryReleaseUrl());
   if (byTag?.assets?.length) {
     cachedRelease = { at: Date.now(), release: byTag };
     return byTag;
+  }
+
+  const fb = fallbackReleaseUrl();
+  if (fb) {
+    const fbRelease = await fetchGithubRelease(fb);
+    if (fbRelease?.assets?.length) {
+      cachedRelease = { at: Date.now(), release: fbRelease };
+      return fbRelease;
+    }
   }
 
   return null;
@@ -76,11 +107,10 @@ async function resolveGithubRelease(): Promise<GithubRelease | null> {
   let release: GithubRelease | null = null;
 
   if (token) {
-    release = await fetchGithubRelease(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`,
-    );
-    if (!release) {
-      release = await fetchGithubRelease(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+    release = await fetchGithubRelease(primaryReleaseUrl());
+    if (!release?.assets?.length) {
+      const fb = fallbackReleaseUrl();
+      if (fb) release = await fetchGithubRelease(fb);
     }
   }
 
@@ -93,7 +123,7 @@ async function resolveGithubRelease(): Promise<GithubRelease | null> {
 }
 
 function toReleaseInfo(release: GithubRelease): DesktopReleaseInfo {
-  const version = (release.tag_name || DEFAULT_RELEASE_TAG).replace(/^v/, '');
+  const version = (release.tag_name || '').replace(/^v/, '') || PILOT_DESKTOP_RELEASE.version;
   const releasePageUrl = release.html_url || PILOT_DESKTOP_RELEASE.releasePageUrl;
   const assets = release.assets ?? [];
   const parsed = parseGithubReleaseAssets(version, release.published_at ?? null, releasePageUrl, assets);
@@ -167,7 +197,7 @@ export async function getDesktopReleaseDiagnostics(): Promise<{
     return { tokenPresent: false, tokenLength: 0, githubStatus: null, assetCount: 0, message: 'No token' };
   }
 
-  const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${DEFAULT_RELEASE_TAG}`;
+  const url = primaryReleaseUrl();
   const res = await fetch(url, { headers: githubHeaders() });
   const body = (await res.json().catch(() => ({}))) as {
     message?: string;

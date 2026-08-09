@@ -47,13 +47,22 @@ function mergeMap(overrides) {
   if (!overrides || typeof overrides !== 'object') return base;
   const o = /** @type {Record<string, unknown>} */ (overrides);
   if (o.claims && typeof o.claims === 'object') {
-    Object.assign(base.claims, o.claims);
-    if (o.claims.columns && typeof o.claims.columns === 'object') {
-      Object.assign(base.claims.columns, o.claims.columns);
-    }
-    if (o.claims.joinOn && typeof o.claims.joinOn === 'object') {
-      Object.assign(base.claims.joinOn, o.claims.joinOn);
-    }
+    const claimsOverride = /** @type {Record<string, unknown>} */ (o.claims);
+    // Merge nested `columns`/`joinOn` against the *defaults* before the shallow
+    // Object.assign below overwrites base.claims.columns/joinOn with the override's
+    // (possibly partial) object by reference — otherwise a caller overriding a single
+    // column silently drops every other default column/join key.
+    const mergedColumns =
+      claimsOverride.columns && typeof claimsOverride.columns === 'object'
+        ? Object.assign({}, base.claims.columns, claimsOverride.columns)
+        : base.claims.columns;
+    const mergedJoinOn =
+      claimsOverride.joinOn && typeof claimsOverride.joinOn === 'object'
+        ? Object.assign({}, base.claims.joinOn, claimsOverride.joinOn)
+        : base.claims.joinOn;
+    Object.assign(base.claims, claimsOverride);
+    base.claims.columns = mergedColumns;
+    base.claims.joinOn = mergedJoinOn;
   }
   return base;
 }

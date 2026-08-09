@@ -1,48 +1,42 @@
+import markColor from '../../assets/collectrx-mark.png'
+import markReversed from '../../assets/collectrx-mark-reversed.png'
+
+/**
+ * color    — full-colour shield (for light backgrounds)
+ * reversed — white knockout (for dark / coloured backgrounds)
+ * adaptive — follows the viewer's OS light/dark theme automatically
+ */
+type MarkVariant = 'color' | 'reversed' | 'adaptive'
+
 type MarkProps = {
   size?: number
   className?: string
-  /** When true, fills the container (sidebar mark uses currentColor on green tile). */
-  inheritColor?: boolean
+  variant?: MarkVariant
 }
 
-/** Icon-only mark: green circle + C arc (+ optional Rx at larger sizes). */
-export function CollectRxLogoMark({ size = 28, className = '', inheritColor = false }: MarkProps) {
-  const showRx = size >= 40
-  const fill = inheritColor ? 'currentColor' : '#0f9d58'
-  const arcStroke = inheritColor ? '#fcfcfa' : '#ffffff'
-  const ringStroke = inheritColor ? 'rgba(252,252,250,0.45)' : '#12c96d'
+/** Brand shield mark. */
+export function CollectRxLogoMark({ size = 28, className = '', variant = 'color' }: MarkProps) {
+  const style = { display: 'block', objectFit: 'contain' as const }
+
+  if (variant === 'adaptive') {
+    return (
+      <picture className={className}>
+        <source srcSet={markReversed} media="(prefers-color-scheme: dark)" />
+        <img src={markColor} width={size} height={size} alt="" aria-hidden style={style} />
+      </picture>
+    )
+  }
 
   return (
-    <svg
-      viewBox="0 0 200 200"
+    <img
+      src={variant === 'reversed' ? markReversed : markColor}
       width={size}
       height={size}
       className={className}
+      alt=""
       aria-hidden
-    >
-      <circle cx="100" cy="100" r="90" fill={fill} />
-      <circle cx="100" cy="100" r="78" fill="none" stroke={ringStroke} strokeWidth="2" opacity="0.55" />
-      <path
-        d="M100 38 A62 62 0 1 0 100 162"
-        fill="none"
-        stroke={arcStroke}
-        strokeWidth="10"
-        strokeLinecap="round"
-      />
-      {showRx && (
-        <text
-          x="85"
-          y="116"
-          fontFamily="Georgia, 'Source Serif 4', serif"
-          fontSize="54"
-          fontWeight="700"
-          fill={arcStroke}
-          letterSpacing="-2"
-        >
-          Rx
-        </text>
-      )}
-    </svg>
+      style={style}
+    />
   )
 }
 
@@ -50,14 +44,15 @@ type LockupProps = {
   suffix?: string
   markSize?: number
   className?: string
+  variant?: MarkVariant
 }
 
 /** Sidebar / header lockup: mark + CollectRx wordmark. */
-export function CollectRxLogoLockup({ suffix, markSize = 28, className = '' }: LockupProps) {
+export function CollectRxLogoLockup({ suffix, markSize = 28, className = '', variant = 'color' }: LockupProps) {
   return (
     <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
       <span className="flex-shrink-0" aria-hidden>
-        <CollectRxLogoMark size={markSize} inheritColor />
+        <CollectRxLogoMark size={markSize} variant={variant} />
       </span>
       <span className="crx-sidebar-logo">
         Collect<span>Rx</span>
@@ -69,12 +64,13 @@ export function CollectRxLogoLockup({ suffix, markSize = 28, className = '' }: L
 
 type PortalProps = {
   size?: number
+  variant?: MarkVariant
 }
 
-export function CollectRxLogoPortal({ size = 48 }: PortalProps) {
+export function CollectRxLogoPortal({ size = 48, variant = 'color' }: PortalProps) {
   return (
     <div className="crx-portal-logo-mark" aria-hidden>
-      <CollectRxLogoMark size={size} />
+      <CollectRxLogoMark size={size} variant={variant} />
     </div>
   )
 }

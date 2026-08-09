@@ -1,5 +1,7 @@
 # Outstanding Work for a Production-Ready Product
 
+> **Status source note:** The phase "Status" lines below are point-in-time snapshots (oldest from 2026-04-22) and do not reflect work done since — including the Stripe Billing/trial-tier system and the marketing/growth-engine (email campaigns, prospect harvesting) under `Collect-RX-main/src/server/marketing/`, neither of which has phase entries here. For **current** launch-readiness status, use [`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md) — it's kept live. Treat this file as a ticket backlog for reference, not a status report.
+
 **Product intent:** The target is a **complete, deployable** CollectRx—something you can run in **staging and production** with a supported database, CI, secrets, monitoring, and compliance work appropriate to handling healthcare-adjacent data. This backlog is **not** “how to stay a demo”; it is the ordered work to get from the current codebase to that bar. (Some copy in older READMEs may still say “POC”; treat this document as the north star.)
 
 **Launch order (A→G):** [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md) — Practice → Insurance only; no patient/client payment collection.
@@ -267,7 +269,7 @@
 | **P3-30** | **Complete** | CSV upload, [header aliases](Collect-RX-main/src/server/csv/parseSimple.ts), row `errors` + Admin panel; `400` empty file. |
 | **P3-31** | **Complete** | [upsertBalances](Collect-RX-main/src/server/patients/balances.ts) + [CSV-IMPORT-IDEMPOTENCY.md](docs/product/CSV-IMPORT-IDEMPOTENCY.md). |
 | **P3-32** | **Complete (doc epic)** | [PMS-INTEGRATION-PLAN.md](docs/product/PMS-INTEGRATION-PLAN.md). |
-| **P3-40** | **Complete** | `EligibilityEstimateLog` + [routes](Collect-RX-main/src/routes/eligibility.ts); status returns `lastEstimate`. |
+| **P3-40** | **Complete** | `POST /api/eligibility/estimate` writes `prisma.eligibilityEstimateLog.create(...)` ([eligibility.ts:116](Collect-RX-main/src/routes/eligibility.ts#L116)) into the `EligibilityEstimateLog` model ([schema.prisma:346](Collect-RX-main/prisma/schema.prisma#L346)); `GET /api/eligibility/status/:patientId/:carrier` reads the latest row and returns it as `lastEstimate` ([eligibility.ts:154-181](Collect-RX-main/src/routes/eligibility.ts#L154-L181)). |
 | **P3-41** | **Complete** | [eligibility.test.ts](Collect-RX-main/tests/eligibility.test.ts) (deductible, annual max, COB, reconciliation flags, + P3-41 edge cases); [vitest.config](Collect-RX-main/vitest.config.ts) includes `tests/`. |
 | **P3-42** | **Complete** | `EligibilityReconcileLog` + `POST/GET` reconcile history; [ELIGIBILITY-RECONCILE-LOG.md](docs/product/ELIGIBILITY-RECONCILE-LOG.md). |
 

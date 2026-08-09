@@ -17,10 +17,12 @@ vi.mock('../emrSyncOutbox.js', () => ({
 
 vi.mock('./electronicPreVisit.js', () => ({
   tryCanadaLifePortalPreVisit: vi.fn().mockResolvedValue({ resolved: false }),
-  tryTelusTx23PreVisit: vi.fn().mockResolvedValue({ resolved: false }),
+  checkTelusTx23Support: vi.fn().mockReturnValue({ supported: false, reason: 'tx23_not_supported' }),
 }));
 
 import { verifyBeforeAppointment } from './appointmentVerification.js';
+import { enqueuePreVisitJob } from './preVisitJobs.js';
+import { checkTelusTx23Support } from './electronicPreVisit.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -128,6 +130,57 @@ describe('verifyBeforeAppointment', () => {
           procedureCode: { in: expect.arrayContaining(['D6010', '6010']) },
         }),
       }),
+    );
+  });
+
+  it('flags tx23CheckRequired and enqueues PRE_VISIT_TELUS_TX23 instead of resolving inline', async () => {
+    vi.mocked(checkTelusTx23Support).mockReturnValue({ supported: true });
+    const prismaState = makePrisma({});
+    const prisma = prismaState as unknown as PrismaClient;
+
+    const result = await verifyBeforeAppointment(prisma, {
+      practiceId: 'prac-1',
+      patientToken: 'tok-1',
+      carrierId: 'telus_adjudicare',
+      procedureCodes: ['D0120'],
+      appointmentAt: new Date('2026-06-26T15:00:00Z'),
+    });
+
+    expect(result.tx23CheckRequired).toBe(true);
+    expect(result.tx23Resolved).toBeUndefined();
+    expect(enqueuePreVisitJob).toHaveBeenCalledWith(
+      'PRE_VISIT_TELUS_TX23',
+      expect.objectContaining({ carrierId: 'telus_adjudicare' }),
+      undefined,
+    );
+
+    // (d) eligibility staleness must run before (f) TELUS Tx23 flag — the old
+    // code resolved Tx23 inline and returned before reaching the eligibility
+    // check for a TELUS carrier.
+    const eligibilityCallOrder = (prismaState.eligibilitySnapshot.findFirst as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    const tx23CallOrder = (checkTelusTx23Support as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    expect(eligibilityCallOrder).toBeLessThan(tx23CallOrder);
+  });
+
+  it('does not flag tx23CheckRequired when the TPA does not support Tx23', async () => {
+    vi.mocked(checkTelusTx23Support).mockReturnValue({ supported: false, reason: 'tx23_not_supported' });
+    const prismaState = makePrisma({});
+    const prisma = prismaState as unknown as PrismaClient;
+
+    const result = await verifyBeforeAppointment(prisma, {
+      practiceId: 'prac-1',
+      patientToken: 'tok-1',
+      carrierId: 'telus_adjudicare',
+      procedureCodes: ['D0120'],
+      appointmentAt: new Date('2026-06-26T15:00:00Z'),
+    });
+
+    expect(result.tx23CheckRequired).toBeUndefined();
+    expect(enqueuePreVisitJob).not.toHaveBeenCalledWith(
+      'PRE_VISIT_TELUS_TX23',
+      expect.anything(),
+      expect.anything(),
     );
   });
 

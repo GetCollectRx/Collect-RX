@@ -1,5 +1,5 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import type { DenialCategory } from '../server/recovery/denialEvidenceRules.js';
+import type { DenialCategory } from '../types/denial.js';
 
 export interface DenialByCarrier {
   carrierId: CarrierId;

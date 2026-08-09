@@ -11,6 +11,11 @@ const CARRIER_BLOCK_PHRASES_BASELINE = [
   'not a live agent',
   'fraud detection',
   'call flagged',
+  // Claims_Agent's own CARRIER REFUSAL PROTOCOL (vapi-squad-config.json) names these
+  // as its primary refusal trigger, but the baseline never covered the exact wording —
+  // the deterministic scanner couldn't catch the case the squad prompt itself anticipates.
+  "we don't work with robots",
+  "i'm ending this call",
 ] as const;
 
 const GENERIC_IVR_TERMS = new Set(['automated', 'bot', 'ivr', 'menu', 'system']);

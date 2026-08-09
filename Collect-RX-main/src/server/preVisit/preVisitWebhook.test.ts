@@ -36,6 +36,7 @@ function makeVerificationPrisma(verification: {
 }) {
   const updates: Array<Record<string, unknown>> = [];
   const createdCases: Array<Record<string, unknown>> = [];
+  const createdSnapshots: Array<Record<string, unknown>> = [];
 
   return {
     appointmentVerification: {
@@ -69,13 +70,18 @@ function makeVerificationPrisma(verification: {
       }),
     },
     eligibilitySnapshot: {
-      create: vi.fn().mockResolvedValue({ id: 'snap-1' }),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        createdSnapshots.push(data);
+        return { id: 'snap-1', ...data };
+      }),
     },
     getLastUpdate: () => updates.at(-1),
     createdCases,
+    createdSnapshots,
   } as unknown as PrismaClient & {
     getLastUpdate: () => Record<string, unknown> | undefined;
     createdCases: Array<Record<string, unknown>>;
+    createdSnapshots: Array<Record<string, unknown>>;
   };
 }
 
@@ -133,6 +139,27 @@ describe('processPreVisitCallEnded', () => {
     expect(handled).toBe(true);
     expect(prismaState.getLastUpdate()?.status).toBe('RED');
     expect(prismaState.createdCases.length).toBeGreaterThan(0);
+  });
+
+  it('writes patientToken only on the eligibility snapshot — never patientId', async () => {
+    const prismaState = makeVerificationPrisma(baseVerification);
+    const payload = buildPreVisitApprovedPayload({
+      metadata: {
+        appointmentVerificationId: baseVerification.id,
+        practiceId: baseVerification.practiceId,
+        patientToken: baseVerification.patientToken,
+        carrierId: 'sun_life',
+        preVisitType: 'eligibility',
+        cdcpContext: false,
+      },
+    });
+
+    await processPreVisitCallEnded(payload, prismaState);
+
+    expect(prismaState.createdSnapshots).toHaveLength(1);
+    const snapshot = prismaState.createdSnapshots[0];
+    expect(snapshot.patientToken).toBe(baseVerification.patientToken);
+    expect(snapshot).not.toHaveProperty('patientId');
   });
 
   it('enqueues a recall job when call fails and attempts remain', async () => {

@@ -143,13 +143,14 @@ model Organization {
 model OrganizationPractice {
   id             String       @id @default(uuid())
   organizationId String       @map("organization_id")
-  practiceId     String       @map("practice_id")
+  /// A practice belongs to at most one DSO at a time — attaching it elsewhere
+  /// requires detaching first, so cross-org data exposure can't be ambiguous.
+  practiceId     String       @unique @map("practice_id")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   practice       Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, practiceId])
-  @@index([practiceId])
+  @@index([organizationId])
   @@map("organization_practices")
 }
 
@@ -176,6 +177,8 @@ enum OrganizationRole {
   org_billing_viewer
 }
 
+// Dead: not referenced anywhere in src/ outside this schema file — no route, service, or
+// worker reads/writes RuleSet. Left in place pending a human decision on removal (2026-08-02 audit).
 model RuleSet {
   id         String   @id @default(uuid())
   practiceId String
@@ -185,6 +188,8 @@ model RuleSet {
   rules      Rule[]
 }
 
+// Dead: not referenced anywhere in src/ outside this schema file — no route, service, or
+// worker reads/writes Rule. Left in place pending a human decision on removal (2026-08-02 audit).
 model Rule {
   id           String  @id @default(uuid())
   ruleSetId    String
@@ -195,6 +200,9 @@ model Rule {
   ruleSet      RuleSet @relation(fields: [ruleSetId], references: [id])
 }
 
+// Dead: the only writer was the write-only `POST /api/queue/priority` endpoint ("Electron
+// legacy"), removed 2026-08-02 because nothing ever read this table back. Left in place pending
+// a human decision on removal.
 model QueuePriority {
   id           String   @id @default(uuid())
   practiceId   String
@@ -959,11 +967,33 @@ model CallTranscriptLine {
 
 /// Per-practice front desk queue controls (pause/resume).
 model PracticeDeskState {
-  practiceId  String   @id @map("practice_id")
-  queuePaused Boolean  @default(false) @map("queue_paused")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  practiceId   String    @id @map("practice_id")
+  queuePaused  Boolean   @default(false) @map("queue_paused")
+  /// Last time runDeskQueueTick gave this practice a turn (reached it in the
+  /// loop), regardless of whether a call was actually dispatched. Ordering
+  /// practices by this ascending (nulls first) each tick is what prevents a
+  /// practice from being starved indefinitely when the fleet-wide Vapi slot
+  /// budget is tight — a practice skipped this tick due to budget exhaustion
+  /// keeps its old (older) timestamp and sorts to the front next tick.
+  lastServedAt DateTime? @map("last_served_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("practice_desk_state")
+}
+
+/// Singleton lease so only one replica's runDeskQueueTick body executes at a
+/// time. The in-process isTickRunning guard in queueEngine.ts only prevents
+/// double-dispatch within a single Node process — once the app process is
+/// horizontally scaled beyond one machine (a realistic response to DSO-scale
+/// call volume), each replica runs its own independent 60s interval and
+/// would double-dispatch calls to the same claim without this.
+model QueueEngineLease {
+  id          String    @id
+  lockedUntil DateTime? @map("locked_until")
+  lockedBy    String?   @map("locked_by")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("queue_engine_lease")
 }
 
 /// Written when a carrier detects automation. Triggers practice-wide suspension
@@ -1081,22 +1111,23 @@ model InsurancePlan {
 }
 
 model EligibilitySnapshot {
-  snapshotId              String            @id @default(uuid()) @map("snapshot_id")
-  practiceId              String            @map("practice_id")
-  patientId               String            @map("patient_id")
-  /// PIIVault UUID when written by pre-visit pipeline; bridges to patientToken.
-  patientToken            String?           @map("patient_token")
-  carrier                 CarrierId
-  planId                  String?           @map("plan_id")
-  status                  EligibilityStatus @default(unknown)
-  verifiedAt              DateTime          @map("verified_at")
-  deductibleIndividualMet Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
-  deductibleFamilyMet     Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
-  annualMaxUsedIndividual Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
-  annualMaxUsedFamily     Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
-  planYearStart           DateTime          @map("plan_year_start") @db.Date
-  rawCarrierResponse      Json?             @map("raw_carrier_response")
-  createdAt               DateTime          @default(now()) @map("created_at")
+  snapshotId                String            @id @default(uuid()) @map("snapshot_id")
+  practiceId                String            @map("practice_id")
+  /// PMS record ID (from the practice management system, e.g. Estimate flow writes). Not a PIIVault token.
+  patientId                 String?           @map("patient_id")
+  /// PIIVault UUID (see src/pii-vault.ts). Not interchangeable with patientId — never conflate the two.
+  patientToken              String?           @map("patient_token")
+  carrier                   CarrierId
+  planId                    String?           @map("plan_id")
+  status                    EligibilityStatus @default(unknown)
+  verifiedAt                DateTime          @map("verified_at")
+  deductibleIndividualMet   Decimal           @default(0) @map("deductible_individual_met") @db.Decimal(10, 2)
+  deductibleFamilyMet       Decimal           @default(0) @map("deductible_family_met") @db.Decimal(10, 2)
+  annualMaxUsedIndividual   Decimal           @default(0) @map("annual_max_used_individual") @db.Decimal(10, 2)
+  annualMaxUsedFamily       Decimal?          @map("annual_max_used_family") @db.Decimal(10, 2)
+  planYearStart             DateTime          @map("plan_year_start") @db.Date
+  rawCarrierResponse        Json?             @map("raw_carrier_response")
+  createdAt                 DateTime          @default(now()) @map("created_at")
 
   practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
 

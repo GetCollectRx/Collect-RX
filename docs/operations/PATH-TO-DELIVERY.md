@@ -15,7 +15,7 @@ Work is grouped A→G. Complete in order. Engineering can finish A–C in-repo; 
 | **F** Ops hardening | Ops | **Checklist ready** — [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) |
 | **G** Pilot cutover | Ops + Eng | **Runbook ready** — [PILOT-CUTOVER.md](PILOT-CUTOVER.md) |
 
-Related: [OUTSTANDING-FIXES-PRODUCT-READY.md](../../OUTSTANDING-FIXES-PRODUCT-READY.md), [MVP-SCOPE.md](../product/MVP-SCOPE.md), [ENVIRONMENT-MATRIX.md](../ENVIRONMENT-MATRIX.md).
+Related: [OUTSTANDING-FIXES-PRODUCT-READY.md](../../OUTSTANDING-FIXES-PRODUCT-READY.md), [MVP-SCOPE.md](../product/MVP-SCOPE.md), [ENVIRONMENT-MATRIX.md](../ENVIRONMENT-MATRIX.md), [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md) (TELUS call timing, PHIPA deletion/breach scope, production RLS role verification — decision-ready options, not code work).
 
 ---
 
@@ -89,6 +89,8 @@ Execute on staging, then prod:
 - [ ] PIPEDA / breach contact owned
 - [ ] Pen test scheduled **or** written pilot exception
 - [ ] Encryption at rest confirmed on prod DB
+- [ ] PHIPA deletion/breach workflow scope decided — see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 2 (schema exists, zero implementation; needs legal/privacy sign-off before engineering builds it)
+- [ ] Production Postgres role verified `NOSUPERUSER`/`NOBYPASSRLS` — see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 3 (RLS is proven correct in CI under a restricted role; prod's actual role has not been checked)
 
 ---
 

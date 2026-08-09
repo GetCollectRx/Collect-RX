@@ -9,6 +9,33 @@ export interface CampaignSchedulerResult {
   sent: number;
   scheduled: number;
   errors: Array<{ prospectId: string; error: string }>;
+  /** Set when the cycle refused to send at all because sender identity was unconfigured. */
+  configError?: string;
+}
+
+/**
+ * CASL s.6(2) requires every commercial electronic message to carry the sender's real
+ * mailing address and a working contact. A default would put a fabricated address in front
+ * of recipients and regulators, which is worse than not sending — so the campaign refuses
+ * to run until both are configured.
+ */
+function requireSenderIdentity(): { mailingAddress: string; senderPhone: string } {
+  const mailingAddress = process.env.MAILING_ADDRESS?.trim();
+  const senderPhone = process.env.SENDER_PHONE?.trim();
+
+  if (!mailingAddress || !senderPhone) {
+    const missing = [
+      mailingAddress ? null : 'MAILING_ADDRESS',
+      senderPhone ? null : 'SENDER_PHONE',
+    ].filter((name): name is string => name !== null);
+
+    throw new Error(
+      `${missing.join(' and ')} is required (no default) — CASL requires a real mailing ` +
+        'address and contact in every commercial email. Set it before the campaign can send.',
+    );
+  }
+
+  return { mailingAddress, senderPhone };
 }
 
 async function getEmailsToSend(prisma: PrismaClient): Promise<Prospect[]> {
@@ -36,19 +63,20 @@ async function getEmailsToSend(prisma: PrismaClient): Promise<Prospect[]> {
   });
 }
 
-async function buildTemplateData(prospect: Prospect): Promise<EmailTemplateData> {
+function buildTemplateData(
+  prospect: Prospect,
+  identity: { mailingAddress: string; senderPhone: string },
+): EmailTemplateData {
   const lastNameMatch = prospect.contactName?.split(' ').pop() || 'there';
   const bookingLink = process.env.DEMO_BOOKING_URL || 'https://collectrx.ca/demo';
-  const senderPhone = process.env.SENDER_PHONE || '416-555-0100';
-  const mailingAddress = process.env.MAILING_ADDRESS || '123 Main St, Toronto, ON M5V 1B5';
 
   return {
     ownerLastName: lastNameMatch,
     practiceName: prospect.practiceName,
     city: prospect.city || '',
     bookingLink,
-    senderPhone,
-    mailingAddress,
+    senderPhone: identity.senderPhone,
+    mailingAddress: identity.mailingAddress,
   };
 }
 
@@ -59,11 +87,20 @@ export async function runEmailCampaignScheduler(prisma: PrismaClient): Promise<C
     errors: [],
   };
 
+  // Resolved once per cycle: a misconfigured deploy logs one clear reason, not one per prospect.
+  let identity: { mailingAddress: string; senderPhone: string };
+  try {
+    identity = requireSenderIdentity();
+  } catch (err) {
+    result.configError = (err as Error).message;
+    return result;
+  }
+
   const emailsToSend = await getEmailsToSend(prisma);
 
   for (const prospect of emailsToSend) {
     try {
-      const templateData = await buildTemplateData(prospect);
+      const templateData = buildTemplateData(prospect, identity);
       const isFollowUp = prospect.lastEmailSentAt != null;
 
       const email = isFollowUp
@@ -125,6 +162,10 @@ export function startEmailCampaignScheduler(prisma: PrismaClient): void {
   cron.schedule('*/5 * * * *', () => {
     runEmailCampaignScheduler(prisma)
       .then((result) => {
+        if (result.configError) {
+          console.error(`[emailCampaignScheduler] not sending — ${result.configError}`);
+          return;
+        }
         if (result.sent > 0) {
           console.log(`[emailCampaignScheduler] Sent ${result.sent} emails, scheduled ${result.scheduled} follow-ups`);
         }

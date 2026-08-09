@@ -55,6 +55,7 @@ import { fileURLToPath } from 'node:url';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
@@ -67,6 +68,7 @@ import { prisma } from '../lib/prisma';
 // in vapiWebhook.ts and agentRunner.ts — those are unaffected.
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
+import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import {
   assertPersistentPhiVaultConfigured,
@@ -96,6 +98,7 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
+import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
 import { createOrgAdminRouter } from './routes/orgAdminRoutes';
 import { createSsoRouter } from './routes/ssoRoutes';
 import insuranceRouter        from '../routes/insurance';
@@ -152,6 +155,7 @@ import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
+app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
 // Without these, an uncaught error anywhere (e.g. a background async path) kills the
@@ -233,6 +237,7 @@ if (!process.env.VAPI_WEBHOOK_SECRET) {
 
 try {
   assertJwtConfigAtStartup();
+  assertPasswordResetEmailConfigAtStartup();
 } catch (e) {
   console.error('[server] FATAL:', (e as Error).message);
   process.exit(1);
@@ -394,6 +399,7 @@ app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/admin',      createOrgAdminRouter(prisma));
+app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
 app.use('/api/insurance',  insuranceRouter);
@@ -470,7 +476,19 @@ function getSpaIndexHtml(): string {
 }
 
 app.use(createResourceStaticMiddleware(distPath));
-app.use(express.static(distPath));
+app.use(
+  express.static(distPath, {
+    setHeaders(res, filePath) {
+      // Vite emits content-hashed asset filenames, so a new build changes the
+      // URL — those can be cached indefinitely. index.html (served by the SPA
+      // catch-all below, not here) must never be long-cached or new deploys
+      // wouldn't be picked up.
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }),
+);
 app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ success: false, error: 'Not found' });

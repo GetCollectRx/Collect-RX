@@ -4,9 +4,9 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev]
+    branches: [main, dev, prd]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, prd]
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
@@ -82,6 +82,13 @@ jobs:
         env:
           CI: "true"
         run: npm run test:collectrx
+
+      # Runs the exact command Railway runs on deploy (db:generate && tsc && check:api && vite build).
+      # Typecheck above uses `tsc --noEmit` and never touches Vite, so a server-only import (Node
+      # crypto, Prisma, PHI vault) leaking into the client bundle only failed on Railway, not here.
+      - name: Production build (typecheck emit + API coverage + Vite build)
+        working-directory: Collect-RX-main
+        run: npm run build
 
       - name: Upload test report (JUnit)
         if: always()

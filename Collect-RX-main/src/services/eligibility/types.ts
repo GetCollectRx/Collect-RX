@@ -112,7 +112,8 @@ export interface Patient {
 
 export interface EligibilitySnapshot {
   snapshotId: string;
-  patientId: string;
+  /** PMS record ID. Null for rows written by the pre-visit pipeline, which only has a PIIVault token. */
+  patientId: string | null;
   carrier: Carrier;
   status: EligibilityStatus;
   verifiedAt: string; // ISO datetime
@@ -277,5 +278,7 @@ export interface StatusRequest {
 export interface StatusResponse {
   success: boolean;
   snapshot?: EligibilitySnapshot;
+  /** Most recent persisted estimate for this patient + carrier (EligibilityEstimateLog), if any. */
+  lastEstimate?: EligibilityEstimate;
   error?: string;
 }

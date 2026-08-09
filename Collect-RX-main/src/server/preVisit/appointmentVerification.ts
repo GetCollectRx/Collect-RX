@@ -20,7 +20,7 @@ import {
 } from './predetSubmissionRules.js';
 import {
   tryCanadaLifePortalPreVisit,
-  tryTelusTx23PreVisit,
+  checkTelusTx23Support,
 } from './electronicPreVisit.js';
 import { enqueueEmrPreVisitEvent } from '../emrSyncOutbox.js';
 
@@ -109,6 +109,7 @@ export async function verifyBeforeAppointment(
   try {
     const result: VerificationResult = { status: 'GREEN' };
 
+    // (a) Sub-guards: carrier block + authorization gate.
     const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
     if (!blockGuard.allowed) {
       return finalize(prisma, row.id, { status: 'RED', reason: 'carrier_blocked' });
@@ -122,6 +123,10 @@ export async function verifyBeforeAppointment(
       });
     }
 
+    // Intentional addition to the documented (a)-(h) sequence, not in the
+    // original spec — flags missing predet documentation before the
+    // CDCP-required checks below run, so a submission doesn't get dispatched
+    // only to be denied for lack of artifacts.
     const submission = validatePredetSubmission({
       carrierId,
       procedureCodes,
@@ -137,6 +142,8 @@ export async function verifyBeforeAppointment(
       });
     }
 
+    // (c) Canada Life portal-first check — executed inline (unlike TELUS
+    // Tx23 below, the spec does not require this to be deferred).
     if (carrierId === 'canada_life') {
       const portal = await tryCanadaLifePortalPreVisit(prisma, {
         practiceId,
@@ -158,35 +165,17 @@ export async function verifyBeforeAppointment(
       result.portalCheckRequired = true;
     }
 
-    if (carrierId === 'telus_adjudicare') {
-      const tx23 = await tryTelusTx23PreVisit(prisma, {
-        practiceId,
-        patientToken,
-        carrierId,
-        procedureCodes,
-        appointmentVerificationId: row.id,
-      });
-      if (tx23.resolved) {
-        result.tx23Resolved = true;
-        result.status = 'GREEN';
-        result.reason = 'tx23_resolved';
-        await prisma.appointmentVerification.update({
-          where: { id: row.id },
-          data: { tx23Resolved: true },
-        });
-        return finalize(prisma, row.id, result);
-      }
-      result.tx23CheckRequired = true;
-    }
-
     const withinWindow = isWithinCallWindow(appointmentAt);
     const delayMs = withinWindow ? undefined : delayUntilNextCallWindow(appointmentAt);
 
+    // (d) Eligibility snapshot staleness.
+    // patientToken is the PIIVault UUID; patientId is the PMS record ID and is
+    // never interchangeable with it — query by patientToken only.
     const snapshot = await prisma.eligibilitySnapshot.findFirst({
       where: {
         practiceId,
         carrier: carrierId,
-        OR: [{ patientToken }, { patientId: patientToken }],
+        patientToken,
       },
       orderBy: { verifiedAt: 'desc' },
     });
@@ -212,6 +201,7 @@ export async function verifyBeforeAppointment(
       }
     }
 
+    // (e) CDCP predetermination / reconsideration check.
     const qualifyingCodes = procedureCodes.filter(requiresCdcpPredetermination);
     if (isCdcpCarrier(carrierId) && qualifyingCodes.length > 0) {
       const nonExcludedCodes = qualifyingCodes.filter((code) => !reconsiderationExclusionReason(code));
@@ -255,11 +245,28 @@ export async function verifyBeforeAppointment(
       }
     }
 
+    // (f) TELUS Tx23 — flag only. The live CDAnet inquiry must not run inline
+    // here; identify support and defer the actual submission to the worker
+    // (PRE_VISIT_TELUS_TX23 job), the same pattern PRE_VISIT_ELIGIBILITY uses.
+    if (carrierId === 'telus_adjudicare') {
+      const tx23Support = checkTelusTx23Support(carrierId, patientToken, practiceId);
+      if (tx23Support.supported) {
+        result.tx23CheckRequired = true;
+        result.enqueuedJobId = await enqueuePreVisitJob(
+          'PRE_VISIT_TELUS_TX23',
+          buildPayload(params, row.id),
+          delayMs,
+        );
+      }
+    }
+
+    // (g) Business hours.
     if (!withinWindow && result.status === 'GREEN') {
       result.status = 'YELLOW';
       result.reason = 'outside_call_window';
     }
 
+    // (h) Persist.
     return finalize(prisma, row.id, result);
   } catch (err) {
     try {

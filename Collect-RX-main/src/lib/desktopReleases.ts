@@ -16,7 +16,7 @@ export interface DesktopReleaseInfo {
 }
 
 export const DESKTOP_RELEASES_PAGE =
-  'https://github.com/GetCollectRx/Collect-RX/releases/tag/v1.0.0-pilot'
+  'https://github.com/GetCollectRx/Collect-RX/releases/latest'
 
 export const PILOT_RELEASE_TAG = 'v1.0.0-pilot'
 

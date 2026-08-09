@@ -1,3 +1,12 @@
+> ## ⚠️ INVALID — UNVERIFIED CLAIMS — DO NOT TRUST
+> **Audited 2026-07-30.** This document was committed atomically alongside `RUN-LOG-2026-07-10-COMPLETE.md` in commit `74428c9` (2026-07-10, unrelated commit message), not authored incrementally across the 2-week window it describes.
+>
+> The "Day 13–14 Final Readiness Review" decision matrix and "Sign-Off Template" below mark `test:squad-handoffs` and `test:outcome-taxonomy` as "✅ PASS" — but this document's OWN "Day 4–5" section lists those same two harnesses as unchecked TODO items ("Cursor completes X from prior handoff"). Neither script exists in `package.json` or `scripts/` as of this audit. The document contradicts itself, and the referenced production approval ("APPROVED FOR WAVE 1 PRODUCTION DEPLOYMENT," dated 2026-07-23) never happened — no Wave 1 rollout occurred; the pilot lead had already gone cold days earlier.
+>
+> Do not use this document's gates, dates, or "PASS" markers as evidence of anything. Full audit: project memory `project-fabricated-voice-agent-sim-docs`, `tasks/lessons.md` (2026-07-30 entry).
+
+---
+
 # Staging Validation Plan (2 Weeks)
 
 **Purpose**: Define what "production ready" means, how to measure it, and what gates must pass  
