@@ -1,8 +1,8 @@
 ---
 name: pre-launch-audit
 description: Comprehensive audit of current Vapi squad - compliance, reliability, intelligence check before any launch
-reasoning_effort: high
-model: claude-opus-5
+reasoning_effort: medium
+model: claude-haiku-4-5-20251001
 tools:
   - "*"
 ---

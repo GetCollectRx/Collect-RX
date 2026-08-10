@@ -1,8 +1,8 @@
 ---
 name: weekly-health-reporter
 description: Weekly autonomous health check that runs all 29 agents in dependency order, synthesizes results into executive health report
-reasoning_effort: high
-model: claude-opus-5
+reasoning_effort: medium
+model: claude-haiku-4-5-20251001
 tools:
   - "*"
 ---

@@ -1,8 +1,8 @@
 ---
 name: integration-tester
 description: Validates Vapi integration with staging API - confirms prompts work with carriers without production cost
-reasoning_effort: high
-model: claude-opus-5
+reasoning_effort: medium
+model: claude-haiku-4-5-20251001
 tools:
   - "*"
 ---

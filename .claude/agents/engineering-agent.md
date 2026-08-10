@@ -1,8 +1,8 @@
 ---
 name: engineering-agent
 description: Implements code fixes, adds features, enhances logic based on investigation reports
-reasoning_effort: high
-model: claude-opus-5
+reasoning_effort: medium
+model: claude-haiku-4-5-20251001
 tools:
   - "*"
 ---

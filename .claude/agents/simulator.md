@@ -1,8 +1,8 @@
 ---
 name: simulator
 description: End-to-end simulation testing - can the full system handle a practice from onboarding through collections without breaking
-reasoning_effort: high
-model: claude-opus-5
+reasoning_effort: low
+model: claude-haiku-4-5-20251001
 tools:
   - "*"
 ---
