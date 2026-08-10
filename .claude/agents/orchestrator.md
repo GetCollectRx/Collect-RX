@@ -86,7 +86,18 @@ The cron and event registries are the **runtime execution of B**, not extra agen
 
 Analytics Pipeline · Risk Radar · Post-Call Debrief · Hallucination Detector · Call Quality Scorer · Voice Agent Trainer · Carrier IVR Health · Escalation Triage · Collections Performance · Tier & Billing Health · Database Health · Project Manager · Client Acquisition · Practice Time Savings · ROI Proof · Voice of Customer · Market Intelligence · Competitive Intelligence · Researcher · Product Manager · PHI Access Log Reviewer · Security Auditor · Compliance Checker · Vapi Squad Auditor · Frontend Auditor · Backend Reviewer · Practice Onboarding Validator · Release Readiness · Incident Response
 
-**Canonical path is repo-root `agents/`** — those files carry the `model:` frontmatter the runtime reads. A copy under `Collect-RX-main/agents/` has been a recurring drift source; if you find one, treat the divergence as a finding, not a source.
+**There is no single canonical path — there are two copies with two consumers, and they drift.**
+
+| Path | Read by |
+|---|---|
+| `Collect-RX-main/agents/` | The server runtime. `agentRunner.ts:loadAgentPrompt()` reads `$AGENTS_DIR` (`/app/agents` in prod, `./agents` from `Collect-RX-main/` in dev). Inside the Docker build context — **this is what ships**. Executes on Gemini (`gemini-2.0-flash`); frontmatter not parsed |
+| `agents/` (repo root) | Claude Code / Cowork. Carries `model:` frontmatter. Not in the Docker build context |
+
+Nothing enforces parity. They have already contradicted each other on compliance status, and the root copy carries frontmatter the shipped copy lacks. **Diff them at the start of any run that reads an agent prompt**, and report divergence as a finding — you cannot tell which one a given claim came from otherwise:
+
+```bash
+diff -rq agents/ Collect-RX-main/agents/
+```
 
 You may invoke agents that appear in the derived roster and no others. If synthesis needs a capability none provides, **say so** — never do that agent's work yourself and report it as delegated.
 

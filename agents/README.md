@@ -1,6 +1,8 @@
 # CollectRx Agent System
 
-**This directory is canonical** — these files carry the `model:` frontmatter the runtime reads via `agentRunner.ts:loadAgentPrompt()`. A duplicate tree under `Collect-RX-main/agents/` was removed after it drifted into contradicting this one on compliance status.
+**This is the Claude Code / Cowork copy**, carrying the `model:` frontmatter added by `2d22558`. It is **not** what the server runs: `agentRunner.ts:loadAgentPrompt()` reads `$AGENTS_DIR`, which resolves to the copy under [`Collect-RX-main/agents/`](../Collect-RX-main/agents/) — that directory is inside the Docker build context and is what ships. The server runtime executes these prompts on Gemini (`gemini-2.0-flash`) and does not parse frontmatter.
+
+⚠️ **The two trees drift and nothing checks them.** The root copy has model frontmatter the shipped copy lacks, and their READMEs have contradicted each other on compliance status. Edit both, and diff them before trusting either.
 
 **29 domain agents** covering every dimension of building and running CollectRx: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk. Orchestration subagents (orchestrator, investigator, engineering, simulator, integration-tester, vapi-configurator, rollout-manager, escalation-manager, pre-launch-audit, weekly-health-reporter) live in [`.claude/agents/`](../.claude/agents/).
 
