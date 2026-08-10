@@ -8,6 +8,8 @@ This repo has more than one doc claiming to describe "current state." When they 
 
 1. **This file** — repo-root overview, monorepo layout, standing rules that apply everywhere.
 2. **[`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md)** — authoritative for anything under `Collect-RX-main/` (commands run from that directory, PRD coding/merge-gate standards, CRTC disclosure rule). If you're working inside `Collect-RX-main/`, that file's rules apply in addition to this one.
+
+   **Exception — agents.** Agent prompts are the one thing `Collect-RX-main/` is *not* authoritative for. The canonical trees are repo-root [`agents/`](agents/) (29 domain prompts, carrying the `model:` frontmatter the runtime loads via `agentRunner.ts:loadAgentPrompt()`) and [`.claude/agents/`](.claude/agents/) (orchestration subagents). A duplicate under `Collect-RX-main/agents/` was removed after it drifted into contradicting the root tree on compliance status. Do not recreate it.
 3. **[`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md)** — the single live launch-readiness tracker. It is kept current. `OUTSTANDING-FIXES-PRODUCT-READY.md` is a **ticket backlog for reference**, not a status source — its phase-status stamps are historical snapshots and may lag reality; PATH-TO-DELIVERY wins on anything both describe.
 4. **Dated documents** (filenames or headers with a specific date, e.g. `*-2026-05-29.md`, `ENGINEERING-AUDIT-*`, `EMAIL_VALIDATION_REPORT.md`) are **point-in-time records**, not living docs. Treat them as history, not instructions — don't follow setup/deploy steps from them without checking they still match this file and PATH-TO-DELIVERY.
 5. `EXECUTION_STATE.md` and `ACTIVATION_CHECKLIST.md` are **retired/archived** (see notices at the top of each) — they described a specific July 2026 campaign push that is over. Do not follow their deploy targets or "ready" claims.
@@ -88,7 +90,7 @@ Express backend  Collect-RX-main/src/server/index.ts  (Fly.io app `collect-rx`, 
     ↓
 Prisma ORM → PostgreSQL (Fly.io)  +  Redis-backed worker queue (BullMQ) for background jobs
     ↓
-Vapi.ai voice agents (4-agent squad via Vapi API)
+Vapi.ai voice agents (5-agent squad via Vapi API)
     ↓
 Twilio (telephony — calls to carriers)
 ```
