@@ -127,7 +127,7 @@ import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import gocardlessRouter from './routes/gocardlessRoutes';
 import { gocardlessWebhookHandler } from './webhooks/gocardless.js';
-import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { registerArJobSchedulers, registerAgentRunners } from './jobs/registerSchedulers.js';
 import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
 import { startPadReconciliationScheduler } from './jobs/padReconciliationScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
@@ -753,6 +753,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   if (process.env.REDIS_URL) {
     registerArJobSchedulers().catch((err) => {
       logger.error('[server] registerArJobSchedulers failed', { error: err });
+    });
+    registerAgentRunners().catch((err) => {
+      logger.error('[server] registerAgentRunners failed', { error: err });
     });
   } else {
     startRulesEngine(prisma);

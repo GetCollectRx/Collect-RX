@@ -85,6 +85,7 @@
     "vapi:squad-push": "tsx scripts/sync-vapi-squad.ts --push"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@clickhouse/client": "^1.19.0",
     "@google/generative-ai": "^0.24.1",
