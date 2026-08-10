@@ -327,16 +327,25 @@ function checkAccessControl(): ComplianceCheck[] {
     { reference: 'OWASP Session Management; PHIPA s.12' },
   ));
 
-  // C4 — Accountant token expiry checked against DB (fail-closed)
-  const hasAccountantExpiry = authenticate.includes("payload.role === 'accountant'") && authenticate.includes('tokenExpiresAt') && authenticate.includes('503');
+  // C4 — Every session re-verified against the DB on each request (fail-closed).
+  // Previously scoped to accountants only; a JWT's signature proves it was
+  // issued, not that the subject is still authorized, so deactivation and
+  // practice moves took effect only when the token expired — 8h, or 90d for
+  // accountants.
+  const sessionSubject = readSrc('server', 'accessControl', 'sessionSubject.ts');
+  const hasSessionRevalidation =
+    authenticate.includes('validateSessionSubject') &&
+    authenticate.includes('503') &&
+    sessionSubject.includes('tokenExpiresAt') &&
+    sessionSubject.includes('isActive');
   results.push(check(
     'C4', 'ACCESS_CONTROL', ['PHIPA', 'PIPEDA'],
-    'Accountant token expiry verified against database (fail-closed on DB error)',
-    'Accountant JWTs have a DB-backed expiry date that overrides the JWT TTL; fails with 503 if the DB is unreachable.',
-    hasAccountantExpiry ? 'pass' : 'fail',
-    hasAccountantExpiry
-      ? "authenticate.ts: accountant path checks user.tokenExpiresAt in DB; returns 503 if DB lookup fails (fail-closed)."
-      : 'MISSING: accountant token expiry DB check not found.',
+    'Session subject re-verified against database on every request (fail-closed on DB error)',
+    'Deactivation, expiry, and practice reassignment take effect immediately rather than when the JWT expires; fails with 503 if the DB is unreachable.',
+    hasSessionRevalidation ? 'pass' : 'fail',
+    hasSessionRevalidation
+      ? 'authenticate.ts: validateSessionSubject() on every request; sessionSubject.ts checks isActive, tokenExpiresAt, and practice membership; returns 503 if the lookup fails (fail-closed).'
+      : 'MISSING: per-request session subject revalidation not found.',
     { reference: 'PHIPA s.33 — Access revocation; PIPEDA Principle 4.4' },
   ));
 

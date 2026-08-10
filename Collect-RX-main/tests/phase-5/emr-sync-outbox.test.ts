@@ -32,13 +32,17 @@ describe('processEmrSyncOutboxBatch', () => {
     vi.unstubAllGlobals();
   });
 
+  let lastTx: { $executeRaw: ReturnType<typeof vi.fn>; $queryRaw: ReturnType<typeof vi.fn> } | null = null;
+
   function makePrisma(opts: { locked: Array<{ id: string }>; rows: typeof row[]; update: ReturnType<typeof vi.fn> }) {
     const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
       $queryRaw: vi.fn().mockResolvedValue(opts.locked),
       emrSyncOutbox: {
         findMany: vi.fn().mockResolvedValue(opts.rows),
       },
     };
+    lastTx = tx;
     return {
       $transaction: vi.fn((cb: (tx: typeof tx) => unknown) => cb(tx)),
       emrSyncOutbox: {
@@ -46,6 +50,22 @@ describe('processEmrSyncOutboxBatch', () => {
       },
     } as unknown as PrismaClient;
   }
+
+  it('sets the RLS bypass before the raw select so the drain is not silently empty', async () => {
+    // The drain's raw SELECT does not go through the RLS extension (it wraps
+    // model operations only). Without an explicit bypass in the same
+    // transaction, FORCE RLS matches zero rows and the outbox never drains
+    // while reporting success.
+    const prisma = makePrisma({ locked: [], rows: [], update: vi.fn() });
+    await processEmrSyncOutboxBatch(prisma);
+
+    expect(lastTx!.$executeRaw).toHaveBeenCalled();
+    const sql = String(lastTx!.$executeRaw.mock.calls[0]?.[0] ?? '');
+    expect(sql).toContain('set_config');
+    expect(lastTx!.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      lastTx!.$queryRaw.mock.invocationCallOrder[0],
+    );
+  });
 
   it('returns zeros when nothing pending', async () => {
     const prisma = makePrisma({ locked: [], rows: [], update: vi.fn() });

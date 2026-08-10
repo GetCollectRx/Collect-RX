@@ -14,9 +14,16 @@ its own Fly app, reached by the main app over the Fly private network.
 - Transcript text is **PHI**. The app is pinned to `yyz` and is **internal-only**
   (no public IP; see `fly.toml`). Reach it only via
   `http://collect-rx-audit-sidecar.internal:8000`.
-- The NeMo config (`config/config.yml`) uses **OpenAI `gpt-4`**, so transcript text
-  is sent to OpenAI. Confirm a zero-retention / DPA posture with OpenAI before
-  processing real patient transcripts, or swap the model in `config.yml`.
+- **As of Aug 2026, the `/audit/transcript` endpoint in `app.py` is a regex/heuristic
+  MVP — it does not actually call the LLM.** `LLMRails` initialization (and the
+  `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` it needs) is optional and only attempted if
+  one of those env vars is set; without one, the service runs heuristic-only checks
+  and logs a warning at boot. This was done deliberately to deploy the sidecar
+  without an LLM dependency while there's no real patient data yet.
+- **Before going live with real patient data**, decide on a real semantic-check
+  implementation (wire up `rails.generate_response()` / `rails.explain_rules()` in
+  `app.py`), pick a provider, and confirm a zero-retention / DPA posture with
+  whichever LLM vendor is used before transcript text is sent to it.
 
 ## First deploy
 
@@ -27,10 +34,12 @@ cd audit-sidecar
 fly launch --no-deploy --name collect-rx-audit-sidecar --region yyz --copy-config
 fly config validate
 
-# Secrets on the sidecar:
+# Only secret required for the current heuristic-only mode:
 fly secrets set -a collect-rx-audit-sidecar \
-  SIDECAR_SHARED_SECRET="<same value used on the main app>" \
-  OPENAI_API_KEY="<openai key>"
+  SIDECAR_SHARED_SECRET="<same value used on the main app>"
+
+# Optional — only needed once real LLM-based checks are wired up in app.py:
+# fly secrets set -a collect-rx-audit-sidecar OPENAI_API_KEY="..."   # or ANTHROPIC_API_KEY="..."
 
 fly deploy -a collect-rx-audit-sidecar
 ```

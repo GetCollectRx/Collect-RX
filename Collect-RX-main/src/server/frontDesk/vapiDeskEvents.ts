@@ -225,6 +225,7 @@ async function processCallEndedDesk(
         where: { id: existing.id },
         data: {
           completedAt: new Date(),
+          durationSeconds: processed.durationSeconds,
           outcome: 'BLOCK_DETECTED',
           outcomeDetail: processed.outcomeDetail ?? 'Carrier block detected at call end',
           carrierBlockDetected: true,
@@ -240,6 +241,16 @@ async function processCallEndedDesk(
       reason: processed.outcomeDetail,
       hangVapi: false,
     });
+
+    // A blocked call still occupied a Vapi/Twilio line and still costs money.
+    // Returning before this left those minutes unmetered, so the cost breaker
+    // could not see spend from the exact scenario most likely to produce a
+    // burst of long, fruitless calls.
+    try {
+      await recordCallUsage({ practiceId: claim.practiceId, vapiCallId });
+    } catch (usageErr) {
+      console.error('[vapi-webhook] usage recording failed on carrier block (non-fatal):', usageErr);
+    }
     return;
   }
 

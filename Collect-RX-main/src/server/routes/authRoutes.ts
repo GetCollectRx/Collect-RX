@@ -40,6 +40,7 @@ import {
   convertToOrganizationBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { invalidateSessionSubject } from '../accessControl/sessionSubject.js';
 import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
 import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
@@ -636,6 +637,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           isActive: true, providerId: true, tokenExpiresAt: true, updatedAt: true,
         },
       });
+      invalidateSessionSubject(req.params.userId);
 
       return res.json({ user: updated });
     } catch (e) {
@@ -668,6 +670,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
 
       await prisma.user.update({ where: { id: target.id }, data: { isActive: false } });
+      invalidateSessionSubject(target.id);
       return res.json({ ok: true });
     } catch (e) {
       console.error('deactivate user error:', e);

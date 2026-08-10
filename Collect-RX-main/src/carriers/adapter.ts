@@ -18,6 +18,7 @@ import { identifyTelusPlan } from '../services/eligibility/engine';
 import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
+import { isCarrierHoliday } from './statutoryHolidays.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -543,7 +544,10 @@ export function isWithinCallWindow(date = new Date()): boolean {
   if (callWindowForced()) return true;
   const hour = getEasternHour(date);
   const day = getEasternDayOfWeek(date);
-  return day >= 1 && day <= 5 && hour >= 8 && hour < 17;
+  if (day < 1 || day > 5 || hour < 8 || hour >= 17) return false;
+  // Carrier claims lines are closed on statutory holidays; dialling one burns
+  // an attempt against a recorded message.
+  return !isCarrierHoliday(date);
 }
 
 /**
@@ -558,7 +562,10 @@ export function nextCallWindowStart(date = new Date()): Date {
   candidate.setMinutes(0, 0, 0);
   candidate.setHours(candidate.getHours() + 1);
 
-  for (let hoursAhead = 0; hoursAhead <= 8 * 24; hoursAhead += 1) {
+  // Widened past a single week: a holiday cluster (Christmas and Boxing Day
+  // shifted around a weekend, or New Year's) can close the line for several
+  // consecutive days, and this scan throwing would be a hard dispatch failure.
+  for (let hoursAhead = 0; hoursAhead <= 21 * 24; hoursAhead += 1) {
     if (isWithinCallWindow(candidate)) return candidate;
     candidate.setHours(candidate.getHours() + 1);
   }

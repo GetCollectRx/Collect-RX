@@ -4,9 +4,9 @@ import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { validateSessionSubject } from '../accessControl/sessionSubject.js';
 import { runWithRlsContext } from '../db/rlsContext.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
-import { prisma } from '../../lib/prisma.js';
 
 declare global {
   namespace Express {
@@ -75,34 +75,24 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    // Accountant token expiry — must be checked against DB since the JWT itself
-    // has a 90-day TTL but the practice can revoke access before that via tokenExpiresAt.
-    // Auditor sessions also carry role: 'accountant' (PracticeRole has no 'auditor'
-    // value, so signBriefSessionToken shims it) but their userId is a platform_users
-    // row, not a User row — platformUserSession distinguishes the two.
-    if (payload.role === 'accountant' && !payload.platformUserSession) {
-      const userId = (payload as UserAuthPayload).userId;
-      prisma.user.findUnique({ where: { id: userId }, select: { tokenExpiresAt: true, isActive: true } })
-        .then((user) => {
-          if (!user || !user.isActive) {
-            res.status(401).json({ error: 'Account is no longer active' });
-            return;
-          }
-          if (user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
-            res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
-            return;
-          }
-          continueWithRls(req, next);
-        })
-        .catch(() => {
-          // Fail CLOSED: if we cannot confirm the accountant's access is still valid
-          // (active + not expired), deny rather than grant PHI access on a DB hiccup.
-          res.status(503).json({ error: 'Unable to verify access right now. Please retry.' });
-        });
-      return;
-    }
-
-    continueWithRls(req, next);
+    // The signature proves the token was issued; it does not prove the subject
+    // is still authorized. Deactivation and practice moves change the User row,
+    // never the token, so every request re-confirms the subject against the DB
+    // (short-cached — see sessionSubject.ts). Without this, revoking access in
+    // the UI has no effect until the token expires: 8h, or 90d for accountants.
+    validateSessionSubject(payload)
+      .then((verdict) => {
+        if (!verdict.ok) {
+          res.status(verdict.status ?? 401).json({ error: verdict.error ?? 'Invalid session' });
+          return;
+        }
+        continueWithRls(req, next);
+      })
+      .catch(() => {
+        // Fail CLOSED: if the subject cannot be confirmed, deny rather than
+        // serve PHI on the strength of a signature alone.
+        res.status(503).json({ error: 'Unable to verify access right now. Please retry.' });
+      });
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });
   }

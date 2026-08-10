@@ -86,7 +86,14 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
   // The claim (processedAt = now) is written inside the same transaction so
   // no other tick can pick the same rows. On delivery failure, processedAt is
   // reset to null so the row is retried on the next tick.
+  // Raw SQL never receives the RLS extension's set_config (it wraps model
+  // operations only), so under FORCE RLS a bare $queryRaw here matched zero
+  // rows and the outbox silently never drained — EMR writeback events piled up
+  // forever with no error anywhere. This drain legitimately crosses tenants, so
+  // it sets the bypass flag in the same transaction as the query;
+  // set_config(..., true) is transaction-scoped.
   const rows = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`;
     const locked = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM emr_sync_outbox
       WHERE processed_at IS NULL

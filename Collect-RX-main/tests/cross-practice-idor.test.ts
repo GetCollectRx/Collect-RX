@@ -194,30 +194,24 @@ describe.skipIf(!dbReady)('Cross-Practice IDOR Access Validation', () => {
     });
   });
 
-  describe('Attempt 7: Forged token claiming Practice B access', () => {
-    it('VULNERABILITY FOUND: grants cross-practice access with forged token', async () => {
-      // SECURITY FINDING: The API trusts practiceId in JWT without validating
-      // that the userId actually belongs to that practice in the database.
-      // This allows forged tokens to bypass practice isolation.
-      const forgedToken = signUserToken({
+  describe('Attempt 7: Token claiming a practice the user does not belong to', () => {
+    it('rejects a correctly-signed token whose practiceId is not the user\'s own', async () => {
+      // Same shape as a token held after staff moved the user to another
+      // location, and the shape an attacker would mint if the signing key ever
+      // leaked. The signature alone does not establish practice membership —
+      // authenticate() re-confirms the subject against the User row.
+      const mismatchedToken = signUserToken({
         userId: practiceA.user.id,
         practiceId: practiceB.practice.id,
         role: 'practice_owner',
       });
-      // This token says user from A claims to be in practice B
-      // The API currently does NOT validate that userId belongs to practiceB
 
       const res = await request(app)
         .get(`/api/insurance/claims/${claimInB.id}`)
-        .set('Authorization', `Bearer ${forgedToken}`);
+        .set('Authorization', `Bearer ${mismatchedToken}`);
 
-      // EXPECTED BUG BEHAVIOR: The API returns 200 and allows access
-      // SHOULD BE: Return 401/403 because userId's actual practice (A) != claimed practice (B)
-      expect(res.status).toBe(200);
-      expect(res.body.data.id).toBe(claimInB.id);
-      console.log(
-        '[SECURITY] Forged token accepted: user from Practice A accessed Practice B claim via forged token'
-      );
+      expect(res.status).toBe(401);
+      expect(res.body.data).toBeUndefined();
     });
   });
 

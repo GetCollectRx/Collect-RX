@@ -47,6 +47,32 @@ export async function createPracticeWithOwnerForTests(
   return { practice, user, email, password: FIXTURE_PRACTICE_PASSWORD };
 }
 
+/**
+ * Create a user in an existing practice, for tests that build the practice
+ * themselves and just need a session to authenticate with.
+ *
+ * Sessions are re-confirmed against the User row on every request
+ * (src/server/accessControl/sessionSubject.ts), so a token naming a user that
+ * does not exist is rejected at authentication with 401 and never reaches the
+ * route under test. Tests must therefore mint tokens for real rows.
+ */
+export async function createUserInPracticeForTests(
+  prisma: PrismaClient,
+  practiceId: string,
+  role: PracticeRole = 'practice_owner',
+) {
+  const passwordHash = await bcrypt.hash(FIXTURE_PRACTICE_PASSWORD, 4);
+  return prisma.user.create({
+    data: {
+      practiceId,
+      email: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@fixture.test`,
+      passwordHash,
+      role,
+      displayName: `Fixture ${role}`,
+    },
+  });
+}
+
 /** Delete a practice and all its users, in FK-safe order. */
 export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId: string) {
   await prisma.user.deleteMany({ where: { practiceId } });

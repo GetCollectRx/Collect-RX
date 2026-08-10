@@ -1,5 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
-import type { ClaimStatus } from '@prisma/client';
+import type { ClaimStatus, PrismaClient } from '@prisma/client';
 import { categorizeDenial, type DenialCategory } from '../recovery/denialEvidenceRules.js';
 
 export interface BatchClaimStatus {

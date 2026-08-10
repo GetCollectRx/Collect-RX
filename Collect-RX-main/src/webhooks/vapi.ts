@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router, Request, Response } from 'express';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
@@ -96,6 +96,20 @@ export async function appendVapiWebhookAudit(
  * Vapi sends the signature in the `x-vapi-signature` header as
  * `sha256=<hex-digest>`.
  */
+/**
+ * Constant-time shared-secret comparison. `===` on strings returns as soon as
+ * two bytes differ, which leaks the length of the matching prefix to an
+ * attacker able to time responses — enough to recover the secret byte by byte.
+ * Hashing first keeps the compared buffers equal-length so the comparison
+ * itself cannot throw or leak the secret's length.
+ */
+function secretsMatch(provided: string | undefined, expected: string | undefined): boolean {
+  if (!provided || !expected) return false;
+  const a = createHash('sha256').update(provided).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
 function validateSignature(rawBody: Buffer, signature: string): boolean {
   const secret = process.env.VAPI_WEBHOOK_SECRET;
   if (!secret) {
@@ -104,11 +118,9 @@ function validateSignature(rawBody: Buffer, signature: string): boolean {
   }
 
   const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
-  try {
-    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
-    return false;
-  }
+  // Compared as digests so a length mismatch is not distinguishable by timing
+  // (and cannot make timingSafeEqual throw on unequal-length buffers).
+  return secretsMatch(signature, expected);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,10 +141,7 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid body format' });
   }
 
-  const secretOk =
-    !!toolSecret &&
-    !!process.env.VAPI_WEBHOOK_SECRET &&
-    toolSecret === process.env.VAPI_WEBHOOK_SECRET;
+  const secretOk = secretsMatch(toolSecret, process.env.VAPI_WEBHOOK_SECRET);
 
   if (!signature && !secretOk) {
     console.warn('[vapi-webhook] Missing x-vapi-signature header');

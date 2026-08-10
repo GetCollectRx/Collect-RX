@@ -20,19 +20,38 @@ afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);
 });
 
-function deskCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signUserToken({ userId: `desk-${practiceId}`, practiceId, role: 'front_desk' })}`;
+function cookieFor(userId: string, practiceId: string, role: 'front_desk' | 'practice_owner'): string {
+  return `${COOKIE_NAME}=${signUserToken({ userId, practiceId, role })}`;
 }
 
-function ownerCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signUserToken({ userId: `owner-${practiceId}`, practiceId, role: 'practice_owner' })}`;
+/**
+ * Sessions are re-confirmed against the User row on every request, so these
+ * must be real users in the practice — a token naming a user that does not
+ * exist is rejected at authentication and never reaches the role gate.
+ */
+async function createUserForTests(
+  practiceId: string,
+  role: 'front_desk' | 'practice_owner',
+): Promise<string> {
+  const user = await prisma.user.create({
+    data: {
+      practiceId,
+      email: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@fixture.test`,
+      passwordHash: 'not-used-in-this-test',
+      role,
+      displayName: `Fixture ${role}`,
+    },
+  });
+  return user.id;
 }
 
 describe.skipIf(!dbReady)('front_desk API gate', () => {
   it('returns 403 on owner routes and 200 on desk routes', async () => {
     const practice = await createPracticeForTests(prisma);
-    const desk = deskCookie(practice.id);
-    const owner = ownerCookie(practice.id);
+    const deskUserId = await createUserForTests(practice.id, 'front_desk');
+    const ownerUserId = await createUserForTests(practice.id, 'practice_owner');
+    const desk = cookieFor(deskUserId, practice.id, 'front_desk');
+    const owner = cookieFor(ownerUserId, practice.id, 'practice_owner');
 
     const blocked = await Promise.all([
       request(app).get('/api/insurance/claims').set('Cookie', desk),
@@ -70,6 +89,7 @@ describe.skipIf(!dbReady)('front_desk API gate', () => {
       .set('Cookie', owner);
     expect(ownerInsurance.status).not.toBe(403);
 
+    await prisma.user.deleteMany({ where: { practiceId: practice.id } });
     await prisma.practice.delete({ where: { id: practice.id } });
   }, 30000);
 });

@@ -354,7 +354,23 @@
       "Bash(cat)",
       "Bash(chmod +x /tmp/collectrx_research.sh)",
       "Bash(/tmp/collectrx_research.sh)",
-      "Bash(grep -E \"error|^$\")"
+      "Bash(grep -E \"error|^$\")",
+      "Read(//Users/khalidegeh/**)",
+      "Bash(grep -haoE \"\\\\\"\\(command|description\\)\\\\\":\\\\\"[^\\\\\"]{0,200}\\(ivr|research-call|carrier-discovery|carrierDiscovery\\)[^\\\\\"]{0,200}\\\\\"\" --include=\"*.jsonl\" -r .)",
+      "Bash(grep -aoiE \".{200}\\(IVR_Simulator|IVR simulator|TEST_RBC\\)[^\\\\\"]{0,300}\" 267fbf7e-108d-4681-abcb-9435c4d701b6.jsonl)",
+      "Bash(python3 *)",
+      "Bash(pkill -f \"grep -haoE\")",
+      "Bash(timeout 100 grep -rla \"research-call.cjs\" --include=\"*.jsonl\" .)",
+      "Bash(echo \"--- exit:$? ---\")",
+      "Bash(echo \"=== exit $? ===\")",
+      "mcp__collectrx__build_queue",
+      "Bash(curl -s -o /dev/null -w \"HTTP_STATUS:%{http_code}\\\\n\" --max-time 10 \"https://collect-rx.fly.dev/api/agent-runs/context?agents=analytics-pipeline&hours=24\")",
+      "Bash(fly secrets *)",
+      "Bash(fly info *)",
+      "Bash(fly status *)",
+      "Bash(fly -a collect-rx secrets list)",
+      "mcp__collectrx__list_claims",
+      "Bash(export FLY_APP=collect-rx)"
     ]
   }
 }

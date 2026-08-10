@@ -193,6 +193,84 @@ function vapiSlotBudget(): number {
   return Math.max(0, limit - Math.max(0, reserve));
 }
 
+/** Puts a claimed entry back in the pool when this process must not dial it after all. */
+async function releaseQueueEntryClaim(
+  prisma: PrismaClient,
+  queueEntryId: string,
+  scheduledFor: Date,
+  dispatchDeferralCode: string,
+  dispatchDeferralNextAction: string,
+): Promise<void> {
+  // attempts is deliberately NOT decremented: the attempt was counted the
+  // moment this process committed to dialling, and a crash between claim and
+  // dial must not hand the claim a free retry.
+  await prisma.callQueue.update({
+    where: { id: queueEntryId },
+    data: {
+      status: 'PENDING',
+      scheduledFor,
+      dispatchDeferralCode,
+      dispatchDeferralNextAction,
+      dispatchDeferredAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Take ownership of a queue entry for dispatch.
+ *
+ * `updateMany` filtered on `status: 'PENDING'` is atomic at the row level —
+ * Postgres serialises the two updates and only one sees a PENDING row — so two
+ * app machines cannot both dial the same claim. This must go through a Prisma
+ * model operation rather than `$executeRaw`: the RLS extension in
+ * lib/prismaRls.ts wraps `$allModels` only, so a raw statement runs with no
+ * `app.practice_id` set and, under enforced RLS, silently matches zero rows.
+ *
+ * The M-7 one-call-per-practice rule is then confirmed after the fact: if
+ * another process claimed a different claim for this practice in the same
+ * instant, the loser releases its row rather than dialling. Checking after
+ * claiming (rather than before) is what makes it safe — both processes have
+ * already committed their row, so exactly one sees itself as the extra.
+ */
+async function claimQueueEntryForDispatch(
+  prisma: PrismaClient,
+  queueEntryId: string,
+  practiceId: string,
+): Promise<boolean> {
+  const claimed = await prisma.callQueue.updateMany({
+    where: { id: queueEntryId, status: 'PENDING' },
+    data: {
+      status: 'IN_PROGRESS',
+      attempts: { increment: 1 },
+      lastAttemptAt: new Date(),
+      dispatchDeferralCode: null,
+      dispatchDeferralNextAction: null,
+      dispatchDeferredAt: null,
+    },
+  });
+  if (claimed.count === 0) return false;
+
+  const otherInProgress = await prisma.callQueue.count({
+    where: { practiceId, status: 'IN_PROGRESS', id: { not: queueEntryId } },
+  });
+  if (otherInProgress > 0) {
+    logger.warn('[deskQueueEngine] lost the practice dispatch race — releasing claim', {
+      queueEntryId,
+      practiceId,
+    });
+    await releaseQueueEntryClaim(
+      prisma,
+      queueEntryId,
+      new Date(Date.now() + withJitter(DEFER_CARRIER_CONCURRENCY_BASE_MS, DEFER_CARRIER_CONCURRENCY_JITTER_MS)),
+      'PRACTICE_CALL_IN_PROGRESS',
+      'Another call for this practice is already in progress; retries automatically.',
+    );
+    return false;
+  }
+
+  return true;
+}
+
 async function deferQueueEntry(
   prisma: PrismaClient,
   queueEntryId: string,
@@ -338,8 +416,120 @@ async function settleBlockedCandidate(
   }
 }
 
+/**
+ * Close call attempts that can no longer complete on their own, and end live
+ * calls that have outrun the plan's duration ceiling.
+ *
+ * Runs for every practice on every tick — before the fleet slot budget is
+ * computed, and regardless of whether the practice is paused. Open CallAttempt
+ * rows are exactly what the budget counts, so a watchdog gated behind "is there
+ * a free slot?" cannot run in the situation it exists to fix: enough lost
+ * end-of-call webhooks exhaust the budget, dispatch returns early, and the rows
+ * that caused it are never reaped. A paused practice must likewise not
+ * accumulate attempts that stay open until someone restarts the process.
+ */
+async function reapStuckCallAttempts(prisma: PrismaClient): Promise<void> {
+  // ── OVER-CEILING LIVE CALL TERMINATOR ─────────────────────────────────────
+  // Vapi is told maxDurationSeconds at dispatch, but squad calls have been
+  // observed to outlive it. Any attempt still open past the absolute ceiling
+  // (plus grace for webhook latency) gets its live call ended server-side —
+  // the practice must never be billed for minutes the plan ceiling forbids.
+  const ceilingBefore = new Date(Date.now() - (CALL_TIMEOUTS.absoluteMaxMinutes + 2) * 60 * 1000);
+  const overCeiling = await prisma.callAttempt.findMany({
+    where: {
+      completedAt: null,
+      initiatedAt: { lt: ceilingBefore },
+      claim: { deletedAt: null },
+    },
+    select: { id: true, vapiCallId: true, initiatedAt: true },
+  });
+  for (const attempt of overCeiling) {
+    if (!attempt.vapiCallId) continue;
+    logger.error('[deskQueueEngine] call exceeded absolute duration ceiling — ending Vapi call', {
+      callAttemptId: attempt.id,
+      vapiCallId: attempt.vapiCallId,
+      initiatedAt: attempt.initiatedAt.toISOString(),
+      ceilingMinutes: CALL_TIMEOUTS.absoluteMaxMinutes,
+    });
+    try {
+      await endVapiCall(attempt.vapiCallId);
+    } catch (endErr) {
+      logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+        vapiCallId: attempt.vapiCallId,
+        error: endErr,
+      });
+    }
+  }
+
+  // ── STALE ATTEMPT WATCHDOG ────────────────────────────────────────────────
+  // If Vapi's end-of-call webhook was lost, the open attempt holds the M-7
+  // lock forever and that practice never dials again. Close attempts older
+  // than any plausible call and release their claims back to the queue —
+  // the attempt was already counted at dispatch, so max-3 still holds.
+  const staleBefore = new Date(Date.now() - STALE_ATTEMPT_MS);
+  const staleAttempts = await prisma.callAttempt.findMany({
+    where: {
+      completedAt: null,
+      initiatedAt: { lt: staleBefore },
+      claim: { deletedAt: null },
+    },
+    select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
+  });
+
+  for (const staleAttempt of staleAttempts) {
+    logger.error('[deskQueueEngine] stale call attempt — closing (end-of-call webhook never arrived)', {
+      callAttemptId: staleAttempt.id,
+      claimId: staleAttempt.claimId,
+      vapiCallId: staleAttempt.vapiCallId,
+      initiatedAt: staleAttempt.initiatedAt.toISOString(),
+    });
+    // Isolated per attempt: one practice's bad row must not abort the sweep
+    // for everyone else, which would leave the fleet-wide budget occupied.
+    try {
+      await prisma.$transaction([
+        prisma.callAttempt.update({
+          where: { id: staleAttempt.id },
+          data: { completedAt: new Date(), liveState: 'expired_no_webhook' },
+        }),
+        prisma.callQueue.updateMany({
+          where: { claimId: staleAttempt.claimId, status: 'IN_PROGRESS' },
+          data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+        }),
+        prisma.insuranceClaim.updateMany({
+          where: { id: staleAttempt.claimId, status: 'CALLING' },
+          data: { status: 'IN_QUEUE' },
+        }),
+      ]);
+    } catch (reapErr) {
+      logger.error('[deskQueueEngine] failed to close stale attempt — continuing sweep', {
+        callAttemptId: staleAttempt.id,
+        error: reapErr,
+      });
+    }
+  }
+}
+
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
+
+  // Reap before counting. The budget below counts open CallAttempt rows, and
+  // abandoned rows are both the cause of exhaustion and what this clears —
+  // running it after the budget check would make a fleet-wide freeze
+  // self-sustaining until the process restarts.
+  //
+  // Swept fleet-wide in a fixed number of queries rather than per practice:
+  // this runs every 60s, so a per-practice sweep would grow the tick's query
+  // count linearly with the customer base. Like the snapshot below it is a
+  // platform-level job that legitimately spans tenants, so it runs under an
+  // RLS bypass — a practice-scoped context would hide exactly the rows it
+  // exists to find.
+  try {
+    await runWithRlsBypass(() => reapStuckCallAttempts(prisma));
+  } catch (reapErr) {
+    logger.error('[deskQueueEngine] stale-attempt sweep failed — continuing to dispatch', {
+      error: reapErr,
+    });
+  }
 
   const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
@@ -400,75 +590,6 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     try {
     await runWithPracticeRls(practiceId, async () => {
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
-
-    // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
-    // If Vapi's end-of-call webhook was lost, the open attempt holds the M-7
-    // lock forever and this practice never dials again. Close attempts older
-    // than any plausible call and release their claims back to the queue —
-    // the attempt was already counted at dispatch, so max-3 still holds.
-    const staleBefore = new Date(Date.now() - STALE_ATTEMPT_MS);
-    const staleAttempts = await prisma.callAttempt.findMany({
-      where: {
-        completedAt: null,
-        initiatedAt: { lt: staleBefore },
-        claim: { practiceId, deletedAt: null },
-      },
-      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
-    });
-    // ── OVER-CEILING LIVE CALL TERMINATOR ─────────────────────────────────────
-    // Vapi is told maxDurationSeconds at dispatch, but squad calls have been
-    // observed to outlive it. Any attempt still open past the absolute ceiling
-    // (plus grace for webhook latency) gets its live call ended server-side —
-    // the practice must never be billed for minutes the plan ceiling forbids.
-    const ceilingBefore = new Date(Date.now() - (CALL_TIMEOUTS.absoluteMaxMinutes + 2) * 60 * 1000);
-    const overCeiling = await prisma.callAttempt.findMany({
-      where: {
-        completedAt: null,
-        initiatedAt: { lt: ceilingBefore },
-        claim: { practiceId, deletedAt: null },
-      },
-      select: { id: true, vapiCallId: true, initiatedAt: true },
-    });
-    for (const attempt of overCeiling) {
-      if (!attempt.vapiCallId) continue;
-      logger.error('[deskQueueEngine] call exceeded absolute duration ceiling — ending Vapi call', {
-        callAttemptId: attempt.id,
-        vapiCallId: attempt.vapiCallId,
-        initiatedAt: attempt.initiatedAt.toISOString(),
-        ceilingMinutes: CALL_TIMEOUTS.absoluteMaxMinutes,
-      });
-      try {
-        await endVapiCall(attempt.vapiCallId);
-      } catch (endErr) {
-        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
-          vapiCallId: attempt.vapiCallId,
-          error: endErr,
-        });
-      }
-    }
-
-    for (const staleAttempt of staleAttempts) {
-      logger.error('[deskQueueEngine] stale call attempt — closing (end-of-call webhook never arrived)', {
-        callAttemptId: staleAttempt.id,
-        claimId: staleAttempt.claimId,
-        vapiCallId: staleAttempt.vapiCallId,
-        initiatedAt: staleAttempt.initiatedAt.toISOString(),
-      });
-      await prisma.$transaction([
-        prisma.callAttempt.update({
-          where: { id: staleAttempt.id },
-          data: { completedAt: new Date(), liveState: 'expired_no_webhook' },
-        }),
-        prisma.callQueue.updateMany({
-          where: { claimId: staleAttempt.claimId, status: 'IN_PROGRESS' },
-          data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
-        }),
-        prisma.insuranceClaim.updateMany({
-          where: { id: staleAttempt.claimId, status: 'CALLING' },
-          data: { status: 'IN_QUEUE' },
-        }),
-      ]);
-    }
 
     const inProgress = await prisma.callQueue.count({
       where: { practiceId, status: 'IN_PROGRESS' },
@@ -724,11 +845,27 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       carrierIvrInstructions,
     };
 
-    // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
-    // All subsequent DB writes are wrapped so that if they fail, we immediately
-    // cancel the live Vapi call rather than leaving an orphan call with no DB record.
-    // A dispatch failure defers the entry: a payload-specific Vapi rejection must
-    // not hot-loop the same claim at the head of the queue every tick.
+    // Claim the row before dialling. Production runs multiple app machines and
+    // isTickRunning is per process, so without an atomic claim two machines can
+    // read the same PENDING row and both call the carrier about one claim.
+    // Conditioning on this practice having no other IN_PROGRESS row keeps the
+    // M-7 one-call-per-practice rule true across processes as well — both
+    // conditions are evaluated inside a single statement, so there is no window
+    // between checking and taking.
+    const claimed = await claimQueueEntryForDispatch(prisma, next.id, practiceId);
+    if (!claimed) {
+      logger.warn('[deskQueueEngine] queue entry already claimed elsewhere — skipping', {
+        claimId: next.claimId,
+        queueEntryId: next.id,
+      });
+      continue;
+    }
+
+    // C-3: Vapi call is dispatched after the claim (we still need the vapiCallId
+    // it returns for the attempt row). If anything below fails, the live call is
+    // cancelled rather than left as an orphan with no DB record. A dispatch
+    // failure releases the claim back to PENDING with a deferral so a
+    // payload-specific Vapi rejection cannot hot-loop at the head of the queue.
     let vapiResult: Awaited<ReturnType<typeof initiateCall>>;
     try {
       vapiResult = await initiateCall(callParams);
@@ -738,10 +875,10 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         carrierId: next.claim.carrierId,
         error: dispatchErr,
       });
-      await deferQueueEntry(
+      await releaseQueueEntryClaim(
         prisma,
         next.id,
-        withJitter(DEFER_DISPATCH_FAILURE_BASE_MS, DEFER_DISPATCH_FAILURE_JITTER_MS),
+        new Date(Date.now() + withJitter(DEFER_DISPATCH_FAILURE_BASE_MS, DEFER_DISPATCH_FAILURE_JITTER_MS)),
         'TRANSIENT_DISPATCH_FAILURE',
         'The system will retry during the next scheduled dispatch window.',
       );
@@ -761,23 +898,12 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         },
       });
 
-      await prisma.$transaction([
-        prisma.insuranceClaim.update({
-          where: { id: next.claimId },
-          data: { status: 'CALLING' },
-        }),
-        prisma.callQueue.update({
-          where: { id: next.id },
-          data: {
-            status: 'IN_PROGRESS',
-            attempts: { increment: 1 },
-            lastAttemptAt: new Date(),
-            dispatchDeferralCode: null,
-            dispatchDeferralNextAction: null,
-            dispatchDeferredAt: null,
-          },
-        }),
-      ]);
+      // Status, attempt count, and lastAttemptAt were already written by the
+      // pre-dispatch claim; only the claim-side status remains.
+      await prisma.insuranceClaim.update({
+        where: { id: next.claimId },
+        data: { status: 'CALLING' },
+      });
 
       const call = mapActiveCall(attempt, next.claim, next.attempts + 1);
       broadcastDesk(practiceId, { type: 'call.started', data: { call } });
@@ -796,6 +922,23 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         logger.error('[deskQueueEngine] CRITICAL: orphan Vapi call — cancel also failed', {
           vapiCallId: vapiResult.vapiCallId,
           cancelError: cancelErr,
+        });
+      }
+      // The row was claimed IN_PROGRESS before dialling, and no CallAttempt
+      // now exists to close it — leaving it would strand this practice's queue
+      // behind a call that no webhook will ever complete.
+      try {
+        await releaseQueueEntryClaim(
+          prisma,
+          next.id,
+          new Date(Date.now() + withJitter(DEFER_DISPATCH_FAILURE_BASE_MS, DEFER_DISPATCH_FAILURE_JITTER_MS)),
+          'TRANSIENT_DISPATCH_FAILURE',
+          'The system will retry during the next scheduled dispatch window.',
+        );
+      } catch (releaseErr) {
+        logger.error('[deskQueueEngine] CRITICAL: could not release claimed queue entry', {
+          queueEntryId: next.id,
+          error: releaseErr,
         });
       }
     }

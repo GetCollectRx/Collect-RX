@@ -22,13 +22,13 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel
 
-# NeMo Guardrails imports
-try:
-    from nemoguardrails import LLMRails
-    from nemoguardrails.integrations.openai import OpenAILLMProvider
-except ImportError:
-    print("[ERROR] nemoguardrails not installed. Run: pip install -r requirements.txt", file=sys.stderr)
-    sys.exit(1)
+# NeMo Guardrails is a heavy optional dependency (pulls in sentence-transformers
+# -> torch -> CUDA libraries, plus the `annoy` C++ extension, which needs a
+# compiler not present in the slim image). It's not installed by default — see
+# requirements.txt. It's only imported lazily below, if an LLM provider key is
+# configured, since the current /audit/transcript logic is heuristic-only and
+# doesn't need it. Run `pip install nemoguardrails==0.7.0` (and add build-essential
+# to the Dockerfile) before wiring up real semantic checks.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
@@ -49,15 +49,39 @@ app = FastAPI(title="CollectRx Guardrails Audit Sidecar", version="1.0.0")
 # NeMo Guardrails Initialization
 # ─────────────────────────────────────────────────────────────────────────────
 
-logger.info(f"Loading NeMo config from {CONFIG_PATH}")
-try:
-    # Load guardrails config and initialize rails
-    # NeMo will automatically discover Colang flows in config/rails/
-    rails = LLMRails.from_path(CONFIG_PATH)
-    logger.info("NeMo Guardrails initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize NeMo Guardrails: {e}", exc_info=True)
-    rails = None
+# NOTE: the /audit/transcript endpoint below currently runs regex/heuristic
+# checks only — it does not call `rails` for any LLM-based semantic checks yet
+# (see the placeholder comment in that handler). LLM initialization is
+# therefore optional for now: skip it if no provider key is configured, so
+# this service can run without incurring any LLM API cost or dependency.
+# Before real semantic guardrails are wired up (rails.generate_response() /
+# rails.explain_rules()), set OPENAI_API_KEY or ANTHROPIC_API_KEY and this
+# will initialize automatically.
+rails = None
+if os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"):
+    logger.info(f"LLM provider key found — loading NeMo config from {CONFIG_PATH}")
+    try:
+        from nemoguardrails import LLMRails
+        # Load guardrails config and initialize rails
+        # NeMo will automatically discover Colang flows in config/rails/
+        rails = LLMRails.from_path(CONFIG_PATH)
+        logger.info("NeMo Guardrails initialized successfully")
+    except ImportError:
+        logger.error(
+            "OPENAI_API_KEY/ANTHROPIC_API_KEY is set but nemoguardrails isn't "
+            "installed. Add it back to requirements.txt (and build-essential to "
+            "the Dockerfile) to enable semantic checks."
+        )
+        rails = None
+    except Exception as e:
+        logger.error(f"Failed to initialize NeMo Guardrails: {e}", exc_info=True)
+        rails = None
+else:
+    logger.warning(
+        "No OPENAI_API_KEY or ANTHROPIC_API_KEY set — running heuristic-only "
+        "checks (semantic/LLM-based guardrail checks are not active). This is "
+        "expected pre-launch with no real patient data; revisit before go-live."
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Request/Response Models
@@ -114,7 +138,8 @@ async def health_check():
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "rails_initialized": rails is not None,
+        "llm_rails_initialized": rails is not None,
+        "mode": "semantic+heuristic" if rails is not None else "heuristic-only",
     }
 
 @app.post("/audit/transcript", response_model=AuditResponse)
@@ -132,11 +157,9 @@ async def audit_transcript(
     # Auth
     await verify_token(authorization)
 
-    if not rails:
-        raise HTTPException(
-            status_code=503,
-            detail="NeMo Guardrails not initialized"
-        )
+    # `rails` (LLM-based semantic checks) is optional — see the module-level
+    # note above. The checks below are regex/heuristic only and don't depend
+    # on it, so we don't gate the endpoint on rails being initialized.
 
     logger.info(f"Auditing transcript for call {request.call_attempt_id} (carrier={request.carrier_id})")
 

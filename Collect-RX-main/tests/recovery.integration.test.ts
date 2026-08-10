@@ -14,7 +14,11 @@ import {
   markWebhookProcessed,
   processRecoveryCallEnded,
 } from '../src/server/vapi/vapiWebhook.js';
-import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import {
+  createPracticeForTests,
+  createUserInPracticeForTests,
+  cleanupPracticeWithUsers,
+} from './factories/practice.js';
 
 const TEST_VAPI_SECRET = 'whsec_recovery_integration_test_secret';
 
@@ -34,9 +38,11 @@ afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);
 });
 
-function ownerCookie(practiceId: string): string {
+/** Owner session backed by a real User row — authentication re-checks the subject. */
+async function ownerCookie(practiceId: string): Promise<string> {
+  const user = await createUserInPracticeForTests(prisma as unknown as PrismaClient, practiceId);
   return `${COOKIE_NAME}=${signUserToken({
-    userId: `owner-${practiceId}`,
+    userId: user.id,
     practiceId,
     role: 'practice_owner',
   })}`;
@@ -153,7 +159,7 @@ describe.skipIf(!dbReady)('Recovery integration — call.ended replay', () => {
 describe.skipIf(!dbReady)('Recovery integration — HTTP routes', () => {
   it('GET /api/insurance/recovery/gates lists blocking gates', async () => {
     const practice = await createPracticeForTests(prisma);
-    const cookie = ownerCookie(practice.id);
+    const cookie = await ownerCookie(practice.id);
     const patientToken = crypto.randomUUID();
 
     const claim = await prisma.insuranceClaim.create({
@@ -195,7 +201,7 @@ describe.skipIf(!dbReady)('Recovery integration — HTTP routes', () => {
 
   it('POST confirm-payment resolves claim and GET analytics includes syncVerifiedRecovery', async () => {
     const practice = await createPracticeForTests(prisma);
-    const cookie = ownerCookie(practice.id);
+    const cookie = await ownerCookie(practice.id);
     const patientToken = crypto.randomUUID();
 
     const claim = await prisma.insuranceClaim.create({
@@ -246,7 +252,7 @@ describe.skipIf(!dbReady)('Recovery integration — HTTP routes', () => {
 describe.skipIf(!dbReady)('Recovery integration — CDCP Prisma queue', () => {
   it('GET /api/cdcp/queue reads CdcpReconsiderationCase rows', async () => {
     const practice = await createPracticeForTests(prisma);
-    const cookie = ownerCookie(practice.id);
+    const cookie = await ownerCookie(practice.id);
     const claimRef = `CDCP-${Date.now()}`;
     const patientToken = crypto.randomUUID();
 
@@ -275,7 +281,7 @@ describe.skipIf(!dbReady)('Recovery integration — CDCP Prisma queue', () => {
 
   it('PATCH /api/cdcp/reconsiderations/:id updates Prisma case with rotation rules', async () => {
     const practice = await createPracticeForTests(prisma);
-    const cookie = ownerCookie(practice.id);
+    const cookie = await ownerCookie(practice.id);
     const patientToken = crypto.randomUUID();
 
     const cdcpCase = await prisma.cdcpReconsiderationCase.create({
