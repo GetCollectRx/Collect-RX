@@ -321,10 +321,9 @@ function computeCarrierMetrics(
       .filter((c) => c.durationSeconds)
       .reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
     const durationCount = data.calls.filter((c) => c.durationSeconds).length;
-    const durationTrend = calculateDurationTrend(data.calls as any);
-    const outcomeDistribution = computeOutcomeDistributionForCalls(
-      data.calls as any,
-    );
+    const callsArray = data.calls as Array<{ outcome: string | null; durationSeconds: number | null }>;
+    const durationTrend = calculateDurationTrend(callsArray);
+    const outcomeDistribution = computeOutcomeDistributionForCalls(callsArray);
 
     return {
       carrierId,
@@ -391,7 +390,7 @@ function computeAgentMetrics(
 function computeOutcomeDistribution(
   calls: Array<{ outcome: string | null }>,
 ): ReturnType<typeof computeOutcomeDistributionForCalls> {
-  return computeOutcomeDistributionForCalls(calls as any);
+  return computeOutcomeDistributionForCalls(calls);
 }
 
 function computeOutcomeDistributionForCalls(
