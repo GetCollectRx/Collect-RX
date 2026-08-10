@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { PrismaClient } from '@prisma/client';
+import type { CallOutcome, CarrierId, PrismaClient } from '@prisma/client';
 import { PrismaClient as PC } from '@prisma/client';
 import { scoreCallQuality, scoreSingleCarrier } from '../src/server/services/callQualityScorer.js';
 
@@ -142,13 +142,16 @@ suiteDescribe('Call Quality Scorer', () => {
       });
 
       const now = new Date();
-      const outcomes = [
+      // Every member of the CallOutcome enum — each must land in its own bucket.
+      const outcomes: CallOutcome[] = [
         'RESOLVED',
-        'APPROVED_PENDING_PAYMENT',
+        'PENDING',
         'DENIED',
         'ESCALATED',
+        'BLOCK_DETECTED',
         'FAILED',
         'NO_ANSWER',
+        'HUNG_UP',
       ];
 
       for (const outcome of outcomes) {
@@ -160,7 +163,7 @@ suiteDescribe('Call Quality Scorer', () => {
             completedAt: new Date(now.getTime() + 60000),
             durationSeconds: 150,
             minutesBilled: 3,
-            outcome: outcome as any,
+            outcome,
           },
         });
       }
@@ -175,11 +178,49 @@ suiteDescribe('Call Quality Scorer', () => {
       });
 
       expect(report.outcomeDistribution.resolved).toBe(1);
-      expect(report.outcomeDistribution.approved).toBe(1);
+      expect(report.outcomeDistribution.pending).toBe(1);
       expect(report.outcomeDistribution.denied).toBe(1);
       expect(report.outcomeDistribution.escalated).toBe(1);
+      expect(report.outcomeDistribution.blockDetected).toBe(1);
       expect(report.outcomeDistribution.failed).toBe(1);
       expect(report.outcomeDistribution.noAnswer).toBe(1);
+      expect(report.outcomeDistribution.hungUp).toBe(1);
+      expect(report.outcomeDistribution.unrecorded).toBe(0);
+    });
+
+    it('counts an attempt with no recorded outcome as unrecorded, not as a success', async () => {
+      const practice = await prisma.practice.create({
+        data: { name: 'Test Practice', passwordHash: 'hash' },
+      });
+
+      const claim = await prisma.insuranceClaim.create({
+        data: {
+          practiceId: practice.id,
+          carrierId: 'sun_life',
+          claimNumber: 'TESTINFLIGHT',
+          patientToken: 'tokeninflight',
+          billedAmount: 500,
+          outstandingAmount: 500,
+          daysOutstanding: 20,
+        },
+      });
+
+      await prisma.callAttempt.create({
+        data: {
+          claimId: claim.id,
+          vapiCallId: 'call-in-flight',
+          initiatedAt: new Date(),
+        },
+      });
+
+      const to = new Date();
+      const since = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const report = await scoreCallQuality(prisma, { since, to, practiceId: practice.id });
+
+      expect(report.totalCalls).toBe(1);
+      expect(report.successfulCalls).toBe(0);
+      expect(report.outcomeDistribution.unrecorded).toBe(1);
     });
 
     it('calculates carrier metrics correctly', async () => {
@@ -190,11 +231,11 @@ suiteDescribe('Call Quality Scorer', () => {
       const now = new Date();
 
       // Create calls for 2 carriers
-      for (let carrier of ['sun_life', 'canada_life']) {
+      for (const carrier of ['sun_life', 'canada_life'] as CarrierId[]) {
         const claim = await prisma.insuranceClaim.create({
           data: {
             practiceId: practice.id,
-            carrierId: carrier as any,
+            carrierId: carrier,
             claimNumber: `TEST-${carrier}`,
             patientToken: `token-${carrier}`,
             billedAmount: 500,
@@ -466,11 +507,11 @@ suiteDescribe('Call Quality Scorer', () => {
       });
 
       // Create claims for 2 carriers with different performance
-      for (let carrier of ['sun_life', 'canada_life']) {
+      for (const carrier of ['sun_life', 'canada_life'] as CarrierId[]) {
         const claim = await prisma.insuranceClaim.create({
           data: {
             practiceId: practice.id,
-            carrierId: carrier as any,
+            carrierId: carrier,
             claimNumber: `TEST-${carrier}`,
             patientToken: `token-${carrier}`,
             billedAmount: 500,
