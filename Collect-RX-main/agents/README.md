@@ -15,7 +15,11 @@ This directory holds the **markdown agent prompts** — one population of four. 
 
 Plus `src/server/agents/productImprovementAgent.ts` (runtime only, no markdown prompt), and the Vapi voice squad in `vapi-squad-config.json` — 5 members, which are part of the product, not ops tooling.
 
-Roster counts drift. Derive the current one with the commands in [`orchestrator.md`](orchestrator.md) §2 rather than quoting a number from a doc.
+**The scheduled and event-triggered rows are the *runtime execution of* the markdown prompts, not extra agents.** `agentRunner.ts:loadAgentPrompt()` loads the `.md` file by name. Verified: 24 on cron + 7 event-triggered − 2 in both = 29, which is exactly the number of markdown prompts; the 5 with no cron entry are precisely the 5 that are event-only. Summing these rows triple-counts the same agents — that is where published totals of "35 agents" and "65 agents" came from.
+
+**Counted honestly:** **30 ops agents** (29 with prompts + `productImprovementAgent`), 31 including the orchestrator. Separately: 9 deterministic validators (test assertions, not LLM agents) and 5 Vapi voice agents (product surface). A single total spanning all three describes nothing useful.
+
+Counts drift regardless. Derive the current roster with the commands in [`orchestrator.md`](orchestrator.md) §2 rather than quoting a number from a doc — including this one.
 
 **Coordinator:** [`orchestrator.md`](orchestrator.md) — synthesizes across all populations under an evidence standard. Read-mostly; it proposes and routes, and does not modify the application.
 

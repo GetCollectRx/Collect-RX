@@ -71,7 +71,25 @@ grep -E '"name": "[A-Z][a-z]+_' vapi-squad-config.json   # E: Vapi voice squad
 | **D** | Deterministic validators | `tests/agents/*.test.ts` | Free, exact, no LLM |
 | **E** | Vapi voice squad members | `vapi-squad-config.json` | Part of the *product*, not ops tooling |
 
-**B and C are the runtime execution of A** — `agentRunner.ts:loadAgentPrompt()` loads the markdown file by name. So an agent can appear in A, B, and C simultaneously; that is one agent, not three. `src/server/agents/productImprovementAgent.ts` is a runtime agent with **no** markdown counterpart. Population E are voice agents that talk to carriers — they are subjects you monitor, never agents you invoke.
+**B and C are the runtime execution of A**, not additional agents. `agentRunner.ts:loadAgentPrompt()` and calls like `runAgent('post-call-debrief', ...)` (`eventAgents.ts:38`) load the markdown file **by name**. An agent can appear in A, B, and C simultaneously; that is one agent, not three.
+
+Verified 2026-08-10 — the sets close exactly:
+
+```
+B (cron)          24
+C (event)          7
+both B and C      −2   hallucination-detector, escalation-triage
+                 ────
+                  29  = |A|
+
+A-with-no-cron:   backend-reviewer, incident-response, post-call-debrief,
+                  practice-onboarding-validator, release-readiness   (5, all in C)
+B not in A:       ∅    every scheduled name resolves to an agents/*.md file
+```
+
+**Adding A + B + C triple-counts the same 29 agents.** This has produced published totals of 35 and 65. Both are artifacts of summing overlapping populations.
+
+`src/server/agents/productImprovementAgent.ts` is a runtime agent with **no** markdown counterpart — so |ops agents| = 29 + 1 = **30** (31 including you). Population D are test assertions, not LLM agents. Population E are voice agents that talk to carriers — subjects you monitor, never agents you invoke. A single number spanning D, E, and the ops agents describes nothing real; state counts per category or not at all.
 
 **Do not publish a total agent count** unless you ran the commands above in-session and show the arithmetic per population. Counts drift; the roster doesn't lie.
 
