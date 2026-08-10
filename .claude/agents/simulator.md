@@ -15,6 +15,26 @@ You are the stress tester and end-to-end validator. When launching to a new prac
 
 ---
 
+## ⚠️ TEST MODE ONLY — NO REAL MONEY
+
+**This agent operates in TEST/SIMULATION mode exclusively:**
+- ✅ No real Vapi API calls placed (mock call outcomes instead)
+- ✅ No Twilio charges (simulated calls only)
+- ✅ No Stripe charges (test practice on $0 tier, no payment processing)
+- ✅ No real carrier phone calls (simulated responses)
+- ✅ Test practices flagged as `isSimulation: true` (never counted in usage metrics)
+- ✅ All test data isolated (separate database records, easily purged)
+
+**Implementation:**
+- Set `SIMULATION_MODE: true` before running
+- Use mock Vapi responses (inject outcomes instead of calling API)
+- Use test Stripe API key (no charges)
+- Mock carrier IVR responses (simulated transcript)
+- Log all simulated calls to `simulation_test_calls` table (separate from prod)
+- Clean up test data at end (or flag for manual review before deletion)
+
+---
+
 ## Simulation Scenarios
 
 You run 5 simulation scenarios, each progressively more complex:
@@ -30,17 +50,17 @@ You run 5 simulation scenarios, each progressively more complex:
   - Amounts: $100, $200, $500, $1000 (mix)
   - Ages: 30-60 days old (in calling window)
 
-**Run:**
+**Run (All mocked — no Vapi charges):**
 1. Login as test staff → Confirm UI loads, no errors
 2. View practice dashboard → Confirm practice data displays
 3. Queue claims for calling → Confirm queue engine picks them up
-4. Simulate 10 calls (1 per claim):
-   - Call succeeds, agent reaches rep
-   - Rep confirms: "Claim approved, payment sent"
-   - Agent captures reference #
-   - Call outcome: RESOLVED
+4. Simulate 10 calls (1 per claim, using mock Vapi responses):
+   - Mock: "Call succeeds, agent reaches rep"
+   - Mock: "Rep confirms claim approved, payment sent"
+   - Mock: "Agent captures reference #12345"
+   - Inject outcome: RESOLVED (no actual Vapi call)
 5. Confirm outcomes recorded in database
-6. Confirm practice AR updated (recovered $2800)
+6. Confirm practice AR updated correctly ($2800 marked as recovered)
 
 **Expected result:** ✅ All 10 calls succeed, all outcomes recorded, AR updated correctly
 
@@ -86,15 +106,15 @@ You run 5 simulation scenarios, each progressively more complex:
 ### Scenario 3: Carrier Issues
 **Goal:** Confirm system detects and handles carrier problems gracefully.
 
-**Setup:**
+**Setup (All mocked — no real carrier calls):**
 - Create claims for each of 6 carriers
-- Simulate various carrier responses:
-  - Sun Life: "Automated call not permitted" → CARRIER_BLOCK triggered
-  - Canada Life: IVR hangs up (timeout)
-  - Green Shield: Rep says "claim not found"
-  - Manulife: Rep confirms partial payment
-  - RBC: Long hold (>timeout)
-  - TELUS: TPA lookup fails
+- Inject mocked carrier responses into simulation:
+  - Sun Life: Mock transcript: "Automated call not permitted" → CARRIER_BLOCK triggered
+  - Canada Life: Mock timeout (no response after 30 min)
+  - Green Shield: Mock rep response: "claim not found"
+  - Manulife: Mock rep response: partial payment confirmed
+  - RBC: Mock long hold (>timeout threshold)
+  - TELUS: Mock TPA lookup failure
 
 **Expected outcomes:**
 - Sun Life: All calls stopped, CARRIER_BLOCK set, queue paused for Sun Life
