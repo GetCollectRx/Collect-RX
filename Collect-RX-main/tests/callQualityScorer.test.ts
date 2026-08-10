@@ -13,9 +13,12 @@ let prisma: PrismaClient;
 
 beforeEach(async () => {
   prisma = new PC();
-  // Clean up: remove any test data
+  // Clean up: remove any test data (respect foreign key constraints)
+  await prisma.call.deleteMany({});
+  await prisma.callQueue.deleteMany({});
   await prisma.callAttempt.deleteMany({});
   await prisma.insuranceClaim.deleteMany({});
+  await prisma.inviteToken.deleteMany({});
   await prisma.practice.deleteMany({});
 });
 
