@@ -296,12 +296,12 @@ export async function scoreSingleCarrier(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCarrierMetrics(
-  calls: Array<{ outcome: string | null; claim: { carrierId: string } | null; durationSeconds: number | null }>,
+  calls: Array<{ outcome: string | null; claim: { carrierId: string } | null; durationSeconds: number | null; initiatedAt: Date }>,
 ): CarrierQualityMetrics[] {
   const byCarrier = new Map<
     string,
     {
-      calls: Array<{ outcome: string | null; durationSeconds: number | null }>;
+      calls: Array<{ outcome: string | null; durationSeconds: number | null; initiatedAt: Date }>;
     }
   >();
 
@@ -310,7 +310,7 @@ function computeCarrierMetrics(
     if (!byCarrier.has(cid)) {
       byCarrier.set(cid, { calls: [] });
     }
-    byCarrier.get(cid)!.calls.push(call);
+    byCarrier.get(cid)!.calls.push({ outcome: call.outcome, durationSeconds: call.durationSeconds, initiatedAt: call.initiatedAt });
   }
 
   return Array.from(byCarrier.entries()).map(([carrierId, data]) => {
@@ -321,9 +321,8 @@ function computeCarrierMetrics(
       .filter((c) => c.durationSeconds)
       .reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
     const durationCount = data.calls.filter((c) => c.durationSeconds).length;
-    const callsArray = data.calls as Array<{ outcome: string | null; durationSeconds: number | null }>;
-    const durationTrend = calculateDurationTrend(callsArray);
-    const outcomeDistribution = computeOutcomeDistributionForCalls(callsArray);
+    const durationTrend = calculateDurationTrend(data.calls);
+    const outcomeDistribution = computeOutcomeDistributionForCalls(data.calls);
 
     return {
       carrierId,
