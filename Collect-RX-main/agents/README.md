@@ -2,7 +2,22 @@
 
 > **Billing (2026-07-09):** Do **not** run these markdown prompts via Claude Code / `loop_runner.py` with your Anthropic API key — that pattern caused ~$56/week in Opus API charges. Use the **free** vitest agents instead: `npm run agents` (deterministic, no LLM). Paid LLM evals require `COLLECTRX_ANTHROPIC_EVAL=1` explicitly.
 
-**29 agents** covering every dimension of building and running CollectRx as a company: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk.
+This directory holds the **markdown agent prompts** — one population of four. Agents cover every dimension of building and running CollectRx: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk.
+
+**The four agent populations** (they overlap; do not sum them blindly):
+
+| Population | Where | Notes |
+|---|---|---|
+| Markdown agent prompts | `agents/*.md` (this directory) | Paid LLM when run |
+| Runtime scheduled agents | `src/server/agents/scheduledAgents.ts` | Cron; loads the markdown prompt by name |
+| Runtime event-triggered agents | `src/server/agents/eventAgents.ts` | Fires on call / deploy / onboarding events |
+| Deterministic validators | `tests/agents/*.test.ts` | Free, exact — `npm run agents` |
+
+Plus `src/server/agents/productImprovementAgent.ts` (runtime only, no markdown prompt), and the Vapi voice squad in `vapi-squad-config.json` — 5 members, which are part of the product, not ops tooling.
+
+Roster counts drift. Derive the current one with the commands in [`orchestrator.md`](orchestrator.md) §2 rather than quoting a number from a doc.
+
+**Coordinator:** [`orchestrator.md`](orchestrator.md) — synthesizes across all populations under an evidence standard. Read-mostly; it proposes and routes, and does not modify the application.
 
 > **Compliance status (2026-06-20):** PHI boundary closed (Option B — ephemeral Vapi variables). BAAL hard gate enforced in `validateDispatch()`. Legal templates pending counsel — see `docs/compliance/LEGAL-REVIEW-PROMPT.md`.
 
