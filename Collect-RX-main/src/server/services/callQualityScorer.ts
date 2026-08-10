@@ -123,14 +123,6 @@ export interface CallQualityReport {
 
 const SUCCESS_OUTCOMES = new Set(['RESOLVED', 'APPROVED_PENDING_PAYMENT']);
 const FAILURE_OUTCOMES = new Set(['FAILED', 'NO_ANSWER', 'HUNG_UP']);
-const ESCALATION_OUTCOMES = new Set(['ESCALATED', 'BLOCK_DETECTED']);
-
-const QUALITY_THRESHOLD = {
-  excellent: 85,
-  good: 70,
-  acceptable: 50,
-  poor: 0,
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN API

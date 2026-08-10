@@ -12,7 +12,6 @@ import { prisma } from '../../lib/prisma.js';
 import {
   scoreCallQuality,
   scoreSingleCarrier,
-  type QualityScoreInput,
 } from '../services/callQualityScorer.js';
 import {
   practiceIdFromSession,
