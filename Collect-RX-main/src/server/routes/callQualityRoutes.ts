@@ -8,6 +8,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import type { CarrierId } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import {
   scoreCallQuality,
@@ -77,7 +78,7 @@ router.get('/carrier/:carrierId', async (req: Request, res: Response) => {
     }
 
     const practiceId = practiceIdFromSession(req);
-    const carrierId = req.params.carrierId as any;
+    const carrierId = req.params.carrierId as CarrierId;
     const days = Math.min(365, parseInt(String(req.query.days ?? '30'), 10) || 30);
     const to = new Date();
     const since = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
