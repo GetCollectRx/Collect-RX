@@ -29,6 +29,8 @@ import {
   resolveJobCorrelationId,
 } from './jobs/jobFailureAlert.js';
 import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
+import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
@@ -222,10 +224,64 @@ worker.on('failed', (job, err) => {
 
 logger.info('[worker] listening on queue', { queue: AR_QUEUE_NAME });
 
+// Agent runner worker (separate queue for autonomous agents)
+const agentWorker = new Worker(
+  'agent-runner',
+  async (job) => {
+    const correlationId = job.id ?? 'agent-run-' + Date.now();
+
+    await runWithCorrelationId(correlationId, () =>
+      runWithRlsBypass(async () => {
+        if (job.name === 'AGENT_RUN') {
+          await runAgent(job);
+        } else {
+          throw new Error(`Unknown agent job name: ${job.name}`);
+        }
+      }),
+    );
+  },
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
+);
+
+agentWorker.on('failed', (job, err) => {
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  const agentName = job?.data?.agentName ?? 'unknown';
+
+  logger.error('[worker] agent job failed', {
+    id: job?.id,
+    agentName,
+    attemptsMade,
+    attemptsAllowed,
+    error: String(err),
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'agent_job_failed',
+      detail: `Agent ${agentName} failed after ${attemptsMade} attempts: ${(err as Error).message}`,
+      source: 'agent-worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch agent_job_failed alert', { error: alertErr });
+    });
+  }
+});
+
+agentWorker.on('completed', (job) => {
+  logger.info('[worker] agent job completed', {
+    id: job?.id,
+    agentName: job?.data?.agentName,
+  });
+});
+
+logger.info('[worker] agent runner listening on queue', { queue: 'agent-runner' });
+
 async function shutdown() {
   logger.info('[worker] shutting down', {});
   healthServer.close();
   await worker.close();
+  await agentWorker.close();
+  await closeAgentRunnerQueue();
   await prisma.$disconnect();
   await connection.quit();
   process.exit(0);

@@ -75,6 +75,7 @@ import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
 import {
   assertPersistentPhiVaultConfigured,
   assertPhiEncryptionAtRestConfigured,
@@ -127,7 +128,7 @@ import { stripeWebhookHandler } from './routes/stripeApiRoutes';
 import { createBillingRouter } from './routes/billingRoutes';
 import gocardlessRouter from './routes/gocardlessRoutes';
 import { gocardlessWebhookHandler } from './webhooks/gocardless.js';
-import { registerArJobSchedulers } from './jobs/registerSchedulers.js';
+import { registerArJobSchedulers, registerAgentRunners } from './jobs/registerSchedulers.js';
 import { startConnectorMonitorScheduler } from './jobs/connectorMonitorScheduler.js';
 import { startPadReconciliationScheduler } from './jobs/padReconciliationScheduler.js';
 import { startScheduledAgents } from './agents/scheduledAgents.js';
@@ -754,6 +755,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
     registerArJobSchedulers().catch((err) => {
       logger.error('[server] registerArJobSchedulers failed', { error: err });
     });
+    registerAgentRunners().catch((err) => {
+      logger.error('[server] registerAgentRunners failed', { error: err });
+    });
   } else {
     startRulesEngine(prisma);
     if (isLearningLoopEnabled()) {
@@ -783,6 +787,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 
 async function initializePersistentPhiVault(): Promise<void> {
   await connectDatabase();
+  await assertRlsRoleSafeInProduction(prisma);
   claimsPiiVault.useStore(prisma);
   const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
   logger.info('[piiVault] Rehydrated PHI tokens from encrypted store', { rehydrated });
