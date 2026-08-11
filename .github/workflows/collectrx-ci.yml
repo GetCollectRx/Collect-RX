@@ -4,9 +4,9 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev]
+    branches: [main, dev, prd]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, prd]
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}

@@ -15,6 +15,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { enrolledCdanetClaimStatusAdapter } from './cdanetClaimStatusAdapter.js';
+import { logger } from '../observability/logger.js';
 
 export interface TriageResolution {
   action: 'CLOSE_RESOLVED';
@@ -90,7 +91,7 @@ export async function probeClaimStatus(
     } catch (err) {
       // A broken triage channel must never block dispatch — the phone
       // call is the fallback for everything, including triage itself.
-      console.error(`[triage] channel ${channel.id} failed (non-fatal):`, err);
+      logger.error('[triage] channel failed (non-fatal)', { channelId: channel.id, error: err });
     }
   }
   return null;

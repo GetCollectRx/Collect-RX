@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Security Auditor Agent
 
 **Purpose:** Recurring security check to catch regressions introduced by new code, dependency vulnerabilities, and configuration drift. The full security audit (2026-05-29) found no critical issues — this agent ensures it stays that way. Run monthly and after any significant dependency or infrastructure change.

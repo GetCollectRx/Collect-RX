@@ -11,13 +11,13 @@
  * 5. Self-role escalation to platform_dev (should fail)
  * 6. vapiCallId metadata spoofing (should fail at claim lookup)
  *
- * For EACH test: proves failure via error message + audit log verification.
+ * For EACH test: proves failure via HTTP status and error message.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
-import type { PrismaClient } from '@prisma/client';
+import type { PracticeRole } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
@@ -41,12 +41,11 @@ afterAll(async () => {
 /**
  * Helper: create a user session cookie for a practice
  */
-function userCookie(practiceId: string, userId: string, role: string = 'office_manager'): string {
+function userCookie(practiceId: string, userId: string, role: PracticeRole = 'office_manager'): string {
   return `${COOKIE_NAME}=${signUserToken({
     userId,
     practiceId,
-    role: role as any,
-    phiAccess: true,
+    role,
   })}`;
 }
 
@@ -75,24 +74,13 @@ async function cleanupFixtures(practices: { id: string }[]) {
   }
 }
 
-/**
- * Helper: verify that an audit log entry exists for a given action and subject
- */
-async function verifyAuditLogEntry(
-  practiceId: string,
-  action: string,
-  subjectId?: string,
-): Promise<boolean> {
-  const entry = await prisma.auditLog.findFirst({
-    where: {
-      practiceId,
-      action,
-      ...(subjectId ? { subjectId } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-  return !!entry;
-}
+// Audit-log assertions were removed from these tests rather than repaired.
+// authRoutes.ts calls appendAuditLog() zero times, so account creation, role
+// changes and refused cross-tenant requests leave no audit record at all. Every
+// such assertion here queried an always-empty table and could not fail — and an
+// unused verifyAuditLogEntry() helper sat alongside them for the same reason.
+// What these tests can prove, they still prove: the HTTP refusal and the
+// unchanged database row. Auditing these mutations is a product gap.
 
 describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
   // ──────────────────────────────────────────────────────────────────────────
@@ -146,16 +134,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     expect(res.body.error).toBeDefined();
     expect(res.body.error).toContain('not found');
 
-    // Verify audit log does NOT show successful access to Practice B data
-    const auditEntries = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practiceA.id,
-        action: { contains: 'call' },
-      },
-    });
-    // The audit system should not record access to foreign practice data
-    expect(auditEntries.length).toBe(0);
-
     await cleanupFixtures([practiceA, practiceB]);
   });
 
@@ -200,16 +178,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
-
-    // Verify audit log shows access denial attempt
-    const auditEntriesA = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practiceA.id,
-        action: { contains: 'claim' },
-      },
-    });
-    // No successful claim modification in Practice A
-    expect(auditEntriesA.length).toBe(0);
 
     // Verify claim in Practice B was NOT modified
     const updatedClaim = await prisma.insuranceClaim.findUnique({
@@ -461,17 +429,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     });
     expect(updatedUser?.role).toBe('office_manager');
 
-    // Verify audit log shows no role escalation
-    const auditLogs = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practice.id,
-        action: 'auth.user.update',
-        subjectId: user.id,
-      },
-    });
-    // No successful role changes
-    expect(auditLogs.filter((log) => log.details?.role === 'platform_dev').length).toBe(0);
-
     await cleanupFixtures([practice]);
   });
 
@@ -535,14 +492,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     expect(claim?.status).toBe('CALLING');
 
     // Verify audit log: no successful cross-practice operations
-    const auditA = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practiceA.id,
-        action: { contains: 'call' },
-      },
-    });
-    expect(auditA.length).toBe(0);
-
     await cleanupFixtures([practiceA, practiceB]);
   });
 
@@ -595,27 +544,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
       .send({ servicedAt: new Date().toISOString() });
 
     expect(res2.status).toBe(404);
-
-    // Log all audit entries for Practice A (should show nothing about Practice B operations)
-    const auditA = await prisma.auditLog.findMany({
-      where: { practiceId: practiceA.id },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // No successful modifications
-    const modifications = auditA.filter((log) =>
-      ['claim.update', 'claim.pause', 'queue.stats'].includes(log.action),
-    );
-    expect(modifications.length).toBe(0);
-
-    // Log all audit entries for Practice B (should show no access from User A)
-    const auditB = await prisma.auditLog.findMany({
-      where: { practiceId: practiceB.id },
-    });
-
-    // User A never appears in Practice B's audit log
-    const userAInB = auditB.filter((log) => log.userId === userA.id);
-    expect(userAInB.length).toBe(0);
 
     await cleanupFixtures([practiceA, practiceB]);
   });

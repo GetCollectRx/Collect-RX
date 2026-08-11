@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { runEmailCampaignScheduler } from '../marketing/emailCampaignScheduler.js';
 import { enrichCampaignEmails } from '../marketing/emailEnrichment.js';
 import { analyzeAndUpdateProspectFromReply, bulkAnalyzeReplies } from '../marketing/replyDetection.js';
+import { logger } from '../observability/logger.js';
 
 function requirePlatformAdmin(req: Request, res: Response, next: () => void) {
   const auth = req.auth;
@@ -62,7 +63,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
 
       res.json(campaignStats);
     } catch (err) {
-      console.error('[emailCampaignRoutes] get campaigns failed', (err as Error).message);
+      logger.error('[emailCampaignRoutes] get campaigns failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch campaigns' });
     }
   });
@@ -107,7 +108,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
 
         res.json(prospects);
       } catch (err) {
-        console.error('[emailCampaignRoutes] get prospects failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] get prospects failed', { error: err });
         res.status(500).json({ error: 'Failed to fetch prospects' });
       }
     },
@@ -164,7 +165,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
         importedCount: createdProspects.length,
       });
     } catch (err) {
-      console.error('[emailCampaignRoutes] import csv failed', (err as Error).message);
+      logger.error('[emailCampaignRoutes] import csv failed', { error: err });
       res.status(500).json({ error: 'Failed to import prospects' });
     }
   });
@@ -184,7 +185,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
         }
         res.json(result);
       } catch (err) {
-        console.error('[emailCampaignRoutes] send batch failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] send batch failed', { error: err });
         res.status(500).json({ error: 'Failed to send email batch' });
       }
     },
@@ -215,7 +216,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
         conversionRate: stats._count.id > 0 ? ((closedWon / stats._count.id) * 100).toFixed(2) : '0',
       });
     } catch (err) {
-      console.error('[emailCampaignRoutes] get stats failed', (err as Error).message);
+      logger.error('[emailCampaignRoutes] get stats failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch stats' });
     }
   });
@@ -244,7 +245,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
 
         res.json(updated);
       } catch (err) {
-        console.error('[emailCampaignRoutes] mark replied failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] mark replied failed', { error: err });
         res.status(500).json({ error: 'Failed to update prospect' });
       }
     },
@@ -269,7 +270,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
 
         res.json(updated);
       } catch (err) {
-        console.error('[emailCampaignRoutes] mark converted failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] mark converted failed', { error: err });
         res.status(500).json({ error: 'Failed to update prospect' });
       }
     },
@@ -292,7 +293,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
           enrichmentRate: result.total > 0 ? `${Math.round((result.enriched / result.total) * 100)}%` : '0%',
         });
       } catch (err) {
-        console.error('[emailCampaignRoutes] enrich emails failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] enrich emails failed', { error: err });
         res.status(500).json({ error: 'Email enrichment failed' });
       }
     },
@@ -326,7 +327,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
 
         res.json(analysis);
       } catch (err) {
-        console.error('[emailCampaignRoutes] analyze reply failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] analyze reply failed', { error: err });
         res.status(500).json({ error: 'Reply analysis failed' });
       }
     },
@@ -343,7 +344,7 @@ export function registerEmailCampaignRoutes(app: Express, prisma: PrismaClient) 
         const stats = await bulkAnalyzeReplies(campaignId, prisma);
         res.json(stats);
       } catch (err) {
-        console.error('[emailCampaignRoutes] get reply analysis failed', (err as Error).message);
+        logger.error('[emailCampaignRoutes] get reply analysis failed', { error: err });
         res.status(500).json({ error: 'Failed to fetch reply analysis' });
       }
     },

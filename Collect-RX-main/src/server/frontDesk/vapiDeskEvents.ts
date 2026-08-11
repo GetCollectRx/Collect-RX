@@ -16,6 +16,7 @@ import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js
 import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
   message?: { toolCalls?: Array<{ function?: { name?: string } }> };
@@ -193,7 +194,7 @@ async function processCallEndedDesk(
   }
 
   if (!metadata?.claimId) {
-    console.error(`[vapi-webhook] No claimId for call ${vapiCallId}`);
+    logger.error('[vapi-webhook] No claimId for call', { vapiCallId });
     return;
   }
 
@@ -222,7 +223,7 @@ async function processCallEndedDesk(
           carrierBlockDetected: true,
         },
       }).catch((err: unknown) => {
-        console.error('[vapi-webhook] failed to complete callAttempt on carrier block:', err);
+        logger.error('[vapi-webhook] failed to complete callAttempt on carrier block', { error: err });
       });
     }
     await applyCarrierBlock(prisma, {
@@ -293,7 +294,7 @@ async function processCallEndedDesk(
       await maybeSendPlanUsageAlertEmails(prisma, claim.practiceId);
     }
   } catch (usageErr) {
-    console.error('[vapi-webhook] usage recording failed (non-fatal):', usageErr);
+    logger.error('[vapi-webhook] usage recording failed (non-fatal)', { error: usageErr });
   }
 
   await refreshDeskQueueBroadcast(prisma, claim.practiceId);

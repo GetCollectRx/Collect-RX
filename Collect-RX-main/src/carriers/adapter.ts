@@ -15,7 +15,6 @@
 import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
-import { validateSubscriptionClaimCapacity } from '../server/stripe/subscriptionPlans.js';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 
 // ---------------------------------------------------------------------------
@@ -27,7 +26,12 @@ export interface CarrierConfig {
   displayName: string;
   /** Direct-dial number for claims department */
   phone: string;
-  /** Minimum days outstanding before calling — day 21 for TELUS, day 32 others */
+  /**
+   * Documented carrier SLA for minimum days outstanding before calling — day
+   * 21 for TELUS, day 32 for others. Not currently enforced by
+   * `validateDispatch`, which applies a flat 30-day floor to every carrier
+   * instead (see docs/operations/HUMAN-DECISIONS-PENDING.md item 1).
+   */
   minWaitDays: number;
   /** Expected hold time in minutes (for analytics time-saved calc) */
   avgHoldMinutes: number;
@@ -300,11 +304,16 @@ export async function checkCarrierAuthorizationGate(
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
  *   3. Recovery dispatch gate (practice-side blockers)
  *   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   5. Minimum days outstanding — carrier-specific (day 21 TELUS, day 32 others)
- *   6. Maximum days outstanding (> 90 → escalate to human)
- *   7. Max attempts (>= 3 → reject)
- *   8. Subscription monthly claim limit
- *   9. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   5. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+ *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
+ *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
+ *      of this flat 30 is a pending product decision, not an engineering gap —
+ *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
+ *   6. Max attempts (>= 3 → reject)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *
+ * Subscription/usage capacity (canMakeCall()) is enforced by the caller
+ * (queueEngine.ts) before this function runs, not here.
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -348,18 +357,13 @@ export async function validateDispatch(
     return authGate;
   }
 
-  // 5. Minimum days outstanding before calling — carrier-specific per
-  // carrier-configs.json (day 21 for TELUS, day 32 for the other five).
-  // A flat 30-day floor here would let TELUS's 21-32 window never trigger
-  // (30 already rejects anything under it) and under-enforce every other
-  // carrier's real 32-day minimum.
-  const config = CARRIER_CONFIGS[carrierId];
-  if (daysOutstanding < config.minWaitDays) {
-    return {
-      allowed: false,
-      code: 'CLAIM_TOO_YOUNG',
-      reason: `${config.displayName} requires minimum ${config.minWaitDays} days outstanding (currently ${daysOutstanding})`,
-    };
+  // 5. Claims under 30 days old — do not queue. This is a flat floor for every
+  // carrier: CARRIER_CONFIGS.minWaitDays documents per-carrier SLAs (21 days
+  // for TELUS, 32 for the rest) but nothing in dispatch consults that field —
+  // see docs/operations/HUMAN-DECISIONS-PENDING.md item 1 for the decision on
+  // whether to enforce those per-carrier numbers instead of this flat one.
+  if (daysOutstanding < 30) {
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
   // 6. Claims over 90 days — escalate to human, skip AI
@@ -372,21 +376,7 @@ export async function validateDispatch(
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 8. Subscription monthly claim limit
-  const subscriptionGuard = await validateSubscriptionClaimCapacity(prisma, {
-    practiceId,
-    claimId,
-    now: scheduledFor ?? new Date(),
-  });
-  if (!subscriptionGuard.allowed) {
-    return {
-      allowed: false,
-      code: subscriptionGuard.code,
-      reason: subscriptionGuard.reason,
-    };
-  }
-
-  // 9. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

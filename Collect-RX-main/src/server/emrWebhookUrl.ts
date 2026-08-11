@@ -1,4 +1,5 @@
 import { isIPv4 } from 'node:net';
+import { logger } from './observability/logger.js';
 
 /**
  * EMR sync outbox posts to `EMR_SYNC_WEBHOOK_URL` from the server (server-side request).
@@ -78,9 +79,9 @@ export function assertEmrSyncWebhookUrlConfiguredAtBoot(): void {
   } catch (e) {
     const msg = (e as Error).message;
     if (process.env.NODE_ENV === 'production') {
-      console.error('[server] FATAL: invalid EMR_SYNC_WEBHOOK_URL —', msg);
+      logger.error('[server] FATAL: invalid EMR_SYNC_WEBHOOK_URL —', { error: msg });
       process.exit(1);
     }
-    console.warn('[server] WARNING: EMR_SYNC_WEBHOOK_URL rejected —', msg);
+    logger.warn('[server] WARNING: EMR_SYNC_WEBHOOK_URL rejected —', { detail: msg });
   }
 }

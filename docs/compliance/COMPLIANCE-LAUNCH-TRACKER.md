@@ -23,6 +23,7 @@ Master index: [PHASE5-COMPLIANCE.md](PHASE5-COMPLIANCE.md). Launch path: [PATH-T
 |------|--------|-------|------|-------|
 | Encryption at rest confirmed on prod DB (P5-02) | [ ] | | | Screenshot / host console evidence |
 | HIPAA / health privacy gap review (P5-06) | [ ] | | | Or written pilot exception |
+| PHIPA deletion/breach: interim manual runbook in place | [x] | Eng | 2026-08-05 | `PHIPA-MANUAL-PROCESS-RUNBOOK.md` — automated workflow (`PHIPADeletionRequest`/`PHIPABreachNotification`) still needs legal/privacy sign-off before it's built, see `docs/operations/HUMAN-DECISIONS-PENDING.md` item 2 |
 | PIPEDA / provincial (P5-07) | [ ] | | | Jurisdiction + breach contact |
 | Terms + Privacy counsel review (P9-02) | [ ] | | | Templates in app until signed off |
 | Pen test (P5-11) | [ ] scheduled / [ ] exception | | | Attach report or exception memo |

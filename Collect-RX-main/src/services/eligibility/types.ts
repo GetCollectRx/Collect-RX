@@ -278,5 +278,7 @@ export interface StatusRequest {
 export interface StatusResponse {
   success: boolean;
   snapshot?: EligibilitySnapshot;
+  /** Most recent persisted estimate for this patient + carrier (EligibilityEstimateLog), if any. */
+  lastEstimate?: EligibilityEstimate;
   error?: string;
 }

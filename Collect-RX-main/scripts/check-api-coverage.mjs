@@ -69,6 +69,8 @@ const SERVER_PREFIXES = [
   '/api/twilio/',
   '/api/health',
   '/api/group/',
+  '/api/organizations',
+  '/api/organizations/',
   '/api/compliance/',
   '/api/agent-runs/',
 ];

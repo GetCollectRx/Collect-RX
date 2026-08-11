@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { Client } from '@notionhq/client';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 type StoryCandidate = {
   practiceId: string;
@@ -263,13 +264,13 @@ export async function runProductImprovementCycle(prisma: PrismaClient): Promise<
   }
   const notionConfig = getNotionConfig();
   if (!notionConfig) {
-    console.warn('[product-agent] missing NOTION_API_KEY or NOTION_PRODUCT_STORIES_DB_ID');
+    logger.warn('[product-agent] missing NOTION_API_KEY or NOTION_PRODUCT_STORIES_DB_ID', {});
     return;
   }
 
   const candidates = await buildStoryCandidates(prisma);
   if (candidates.length === 0) {
-    console.log('[product-agent] no new story candidates');
+    logger.info('[product-agent] no new story candidates', {});
     return;
   }
 
@@ -296,15 +297,15 @@ export async function runProductImprovementCycle(prisma: PrismaClient): Promise<
       });
       createdCount += 1;
     } catch (error) {
-      console.error('[product-agent] failed to create Notion story', {
+      logger.error('[product-agent] failed to create Notion story', {
         practiceId: story.practiceId,
         title: story.title,
-        err: (error as Error).message,
+        error,
       });
     }
   }
 
-  console.log(`[product-agent] run complete; created ${createdCount} stories`);
+  logger.info('[product-agent] run complete', { createdCount });
 }
 
 export function startProductImprovementAgent(prisma: PrismaClient): void {
@@ -313,13 +314,13 @@ export function startProductImprovementAgent(prisma: PrismaClient): void {
   }
   const pattern = process.env.PRODUCT_AGENT_CRON || DEFAULT_AGENT_CRON;
   if (!cron.validate(pattern)) {
-    console.error(`[product-agent] invalid PRODUCT_AGENT_CRON "${pattern}"`);
+    logger.error('[product-agent] invalid PRODUCT_AGENT_CRON', { pattern });
     return;
   }
   cron.schedule(pattern, () => {
     void runProductImprovementCycle(prisma);
   });
-  console.log(`[product-agent] scheduled in-process cron "${pattern}"`);
+  logger.info('[product-agent] scheduled in-process cron', { pattern });
 }
 
 export async function ingestNotebookLmResearch(

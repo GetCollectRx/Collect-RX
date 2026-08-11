@@ -105,7 +105,11 @@ vi.mock('../../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: (fn: () => Promise<unknown>) => fn(),
 }));
 
-vi.mock('../../src/logger.cjs', () => ({
+vi.mock('../../src/server/audit/auditLog.js', () => ({
+  appendPhiAccessEvent: vi.fn(),
+}));
+
+vi.mock('../../src/server/observability/logger.js', () => ({
   default: { warn: vi.fn(), error: vi.fn(), audit: vi.fn() },
 }));
 
@@ -147,6 +151,13 @@ function queueEntry(id: string, claimOverrides: Record<string, unknown> = {}): Q
 
 function tickPrisma(candidates: QueueEntryFixture[]) {
   const prisma = {
+    // runDeskQueueTick fetches the ordered practice list via $queryRaw
+    // (orderPracticesByFairness) and claims the fleet-wide lease via
+    // $executeRaw (claimTickLease) — tests that need to control which
+    // practices are iterated, and in what order, override $queryRaw the
+    // same way they used to override practice.findMany.
+    $executeRaw: vi.fn(async () => 1),
+    $queryRaw: vi.fn(async () => [{ id: 'p1' }]),
     practice: {
       findMany: vi.fn(async () => [{ id: 'p1' }]),
       findUnique: vi.fn(async () => ({
@@ -157,7 +168,10 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         practiceAddress: null,
       })),
     },
-    practiceDeskState: { findUnique: vi.fn(async () => null) },
+    practiceDeskState: {
+      findUnique: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({})),
+    },
     callQueue: {
       count: vi.fn(async () => 0),
       findMany: vi.fn(async () => candidates),
@@ -582,7 +596,7 @@ describe('runDeskQueueTick resilience', () => {
   it('continues to the next practice when one practice tick throws', async () => {
     const eligible = queueEntry('1');
     const prisma = tickPrisma([eligible]);
-    prisma.practice.findMany.mockResolvedValue([{ id: 'p-bad' }, { id: 'p1' }]);
+    prisma.$queryRaw.mockResolvedValue([{ id: 'p-bad' }, { id: 'p1' }]);
     prisma.practiceDeskState.findUnique
       .mockRejectedValueOnce(new Error('db hiccup for p-bad'))
       .mockResolvedValueOnce(null);

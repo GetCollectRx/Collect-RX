@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 /**
  * Email enrichment service: attempts to find real practice emails from multiple sources
@@ -80,7 +81,7 @@ async function findEmailFromHunter(practiceName: string): Promise<EnrichmentResu
       };
     }
   } catch (err) {
-    console.error('[emailEnrichment] hunter lookup failed:', (err as Error).message);
+    logger.error('[emailEnrichment] hunter lookup failed', { error: err });
   }
 
   return null;
@@ -186,7 +187,7 @@ export async function enrichCampaignEmails(campaignId: string, prisma: PrismaCli
         enriched++;
       }
     } catch (err) {
-      console.error('[emailEnrichment] enrichment failed for', prospect.id, (err as Error).message);
+      logger.error('[emailEnrichment] enrichment failed', { prospectId: prospect.id, error: err });
       failed++;
     }
   }

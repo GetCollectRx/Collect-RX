@@ -26,6 +26,7 @@ import type {
   ConfidenceWeightPayload,
 } from './types.js';
 import { recordProposal, markApplied, markRejected } from './adaptationLedger.js';
+import { logger } from '../../observability/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LEARNED_RULES_DIR = join(__dirname, 'learned-rules');
@@ -243,7 +244,9 @@ export async function applyProposal(
       // Tests failed — roll back
       rollbackPayload(proposal);
       markApplied(record.recordId, false);
-      console.warn(`[selfTuner] Tests failed after applying "${proposal.ruleType}" — rolled back`);
+      logger.warn('[selfTuner] Tests failed after applying rule — rolled back', {
+        ruleType: proposal.ruleType,
+      });
       return { applied: false, testsPassed: false, rolledBack: true, reason: 'Validation test suite failed — change rolled back' };
     }
   } catch (err) {

@@ -30,6 +30,8 @@ import { listEscalations, resolveEscalation } from '../services/escalationServic
 import type { EscalationResolution } from '../../types/practiceSettings.js';
 import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
 import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
+import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -95,7 +97,7 @@ router.get('/:practiceId/active', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[desk/active]', err);
+    logger.error('[desk/active]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -122,7 +124,7 @@ router.get('/:practiceId/queue', async (req: Request, res: Response) => {
       data: { queue: rows.map(mapQueueEntry), paused },
     });
   } catch (err) {
-    console.error('[desk/queue]', err);
+    logger.error('[desk/queue]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -135,7 +137,7 @@ router.get('/:practiceId/queue/reviews', async (req: Request, res: Response) => 
     const data = await listMaxAttemptFailureReviews(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/queue/reviews]', err);
+    logger.error('[desk/queue/reviews]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -148,7 +150,7 @@ router.get('/:practiceId/hold-ledger', async (req: Request, res: Response) => {
     const data = await getPracticeHoldLedger(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/hold-ledger]', err);
+    logger.error('[desk/hold-ledger]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -202,7 +204,7 @@ router.get('/:practiceId/history', async (req: Request, res: Response) => {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error('[desk/history]', err);
+    logger.error('[desk/history]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -212,6 +214,7 @@ router.post('/:practiceId/queue/pause', blockAuditorWrites, async (req: Request,
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     await setPracticeQueuePaused(prisma, practiceId, true);
+    void appendAuditLog(prisma, { practiceId, action: 'frontdesk.queue.pause', req });
     return res.json({ success: true, paused: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -223,6 +226,7 @@ router.post('/:practiceId/queue/resume', async (req: Request, res: Response) => 
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     await setPracticeQueuePaused(prisma, practiceId, false);
+    void appendAuditLog(prisma, { practiceId, action: 'frontdesk.queue.resume', req });
     return res.json({ success: true, paused: false });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -283,6 +287,14 @@ router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req:
         liveState: 'paused_by_staff',
       },
     });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.pause',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: { staffId },
+      req,
+    });
 
     broadcastDesk(practiceId, {
       type: 'call.state_changed',
@@ -309,6 +321,13 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
     if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
 
     await endVapiCall(attempt.vapiCallId);
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.end',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      req,
+    });
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -336,6 +355,14 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
         takenOverByStaffId: staffId ?? 'front_desk',
         liveState: 'resolving',
       },
+    });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.takeover',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: { staffId: staffId ?? 'front_desk' },
+      req,
     });
 
     return res.json({ success: true });
@@ -424,6 +451,14 @@ router.put('/:practiceId/escalations/:id', blockAuditorWrites, async (req: Reque
       staffId,
     });
     if (!data) return res.status(404).json({ success: false, error: 'Escalation not found' });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.escalation.resolve',
+      subjectType: 'CallEscalation',
+      subjectId: req.params.id,
+      details: { resolution },
+      req,
+    });
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -478,6 +513,14 @@ router.post('/:practiceId/carriers/:carrierId/unblock', requireFrontDeskOnly, as
     if (!ok) {
       return res.status(404).json({ success: false, error: 'No active block for carrier' });
     }
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.carrier.unblock',
+      subjectType: 'Carrier',
+      subjectId: carrierId,
+      details: { staffId },
+      req,
+    });
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });

@@ -13,6 +13,7 @@ import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
+import { logger } from '../observability/logger.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,7 +40,7 @@ router.get('/runs', async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: runs });
   } catch (err) {
-    console.error('[GET /admin/sync/runs]', err);
+    logger.error('[GET /admin/sync/runs]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -119,7 +120,7 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
 
     return res.json({ success: true, ...result });
   } catch (err) {
-    console.error('[POST /admin/sync/import]', err);
+    logger.error('[POST /admin/sync/import]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -140,7 +141,7 @@ router.post('/import/eob', upload.single('file'), async (req: Request, res: Resp
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });
   } catch (err) {
-    console.error('[POST /admin/sync/import/eob]', err);
+    logger.error('[POST /admin/sync/import/eob]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

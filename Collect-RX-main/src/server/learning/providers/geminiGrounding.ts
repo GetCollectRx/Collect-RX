@@ -1,6 +1,7 @@
 import type { ResearchSource } from '../types.js';
 import type { ResearchProvider } from './types.js';
 import { buildNotebooklmQuery } from './util.js';
+import { logger } from '../../observability/logger.js';
 
 function geminiApiKey(): string | null {
   const k =
@@ -73,7 +74,7 @@ export function createGeminiGroundingResearchProvider(): ResearchProvider {
           throw err;
         }
       } catch (err) {
-        console.warn('[learning] Gemini research failed', (err as Error).message);
+        logger.warn('[learning] Gemini research failed', { error: err });
         return null;
       }
     },

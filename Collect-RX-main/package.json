@@ -85,6 +85,7 @@
     "vapi:squad-push": "tsx scripts/sync-vapi-squad.ts --push"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@aws-sdk/client-ssm": "^3.1035.0",
     "@clickhouse/client": "^1.19.0",
     "@google/generative-ai": "^0.24.1",
@@ -117,12 +118,10 @@
     "rate-limit-redis": "^5.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.21.1",
+    "react-router-dom": "^7.18.2",
     "stripe": "^21.0.1",
     "tsx": "^4.23.1",
     "twilio": "^5.13.1",
-    "winston": "^3.13.0",
-    "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },

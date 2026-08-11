@@ -26,6 +26,7 @@ import type { CarrierId } from '@prisma/client';
 import { practiceIdFromSession } from '../server/middleware/requirePracticeSession';
 import { useOwnerPracticeApiAuthOnly } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { logger } from '../server/observability/logger.js';
 
 // ---------------------------------------------------------------------------
 // Engine + reconciliation; snapshots and reconcile results persist via Prisma.
@@ -113,10 +114,20 @@ router.post('/estimate', async (req: Request, res: Response) => {
 
     const estimate = generateEstimate(estimateRequest, body.patient as Patient);
 
+    await prisma.eligibilityEstimateLog.create({
+      data: {
+        practiceId: practiceIdFromSession(req),
+        patientId: body.patientId,
+        carrier: body.carrier,
+        requestJson: estimateRequest as unknown as object,
+        resultJson: { estimate } as unknown as object,
+      },
+    });
+
     const response: EstimateResponse = { success: true, estimate };
     return res.status(200).json(response);
   } catch (err) {
-    console.error('[eligibility/estimate]', err);
+    logger.error('[eligibility/estimate]', { error: err });
     return res.status(500).json({
       success: false,
       error: apiErrorMessageForResponse(err),
@@ -141,22 +152,38 @@ router.get('/status/:patientId/:carrier', async (req: Request, res: Response) =>
     }
 
     const practiceId = practiceIdFromSession(req);
-    const snapshot = await prisma.eligibilitySnapshot.findFirst({
-      where: {
-        practiceId,
-        patientId,
-        carrier: carrier as CarrierId,
-      },
-      orderBy: { verifiedAt: 'desc' },
-    });
+    const [snapshot, lastEstimateLog] = await Promise.all([
+      prisma.eligibilitySnapshot.findFirst({
+        where: {
+          practiceId,
+          patientId,
+          carrier: carrier as CarrierId,
+        },
+        orderBy: { verifiedAt: 'desc' },
+      }),
+      prisma.eligibilityEstimateLog.findFirst({
+        where: {
+          practiceId,
+          patientId,
+          carrier,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const lastEstimate =
+      lastEstimateLog && typeof lastEstimateLog.resultJson === 'object' && lastEstimateLog.resultJson !== null
+        ? ((lastEstimateLog.resultJson as { estimate?: EligibilityEstimate }).estimate ?? undefined)
+        : undefined;
 
     const response: StatusResponse = {
       success: true,
       snapshot: snapshot ? mapEligibilitySnapshotFromDb(snapshot) : undefined,
+      lastEstimate,
     };
     return res.status(200).json(response);
   } catch (err) {
-    console.error('[eligibility/status]', err);
+    logger.error('[eligibility/status]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -197,7 +224,7 @@ router.post('/reconcile', async (req: Request, res: Response) => {
     const response: ReconcileResponse = { success: true, result };
     return res.status(200).json(response);
   } catch (err) {
-    console.error('[eligibility/reconcile]', err);
+    logger.error('[eligibility/reconcile]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -221,7 +248,7 @@ router.post('/telus-tpa', async (req: Request, res: Response) => {
     const identification = identifyTelusPlan(memberId, groupNumber);
     return res.status(200).json({ success: true, identification });
   } catch (err) {
-    console.error('[eligibility/telus-tpa]', err);
+    logger.error('[eligibility/telus-tpa]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

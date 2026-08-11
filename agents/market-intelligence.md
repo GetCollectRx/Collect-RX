@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Market Intelligence Agent
 
 **Purpose:** Maintain a living picture of the Canadian dental insurance AR market, track macro trends, identify tailwinds and threats, and surface insights that inform product direction and sales positioning. Run monthly. Feeds directly into: Product Manager, Client Acquisition, Competitive Intelligence.

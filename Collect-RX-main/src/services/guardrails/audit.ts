@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { GuardrailAuditEvent } from './types';
+import { logger } from '../../server/observability/logger.js';
 
 export async function writeAuditLog(event: GuardrailAuditEvent): Promise<void> {
   try {
@@ -15,6 +16,6 @@ export async function writeAuditLog(event: GuardrailAuditEvent): Promise<void> {
     });
   } catch (err) {
     // Log to console but don't throw; audit log write should not break the main flow
-    console.error('[guardrails] Failed to write audit log:', err);
+    logger.error('[guardrails] Failed to write audit log', { error: err });
   }
 }

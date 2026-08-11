@@ -14,6 +14,7 @@ import { LoginPage }         from './pages/LoginPage'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
 import SignupPage              from './pages/SignupPage'
 import AcceptInvitePage        from './pages/AcceptInvitePage'
+import OrganizationAcceptInvitePage from './pages/OrganizationAcceptInvitePage'
 const Dashboard             = lazy(() => import('./pages/Dashboard'))
 const Analytics             = lazy(() => import('./pages/Analytics'))
 const AssumptionValidation  = lazy(() => import('./pages/AssumptionValidation'))
@@ -27,6 +28,7 @@ const GroupDashboard        = lazy(() => import('./pages/GroupDashboard'))
 const ArCommandCenter       = lazy(() => import('./pages/ArCommandCenter'))
 const InsuranceClaims       = lazy(() => import('./pages/InsuranceClaims'))
 const InsuranceClaimDetail  = lazy(() => import('./pages/InsuranceClaimDetail'))
+const PreTreatmentEstimate  = lazy(() => import('./pages/PreTreatmentEstimate'))
 const WorkQueue             = lazy(() => import('./pages/WorkQueue'))
 const SyncOpsDashboard      = lazy(() => import('./pages/SyncOpsDashboard'))
 const DesktopDownload       = lazy(() => import('./pages/DesktopDownload'))
@@ -187,6 +189,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'Before visit',
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
       { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
     ],
   },
@@ -235,7 +238,10 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
   },
   {
     label: 'Before visit',
-    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+    ],
   },
   {
     label: 'Account',
@@ -503,6 +509,7 @@ function AppShell() {
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
+          <Route path="/pre-treatment-estimate" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreTreatmentEstimate /></ProtectedRoute>} />
           <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
           <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
@@ -625,6 +632,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/organizations/accept-invite" element={<OrganizationAcceptInvitePage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<AuthGate />} />
               </Routes>
@@ -638,6 +646,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/organizations/accept-invite" element={<OrganizationAcceptInvitePage />} />
                 <Route path="/demo" element={<PublicDemoRoute />} />
                 <Route path="/demo/process" element={<Navigate to="/demo" replace />} />
                 <Route path="/how-it-works" element={<MarketingSite />} />

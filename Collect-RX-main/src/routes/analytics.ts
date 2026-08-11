@@ -19,6 +19,7 @@ import {
 } from '../server/middleware/requirePracticeSession';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -75,7 +76,7 @@ router.get('/insurance', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /analytics/insurance]', err);
+    logger.error('[GET /analytics/insurance]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -99,7 +100,7 @@ router.get('/assumption-validation', async (req: Request, res: Response) => {
     const data = await computeAssumptionValidation(prisma, practiceId, windowDays);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[GET /analytics/assumption-validation]', err);
+    logger.error('[GET /analytics/assumption-validation]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -113,7 +114,7 @@ router.get('/collection-rate', async (req: Request, res: Response) => {
     // Patient AR billing removed — Practice→Insurance only.
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/collection-rate]', err);
+    logger.error('[GET /analytics/collection-rate]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -126,7 +127,7 @@ router.get('/stage-funnel', async (req: Request, res: Response) => {
     }
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/stage-funnel]', err);
+    logger.error('[GET /analytics/stage-funnel]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -139,7 +140,7 @@ router.get('/priority-balances', async (req: Request, res: Response) => {
     }
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/priority-balances]', err);
+    logger.error('[GET /analytics/priority-balances]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -152,7 +153,7 @@ router.get('/message-effectiveness', async (req: Request, res: Response) => {
     }
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/message-effectiveness]', err);
+    logger.error('[GET /analytics/message-effectiveness]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -165,7 +166,7 @@ router.get('/payment-trends', async (req: Request, res: Response) => {
     }
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/payment-trends]', err);
+    logger.error('[GET /analytics/payment-trends]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -178,7 +179,7 @@ router.get('/carrier-performance', async (req: Request, res: Response) => {
     }
     return res.status(410).json({ error: 'Patient AR analytics retired; use /api/analytics/insurance' });
   } catch (err) {
-    console.error('[GET /analytics/carrier-performance]', err);
+    logger.error('[GET /analytics/carrier-performance]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -196,7 +197,7 @@ router.get('/phase5-kpis', async (req: Request, res: Response) => {
     const data = await getPhase5CallKpis(prisma, practiceId, since);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[GET /analytics/phase5-kpis]', err);
+    logger.error('[GET /analytics/phase5-kpis]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -246,7 +247,7 @@ router.get('/practice-performance/export', async (req: Request, res: Response) =
     res.setHeader('Content-Disposition', 'attachment; filename="collectrx-practice-performance.csv"');
     return res.send(body);
   } catch (err) {
-    console.error('[GET /analytics/practice-performance/export]', err);
+    logger.error('[GET /analytics/practice-performance/export]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -316,7 +317,7 @@ router.get('/practice-performance', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /analytics/practice-performance]', err);
+    logger.error('[GET /analytics/practice-performance]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -380,10 +381,10 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
     if (needsEval.length > 0) {
       const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
       if (!isAnthropicEvalAllowed()) {
-        console.warn(
-          '[eval-scores] Skipping live Anthropic eval (%d pending). Set COLLECTRX_ANTHROPIC_EVAL=1 to enable.',
-          needsEval.length,
-        );
+        logger.warn('[eval-scores] Skipping live Anthropic eval', {
+          pending: needsEval.length,
+          hint: 'Set COLLECTRX_ANTHROPIC_EVAL=1 to enable.',
+        });
       }
     }
 
@@ -409,11 +410,11 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
               evalScores: JSON.stringify(result.dimensions),
             },
           })
-          .catch((e: Error) => console.error('[eval-scores] DB persist error', call.id, e));
+          .catch((e: Error) => logger.error('[eval-scores] DB persist error', { callId: call.id, error: e }));
 
         freshResults.push(result);
       } catch (e) {
-        console.error('[eval-scores] eval failed for call', call.id, e);
+        logger.error('[eval-scores] eval failed for call', { callId: call.id, error: e });
       }
     }
 
@@ -432,7 +433,7 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /analytics/insurance/eval-scores]', err);
+    logger.error('[GET /analytics/insurance/eval-scores]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

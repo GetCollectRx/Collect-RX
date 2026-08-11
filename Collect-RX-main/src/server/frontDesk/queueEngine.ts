@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -18,36 +20,134 @@ import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
-import logger from '../../logger.cjs';
+import { dispatchOpsAlert } from '../observability/opsAlerts.js';
+import logger from '../observability/logger.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
 // If a tick takes longer than 60 seconds (slow DB, slow Vapi), the next tick
 // fires but immediately returns rather than running a parallel dispatch loop.
 let isTickRunning = false;
+// Tracked so a graceful shutdown can await the in-flight tick instead of
+// exiting mid-dispatch (which would leave a claim in an ambiguous state).
+let currentTick: Promise<void> | null = null;
+let acceptingNewTicks = true;
+
+// P0.5 — tick-level failure tracking (in-process; matches the existing
+// isTickRunning/vapiCircuitBreaker precedent of single-instance state exposed
+// via getMetrics()). A thrown tick previously just logged and waited for the
+// next fixed 60s fire — under a sustained outage (DB down, etc.) that means
+// hammering the same failure every 60s forever with no backoff and no alert.
+let consecutiveTickFailures = 0;
+let lastSuccessfulTickAt: Date | null = null;
+let lastTickFailureAt: Date | null = null;
+// Epoch ms before which fire() should skip — 0 means no backoff in effect.
+let nextTickEarliestAt = 0;
+
+const TICK_BACKOFF_BASE_MS = 60_000;
+const TICK_BACKOFF_MAX_MS = 15 * 60_000;
+const TICK_FAILURE_ALERT_THRESHOLD = 3;
+
+/** Exposed for /api/health/metrics via queueHealth.ts — single-instance signal. */
+export function getDeskQueueTickHealth(): {
+  lastSuccessfulTickAt: string | null;
+  consecutiveTickFailures: number;
+  lastTickFailureAt: string | null;
+} {
+  return {
+    lastSuccessfulTickAt: lastSuccessfulTickAt?.toISOString() ?? null,
+    consecutiveTickFailures,
+    lastTickFailureAt: lastTickFailureAt?.toISOString() ?? null,
+  };
+}
 
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
-  tickTimer = setInterval(() => {
+  acceptingNewTicks = true;
+  const fire = () => {
+    if (!acceptingNewTicks) return;
     if (isTickRunning) {
       logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
       return;
     }
+    if (Date.now() < nextTickEarliestAt) {
+      return;
+    }
     isTickRunning = true;
-    void runDeskQueueTick(prisma)
-      .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
-      .finally(() => { isTickRunning = false; });
-  }, 60_000);
-  isTickRunning = true;
-  void runDeskQueueTick(prisma)
-    .catch((err) => { console.error('[deskQueueEngine] initial tick error:', err); })
-    .finally(() => { isTickRunning = false; });
+    currentTick = runDeskQueueTick(prisma)
+      .then(() => {
+        if (consecutiveTickFailures > 0) {
+          logger.info('[deskQueueEngine] tick recovered after previous failures', {
+            previousConsecutiveFailures: consecutiveTickFailures,
+          });
+        }
+        consecutiveTickFailures = 0;
+        nextTickEarliestAt = 0;
+        lastSuccessfulTickAt = new Date();
+      })
+      .catch((err) => {
+        consecutiveTickFailures += 1;
+        lastTickFailureAt = new Date();
+        // 2^N (not 2^(N-1)): the fixed 60s tick interval means a backoff equal
+        // to exactly one interval would coincide with the next scheduled fire
+        // and skip nothing — this must exceed one interval to actually defer
+        // the next attempt instead of retrying on the very next tick.
+        const backoffMs = Math.min(
+          TICK_BACKOFF_MAX_MS,
+          TICK_BACKOFF_BASE_MS * 2 ** consecutiveTickFailures,
+        );
+        nextTickEarliestAt = Date.now() + backoffMs;
+        logger.error('[deskQueueEngine] tick error', {
+          error: err,
+          consecutiveTickFailures,
+          nextRetryInMs: backoffMs,
+        });
+        if (consecutiveTickFailures >= TICK_FAILURE_ALERT_THRESHOLD) {
+          void dispatchOpsAlert({
+            alertId: 'desk_queue_tick_failing',
+            detail: `${consecutiveTickFailures} consecutive tick failures. Latest error: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            source: 'desk-queue-engine',
+          }).catch((alertErr) => {
+            logger.error('[deskQueueEngine] failed to dispatch tick-failure alert (non-fatal)', {
+              error: alertErr,
+            });
+          });
+        }
+      })
+      .finally(() => { isTickRunning = false; currentTick = null; });
+  };
+  tickTimer = setInterval(fire, 60_000);
+  fire();
 }
 
 export function stopDeskQueueEngine(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+}
+
+/**
+ * Graceful-shutdown hook: stop scheduling new ticks and wait for any
+ * in-flight tick to finish (up to timeoutMs) before the process exits, so a
+ * claim mid-dispatch isn't abandoned by a hard exit. Does not throw on
+ * timeout — shutdown must proceed either way, just logs so it's visible.
+ */
+export async function drainDeskQueueEngine(timeoutMs: number): Promise<void> {
+  acceptingNewTicks = false;
+  stopDeskQueueEngine();
+  const inFlight = currentTick;
+  if (!inFlight) return;
+
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => { timedOut = true; resolve(); }, timeoutMs);
+  });
+  await Promise.race([inFlight, timeout]);
+  if (timedOut) {
+    logger.error('[deskQueueEngine] shutdown: in-flight tick did not finish — proceeding anyway', { timeoutMs });
   }
 }
 
@@ -98,6 +198,73 @@ function vapiSlotBudget(): number {
   const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
   if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
   return Math.max(0, limit - Math.max(0, reserve));
+}
+
+// This process's identity for the QueueEngineLease row — diagnostic only,
+// the claim itself is decided by the atomic UPDATE below, not by comparing IDs.
+const ENGINE_INSTANCE_ID = `${process.pid}-${randomUUID()}`;
+const LEASE_ID = 'global';
+// Longer than the 60s tick interval so a live tick's lease survives to cover
+// the next scheduled fire (no gap where a second replica could sneak in),
+// but a crashed process's stale lease still clears within two ticks.
+const LEASE_TTL_MS = 90_000;
+
+/**
+ * Atomically claim the fleet-wide dispatch lease. Only one replica's tick
+ * body may run at a time — the in-process isTickRunning guard alone only
+ * protects a single Node process, not a horizontally-scaled deployment.
+ * Uses the same claim-row idiom as ProcessedVapiWebhook rather than a native
+ * Postgres advisory lock: session-level advisory locks are tied to the
+ * physical connection that acquired them, and a pooled connection can route
+ * the matching unlock call through a different one, silently failing to
+ * release — a DB row with a WHERE-guarded UPSERT has no such gotcha.
+ *
+ * The WHERE guard must also let this same instance renew its own still-live
+ * lease — LEASE_TTL_MS (90s) is deliberately longer than the 60s tick
+ * interval so a slow tick's lease survives to the next scheduled fire, but
+ * without the locked_by clause below, that same margin means this process's
+ * OWN next tick would see its own lease as still "held" and skip forever:
+ * on a single-machine deployment (the only thing running today) every tick
+ * after the first would silently never dispatch again. Caught by
+ * tests/dsoLoadCapacity.test.ts running two real consecutive ticks — every
+ * other lease test either reset the row between cases or mocked $executeRaw
+ * outright, so this never showed up until something ran the real sequence.
+ */
+export async function claimTickLease(
+  prisma: PrismaClient,
+  instanceId: string = ENGINE_INSTANCE_ID,
+): Promise<boolean> {
+  const affected = await prisma.$executeRaw`
+    INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
+    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    ON CONFLICT (id) DO UPDATE
+    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+        locked_by = ${instanceId},
+        updated_at = now()
+    WHERE queue_engine_lease.locked_until IS NULL
+       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_by = ${instanceId}
+  `;
+  return affected > 0;
+}
+
+interface PracticeServeOrder {
+  id: string;
+}
+
+/**
+ * Practices ordered so the one that's gone longest without a turn (or never
+ * had one) goes first. A practice only keeps its place in line if the loop
+ * never reached it this tick (slot budget exhausted first) — see the
+ * lastServedAt touch inside the loop below.
+ */
+export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
+  return prisma.$queryRaw<PracticeServeOrder[]>`
+    SELECT p.id
+    FROM "Practice" p
+    LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+    ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+  `;
 }
 
 async function deferQueueEntry(
@@ -246,9 +413,18 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
+  // Fleet-wide lease: if another replica already holds it this cycle, skip —
+  // it, not this process, is running the tick body right now.
+  if (!(await runWithRlsBypass(() => claimTickLease(prisma)))) {
+    logger.warn('[deskQueueEngine] another replica holds the dispatch lease — skipping this tick', {
+      instanceId: ENGINE_INSTANCE_ID,
+    });
+    return;
+  }
+
   const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
     Promise.all([
-      prisma.practice.findMany({ select: { id: true } }),
+      orderPracticesByFairness(prisma),
       prisma.callAttempt.count({ where: { completedAt: null } }),
     ]),
   );
@@ -262,12 +438,35 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
   }
 
+  // Additive to the guards above — does not replace the isTickRunning latch,
+  // the lease, or the slot budget. Skipping the whole tick here (rather than
+  // letting every candidate claim fail into its own per-claim deferral) is
+  // deliberate: if Vapi is down, there is no point spending a claim's
+  // dispatch attempt (and its 15-minute defer window) finding that out
+  // again for every practice in the loop.
+  if (vapiCircuitBreaker.getState() === 'OPEN') {
+    logger.warn('[deskQueueEngine] Vapi circuit breaker OPEN — skipping dispatch this tick', {
+      metrics: vapiCircuitBreaker.getMetrics(),
+    });
+    return;
+  }
+
   for (const { id: practiceId } of practices) {
     if (slotsRemaining <= 0) return;
     // One practice's failure must never starve the practices after it in the
     // loop — isolate each practice's tick.
     try {
     await runWithPracticeRls(practiceId, async () => {
+    // Reaching this point spends this practice's fairness turn for the tick —
+    // it sorts to the back of orderPracticesByFairness next time, same as
+    // every other practice the loop got to (paused or not). A practice the
+    // loop never reaches (slot budget ran out first) keeps its older
+    // timestamp and moves to the front instead.
+    await prisma.practiceDeskState.upsert({
+      where: { practiceId },
+      create: { practiceId, lastServedAt: new Date() },
+      update: { lastServedAt: new Date() },
+    });
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
 
     // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
@@ -375,7 +574,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
-      console.warn('[deskQueueEngine] plan gate blocked dispatch', {
+      logger.warn('[deskQueueEngine] plan gate blocked dispatch', {
         practiceId,
         reason: planGate.reason,
       });

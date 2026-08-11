@@ -1,5 +1,6 @@
 import type { BillingTier, PrismaClient } from '@prisma/client';
 import { TIERS } from '../../billing/tiers.js';
+import { logger } from '../observability/logger.js';
 
 export type SubscriptionPlanSnapshot = {
   id: string;
@@ -15,14 +16,6 @@ export type SubscriptionUsageState = {
   monthlyClaimLimit: number | null;
   remainingClaims: number | null;
   limitReached: boolean;
-};
-
-export type SubscriptionCapacityGuard = {
-  allowed: boolean;
-  code?: string;
-  reason?: string;
-  usage?: SubscriptionUsageState | null;
-  plan?: SubscriptionPlanSnapshot | null;
 };
 
 type PracticeSubscriptionFields = {
@@ -48,12 +41,6 @@ export function billingSkipPracticeIds(): Set<string> {
   );
 }
 
-export function subscriptionClaimLimitEnforceEnabled(): boolean {
-  const raw = process.env.SUBSCRIPTION_CLAIM_LIMIT_ENFORCE;
-  if (raw === undefined) return true;
-  return raw === '1' || raw.toLowerCase() === 'true';
-}
-
 const PAID_TIER_IDS: BillingTier[] = ['core', 'growth', 'scale'];
 
 let warnedLegacyPlanConfig = false;
@@ -68,9 +55,7 @@ let warnedLegacyPlanConfig = false;
 export function subscriptionPlanCatalog(): SubscriptionPlanSnapshot[] {
   if (process.env.SUBSCRIPTION_PLAN_CONFIG?.trim() && !warnedLegacyPlanConfig) {
     warnedLegacyPlanConfig = true;
-    console.warn(
-      '[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).',
-    );
+    logger.warn('[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).', {});
   }
   return PAID_TIER_IDS.flatMap((id) => {
     const tier = TIERS[id];
@@ -184,49 +169,5 @@ export async function getSubscriptionUsageState(
       remainingClaims,
       limitReached: plan.monthlyClaimLimit !== null && usedClaims >= plan.monthlyClaimLimit,
     },
-  };
-}
-
-export async function validateSubscriptionClaimCapacity(
-  db: PrismaClient,
-  params: { practiceId: string; claimId?: string; now?: Date },
-): Promise<SubscriptionCapacityGuard> {
-  if (!subscriptionClaimLimitEnforceEnabled()) return { allowed: true };
-  if (billingSkipPracticeIds().has(params.practiceId)) return { allowed: true };
-
-  const practice = await db.practice.findUnique({
-    where: { id: params.practiceId },
-    select: {
-      subscriptionStatus: true,
-      subscriptionPriceId: true,
-      subscriptionPlanId: true,
-      subscriptionCurrentPeriodStart: true,
-      subscriptionCurrentPeriodEnd: true,
-    },
-  });
-  const { plan, usage } = await getSubscriptionUsageState(db, params.practiceId, practice, params.now);
-  if (!plan || !usage || plan.monthlyClaimLimit === null) return { allowed: true, plan, usage };
-  if (params.claimId) {
-    const { start, end } = subscriptionUsageWindow(practice, params.now ?? new Date());
-    const alreadyAddressedThisPeriod = await db.callAttempt.findFirst({
-      where: {
-        claimId: params.claimId,
-        initiatedAt: { gte: start, lt: end },
-        claim: { practiceId: params.practiceId },
-      },
-      select: { id: true },
-    });
-    if (alreadyAddressedThisPeriod) return { allowed: true, plan, usage };
-  }
-  if (!usage.limitReached) return { allowed: true, plan, usage };
-
-  return {
-    allowed: false,
-    code: 'SUBSCRIPTION_CLAIM_LIMIT_REACHED',
-    plan,
-    usage,
-    reason:
-      `${plan.displayName} plan monthly claim limit reached ` +
-      `(${usage.usedClaims}/${plan.monthlyClaimLimit}). The next claim period starts ${usage.periodEnd.slice(0, 10)}.`,
   };
 }

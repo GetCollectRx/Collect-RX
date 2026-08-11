@@ -1,5 +1,6 @@
 import { type PrismaClient } from '@prisma/client';
 import { wrapOutreachEmail } from '../marketing/emailLayout.js';
+import { logger } from '../observability/logger.js';
 
 interface EmailSchedulerConfig {
   batchSize: number;
@@ -322,7 +323,7 @@ export async function runEmailScheduler(prisma: PrismaClient): Promise<Scheduler
   const config = getEmailSchedulerConfig();
 
   if (!isEmailProviderConfigured()) {
-    console.warn('[emailScheduler] SendGrid not configured — skipping email sends');
+    logger.warn('[emailScheduler] SendGrid not configured — skipping email sends', {});
     return {
       totalProcessed: 0,
       initialEmailsSent: 0,
@@ -344,7 +345,7 @@ export async function runEmailScheduler(prisma: PrismaClient): Promise<Scheduler
 
   try {
     if (config.enableLogging) {
-      console.log('[emailScheduler] Starting email scheduler run', {
+      logger.info('[emailScheduler] Starting email scheduler run', {
         batchSize: config.batchSize,
         rateLimitPerMinute: config.rateLimitPerMinute,
         followUpDelayDays: config.followUpDelayDays,
@@ -372,7 +373,7 @@ export async function runEmailScheduler(prisma: PrismaClient): Promise<Scheduler
     summary.failed = summary.results.filter((r) => !r.success).length;
 
     if (config.enableLogging) {
-      console.log('[emailScheduler] Scheduler run complete', {
+      logger.info('[emailScheduler] Scheduler run complete', {
         totalProcessed: summary.totalProcessed,
         initialSent: summary.initialEmailsSent,
         followUpSent: summary.followUpEmailsSent,
@@ -381,14 +382,14 @@ export async function runEmailScheduler(prisma: PrismaClient): Promise<Scheduler
 
       if (summary.failed > 0) {
         const failedResults = summary.results.filter((r) => !r.success);
-        console.warn('[emailScheduler] Failed sends:', failedResults);
+        logger.warn('[emailScheduler] Failed sends', { detail: failedResults });
       }
     }
 
     return summary;
   } catch (err) {
     const errorMsg = (err as Error).message;
-    console.error('[emailScheduler] Scheduler error:', errorMsg);
+    logger.error('[emailScheduler] Scheduler error', { error: errorMsg });
     throw err;
   }
 }

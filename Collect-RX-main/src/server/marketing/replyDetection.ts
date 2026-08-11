@@ -194,9 +194,8 @@ export async function bulkAnalyzeReplies(
   notInterested: number;
   averageConfidence: number;
 }> {
-  // This would be called by a background job to analyze all replies in a campaign
-  // For now, returns placeholder stats
-
+  // Aggregates replyAnalysis metadata already written by analyzeAndUpdateProspectFromReply
+  // for every prospect in the campaign — called from GET /reply-analysis (emailCampaignRoutes.ts).
   const prospects = await prisma.prospect.findMany({
     where: { campaignId },
   });
