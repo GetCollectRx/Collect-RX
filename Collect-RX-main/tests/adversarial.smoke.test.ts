@@ -300,9 +300,11 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
       },
     });
 
-    // passwordReset.ts logs the reset URL (containing the raw token) when
-    // SENDGRID_API_KEY is unset, which is always true in this test env —
-    // spy on it to recover the raw token the same way an emailed link would.
+    // passwordReset.ts logs the reset URL (containing the raw token) via the
+    // structured logger.info('[password-reset] ...', { resetUrl }) fallback
+    // when SENDGRID_API_KEY is unset, which is always true in this test env —
+    // spy on console.log (what the structured logger writes JSON lines to)
+    // to recover the raw token the same way an emailed link would.
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const resRequest = await request(app)
@@ -312,7 +314,7 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
 
     const loggedLine = consoleLogSpy.mock.calls
       .map((args) => args.join(' '))
-      .find((line) => line.includes('Reset URL'));
+      .find((line) => line.includes('resetUrl'));
     consoleLogSpy.mockRestore();
 
     const stored = await prisma.passwordResetToken.findFirst({

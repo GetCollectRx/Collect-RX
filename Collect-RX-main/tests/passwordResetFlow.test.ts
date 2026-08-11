@@ -4,7 +4,7 @@
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable (see
  * tests/app.integration.test.ts for the same pattern).
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
@@ -29,9 +29,20 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
   it('issues a token on request and consumes it on confirm, allowing login with the new password', async () => {
     const { practice, user, email } = await createPracticeWithOwnerForTests(prisma);
     try {
+      // The DB only ever stores hashResetToken(rawToken) — see authRoutes.ts's
+      // POST /reset-password/request. The raw token that actually redeems a
+      // reset is never persisted, only delivered to the user (here, via the
+      // structured logger.info(..., { resetUrl }) console fallback used when
+      // SENDGRID_API_KEY is unset). Spy on it to recover the raw token the
+      // same way an emailed link would.
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
       const requestRes = await request(app)
         .post('/api/auth/reset-password/request')
         .send({ email });
+      const loggedLine = consoleLogSpy.mock.calls
+        .map((args) => args.join(' '))
+        .find((line) => line.includes('resetUrl'));
+      consoleLogSpy.mockRestore();
       expect(requestRes.status).toBe(200);
       expect(requestRes.body.ok).toBe(true);
 
@@ -42,10 +53,15 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
       expect(tokenRow).not.toBeNull();
       expect(tokenRow!.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
+      expect(loggedLine, 'expected password-reset console fallback to have logged the reset URL').toBeDefined();
+      const match = loggedLine!.match(/token=([0-9a-f]+)/);
+      expect(match, 'expected reset URL to contain a hex token query param').not.toBeNull();
+      const rawToken = decodeURIComponent(match![1]);
+
       const newPassword = 'brand-new-password-123';
       const confirmRes = await request(app)
         .post('/api/auth/reset-password/confirm')
-        .send({ token: tokenRow!.token, newPassword });
+        .send({ token: rawToken, newPassword });
       expect(confirmRes.status).toBe(200);
       expect(confirmRes.body.ok).toBe(true);
 
