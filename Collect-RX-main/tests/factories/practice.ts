@@ -69,6 +69,7 @@ export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId:
     await prisma.callAttempt.deleteMany({ where: { claimId: { in: claimIds } } });
     await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
   }
+  await prisma.inviteToken.deleteMany({ where: { practiceId } });
   await prisma.user.deleteMany({ where: { practiceId } });
   await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);
 }

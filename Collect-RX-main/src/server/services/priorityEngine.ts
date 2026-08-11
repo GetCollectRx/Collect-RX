@@ -53,11 +53,26 @@ export interface RankedClaim {
   scores: RankedClaimScores;
 }
 
-function displayPatientName(patientToken: string, practiceId: string): string {
+function displayPatientName(
+  prisma: PrismaClient,
+  patientToken: string,
+  practiceId: string,
+  claimId: string,
+): string {
   const r = piiVault.detokenize(patientToken, 'priority-queue', { practiceId });
   if (!r.success || !r.phi?.patientName?.trim()) {
     return `Patient ${patientToken.slice(0, 8)}…`;
   }
+  // Fire-and-forget: buildPriorityQueue runs per-claim in a hot loop (dashboard
+  // loads, queue ticks) — logging must not add a sequential DB round trip per
+  // claim. appendPhiAccessEvent already swallows its own errors (non-fatal).
+  void appendPhiAccessEvent(prisma, {
+    practiceId,
+    operation: 'detokenize_for_display',
+    recordType: 'InsuranceClaim',
+    recordId: claimId,
+    purpose: 'priority_queue_display',
+  });
   return r.phi.patientName.trim();
 }
 
@@ -112,7 +127,7 @@ export async function buildPriorityQueue(
       claim: {
         claimId: c.id,
         patientName: resolvePatientNames
-          ? displayPatientName(c.patientToken, practiceId)
+          ? displayPatientName(prisma, c.patientToken, practiceId, c.id)
           : `Patient ${c.patientToken.slice(0, 8)}…`,
         carrier: carrierName,
         amountCents,
@@ -128,19 +143,6 @@ export async function buildPriorityQueue(
           total: parts.total,
         },
       },
-    });
-  }
-
-  if (resolvePatientNames && claims.length > 0) {
-    // One audit row per queue view/build, not per claim — the access is a
-    // single "resolve names for this practice's queue" operation.
-    await appendPhiAccessEvent(prisma, {
-      practiceId,
-      operation: 'detokenize_for_priority_queue_display',
-      recordType: 'PriorityQueue',
-      recordId: practiceId,
-      purpose: 'priority_queue_display',
-      correlationId: `${claims.length}_claims`,
     });
   }
 

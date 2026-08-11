@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VapiCallParams } from '../src/vapi/client.js';
-import { CARRIER_PHONE_MAP, initiateCall, initiatePreVisitCall } from '../src/vapi/client.js';
+import { CARRIER_PHONE_MAP, initiateCall, initiatePreVisitCall, VapiAmbiguousOutcomeError } from '../src/vapi/client.js';
 import preVisitSquadConfig from '../vapi-previsit-config.json';
 
 // Distinctive sentinels so a "PHI must not appear here" assertion can only pass
@@ -107,6 +107,43 @@ describe('initiateCall', () => {
 
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the Idempotency-Key header when idempotencyKey is provided', async () => {
+    await initiateCall({ ...BASE_PARAMS, idempotencyKey: 'claim-1:1' });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBe('claim-1:1');
+  });
+
+  it('omits the Idempotency-Key header when none is provided', async () => {
+    await initiateCall(BASE_PARAMS);
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBeUndefined();
+  });
+
+  it('throws VapiAmbiguousOutcomeError (not a plain Error) when fetch itself throws — timeout/network failure, no response received', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
+    );
+
+    await expect(initiateCall(BASE_PARAMS)).rejects.toBeInstanceOf(VapiAmbiguousOutcomeError);
+  });
+
+  it('throws a plain Error (not ambiguous) when Vapi responds with a non-2xx status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 422, text: async () => 'invalid payload' }),
+    );
+
+    await expect(initiateCall(BASE_PARAMS)).rejects.not.toBeInstanceOf(VapiAmbiguousOutcomeError);
+    await expect(initiateCall(BASE_PARAMS)).rejects.toThrow(/422/);
   });
 });
 

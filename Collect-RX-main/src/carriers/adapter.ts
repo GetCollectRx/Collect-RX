@@ -311,7 +311,6 @@ export async function checkCarrierAuthorizationGate(
  *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
  *   6. Max attempts (>= 3 → reject)
  *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
- *
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
@@ -371,12 +370,12 @@ export async function validateDispatch(
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 7. Max 3 attempts
+  // 6. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

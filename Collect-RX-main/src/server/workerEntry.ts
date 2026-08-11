@@ -22,6 +22,7 @@ import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisit
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { runDataRetentionAcrossPractices } from './jobs/dataRetentionJob.js';
 import { dispatchOpsAlert } from './observability/opsAlerts.js';
 import {
   shouldAlertOnJobExhaustion,
@@ -160,6 +161,25 @@ const worker = new Worker(
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
         logger.info('[worker] TRIAGE_CREDENTIAL_HEALTH checked credentials', { checked });
+      } else if (job.name === 'DATA_RETENTION') {
+        const results = await runDataRetentionAcrossPractices(prisma);
+        const ran = results.filter((r) => r.ran);
+        const errored = results.filter((r) => r.errors.length > 0);
+        if (ran.length > 0 || errored.length > 0) {
+          logger.info('[worker] DATA_RETENTION completed', {
+            practicesRan: ran.length,
+            claimsPurged: ran.reduce((s, r) => s + r.claimsPurged, 0),
+            auditLogRowsPurged: ran.reduce((s, r) => s + r.auditLogRowsPurged, 0),
+            phiAccessEventRowsPurged: ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0),
+            practicesErrored: errored.length,
+          });
+          for (const r of errored) {
+            logger.error('[worker] DATA_RETENTION errors for practice', {
+              practiceId: r.practiceId,
+              errors: r.errors,
+            });
+          }
+        }
       } else if (job.name === 'REMINDER_CYCLE') {
         logger.info('[worker] REMINDER_CYCLE skipped — patient outreach disabled', {});
       } else if (job.name === 'LEARNING_CYCLE') {

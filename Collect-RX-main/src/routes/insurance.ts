@@ -13,7 +13,7 @@
 import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { vapiClient } from '../vapi/client';
+import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
 import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
@@ -136,6 +136,17 @@ router.get('/claims', async (req: Request, res: Response) => {
         };
       },
     );
+
+    // One audit row per request (not per claim) — this is a list-view access,
+    // not a per-record PHI detokenization; the row IDs returned are enough to
+    // reconstruct exactly what was visible if this needs investigating later.
+    void appendAuditLog(prisma, {
+      practiceId: practiceIdFromSession(req),
+      action: 'claims.list.read',
+      subjectType: 'InsuranceClaim',
+      details: { count: data.length, page, filters: { carrier, status, aging, recoveryRoute } },
+      req,
+    });
 
     return res.json({
       success: true,
@@ -361,6 +372,14 @@ router.get('/claims/:id', async (req: Request, res: Response) => {
     if (!claim) {
       return res.status(404).json({ success: false, error: 'Claim not found' });
     }
+
+    void appendAuditLog(prisma, {
+      practiceId: claim.practiceId,
+      action: 'claim.read',
+      subjectType: 'InsuranceClaim',
+      subjectId: claim.id,
+      req,
+    });
 
     return res.json({
       success: true,
@@ -691,6 +710,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     // Initiate Vapi call (outside the transaction — no DB lock held during HTTP).
     // PHI injected as ephemeral call variables — never stored, never logged.
+    const attemptNumber = (reserved.reservation.queue?.attempts ?? 0) + 1;
     let vapiResult;
     try {
       vapiResult = await vapiClient.initiateCall({
@@ -723,9 +743,16 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         practicePhone,
         languagePreference:     carrierSettings?.languagePreference ?? 'en',
         carrierIvrInstructions,
+        // Stable for this attempt — see VapiAmbiguousOutcomeError below.
+        idempotencyKey:         `${claimId}:${attemptNumber}`,
       });
     } catch (vapiErr) {
-      // Vapi call failed — release the dispatch slot so the attempt isn't wasted
+      const ambiguous = vapiErr instanceof VapiAmbiguousOutcomeError;
+      // Confirmed rejection: Vapi told us no call was created — safe to
+      // release the slot AND the attempt so the next click isn't wasted.
+      // Ambiguous (timeout/network): Vapi may have created the call — release
+      // CALLING so the claim isn't stuck, but keep the attempt counted rather
+      // than letting an unconfirmed outcome be retried for free up to 3 times.
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: claimId },
@@ -733,10 +760,15 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         }),
         prisma.callQueue.update({
           where: { claimId },
-          data: {
-            status: 'PENDING',
-            attempts: { decrement: 1 },
-          },
+          data: ambiguous
+            ? {
+                status: 'PENDING',
+                dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+                dispatchDeferralNextAction:
+                  'Verify in the Vapi dashboard whether this call was actually placed before retrying.',
+                dispatchDeferredAt: new Date(),
+              }
+            : { status: 'PENDING', attempts: { decrement: 1 } },
         }),
       ]);
       throw vapiErr;
@@ -778,6 +810,15 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     });
   } catch (err) {
     logger.error('[POST /insurance/queue/trigger/:claimId]', { error: err });
+    if (err instanceof VapiAmbiguousOutcomeError) {
+      return res.status(409).json({
+        success: false,
+        error:
+          'Vapi did not confirm whether the call was placed before the request timed out. ' +
+          'Check the Vapi dashboard for this claim before retrying.',
+        code: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+      });
+    }
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

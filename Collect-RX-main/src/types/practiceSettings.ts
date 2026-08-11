@@ -62,6 +62,22 @@ export interface PracticeSettings {
    */
   billingPhone?: string;
   telusTpaMappings: Record<string, string>;
+  /**
+   * Data retention, tenant-configurable per practice — defaults chosen to
+   * cover a reopened claim, an insurer clawback, or a billing dispute without
+   * carrying PHI-linked data indefinitely. See docs/compliance for the
+   * retention policy this backs.
+   */
+  retention: {
+    /** Master switch — the scheduled purge job is a no-op for this practice until set true. */
+    purgeEnabled: boolean;
+    /** Months after InsuranceClaim.resolvedAt before the claim + its CallAttempts are purged. */
+    claimRetentionMonths: number;
+    /** Months after AuditLog.createdAt before the row is purged. */
+    auditLogRetentionMonths: number;
+    /** Months after PhiAccessEvent.createdAt before the row is purged. */
+    phiAccessEventRetentionMonths: number;
+  };
 }
 
 export interface QueueStats {

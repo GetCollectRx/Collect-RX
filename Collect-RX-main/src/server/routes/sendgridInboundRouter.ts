@@ -43,12 +43,21 @@ export function createSendgridInboundRouter(prisma: PrismaClient): Router {
     }
 
     const prospectId = extractProspectIdFromHeaders(headerMap);
-    let prospect = prospectId
-      ? await prisma.prospect.findUnique({ where: { id: prospectId } })
-      : null;
-
-    if (!prospect && fromEmail) {
-      prospect = await findProspectByEmail(prisma, fromEmail);
+    let prospect;
+    try {
+      prospect = prospectId
+        ? await prisma.prospect.findUnique({ where: { id: prospectId } })
+        : null;
+      if (!prospect && fromEmail) {
+        prospect = await findProspectByEmail(prisma, fromEmail);
+      }
+    } catch (err) {
+      // A malformed prospectId (e.g. not a valid UUID) throws a Prisma
+      // validation error synchronously inside this await — uncaught, that's
+      // an unhandled rejection that crashes the whole process under this
+      // app's `process.on('unhandledRejection')` handler, not just this request.
+      logger.error('[sendgrid-inbound] prospect lookup failed', { error: err });
+      return res.status(200).send('ok');
     }
 
     if (!prospect) {
