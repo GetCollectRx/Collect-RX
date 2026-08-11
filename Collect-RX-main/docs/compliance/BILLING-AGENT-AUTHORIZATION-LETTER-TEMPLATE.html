@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing Agent Authorization Letter - CollectRx</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 8.5in;
+      height: 11in;
+      background: white;
+      margin: 0 auto;
+      padding: 0.75in;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      position: relative;
+    }
+
+    /* Header / Letterhead */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid #1e40af;
+    }
+
+    .logo-section {
+      flex: 1;
+    }
+
+    .logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1e40af;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-subtitle {
+      font-size: 11px;
+      color: #666;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .company-info {
+      font-size: 10px;
+      color: #555;
+      line-height: 1.5;
+      margin-top: 12px;
+    }
+
+    .company-info div {
+      margin: 2px 0;
+    }
+
+    .date-right {
+      text-align: right;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .date-right-label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    /* Document Content */
+    .document-title {
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      margin: 30px 0 20px;
+      color: #1a1a1a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .document-subtitle {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 25px;
+      font-weight: 500;
+    }
+
+    .recipient-block {
+      margin-bottom: 25px;
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    .recipient-field {
+      border-bottom: 1px dotted #999;
+      display: inline-block;
+      min-width: 200px;
+      margin: 0 2px;
+    }
+
+    h2 {
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 18px;
+      margin-bottom: 10px;
+      color: #1a1a1a;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .section {
+      font-size: 11px;
+      line-height: 1.65;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .section p {
+      margin-bottom: 8px;
+    }
+
+    .carrier-checklist {
+      margin: 12px 0;
+      font-size: 11px;
+    }
+
+    .carrier-item {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      padding-left: 20px;
+    }
+
+    .checkbox {
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #666;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .provider-numbers {
+      background: #f9f9f9;
+      border-left: 3px solid #1e40af;
+      padding: 10px 12px;
+      margin: 10px 0;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .provider-numbers p {
+      margin: 4px 0;
+    }
+
+    .acknowledgments {
+      counter-reset: item;
+      list-style-type: none;
+      padding: 0;
+    }
+
+    .acknowledgments li {
+      counter-increment: item;
+      margin-bottom: 10px;
+      padding-left: 24px;
+      position: relative;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    .acknowledgments li:before {
+      content: counter(item);
+      position: absolute;
+      left: 0;
+      font-weight: 600;
+      color: #1e40af;
+    }
+
+    .signature-section {
+      margin-top: 30px;
+      page-break-inside: avoid;
+    }
+
+    .signature-block {
+      margin-bottom: 30px;
+    }
+
+    .signature-title {
+      font-weight: 700;
+      font-size: 11px;
+      margin-bottom: 20px;
+      color: #1a1a1a;
+    }
+
+    .signature-line {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 4px;
+    }
+
+    .sig-field {
+      width: 240px;
+      border-bottom: 1px solid #333;
+      height: 50px;
+      margin-bottom: 2px;
+    }
+
+    .sig-label {
+      font-size: 9px;
+      color: #666;
+      margin-top: 2px;
+      font-weight: 500;
+    }
+
+    .sig-fields-group {
+      display: flex;
+      gap: 30px;
+      margin-top: 4px;
+    }
+
+    .sig-field-inline {
+      flex: 1;
+    }
+
+    .sig-field-inline .sig-field {
+      width: 100%;
+    }
+
+    .disclaimer {
+      font-size: 9px;
+      color: #888;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #ddd;
+      line-height: 1.5;
+    }
+
+    .print-instruction {
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      padding: 10px 12px;
+      border-radius: 4px;
+      font-size: 10px;
+      color: #1565c0;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+
+      .container {
+        box-shadow: none;
+        max-width: 100%;
+        height: auto;
+        margin: 0;
+        padding: 0.75in;
+      }
+
+      .print-instruction {
+        display: block;
+      }
+    }
+
+    .page-break {
+      page-break-after: always;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- HEADER / LETTERHEAD -->
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo">CollectRx</div>
+        <div class="logo-subtitle">Insurance Claim Automation</div>
+        <div class="company-info">
+          <div><strong>CollectRx Inc.</strong></div>
+          <div>[COMPANY ADDRESS LINE 1]</div>
+          <div>[CITY, PROVINCE POSTAL CODE]</div>
+          <div>Phone: [PHONE NUMBER]</div>
+          <div>Email: support@collectrx.ca</div>
+          <div>Website: collectrx.ca</div>
+        </div>
+      </div>
+      <div class="date-right">
+        <div class="date-right-label">DATE:</div>
+        <div class="recipient-field" style="display: inline-block; width: 160px; border-bottom: 1px dotted #999; text-align: center;">______________________</div>
+      </div>
+    </div>
+
+    <!-- DOCUMENT TITLE -->
+    <div class="document-title">Billing Agent Authorization Letter</div>
+    <div class="document-subtitle">Insurance Claim Follow-Up Services</div>
+
+    <!-- RECIPIENT INFORMATION -->
+    <div class="recipient-block">
+      <strong>TO THE AUTHORIZED REPRESENTATIVE OF:</strong><br>
+      Practice Name: <span class="recipient-field">_______________________________</span><br>
+      Address: <span class="recipient-field" style="min-width: 280px;">_______________________________</span><br>
+      City/Province: <span class="recipient-field">________________</span> Postal Code: <span class="recipient-field">________</span><br>
+      Phone: <span class="recipient-field">________________</span> Fax: <span class="recipient-field">________________</span>
+    </div>
+
+    <!-- OPENING -->
+    <div class="section">
+      <p>Dear Practice Owner / Authorized Signatory,</p>
+      <p>This letter confirms that <strong>[PRACTICE LEGAL NAME]</strong> ("the <strong>Practice</strong>") hereby authorizes <strong>CollectRx Inc.</strong> ("the <strong>Authorized Agent</strong>") to contact insurance carriers on the Practice's behalf to inquire about claim status, payment status, and related follow-up for dental insurance claims.</p>
+    </div>
+
+    <!-- SCOPE OF AUTHORIZATION -->
+    <h2>Scope of Authorization</h2>
+    <div class="section">
+      <p>The Authorized Agent is permitted to:</p>
+      <ul style="margin-left: 20px; margin-bottom: 8px;">
+        <li>Inquire about claim status and payment with carriers</li>
+        <li>Request explanation of benefits (EOB) and denial reason codes</li>
+        <li>Discuss payment resolution and claim disputes</li>
+        <li>Use automated voice technology with required regulatory disclosure</li>
+      </ul>
+      <p style="margin-top: 12px;"><strong>The Authorized Agent is NOT authorized to:</strong></p>
+      <ul style="margin-left: 20px;">
+        <li>Collect payments directly from patients</li>
+        <li>Modify claim submissions or clinical information</li>
+        <li>Bind the Practice to new agreements without written consent</li>
+      </ul>
+    </div>
+
+    <!-- AUTHORIZED CARRIERS -->
+    <h2>Authorized Carriers</h2>
+    <div class="section">
+      <p>This authorization applies to the following carriers (check all that apply):</p>
+      <div class="carrier-checklist">
+        <div class="carrier-item"><div class="checkbox"></div> Sun Life Insurance and Annuity Company (U.S.)</div>
+        <div class="carrier-item"><div class="checkbox"></div> Canada Life Assurance Company</div>
+        <div class="carrier-item"><div class="checkbox"></div> Manulife Financial</div>
+        <div class="carrier-item"><div class="checkbox"></div> Green Shield Canada</div>
+        <div class="carrier-item"><div class="checkbox"></div> RBC Insurance</div>
+        <div class="carrier-item"><div class="checkbox"></div> TELUS AdjudiCare</div>
+      </div>
+
+      <div class="provider-numbers">
+        <p><strong>Provider/Agreement Numbers by Carrier:</strong></p>
+        <p>Sun Life: ________________________________</p>
+        <p>Canada Life: ________________________________</p>
+        <p>Manulife: ________________________________</p>
+        <p>Green Shield: ________________________________</p>
+        <p>RBC: ________________________________</p>
+        <p>TELUS AdjudiCare: ________________________________</p>
+      </div>
+    </div>
+
+    <!-- ACKNOWLEDGMENTS -->
+    <h2>Practice Acknowledgments</h2>
+    <ol class="acknowledgments">
+      <li>The Practice confirms that provider registration with each checked carrier above is accurate and current as of this date.</li>
+      <li>The Practice acknowledges that the Authorized Agent may use automated voice technology and will comply with all CRTC regulations, including identification of the Practice and disclosure of automated nature within 10 seconds of a live representative answering.</li>
+      <li>The Practice is responsible for notifying the Authorized Agent immediately of any changes to provider status or carrier agreements that would affect this authorization.</li>
+      <li>This authorization is effective from the date signed and continues until terminated by the Practice with 30 days' written notice, or immediately for compliance breach by either party.</li>
+      <li>The Practice acknowledges that insurance claim outcomes and payment amounts are not guaranteed and depend on carrier adjudication and policy terms.</li>
+    </ol>
+
+    <!-- SIGNATURES -->
+    <div class="signature-section">
+      <div class="signature-block">
+        <div class="signature-title">AUTHORIZED REPRESENTATIVE OF THE PRACTICE</div>
+
+        <div class="sig-line">
+          <div class="sig-field"></div>
+          <div class="sig-label">Signature</div>
+        </div>
+
+        <div class="sig-fields-group">
+          <div class="sig-field-inline">
+            <div class="sig-field" style="height: 30px;"></div>
+            <div class="sig-label">Printed Name</div>
+          </div>
+          <div class="sig-field-inline">
+            <div class="sig-field" style="height: 30px;"></div>
+            <div class="sig-label">Title / Position</div>
+          </div>
+        </div>
+
+        <div class="sig-fields-group">
+          <div class="sig-field-inline">
+            <div class="sig-field" style="height: 30px;"></div>
+            <div class="sig-label">Date</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="signature-block">
+        <div class="signature-title">COLLECTRX INC. ACKNOWLEDGMENT (Optional)</div>
+
+        <div class="sig-line">
+          <div class="sig-field"></div>
+          <div class="sig-label">Authorized CollectRx Representative</div>
+        </div>
+
+        <div class="sig-fields-group">
+          <div class="sig-field-inline">
+            <div class="sig-field" style="height: 30px;"></div>
+            <div class="sig-label">Date Received</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        <strong>Important:</strong> This authorization grants CollectRx permission to contact insurance carriers on your behalf only for the purposes stated above. The Practice remains responsible for accuracy of all data provided and compliance with applicable provincial privacy and healthcare regulations (PHIPA, PIPEDA). A signed original of this letter should be retained by the Practice and provided to CollectRx before automated calls begin.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Optional: Add print functionality
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        window.print();
+      }
+    });
+  </script>
+</body>
+</html>
