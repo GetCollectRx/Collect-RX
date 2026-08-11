@@ -175,6 +175,12 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
 
   beforeAll(async () => {
     if (!dbReady) return;
+    // Date is already pinned to FIXED_BUSINESS_HOURS_INSTANT by the file-level
+    // beforeAll above, which runs before this one — required here too since
+    // seedDispatchablePractice() below stamps callQueue.scheduledFor from
+    // Date.now(), and it needs to land inside the same pinned window the
+    // dispatch checks will later evaluate against.
+
     // queue_engine_lease is a global singleton row (by design — one lease
     // for the whole fleet). A previous test process can leave it live for up
     // to LEASE_TTL_MS under ITS OWN instance ID; a fresh `vitest run` is a
@@ -189,6 +195,7 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   afterAll(async () => {
     await cleanupFleet(fleet);
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+    vi.useRealTimers();
   });
 
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
