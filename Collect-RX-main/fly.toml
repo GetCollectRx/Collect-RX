@@ -34,8 +34,8 @@ primary_region = 'yyz'
 
 [deploy]
 # Runs as a one-off machine before the new release rolls out; a nonzero
-# exit blocks the deploy.
-release_command = 'npx prisma migrate deploy'
+# exit blocks the deploy. Seeds demo data for the demo environment.
+release_command = 'npx prisma migrate deploy && npm run demo:seed'
 
 [processes]
 app = 'npm run start'
