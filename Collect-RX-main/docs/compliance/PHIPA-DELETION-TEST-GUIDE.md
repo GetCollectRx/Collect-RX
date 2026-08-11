@@ -1,5 +1,7 @@
 # PHIPA Compliance Integration Tests — User Guide
 
+> **Current status (2026-08-05): this is a design spec, not a description of a shipped feature.** `PHIPADeletionRequest`/`PHIPABreachNotification` exist as Prisma models with no route, admin UI, or cron job anywhere in `src/`. `tests/phipaCompliance.test.ts` does not exercise those models — it defines a local mock `interface PHIPADeletionRequest` and simulates the workflow with direct `deleteMany()` calls. Until the "Implementation Guide for Cron Job" section below is actually built (which needs the legal/privacy sign-off described in [`docs/operations/HUMAN-DECISIONS-PENDING.md`](../operations/HUMAN-DECISIONS-PENDING.md) item 2 first), PHIPA deletion and breach-notification requests are handled by the manual process in [`PHIPA-MANUAL-PROCESS-RUNBOOK.md`](PHIPA-MANUAL-PROCESS-RUNBOOK.md), not by anything described in this file.
+
 ## Overview
 
 The PHIPA compliance test suite (`tests/phipaCompliance.test.ts`) validates end-to-end deletion request workflows required by the **Personal Health Information Protection Act (PHIPA)**, Ontario Regulation 711/91.
