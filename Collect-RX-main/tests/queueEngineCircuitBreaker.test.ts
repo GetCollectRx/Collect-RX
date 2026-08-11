@@ -5,7 +5,7 @@
  * a practice IS due for dispatch (so there's real work the tick could do),
  * but with the breaker forced OPEN, initiateCall must never be reached.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
 function mockCommonDeps() {

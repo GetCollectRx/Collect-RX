@@ -9,7 +9,7 @@
 // skipped or weakened. If any test fails, stop and escalate immediately.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { tokenize, detokenize, revoke, isValid, purgeExpired } from '../../src/services/pii-vault';
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -2,12 +2,9 @@
  * Email service tests — template rendering, CASL compliance, event tracking.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   renderTemplate,
-  sendCampaignEmail,
-  markEmailEvent,
-  getProspectEngagement,
   type EmailTemplate,
   type ProspectMergeData,
 } from '../src/server/services/emailService.js';
@@ -117,12 +114,13 @@ describe('Email Service', () => {
   });
 
   describe('CASL Compliance', () => {
-    it('includes unsubscribe link in rendered template', () => {
-      const result = renderTemplate(sampleTemplate, sampleMergeData);
-      // CASL footer is added by sendCampaignEmail, not renderTemplate
-      // But we can test that UnsubscribeLink is passed through
-      expect(sampleMergeData.UnsubscribeLink).toBeDefined();
-    });
+    // A test named "includes unsubscribe link in rendered template" sat here and
+    // asserted sampleMergeData.UnsubscribeLink was defined — a property of the
+    // input fixture, never of renderTemplate's output. The CASL footer is built
+    // by buildCaslFooter() and applied in sendCampaignEmail(), neither of which
+    // is covered: buildCaslFooter is not exported, and sendCampaignEmail is
+    // imported by this suite but never called. CASL footer application is
+    // therefore untested — a legal requirement with no coverage.
 
     it('validates email addresses', () => {
       const validEmails = ['test@example.com', 'user+tag@domain.co.uk'];

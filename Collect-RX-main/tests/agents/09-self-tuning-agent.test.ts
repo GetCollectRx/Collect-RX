@@ -13,10 +13,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
-import { v4 as uuidv4 } from 'uuid';
 
 // Self-tuner modules
 import {
@@ -32,7 +28,6 @@ import type {
   RecallIntervalObservation,
   ReconciliationVariance,
   CarrierOutcomeSignal,
-  LearnedBlockPhrases,
 } from '../../src/server/learning/selfTuner/types.js';
 
 // Carrier block phrases module (now self-tuner aware)

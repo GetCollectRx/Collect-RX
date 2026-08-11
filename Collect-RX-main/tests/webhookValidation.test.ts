@@ -57,8 +57,6 @@ function testClaimData(
 let dbReady = false;
 let practiceA: { id: string; name: string };
 let practiceB: { id: string; name: string };
-let practiceAEmail = '';
-let practiceBEmail = '';
 
 try {
   await prisma.$connect();
@@ -79,11 +77,9 @@ beforeAll(async () => {
 
   const practiceASetup = await createPracticeWithOwnerForTests(prisma);
   practiceA = { id: practiceASetup.practice.id, name: practiceASetup.practice.name };
-  practiceAEmail = practiceASetup.email;
 
   const practiceBSetup = await createPracticeWithOwnerForTests(prisma);
   practiceB = { id: practiceBSetup.practice.id, name: practiceBSetup.practice.name };
-  practiceBEmail = practiceBSetup.email;
 });
 
 afterAll(async () => {

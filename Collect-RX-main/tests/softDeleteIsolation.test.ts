@@ -4,8 +4,8 @@
  * Verifies that soft deletes properly isolate deleted records from queries,
  * maintain referential integrity, and restrict hard deletes to admin + audit only.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { describe, it, expect, afterAll } from 'vitest';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
@@ -319,7 +319,7 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () 
         return;
       }
 
-      const { practice, user, email, password } = await createPracticeWithOwnerForTests(prisma);
+      const { practice, user, email } = await createPracticeWithOwnerForTests(prisma);
 
       // Verify user can be found before soft delete
       let foundUser = await findUserNotDeleted(user.id);

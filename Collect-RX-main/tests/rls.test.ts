@@ -19,7 +19,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { InsuranceClaim, CarrierId, User, Practice, AuditLog, Prisma } from '@prisma/client';
+import type { InsuranceClaim, CarrierId, User, Practice, Prisma } from '@prisma/client';
 import { prisma } from '../src/server/index.js';
 import {
   createPracticeWithOwnerForTests,
@@ -49,7 +49,6 @@ let practiceA: Practice;
 let practiceB: Practice;
 let userA: User;
 let userB: User;
-let userA2: User; // Second user in Practice A
 let claimA1: InsuranceClaim;
 let claimA2: InsuranceClaim;
 let claimB1: InsuranceClaim;
@@ -73,7 +72,7 @@ beforeAll(() => runWithRlsBypass(async () => {
     const hash = await import('bcryptjs').then((m) =>
       m.default.hash(FIXTURE_PRACTICE_PASSWORD, 4)
     );
-    userA2 = await prisma.user.create({
+    await prisma.user.create({
       data: {
         practiceId: practiceA.id,
         email: `user2-${Date.now()}@fixture.test`,
@@ -457,23 +456,12 @@ describe.skipIf(!dbReady || strictRls)('RLS: Audit Log Scoping', () => {
     expect(userALogs.every((l) => l.userId === userA.id)).toBe(true);
   });
 
-  it('userA2 cannot see userA\'s logs from different practices', async () => {
-    // userA2 is in Practice A; should only see Practice A logs
-    const logsA = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practiceA.id,
-      },
-    });
-
-    const logsB = await prisma.auditLog.findMany({
-      where: {
-        practiceId: practiceB.id,
-      },
-    });
-
-    const intersect = logsA.filter((la) => logsB.some((lb) => lb.id === la.id));
-    expect(intersect.length).toBe(0);
-  });
+  // A test named "userA2 cannot see userA's logs from different practices" sat
+  // here. It never referenced userA2: it filtered audit logs by practiceA and by
+  // practiceB and asserted the two sets do not intersect, which is true by
+  // construction since a log row carries one practiceId. Per-user audit-log RLS
+  // is still unproven — rls.strict.test.ts (the only suite that runs without the
+  // bypass) covers claims only.
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
