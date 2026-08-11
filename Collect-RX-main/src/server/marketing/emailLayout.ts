@@ -3,6 +3,8 @@
  * Table layout for email client compatibility.
  */
 
+import { OUTREACH_SENDER_FULL_NAME } from './outreachVoice.js';
+
 const BRAND = {
   cream: '#fcfcfa',
   parchment: '#f8f5ee',
@@ -80,7 +82,7 @@ export function wrapOutreachEmail(opts: OutreachEmailLayoutOptions): string {
           <tr>
             <td style="padding:16px 32px 28px;border-top:1px solid ${BRAND.border};">
               <p style="margin:0;font-family:Inter,system-ui,sans-serif;font-size:13px;line-height:1.5;color:${BRAND.graphite};">
-                Khalid Egeh | CollectRx | ${escapeHtml(MAILING_ADDRESS)}<br />
+                ${escapeHtml(OUTREACH_SENDER_FULL_NAME)} | CollectRx | ${escapeHtml(MAILING_ADDRESS)}<br />
                 <a href="${escapeAttr(SITE_URL)}" style="color:${BRAND.greenDark};">collectrx.ca</a><br /><br />
                 To stop receiving emails from CollectRx, reply with &ldquo;unsubscribe&rdquo; in the subject line.
               </p>

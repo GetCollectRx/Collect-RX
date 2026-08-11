@@ -10,7 +10,7 @@ model: claude-haiku-4-5-20251001
 
 ## The Core Argument
 
-CollectRx is not a cost — it's a revenue recovery tool. The question is never "is $599/month expensive" — it's "how much money did you recover that you would not have recovered otherwise, and how much staff time did it free up."
+CollectRx is not a cost — it's a revenue recovery tool. The question is never "is the monthly tier price expensive" — it's "how much money did you recover that you would not have recovered otherwise, and how much staff time did it free up." (Current tier pricing: `src/billing/tiers.ts`.)
 
 Every ROI report must answer:
 1. How much money did we recover for you this month?

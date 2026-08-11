@@ -4,10 +4,21 @@
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable (see
  * tests/app.integration.test.ts for the same pattern).
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { sendPasswordResetEmail } from '../src/server/email/passwordReset.js';
+
+// Mocked so the raw token can be recovered directly from the call args
+// instead of parsing console/logger output — parsing log output for a
+// secret token couples the test to logging internals (format, redaction,
+// structured-vs-plain) that change independently of this behavior and made
+// this test CI-flaky (see also tests/adversarial.smoke.test.ts).
+vi.mock('../src/server/email/passwordReset.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/server/email/passwordReset.js')>();
+  return { ...actual, sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined) };
+});
 
 let dbReady = false;
 try {
@@ -29,6 +40,13 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
   it('issues a token on request and consumes it on confirm, allowing login with the new password', async () => {
     const { practice, user, email } = await createPracticeWithOwnerForTests(prisma);
     try {
+      // The DB only ever stores hashResetToken(rawToken) — see authRoutes.ts's
+      // POST /reset-password/request. The raw token that actually redeems a
+      // reset is never persisted, only delivered to the user — recover it
+      // from the mocked sendPasswordResetEmail() call args (see the vi.mock
+      // at the top of this file) the same way an emailed link would carry it.
+      const sendEmailMock = vi.mocked(sendPasswordResetEmail);
+      sendEmailMock.mockClear();
       const requestRes = await request(app)
         .post('/api/auth/reset-password/request')
         .send({ email });
@@ -42,10 +60,13 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
       expect(tokenRow).not.toBeNull();
       expect(tokenRow!.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
+      expect(sendEmailMock, 'expected sendPasswordResetEmail to be invoked').toHaveBeenCalledTimes(1);
+      const [, , rawToken] = sendEmailMock.mock.calls[0];
+
       const newPassword = 'brand-new-password-123';
       const confirmRes = await request(app)
         .post('/api/auth/reset-password/confirm')
-        .send({ token: tokenRow!.token, newPassword });
+        .send({ token: rawToken, newPassword });
       expect(confirmRes.status).toBe(200);
       expect(confirmRes.body.ok).toBe(true);
 

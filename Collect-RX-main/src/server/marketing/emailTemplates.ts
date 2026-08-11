@@ -2,6 +2,7 @@ import type { Prospect } from '@prisma/client';
 import { wrapOutreachEmail } from './emailLayout.js';
 import { mergeProspectFields } from './aiPersonalization.js';
 import {
+  OUTREACH_SENDER_NAME,
   OUTREACH_SIGNOFF,
   OUTREACH_SIGNOFF_HTML,
   outreachGreeting,
@@ -63,7 +64,7 @@ export const COLD_SEQUENCE: ColdSequenceStep[] = [
     buildHtml: (p) => {
       const g = outreachGreeting(p.contactName);
       const inner = `<p style="margin:0 0 16px;">${g}</p>
-<p style="margin:0 0 16px;">I'm Khalid, a founder building a product for Canadian dental practices. I wanted to reach out directly because I think the problem I'm working on is one your team deals with regularly.</p>
+<p style="margin:0 0 16px;">I'm ${OUTREACH_SENDER_NAME}, a founder building a product for Canadian dental practices. I wanted to reach out directly because I think the problem I'm working on is one your team deals with regularly.</p>
 <p style="margin:0 0 16px;">Most practices I've spoken with spend several hours every week following up with carriers on outstanding claims. It's repetitive, time-consuming, and nobody's favorite part of running a practice.</p>
 <p style="margin:0 0 16px;">I've built an AI system to handle those calls. CollectRx is new, and I'm looking for a small number of practices across Ontario to be among the first to trial it.</p>
 <p style="margin:0 0 16px;">If you want to see how it works first: ${linkHtml('collectrx.ca/demo', DEMO_LINK)}</p>
@@ -77,7 +78,7 @@ ${signoffHtml()}`;
       const g = outreachGreeting(p.contactName);
       return `${g}
 
-I'm Khalid, a founder building a product for Canadian dental practices. I wanted to reach out directly because I think the problem I'm working on is one your team deals with regularly.
+I'm ${OUTREACH_SENDER_NAME}, a founder building a product for Canadian dental practices. I wanted to reach out directly because I think the problem I'm working on is one your team deals with regularly.
 
 Most practices I've spoken with spend several hours every week following up with carriers on outstanding claims. It's repetitive, time-consuming, and nobody's favorite part of running a practice.
 

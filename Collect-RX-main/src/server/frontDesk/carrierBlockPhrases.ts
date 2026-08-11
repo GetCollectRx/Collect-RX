@@ -18,6 +18,15 @@ const CARRIER_BLOCK_PHRASES_BASELINE = [
   // the deterministic scanner couldn't catch the case the squad prompt itself anticipates.
   "we don't work with robots",
   "i'm ending this call",
+  // Merged from outcome/processor.ts's now-retired LEGACY_CARRIER_BLOCK_INCLUDES
+  // (AA-17) — this is the shared source both the live-transcript scanner and the
+  // end-of-call outcome classifier check, so a phrase only needs to be added once.
+  'your calls are being blocked',
+  'this number has been flagged',
+  'call blocking',
+  'number is blocked',
+  'please do not call again',
+  'calls from this number will not be accepted',
 ] as const;
 
 const GENERIC_IVR_TERMS = new Set(['automated', 'bot', 'ivr', 'menu', 'system']);

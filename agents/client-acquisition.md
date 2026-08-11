@@ -23,12 +23,14 @@ model: claude-haiku-4-5-20251001
 
 ### Tier Targeting
 
+Real tier pricing lives in `src/billing/tiers.ts` — check there before quoting a number, it changes independently of this doc.
+
 | Prospect Type | Target Tier | Expected MRR |
 |---|---|---|
-| Solo dentist, 1 location | Core ($599) | $599 |
-| 2-dentist practice | Growth ($1,299) | $1,299 |
-| 3+ dentist / group | Scale ($1,499) | $1,499 |
-| DSO (multi-location) | Scale × locations | $1,499+ |
+| Solo dentist, 1 location | Core ($799) | $799 |
+| 2–3 dentist practice | Growth ($1,999) | $1,999 |
+| Group practice / DSO | Scale ($2,499) | $2,499 |
+| DSO (multi-location) | Scale × locations | $2,499+ |
 
 DSOs are the highest-leverage target: one conversation, multiple locations, recurring multi-tier revenue.
 
@@ -105,7 +107,7 @@ Send the ROI calculator output for their estimated practice size (from `roi-proo
 
 **"What if the AI makes a mistake?"** "Every call is transcribed and logged. The system never confirms a financial outcome without capturing a carrier reference number. If it can't get a clear answer, it escalates to your staff rather than guessing. You review everything before it affects your records."
 
-**"We're too small / we don't have enough AR."** "Our Core tier starts at $599/month. If you have more than $10,000 in outstanding AR — which most practices do — the math works immediately. We can run a trial and you'll see the results in the first 30 days."
+**"We're too small / we don't have enough AR."** "Our Core tier starts at $799/month. If you have more than $10,000 in outstanding AR — which most practices do — the math works immediately. We can run a trial and you'll see the results in the first 30 days."
 
 ---
 

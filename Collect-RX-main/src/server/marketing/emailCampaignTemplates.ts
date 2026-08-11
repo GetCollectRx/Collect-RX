@@ -1,3 +1,5 @@
+import { OUTREACH_SENDER_EMAIL, OUTREACH_SENDER_FULL_NAME, OUTREACH_SENDER_NAME } from './outreachVoice.js';
+
 export interface EmailTemplateData {
   ownerLastName: string;
   practiceName: string;
@@ -51,9 +53,9 @@ const INITIAL_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 <p>If that's worth a 15-minute look, just reply here or grab a time: {{BookingLink}}</p>
 
 <p>Best,<br>
-Khalid Egeh<br>
+${OUTREACH_SENDER_FULL_NAME}<br>
 Founder, CollectRx<br>
-khalid@collectrx.ca · {{SenderPhone}}<br>
+${OUTREACH_SENDER_EMAIL} · {{SenderPhone}}<br>
 {{MailingAddress}}</p>
 
 <p><em>CollectRx sends A/R automation software for Canadian dental practices. If you'd rather not hear from us, reply "unsubscribe" and I won't email again.</em></p>`;
@@ -66,8 +68,8 @@ const FOLLOW_UP_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 
 <p>Happy to send a 2-minute demo video instead of a call if that's easier — just say the word.</p>
 
-<p>Khalid<br>
-Founder, CollectRx · khalid@collectrx.ca · {{SenderPhone}}<br>
+<p>${OUTREACH_SENDER_NAME}<br>
+Founder, CollectRx · ${OUTREACH_SENDER_EMAIL} · {{SenderPhone}}<br>
 {{MailingAddress}} · Reply "unsubscribe" to opt out.</p>`;
 
 function getSubjectVariant(variant: 'a' | 'b' | 'c' = 'a'): string {

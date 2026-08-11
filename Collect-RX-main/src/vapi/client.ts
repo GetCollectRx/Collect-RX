@@ -507,10 +507,11 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
       carrier_id: params.carrierId,
       cdcp_context: params.cdcpContext ? 'true' : 'false',
       carrier_ivr_instructions: params.carrierIvrInstructions ?? '',
-      disclosure_message:
-        `Hello, this is an automated calling system contacting you on behalf of ${params.practiceName}, a dental practice. ` +
-        `You can reach us at ${params.practicePhone}. We are calling regarding ${purpose}. ` +
-        `If you are a representative at the provider line, please stay on the line.`,
+      // Spoken only by PreVisit_Agent's firstMessage (hardcoded template in
+      // vapi-previsit-config.json) — PreVisit_IVR_Navigator's firstMessage is
+      // a literal "" and never reads a variable, so it can't be made to speak
+      // a disclosure to an IVR machine by a bad variable value here.
+      call_purpose: purpose,
       },
     },
   };

@@ -128,13 +128,16 @@ export const CALL_TIMEOUTS = {
 };
 
 // Carrier-specific timeout overrides (loaded from carrier JSON; these are fallback defaults).
+// Keys must match the Prisma CarrierId enum exactly (prisma/schema.prisma) --
+// a mismatch here means maxCallDurationSeconds() silently falls back to
+// `default` for every carrier whose key doesn't match.
 export const CARRIER_TIMEOUTS: Record<string, number> = {
-  'rbc-insurance': 45, // RBC avg 38 min hold — give full ceiling
-  'green-shield': 30, // Green Shield avg 24 min
-  'sun-life': 30,
-  'canada-life': 30,
+  rbc: 45, // RBC avg 38 min hold — give full ceiling
+  green_shield: 30, // Green Shield avg 24 min
+  sun_life: 30,
+  canada_life: 30,
   manulife: 30,
-  'telus-adjudicare': 30,
+  telus_adjudicare: 30,
   default: 30,
 };
 

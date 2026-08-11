@@ -27,30 +27,41 @@ The Vapi squad can hallucinate in these specific ways:
 
 ### Primary Check: Anti-Hallucination Gate Audit
 
-`outcomeConfidence.ts` already gates financial-terminal outcomes. This agent verifies the gate is working:
-
-For every call with outcome in {RESOLVED, DENIED, APPROVED_PENDING_PAYMENT}:
+`src/server/outcomeConfidence.ts`'s `gateFinancialOutcome()` already gates financial-terminal *claim statuses* — `RESOLVED` / `DENIED` / `APPROVED_PENDING_PAYMENT` are `ClaimStatus` values (`insurance_claims.status`), a different enum from the *call*-level `CallOutcome` (`call_attempts.outcome`, which only has `RESOLVED`/`DENIED`/`ESCALATED`/`BLOCK_DETECTED`/`FAILED`/`NO_ANSWER`/`HUNG_UP`/`PENDING` — no `APPROVED_PENDING_PAYMENT`). The gate itself is computed in memory per-webhook and does not persist a score or flags column anywhere — when it downgrades an inferred outcome, the only DB trace is the claim landing on `ESCALATED` instead of the financial-terminal status the raw call outcome would suggest. This agent verifies the gate is working by re-deriving that signal:
 
 ```sql
+-- Financial-terminal claims and their most recent call's corroboration signal
 SELECT
-  c.id,
-  c.outcome,
-  c.referenceNumber,
-  c.outcomeConfidenceScore,
-  c.outcomeConfidenceFlags,
-  c.vapiCallId,
-  c.completedAt
-FROM "Call" c
-WHERE c.outcome IN ('RESOLVED', 'DENIED', 'APPROVED_PENDING_PAYMENT')
-  AND c.completedAt > NOW() - INTERVAL '24 hours'
-ORDER BY c.completedAt DESC;
+  ic.id AS claim_id,
+  ic.status,
+  ca.reference_number,
+  ca.vapi_call_id,
+  ca.completed_at
+FROM insurance_claims ic
+JOIN LATERAL (
+  SELECT * FROM call_attempts
+  WHERE claim_id = ic.id
+  ORDER BY completed_at DESC NULLS LAST
+  LIMIT 1
+) ca ON true
+WHERE ic.status IN ('RESOLVED', 'DENIED', 'APPROVED_PENDING_PAYMENT')
+  AND ca.completed_at > NOW() - INTERVAL '24 hours'
+ORDER BY ca.completed_at DESC;
+
+-- Claims where the raw call outcome was financial-terminal but the gate downgraded
+-- them to ESCALATED (the observable trace of a caught, uncorroborated hallucination)
+SELECT ic.id AS claim_id, ic.status, ca.outcome AS raw_call_outcome, ca.reference_number
+FROM insurance_claims ic
+JOIN call_attempts ca ON ca.claim_id = ic.id
+WHERE ic.status = 'ESCALATED'
+  AND ca.outcome IN ('RESOLVED', 'DENIED')
+  AND ca.completed_at > NOW() - INTERVAL '24 hours';
 ```
 
-Flag any row where:
-- `referenceNumber` is NULL or empty
-- `referenceNumber` length < 4
-- `outcomeConfidenceScore` < threshold (check outcomeConfidence.ts for current threshold)
-- `outcomeConfidenceFlags` contains 'NO_REFERENCE' or 'LOW_CONFIDENCE'
+Flag any row from the first query where:
+- `reference_number` is NULL or empty, or shorter than 4 characters (the gate's own `MIN_REFERENCE_LENGTH`) — this claim reached a financial-terminal status without the corroboration the gate requires, meaning it must have arrived via a structured carrier payload (`metadata.collectrx`/`analysis.collectrx` on the webhook) rather than a reference number. Pull the raw webhook payload to confirm; if neither is present, the gate has a hole.
+
+Rows from the second query are not failures — they're the gate doing its job. A high or rising count is still worth watching (may indicate a carrier IVR change or transcript-quality issue upstream), but each individual row confirms the anti-hallucination gate caught something correctly.
 
 ### Secondary Check: Transcript Verification
 

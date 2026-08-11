@@ -4,7 +4,7 @@ model: claude-haiku-4-5-20251001
 
 # CollectRx Practice Time Savings Agent
 
-**Purpose:** Quantify, in hours and dollars, exactly how much time CollectRx saves each dental practice. This is not a vanity metric — it's the primary retention argument and the centerpiece of the ROI case. If a practice questions whether CollectRx is worth $599/month, this agent produces the proof. Run monthly per active practice. Feeds into: ROI Proof, Voice of Customer, Client Acquisition (benchmarks for new prospects).
+**Purpose:** Quantify, in hours and dollars, exactly how much time CollectRx saves each dental practice. This is not a vanity metric — it's the primary retention argument and the centerpiece of the ROI case. If a practice questions whether CollectRx is worth its monthly tier price (Core/Growth/Scale — see `src/billing/tiers.ts` for current numbers), this agent produces the proof. Run monthly per active practice. Feeds into: ROI Proof, Voice of Customer, Client Acquisition (benchmarks for new prospects).
 
 ---
 
@@ -32,17 +32,21 @@ CollectRx replaces (1) and (2) entirely. It also reduces (3) because the transcr
 
 ```sql
 SELECT
-  c.practiceId,
-  c.carrierId,
-  COUNT(*) AS totalCalls,
-  SUM(c.duration) AS totalCallMinutes,
-  COUNT(CASE WHEN c.outcome IN ('RESOLVED', 'APPROVED_PENDING_PAYMENT') THEN 1 END) AS resolvedCalls,
-  COUNT(CASE WHEN c.outcome = 'DENIED' THEN 1 END) AS deniedCalls,
-  AVG(c.duration) AS avgCallDuration
-FROM "Call" c
-WHERE c.practiceId = [practice_id]
-  AND c.completedAt > NOW() - INTERVAL '30 days'
-GROUP BY c.practiceId, c.carrierId;
+  ic.practice_id,
+  ic.carrier_id,
+  COUNT(*) AS total_calls,
+  SUM(ca.duration_seconds) / 60.0 AS total_call_minutes,
+  -- 'RESOLVED'/'DENIED' here are call_attempts.outcome (CallOutcome). The claim-level
+  -- APPROVED_PENDING_PAYMENT status lives on insurance_claims.status, a separate enum —
+  -- see ic.status below if you need that distinction.
+  COUNT(CASE WHEN ca.outcome = 'RESOLVED' THEN 1 END) AS resolved_calls,
+  COUNT(CASE WHEN ca.outcome = 'DENIED' THEN 1 END) AS denied_calls,
+  AVG(ca.duration_seconds) / 60.0 AS avg_call_duration_minutes
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+WHERE ic.practice_id = [practice_id]
+  AND ca.completed_at > NOW() - INTERVAL '30 days'
+GROUP BY ic.practice_id, ic.carrier_id;
 ```
 
 ### Time Saved Calculation
@@ -82,15 +86,16 @@ CollectRx can run calls during off-hours (configured call window). Any call comp
 Track:
 ```sql
 SELECT
-  COUNT(*) AS afterHoursCalls,
-  SUM(duration) AS afterHoursMinutes
-FROM "Call" c
-WHERE c.practiceId = [practice_id]
-  AND c.completedAt > NOW() - INTERVAL '30 days'
+  COUNT(*) AS after_hours_calls,
+  SUM(ca.duration_seconds) / 60.0 AS after_hours_minutes
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+WHERE ic.practice_id = [practice_id]
+  AND ca.completed_at > NOW() - INTERVAL '30 days'
   AND (
-    EXTRACT(HOUR FROM c.startedAt AT TIME ZONE practice_timezone) < 9
-    OR EXTRACT(HOUR FROM c.startedAt AT TIME ZONE practice_timezone) >= 17
-    OR EXTRACT(DOW FROM c.startedAt AT TIME ZONE practice_timezone) IN (0, 6)
+    EXTRACT(HOUR FROM ca.initiated_at AT TIME ZONE practice_timezone) < 9
+    OR EXTRACT(HOUR FROM ca.initiated_at AT TIME ZONE practice_timezone) >= 17
+    OR EXTRACT(DOW FROM ca.initiated_at AT TIME ZONE practice_timezone) IN (0, 6)
   );
 ```
 

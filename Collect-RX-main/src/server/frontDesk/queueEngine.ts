@@ -13,10 +13,12 @@ import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
+import { identifyTelusPlan } from '../../services/eligibility/engine.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
+import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
@@ -308,7 +310,7 @@ async function settleBlockedCandidate(
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -319,29 +321,46 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : 'Claim exceeded 90 days outstanding — escalated for human follow-up';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          ...(guardCode === 'MAX_ATTEMPTS' ? { attemptNumber: 3 } : {}),
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
+        if (guardCode === 'ESCALATE_OVER_90') {
+          try {
+            await sendPracticeNotification(prisma, {
+              practiceId: entry.practiceId,
+              type: 'CLAIM_AGED_OUT',
+              subject: `Claim ${entry.claim.claimNumber}: 90+ days outstanding`,
+              message: `This claim has been outstanding over 90 days. Per policy, AI calling has stopped and it has been escalated for human follow-up.`,
+              claimId: entry.claimId,
+              severity: 'warning',
+            });
+          } catch (notifErr) {
+            console.error('[queueEngine] over-90-day escalation notification failed (non-fatal):', notifErr);
+          }
         }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({
@@ -712,6 +731,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         patientToken: next.claim.patientToken,
         warnings: completeness.warnings,
       });
+    }
+
+    // ── TELUS TPA GATE ─────────────────────────────────────────────────────────
+    // TELUS AdjudiCare is a clearinghouse, not a single insurer — IVR navigation
+    // is TPA-specific, so a claim can't be routed correctly without one. Defer
+    // rather than dial blind and mis-navigate the IVR.
+    if (next.claim.carrierId === 'telus_adjudicare') {
+      const tpa = identifyTelusPlan(phi.subscriberId, phi.groupPolicyNumber);
+      if (!tpa.identifiedTpa || tpa.confidence === 'low') {
+        logger.warn('[deskQueueEngine] TELUS TPA unresolved or low-confidence — deferring dispatch', {
+          claimId: next.claimId,
+          identifiedTpa: tpa.identifiedTpa,
+          confidence: tpa.confidence,
+        });
+        await deferQueueEntry(
+          prisma,
+          next.id,
+          DEFER_STAFF_ACTION_MS,
+          'TELUS_TPA_UNRESOLVED',
+          tpa.notes,
+        );
+        continue;
+      }
     }
 
     // billingPhone is the CRTC disclosure / carrier callback number.

@@ -46,23 +46,24 @@ If any source is corrupt, incomplete, or delayed, every downstream agent is comp
 ```sql
 -- Calls with missing required fields
 SELECT
-  c.id,
-  c.practiceId,
-  c.carrierId,
-  c.claimId,
-  c.outcome,
-  c.startedAt,
-  c.completedAt,
-  c.duration,
-  c.vapiCallId
-FROM "Call" c
-WHERE c.completedAt > NOW() - INTERVAL '24 hours'
+  ca.id,
+  ic.practice_id,
+  ic.carrier_id,
+  ca.claim_id,
+  ca.outcome,
+  ca.initiated_at,
+  ca.completed_at,
+  ca.duration_seconds,
+  ca.vapi_call_id
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+WHERE ca.completed_at > NOW() - INTERVAL '24 hours'
   AND (
-    c.outcome IS NULL
-    OR c.duration IS NULL
-    OR c.vapiCallId IS NULL
-    OR c.startedAt IS NULL
-    OR c.completedAt IS NULL
+    ca.outcome IS NULL
+    OR ca.duration_seconds IS NULL
+    OR ca.vapi_call_id IS NULL
+    OR ca.initiated_at IS NULL
+    OR ca.completed_at IS NULL
   );
 ```
 
@@ -77,25 +78,25 @@ SELECT
   outcome,
   COUNT(*) AS count,
   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pct
-FROM "Call"
-WHERE completedAt > NOW() - INTERVAL '7 days'
+FROM call_attempts
+WHERE completed_at > NOW() - INTERVAL '7 days'
 GROUP BY outcome
 ORDER BY count DESC;
 ```
 
-Expected approximate ranges (flag if significantly outside):
+Expected approximate ranges (flag if significantly outside), using the real `CallOutcome` enum (`RESOLVED`, `PENDING`, `DENIED`, `ESCALATED`, `BLOCK_DETECTED`, `FAILED`, `NO_ANSWER`, `HUNG_UP`):
 - RESOLVED: 30-50%
-- PENDING_REVIEW: 15-25%
+- PENDING: 15-25%
 - DENIED: 10-20%
 - ESCALATED: 5-15%
-- IVR_FAILURE: 5-15%
+- FAILED: 5-15%
 - NO_ANSWER: 3-10%
-- CARRIER_BLOCK: 0-2% (anything higher is a crisis)
-- TIMEOUT: 2-8%
+- HUNG_UP: 2-8%
+- BLOCK_DETECTED: 0-2% (anything higher is a crisis)
 
 If RESOLVED is >70%, the anti-hallucination gate may be failing.
-If IVR_FAILURE is >30%, a carrier has changed their IVR.
-If CARRIER_BLOCK is >5%, production is in jeopardy.
+If FAILED is >30%, a carrier has changed their IVR.
+If BLOCK_DETECTED is >5%, production is in jeopardy.
 
 ### 3. Vapi Transcript Availability
 
@@ -107,18 +108,24 @@ Log transcript availability rate daily.
 
 ### 4. Financial Data Consistency
 
-```sql
--- Calls with amountRecovered but no RESOLVED outcome
-SELECT id, outcome, amountRecovered FROM "Call"
-WHERE amountRecovered > 0
-  AND outcome != 'RESOLVED'
-  AND completedAt > NOW() - INTERVAL '24 hours';
+Recovered dollars live on `claim_recovery_events.amount_recovered_cents`, not on the call record itself — join through `claim_id`:
 
--- RESOLVED calls with zero amountRecovered (may be valid but worth flagging)
-SELECT id, outcome, amountRecovered, claimId FROM "Call"
-WHERE outcome = 'RESOLVED'
-  AND (amountRecovered IS NULL OR amountRecovered = 0)
-  AND completedAt > NOW() - INTERVAL '24 hours';
+```sql
+-- Recovery events with a positive amount whose triggering call wasn't RESOLVED
+SELECT cre.id, ca.outcome, cre.amount_recovered_cents, cre.claim_id
+FROM claim_recovery_events cre
+JOIN call_attempts ca ON ca.claim_id = cre.claim_id
+WHERE cre.amount_recovered_cents > 0
+  AND ca.outcome != 'RESOLVED'
+  AND cre.created_at > NOW() - INTERVAL '24 hours';
+
+-- RESOLVED calls with no matching recovery event (may be valid but worth flagging)
+SELECT ca.id, ca.outcome, ca.claim_id
+FROM call_attempts ca
+LEFT JOIN claim_recovery_events cre ON cre.claim_id = ca.claim_id
+WHERE ca.outcome = 'RESOLVED'
+  AND cre.id IS NULL
+  AND ca.completed_at > NOW() - INTERVAL '24 hours';
 ```
 
 ### 5. PHI Log Completeness
@@ -126,9 +133,9 @@ WHERE outcome = 'RESOLVED'
 Every detokenization event must have a corresponding PHI access log:
 
 ```sql
-SELECT COUNT(*) AS detokenize_events FROM "PhiAccessLog"
-WHERE action = 'detokenize'
-  AND createdAt > NOW() - INTERVAL '24 hours';
+SELECT COUNT(*) AS detokenize_events FROM phi_access_events
+WHERE operation LIKE 'detokenize_%'
+  AND created_at > NOW() - INTERVAL '24 hours';
 
 -- Compare to actual detokenize calls — should match
 -- If count is zero and calls are running, PHI audit logging is broken
@@ -136,15 +143,15 @@ WHERE action = 'detokenize'
 
 ### 6. Queue Engine Heartbeat
 
-Verify the queue engine is running:
+There is no dedicated queue-engine heartbeat table. Use the most recent `call_queue` row touch as a proxy — if the engine is running during call-window hours, it should be updating rows regularly (dispatching, deferring, or completing them):
 
 ```sql
--- Last queue heartbeat
-SELECT MAX(processedAt) AS lastProcessed FROM "QueueLog"
-WHERE processedAt > NOW() - INTERVAL '2 hours';
+-- Most recent queue engine activity
+SELECT MAX(updated_at) AS last_processed FROM call_queue
+WHERE updated_at > NOW() - INTERVAL '2 hours';
 ```
 
-If no heartbeat in 2 hours during call window hours, the queue engine is down.
+If no activity in 2 hours during call window hours, the queue engine may be down — but also check whether the queue is simply empty (no claims currently eligible for dispatch) before alerting, since an empty queue produces the same null result.
 
 ### 7. Stripe Sync
 
@@ -177,7 +184,7 @@ A score <80% means downstream analytics reports should be marked "DATA QUALITY C
 | Issue | Threshold | Action |
 |---|---|---|
 | Missing call records | >5% | Alert Khalid; pause analytics reports |
-| CARRIER_BLOCK rate | >5% in 7 days | Immediate alert; trigger carrier IVR health |
+| BLOCK_DETECTED rate | >5% in 7 days | Immediate alert; trigger carrier IVR health |
 | RESOLVED rate | >70% | Anti-hallucination gate may be failing; alert |
 | Transcript unavailability | >10% | Vapi API issue; alert |
 | Queue heartbeat gap | >2 hours in call window | Queue engine down; alert |

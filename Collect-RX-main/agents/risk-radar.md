@@ -35,13 +35,16 @@
 
 **Monitoring query:**
 ```sql
-SELECT carrierId, COUNT(*) AS blockEvents
-FROM "Call"
-WHERE outcome = 'CARRIER_BLOCK'
-  AND completedAt > NOW() - INTERVAL '7 days'
-GROUP BY carrierId
-ORDER BY blockEvents DESC;
+SELECT ic.carrier_id, COUNT(*) AS block_events
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+WHERE ca.outcome = 'BLOCK_DETECTED'
+  AND ca.completed_at > NOW() - INTERVAL '7 days'
+GROUP BY ic.carrier_id
+ORDER BY block_events DESC;
 ```
+
+For the authoritative signal (a carrier suspension currently in effect, not just a block-flagged call), check `carrier_block_events` instead — see incident-response.md's IC-2.
 
 **Risk level:** LOW (if no recent blocks) / CRITICAL (if active block)
 
@@ -71,9 +74,9 @@ ORDER BY blockEvents DESC;
 **Monitoring:** phi-access-log-reviewer runs monthly. Between monthly reviews, risk-radar watches for:
 ```sql
 -- After-hours PHI access
-SELECT * FROM "PhiAccessLog"
-WHERE EXTRACT(HOUR FROM createdAt) NOT BETWEEN 7 AND 22
-  AND createdAt > NOW() - INTERVAL '24 hours';
+SELECT * FROM phi_access_events
+WHERE EXTRACT(HOUR FROM created_at) NOT BETWEEN 7 AND 22
+  AND created_at > NOW() - INTERVAL '24 hours';
 ```
 
 **Risk level:** CRITICAL if breach confirmed / LOW if no anomalies.
@@ -89,11 +92,11 @@ WHERE EXTRACT(HOUR FROM createdAt) NOT BETWEEN 7 AND 22
 
 **Business impact:** Every hour the queue engine is down during call window is lost recovery capacity for active practices. More critically, if practices notice missed calls, churn risk increases.
 
-**Monitoring query (queue heartbeat):**
+**Monitoring query (queue heartbeat proxy — there is no dedicated heartbeat table; see analytics-pipeline.md §6):**
 ```sql
-SELECT MAX(processedAt) AS lastHeartbeat,
-       NOW() - MAX(processedAt) AS gapSinceLastProcess
-FROM "QueueLog";
+SELECT MAX(updated_at) AS last_heartbeat,
+       NOW() - MAX(updated_at) AS gap_since_last_process
+FROM call_queue;
 ```
 
 **Risk level:** Alert if gap >2 hours during 8am-5pm EST.

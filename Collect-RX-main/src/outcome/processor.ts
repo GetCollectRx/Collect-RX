@@ -13,6 +13,7 @@
 
 import type { CallOutcome } from '@prisma/client';
 import type { VapiWebhookPayload } from '../vapi/client';
+import { getActiveBlockPhrases } from '../server/frontDesk/carrierBlockPhrases.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,17 +51,12 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /detected\s+bot\s+activity/i,
 ];
 
-/** Literal phrases from `processor.legacy.cjs` (carrier_block branch). */
-const LEGACY_CARRIER_BLOCK_INCLUDES = [
-  'carrier_block',
-  'your calls are being blocked',
-  'automated calling is not permitted',
-  'this number has been flagged',
-  'call blocking',
-  'number is blocked',
-  'please do not call again',
-  'calls from this number will not be accepted',
-] as const;
+/**
+ * Literal status code from `processor.legacy.cjs` (carrier_block branch) —
+ * not a spoken phrase, so it stays separate from the shared block-phrase
+ * list below (see AA-17, docs/operations/AGENT-AUDIT-BACKLOG-2026-08-01.md).
+ */
+const LEGACY_CARRIER_BLOCK_CODE = 'carrier_block';
 
 // Resolution indicator phrases
 const RESOLUTION_PATTERNS: RegExp[] = [
@@ -199,7 +195,8 @@ function matchLegacyTranscript(fullText: string): string | null {
     return 'no_answer';
   }
 
-  for (const phrase of LEGACY_CARRIER_BLOCK_INCLUDES) {
+  if (fullText.includes(LEGACY_CARRIER_BLOCK_CODE)) return 'carrier_block';
+  for (const phrase of getActiveBlockPhrases()) {
     if (fullText.includes(phrase)) return 'carrier_block';
   }
 

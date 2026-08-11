@@ -14,12 +14,24 @@
  * For EACH test: proves failure via HTTP status and error message.
  */
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcryptjs';
 import type { PracticeRole } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { sendPasswordResetEmail } from '../src/server/email/passwordReset.js';
+
+// Mocked so the "token stored hashed, still round-trips" test below can
+// recover the raw token directly from the call arguments instead of parsing
+// log output — parsing console/logger output for a secret token is coupled
+// to logging internals (format, redaction, structured-vs-plain) that change
+// independently of this behavior and previously made this test CI-flaky.
+vi.mock('../src/server/email/passwordReset.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/server/email/passwordReset.js')>();
+  return { ...actual, sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined) };
+});
 
 let dbReady = false;
 try {
@@ -280,6 +292,60 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     expect(resB.body.error).toContain('does not match session');
 
     await cleanupFixtures([practiceA, practiceB]);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Test 3b: Password reset tokens are hashed at rest, and the raw token
+  // still redeems successfully (AA-30 — plaintext-token-at-rest fix)
+  // ──────────────────────────────────────────────────────────────────────────
+  it('Password reset token is stored hashed, not plaintext, and still round-trips', async () => {
+    const practice = await createPracticeForTests(prisma);
+    const user = await prisma.user.create({
+      data: {
+        practiceId: practice.id,
+        email: `reset-hash-${Date.now()}@test.local`,
+        passwordHash: await bcrypt.hash('OldPassword123!', 4),
+        displayName: 'Reset Hash Test',
+        role: 'front_desk',
+        isActive: true,
+      },
+    });
+
+    // sendPasswordResetEmail() is mocked at the top of this file — recover
+    // the raw token from its call args directly, the same value an emailed
+    // link would carry.
+    const sendEmailMock = vi.mocked(sendPasswordResetEmail);
+    sendEmailMock.mockClear();
+
+    const resRequest = await request(app)
+      .post('/api/auth/reset-password/request')
+      .send({ email: user.email });
+    expect(resRequest.status).toBe(200);
+
+    expect(sendEmailMock, 'expected sendPasswordResetEmail to be invoked').toHaveBeenCalledTimes(1);
+    const [, , rawToken] = sendEmailMock.mock.calls[0];
+
+    const stored = await prisma.passwordResetToken.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(stored).not.toBeNull();
+    // 64 lowercase hex chars = a SHA-256 digest, not the raw 32-byte-hex token.
+    expect(stored!.token).toMatch(/^[0-9a-f]{64}$/);
+
+    // The raw token must NOT equal what's stored — proves storage isn't plaintext.
+    expect(stored!.token).not.toBe(rawToken);
+
+    const resConfirm = await request(app)
+      .post('/api/auth/reset-password/confirm')
+      .send({ token: rawToken, newPassword: 'NewPassword456!' });
+    expect(resConfirm.status).toBe(200);
+    expect(resConfirm.body.ok).toBe(true);
+
+    const updated = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(await bcrypt.compare('NewPassword456!', updated!.passwordHash)).toBe(true);
+
+    await cleanupFixtures([practice]);
   });
 
   // ──────────────────────────────────────────────────────────────────────────

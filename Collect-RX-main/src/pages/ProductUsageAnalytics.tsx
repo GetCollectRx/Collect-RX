@@ -181,11 +181,11 @@ function ClickTable({ clicks, total }: ClickTableProps) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
-            <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>#</th>
-            <th style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Element</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Clicks</th>
-            <th style={{ textAlign: 'right', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Share</th>
-            <th style={{ padding: '8px 12px', width: 120 }}></th>
+            <th scope="col" style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>#</th>
+            <th scope="col" style={{ textAlign: 'left', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Element</th>
+            <th scope="col" style={{ textAlign: 'right', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Clicks</th>
+            <th scope="col" style={{ textAlign: 'right', padding: '8px 12px', color: '#64748B', fontWeight: 600 }}>Share</th>
+            <th scope="col" style={{ padding: '8px 12px', width: 120 }}></th>
           </tr>
         </thead>
         <tbody>

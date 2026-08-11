@@ -50,10 +50,10 @@ export async function tryCanadaLifePortalPreVisit(
       claimRef = det.phi.subscriberId;
       await appendPhiAccessEvent(prisma, {
         practiceId: params.practiceId,
-        operation: 'detokenize_for_carrier_call',
+        operation: 'detokenize_for_pre_visit_portal_check',
         recordType: 'AppointmentVerification',
         recordId: params.appointmentVerificationId,
-        purpose: 'canada_life_portal_check',
+        purpose: 'canada_life_portal_first_gate',
       });
     }
   } catch {
@@ -150,13 +150,15 @@ export async function tryTelusTx23PreVisit(
   }
 
   const identification = identifyTelusTx23(params.patientToken, params.practiceId);
-  await appendPhiAccessEvent(prisma, {
-    practiceId: params.practiceId,
-    operation: 'detokenize_for_carrier_call',
-    recordType: 'AppointmentVerification',
-    recordId: params.appointmentVerificationId,
-    purpose: 'telus_tx23_submission',
-  });
+  if (identification.reason !== 'detokenize_failed') {
+    await appendPhiAccessEvent(prisma, {
+      practiceId: params.practiceId,
+      operation: 'detokenize_for_telus_tx23_dispatch',
+      recordType: 'AppointmentVerification',
+      recordId: params.appointmentVerificationId,
+      purpose: 'telus_tx23_inquiry',
+    });
+  }
   if (!identification.supported || !identification.memberId || !identification.groupNumber) {
     return { resolved: false, reason: identification.reason };
   }

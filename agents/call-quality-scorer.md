@@ -84,58 +84,51 @@ Carrier-specific expected durations (from tiers.ts):
 
 ## Daily Scoring Run
 
+**This rubric's score/grade are not persisted in the schema.** `call_attempts` has no `call_quality_score`, `call_quality_breakdown`, `call_quality_grade`, or `call_quality_scored_at` columns. The closest real, persisted analog is the separate automated 8-dimension LLM eval in `src/services/analytics/automated-eval.ts` (`ivr_success`, `authentication_success`, `retrieval_accuracy`, `hallucination_rate`, `call_resolution_rate`, `hold_time_accuracy`, `carrier_compliance`, `escalation_appropriateness`), written to `call_attempts.eval_scores` (JSON) / `eval_completed_at` — a different rubric from the 5-dimension one below, not a substitute for it. Until this rubric gets its own persistence, score in-context per run and include the results only in this agent's daily report; do not assume a write-back column exists.
+
 ```sql
--- Get all calls completed today needing scoring
+-- Get all calls completed today (candidates for scoring — no "already scored" filter exists yet)
 SELECT
-  c.id,
-  c.practiceId,
-  c.carrierId,
-  c.claimId,
-  c.outcome,
-  c.duration,
-  c.referenceNumber,
-  c.vapiCallId,
-  c.completedAt
-FROM "Call" c
-WHERE c.completedAt > NOW() - INTERVAL '24 hours'
-  AND c.callQualityScore IS NULL
-ORDER BY c.completedAt ASC;
+  ca.id,
+  ic.practice_id,
+  ic.carrier_id,
+  ca.claim_id,
+  ca.outcome,
+  ca.duration_seconds,
+  ca.reference_number,
+  ca.vapi_call_id,
+  ca.completed_at,
+  ca.eval_scores
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+WHERE ca.completed_at > NOW() - INTERVAL '24 hours'
+ORDER BY ca.completed_at ASC;
 ```
 
-For each call, pull the transcript from Vapi (via vapiCallId), run through the rubric, and update:
-
-```sql
-UPDATE "Call"
-SET
-  callQualityScore = [total],
-  callQualityBreakdown = [JSON of dimension scores],
-  callQualityGrade = [A/B/C/D/F/P0],
-  callQualityScoredAt = NOW()
-WHERE id = [call_id];
-```
+For each call, pull the transcript from Vapi (via `vapi_call_id`) or `ca.transcript_text` if already persisted, and run through the rubric above. Report the score/grade per call in this agent's output — there is no dedicated column to write it back to today.
 
 ---
 
 ## Practice-Level Quality Tracking
 
-Beyond individual calls, track per-practice quality trends:
+Beyond individual calls, track per-practice quality trends using the real persisted eval data as a proxy (`eval_scores` is JSON — average it in application code, not raw SQL, since Postgres can't `AVG()` a JSON blob without unpacking it first):
 
 ```sql
 SELECT
-  c.practiceId,
+  ic.practice_id,
   p.name,
-  AVG(c.callQualityScore) AS avgScore,
-  COUNT(CASE WHEN c.callQualityGrade = 'F' THEN 1 END) AS failedCalls,
-  COUNT(CASE WHEN c.callQualityGrade = 'P0' THEN 1 END) AS phiViolations,
-  COUNT(*) AS totalCalls
-FROM "Call" c
-JOIN "Practice" p ON c.practiceId = p.id
-WHERE c.completedAt > NOW() - INTERVAL '30 days'
-GROUP BY c.practiceId, p.name
-ORDER BY avgScore ASC;
+  ca.eval_scores,
+  ca.eval_completed_at,
+  ca.outcome
+FROM call_attempts ca
+JOIN insurance_claims ic ON ic.id = ca.claim_id
+JOIN "Practice" p ON ic.practice_id = p.id
+WHERE ca.completed_at > NOW() - INTERVAL '30 days'
+  AND ca.eval_scores IS NOT NULL
+ORDER BY ca.completed_at DESC;
 ```
 
-A practice with consistently low scores may have a carrier configuration issue, a data quality problem in their imported claims, or a carrier that's changed its IVR.
+Pull rows and compute the per-practice average `overallScore` (from the `eval_scores` JSON shape defined in `automated-eval.ts`'s `CallEvalResult`) in application code. A practice with consistently low scores may have a carrier configuration issue, a data quality problem in their imported claims, or a carrier that's changed its IVR.
 
 ---
 

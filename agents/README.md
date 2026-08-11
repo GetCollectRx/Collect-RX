@@ -35,7 +35,7 @@ Five populations overlap; do not sum them. The cron registry (`scheduledAgents.t
 | 13 | **Client Acquisition** | `client-acquisition.md` | Weekly |
 | 14 | **Practice Time Savings** | `practice-time-savings.md` | Monthly |
 | 15 | **ROI Proof** | `roi-proof.md` | Monthly |
-| 16 | **Voice of Customer** | `voice-of-customer.md` | Monthly |
+| 16 | **Voice of Customer** | `voice-of-customer.md` | Monthly — **BLOCKED**, no data source exists yet (see file) |
 | 17 | **Market Intelligence** | `market-intelligence.md` | Monthly |
 | 18 | **Competitive Intelligence** | `competitive-intelligence.md` | Monthly |
 | 19 | **Researcher** | `researcher.md` | On-demand |
@@ -64,7 +64,10 @@ Analytics Pipeline → Risk Radar → Carrier IVR Health → Escalation Triage �
 Practice Time Savings → ROI Proof → Voice of Customer → Market Intelligence → Competitive Intelligence → Product Manager
 
 ### On-Demand / Per-Deploy — Build Safety
-Frontend Auditor → Backend Reviewer → Vapi Squad Auditor → Practice Onboarding Validator → Release Readiness → Researcher → Incident Response
+Frontend Auditor → Backend Reviewer → Vapi Squad Auditor → Practice Onboarding Validator → Release Readiness → Incident Response
+
+### On-Demand — Cross-Cutting Utility
+**Researcher** does not belong to a sequential pipeline — it's a utility any other agent (or Khalid) invokes ad hoc for a specific sourced question (carrier IVR behavior, a CRTC/PHIPA rule's exact text, a competitor teardown, a pricing benchmark). It overlaps in *subject matter* with Market Intelligence and Competitive Intelligence but not in *function*: those two run monthly and produce recurring scheduled briefs from a standing checklist, while Researcher answers one specific question on demand, once, with sources. Market Intelligence / Competitive Intelligence should invoke Researcher when their monthly checklist surfaces something needing deeper primary-source digging, rather than duplicating that research inline.
 
 ### Monthly/Quarterly — Compliance
 PHI Access Log Reviewer → Security Auditor → Compliance Checker
@@ -88,6 +91,10 @@ Call Quality Scorer + Collections Performance
 
 Market Intelligence + Competitive Intelligence + Voice of Customer
   → Product Manager (roadmap)
+
+Researcher (on-demand, invoked by any agent needing a sourced deep-dive)
+  → Market Intelligence / Competitive Intelligence (when their checklist needs primary-source digging)
+  → any pre-decision question (new carrier, new market, regulatory interpretation)
 
 Product Manager → Project Manager (sprint planning)
 
@@ -136,7 +143,11 @@ Client Acquisition → ROI Proof (prospect estimates)
 
 ## How to Invoke Any Agent
 
-Paste the "How to Run This Agent" prompt from the relevant file into a new Cowork session. Each prompt is self-contained — it tells the agent what to read, what to check, and what format to report in.
+**Preferred (free):** `npm run agents` — runs vitest validation agents in `tests/agents/` (no Anthropic API).
+
+**Legacy (paid — avoid):** Pasting markdown prompts into Claude Code / Cowork sessions bills your Anthropic API console directly, especially with Opus. Do not use for routine development.
+
+Each `agents/*.md` file documents what to check; the vitest agents encode the same checks without LLM cost.
 
 ---
 

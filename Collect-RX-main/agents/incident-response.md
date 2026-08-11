@@ -14,11 +14,13 @@
 
 **Response steps:**
 
-1. **STOP** — Halt all active calls immediately. The queue engine must be paused.
+1. **STOP** — Halt all active calls immediately. Queue-pause state lives per-practice on `PracticeDeskState` (table `practice_desk_state`), not on `Practice` itself.
+   ```sql
+   INSERT INTO practice_desk_state (practice_id, queue_paused, updated_at)
+   SELECT id, true, NOW() FROM "Practice"
+   ON CONFLICT (practice_id) DO UPDATE SET queue_paused = true, updated_at = NOW();
    ```
-   UPDATE "Practice" SET queuePaused = true WHERE id = [all practices];
-   -- Or pause at the queueEngine level
-   ```
+   Or, from application code, call `setPracticeQueuePaused(prisma, practiceId, true)` (`src/server/frontDesk/queueEngine.ts`) for every practice — this also triggers the desk-UI broadcast so front-desk staff see the pause immediately.
 
 2. **CONTAIN** — Identify which patient records may have been exposed. Pull all calls in the affected window.
 
@@ -49,13 +51,12 @@
 
 1. **AUTOMATIC STOP** (should already be enforced by carrierBlockPhrases.ts): Verify all calls to the blocked carrier are halted across all practices.
 
-2. **SCOPE** — Is this a single practice block or platform-wide? Check:
+2. **SCOPE** — Is this a single practice block or platform-wide? `CarrierBlockEvent` (table `carrier_block_events`) is written by `applyCarrierBlock()` the moment a block is detected — it already carries `practiceId` and `carrierId` directly, no join needed. `resumedAt IS NULL` means the block is still active.
    ```sql
-   SELECT practiceId, COUNT(*) FROM "Call"
-   WHERE outcome = 'CARRIER_BLOCK'
-     AND carrierId = [blocked_carrier]
-     AND completedAt > NOW() - INTERVAL '24 hours'
-   GROUP BY practiceId;
+   SELECT practice_id, COUNT(*) FROM carrier_block_events
+   WHERE carrier_id = '[blocked_carrier]'
+     AND blocked_at > NOW() - INTERVAL '24 hours'
+   GROUP BY practice_id;
    ```
 
 3. **ASSESS** — Determine whether the block is:
@@ -86,12 +87,7 @@
 
 1. **STOP** — Pause the affected practice's call queue while investigating.
 
-2. **SCOPE** — How many calls were made without disclosure? Pull a count:
-   ```sql
-   SELECT COUNT(*) FROM "Call"
-   WHERE callQualityBreakdown->>'crtc_disclosure' = 'MISSING'
-     AND completedAt > NOW() - INTERVAL '30 days';
-   ```
+2. **SCOPE** — How many calls were made without disclosure? **No queryable field for this exists today** — `callQualityBreakdown`/`crtc_disclosure` is not a real column; call-quality-scorer's rubric grading isn't persisted anywhere. Until that gap is closed (tracked as a backlog item — see `docs/operations/AGENT-AUDIT-BACKLOG-2026-08-01.md`), scope this manually: pull `CallAttempt.transcriptText` for the affected practice/window (only available for calls where it hasn't been purged) and re-run the call-quality-scorer disclosure check by hand, or check `GuardrailAudit.violationsJson` for the affected `callAttemptId`s in case the NeMo Guardrails sidecar already flagged a disclosure violation.
 
 3. **ASSESS** — Is this a prompt failure, a configuration failure, or a one-off edge case?
 

@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 import type { Prospect, PrismaClient } from '@prisma/client'
 import { logProspectActivity } from './prospectActivity.js';
+import { OUTREACH_SENDER_EMAIL, OUTREACH_SENDER_NAME } from './outreachVoice.js';
 import { buildProspectUnsubscribeUrl } from '../email/unsubscribeUrl.js';
 import { logger } from '../observability/logger.js';
 
@@ -28,8 +29,8 @@ export async function sendProspectEmail(
   if (!prospect.email || prospect.optOutAt) return false;
 
   const sg = getSendGrid();
-  const from = process.env.SENDGRID_FROM_EMAIL || 'khalid@collectrx.ca';
-  const fromName = process.env.SENDGRID_FROM_NAME || 'Khalid';
+  const from = process.env.SENDGRID_FROM_EMAIL || OUTREACH_SENDER_EMAIL;
+  const fromName = process.env.SENDGRID_FROM_NAME || OUTREACH_SENDER_NAME;
   const replyTo = process.env.SENDGRID_REPLY_TO || 'reply@inbound.collectrx.ca';
 
   if (!sg) {

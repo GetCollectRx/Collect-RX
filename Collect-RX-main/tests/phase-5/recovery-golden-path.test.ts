@@ -136,6 +136,16 @@ function createRecoveryStore() {
 
   const queue = { claimId: 'c1', status: 'ESCALATED' as const, scheduledFor: new Date(0) };
 
+  // Mirrors Prisma's `{ eventType: 'X' }` and `{ eventType: { in: ['X', 'Y'] } }`.
+  function matchesEventType(actual: string, filter: unknown): boolean {
+    if (filter == null) return true;
+    if (typeof filter === 'string') return actual === filter;
+    if (typeof filter === 'object' && 'in' in (filter as Record<string, unknown>)) {
+      return (filter as { in: string[] }).in.includes(actual);
+    }
+    return true;
+  }
+
   const prisma = {
     insuranceClaim: {
       findUnique: vi.fn(async () => ({ ...claim, queueEntry: queue })),
@@ -183,7 +193,7 @@ function createRecoveryStore() {
       }),
       aggregate: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const matching = events.filter((e) => {
-          if (where.eventType && e.eventType !== where.eventType) return false;
+          if (!matchesEventType(e.eventType, where.eventType)) return false;
           if (where.practiceId && e.practiceId !== where.practiceId) return false;
           if (where.createdAt && typeof where.createdAt === 'object' && 'gte' in where.createdAt) {
             const gte = (where.createdAt as { gte: Date }).gte;
@@ -196,7 +206,7 @@ function createRecoveryStore() {
       }),
       count: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         events.filter((e) => {
-          if (where.eventType && e.eventType !== where.eventType) return false;
+          if (!matchesEventType(e.eventType, where.eventType)) return false;
           if (where.createdAt && typeof where.createdAt === 'object' && 'gte' in where.createdAt) {
             const gte = (where.createdAt as { gte: Date }).gte;
             if (e.createdAt && e.createdAt < gte) return false;
@@ -207,7 +217,7 @@ function createRecoveryStore() {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         events
           .filter((e) => {
-            if (where.eventType && e.eventType !== where.eventType) return false;
+            if (!matchesEventType(e.eventType, where.eventType)) return false;
             if (where.practiceId && e.practiceId !== where.practiceId) return false;
             return true;
           })

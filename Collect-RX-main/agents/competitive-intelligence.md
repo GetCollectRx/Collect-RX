@@ -22,8 +22,11 @@ As of June 2026, no confirmed direct competitor exists in the Canadian market wi
 | TELUS Health tools | TELUS AdjudiCare enhanced services | Medium | TELUS could build this natively for their TPA clients |
 | General AI voice platforms (Bland, Retell, Vapi) | — | Low | Infrastructure, not a dental AR product |
 | PMS vendors building AR features | Carestream, ABELDent | Medium | Native PMS integration is the risk; watch AbelDent's roadmap |
+| Carrier-provided provider API access | Sun Life, Canada Life, Manulife, Green Shield, RBC, TELUS AdjudiCare | Medium-High | If any major carrier ships a real-time claim-status API for authorized billing agents, phone-call automation for that carrier becomes unnecessary overnight — existential to the IVR-calling product, not just competitive pressure. Also the top risk flagged in risk-radar.md's Competitive/Market domain; monitor carrier developer-portal announcements alongside this checklist, not just named competitors. |
 
-### The Biggest Competitive Risk
+### The Biggest Competitive Risks
+
+**Carrier API access.** Any of the six carriers shipping a claim-status API for authorized billing agents eliminates the need for IVR/phone automation on that carrier entirely — this is the single highest-leverage threat, since it doesn't require a competitor to build anything, just a carrier changing their own integration surface. Monitor carrier developer/provider-portal pages monthly, not just competitor product announcements.
 
 **TELUS Health** building a native claim follow-up tool for their AdjudiCare network. TELUS already has relationships with both carriers and dental practices. If they build this, they don't need Vapi or Twilio — they have direct API access to their own system. Monitor TELUS Health product announcements monthly.
 
@@ -51,6 +54,12 @@ For any known adjacent competitor:
 - [ ] Check job postings for signals ("experience with Canadian dental billing", "knowledge of Sun Life/Manulife" in job reqs)
 - [ ] Check G2/Capterra reviews for customer sentiment shifts
 
+### Carrier API Access Watch
+
+- [ ] Check each of the six carriers' provider/developer portal pages for a new or expanded claim-status API aimed at authorized billing agents
+- [ ] Search "[carrier name] provider API dental claims" for each carrier monthly
+- [ ] Any carrier announcement of a self-service claim-status tool for dental offices — flag immediately, this is higher-urgency than a new competitor
+
 ### TELUS Health Watch
 
 - [ ] TELUS Health product page: telushealth.com
@@ -75,7 +84,7 @@ Update this quarterly:
 | Canadian carrier IVR knowledge | ✅ Deep (6 carriers) | ✅ Human | ❌ US carriers only | ✅ TELUS only |
 | Real-time live console | ✅ | ❌ | ❓ | ❓ |
 | PHIPA-compliant architecture | ✅ | ✅ (assumed) | ❌ (HIPAA, not PHIPA) | ✅ |
-| Price per practice | $599-1,499/mo | $2,000-5,000/mo | N/A | Unknown |
+| Price per practice | $799-2,499/mo | $2,000-5,000/mo | N/A | Unknown |
 | 24-hour turnaround | ✅ (calls within call window) | ❌ (batched) | ❓ | ❓ |
 | Works with any PMS (CSV) | ✅ | ✅ | ❓ | TELUS network only |
 | No setup fee | ✅ | ❌ | ❓ | ❓ |

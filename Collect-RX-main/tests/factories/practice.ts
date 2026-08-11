@@ -47,8 +47,28 @@ export async function createPracticeWithOwnerForTests(
   return { practice, user, email, password: FIXTURE_PRACTICE_PASSWORD };
 }
 
-/** Delete a practice and all its users, in FK-safe order. */
+/**
+ * Delete a practice and everything that would otherwise block deleting it,
+ * in FK-safe order. Many tests create InsuranceClaim rows (directly or via
+ * dispatch/webhook flows) without deleting them explicitly — this used to
+ * silently leave orphaned claims behind once `practice.delete()` succeeded,
+ * since insurance_claims.practice_id had no FK to enforce otherwise (see
+ * AA-05, docs/operations/AGENT-AUDIT-BACKLOG-2026-08-01.md). Now that the FK
+ * exists, an unclean test would fail loudly here instead of leaking data.
+ */
 export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId: string) {
+  const claims = await prisma.insuranceClaim.findMany({
+    where: { practiceId },
+    select: { id: true },
+  });
+  const claimIds = claims.map((c) => c.id);
+  if (claimIds.length > 0) {
+    // call_attempts and call_queue are ON DELETE RESTRICT against
+    // insurance_claims — must go first or the claim delete below fails.
+    await prisma.callQueue.deleteMany({ where: { claimId: { in: claimIds } } });
+    await prisma.callAttempt.deleteMany({ where: { claimId: { in: claimIds } } });
+    await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
+  }
   await prisma.inviteToken.deleteMany({ where: { practiceId } });
   await prisma.user.deleteMany({ where: { practiceId } });
   await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);

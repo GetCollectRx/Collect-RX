@@ -78,10 +78,11 @@ export async function dispatchPreVisitCall(
   const phi = phiResult.phi;
   await appendPhiAccessEvent(prisma, {
     practiceId: payload.practiceId,
-    operation: 'detokenize_for_carrier_call',
+    operation: 'detokenize_for_pre_visit_dispatch',
     recordType: 'AppointmentVerification',
     recordId: verification.id,
-    purpose: 'pre_visit_dispatch',
+    purpose: 'pre_visit_carrier_call',
+    correlationId: payload.appointmentVerificationId,
   });
 
   const settings = await getPracticeSettings(prisma, payload.practiceId);

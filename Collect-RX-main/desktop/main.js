@@ -53,6 +53,27 @@ function electronWindowEntryUrl(baseUrl) {
 const WINDOW_ENTRY_URL = electronWindowEntryUrl(FRONTEND_URL);
 const RAILWAY_URL = (process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
 
+// Only https: is allowed out to shell.openExternal — handing a javascript:, file:,
+// or arbitrary custom-protocol URL to the OS shell can launch local apps or scripts.
+// http: is allowed too only in dev mode (localhost has no TLS cert locally).
+function isSafeExternalUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'https:') return true;
+    return isDev && u.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function isSameOrigin(url, referenceUrl) {
+  try {
+    return new URL(url).origin === new URL(referenceUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 // State
 let mainWindow = null;
 let tray = null;
@@ -266,8 +287,24 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
+  });
+
+  // Block in-window navigation away from the app's own origin — without this, a
+  // compromised or malicious page loaded in the renderer could navigate the
+  // privileged Electron window itself (not just open a new tab) to an arbitrary
+  // origin. Same-origin navigation (e.g. client-side routing reloads) is allowed;
+  // everything else is denied and, if it's a safe http(s) URL, handed to the
+  // system browser instead.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isSameOrigin(url, WINDOW_ENTRY_URL)) return;
+    event.preventDefault();
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
   });
 
   mainWindow.on('close', (e) => {

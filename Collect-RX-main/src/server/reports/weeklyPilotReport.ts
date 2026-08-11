@@ -55,16 +55,25 @@ export async function buildWeeklyPracticeMetrics(
     select: {
       outcome: true,
       durationSeconds: true,
-      claim: { select: { billedAmount: true } },
     },
   });
 
   const resolved = attempts.filter((a) => a.outcome === 'RESOLVED');
-  const revenueRecovered = resolved.reduce(
-    (sum, a) => sum + Number(a.claim?.billedAmount ?? 0),
-    0,
-  );
   const callSeconds = attempts.reduce((sum, a) => sum + (a.durationSeconds ?? 0), 0);
+
+  // Revenue recovered must come from verified payment events, never a claim's
+  // billed amount keyed off a call outcome — a RESOLVED call can mean a
+  // partial payment, a $0 denial resolution, or a sync verification still
+  // pending, none of which equal the full billed amount.
+  const verifiedPayments = await prisma.claimRecoveryEvent.aggregate({
+    where: {
+      practiceId,
+      eventType: { in: ['PAYMENT_VERIFIED_SYNC', 'MANUAL_PAYMENT_CONFIRMED'] },
+      createdAt: { gte: periodStart, lte: periodEnd },
+    },
+    _sum: { amountRecoveredCents: true },
+  });
+  const revenueRecovered = (verifiedPayments._sum.amountRecoveredCents ?? 0) / 100;
 
   return {
     practiceId: practice.id,

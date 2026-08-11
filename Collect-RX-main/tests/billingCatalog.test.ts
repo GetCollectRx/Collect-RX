@@ -103,8 +103,12 @@ describe('maxCallDurationSeconds — 45-minute absolute ceiling', () => {
 
   it('RBC gets the full 45-minute ceiling, standard carriers 30 minutes, unknown carriers the default', async () => {
     const { maxCallDurationSeconds } = await import('../src/vapi/client.js');
-    expect(maxCallDurationSeconds('rbc-insurance')).toBe(45 * 60);
-    expect(maxCallDurationSeconds('sun-life')).toBe(30 * 60);
+    // Real CarrierId enum values (prisma/schema.prisma) -- not display names.
+    // A carrier-id/CARRIER_TIMEOUTS-key mismatch would silently fall through
+    // to `default` for every carrier here, which is exactly the bug this
+    // guards against.
+    expect(maxCallDurationSeconds('rbc')).toBe(45 * 60);
+    expect(maxCallDurationSeconds('sun_life')).toBe(30 * 60);
     expect(maxCallDurationSeconds('never-heard-of-it')).toBe(30 * 60);
   });
 });

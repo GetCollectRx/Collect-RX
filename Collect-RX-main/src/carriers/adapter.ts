@@ -302,14 +302,15 @@ export async function checkCarrierAuthorizationGate(
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+ *   3. Recovery dispatch gate (practice-side blockers)
+ *   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   5. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
  *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
  *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
  *      of this flat 30 is a pending product decision, not an engineering gap —
  *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
- *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   6. Max attempts (>= 3 → reject)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
@@ -342,18 +343,20 @@ export async function validateDispatch(
     };
   }
 
+  // 3. Recovery dispatch gate
   const { checkRecoveryDispatchGate } = await import('../server/recovery/dispatchGate.js');
   const recoveryGate = await checkRecoveryDispatchGate(prisma, claimId, scheduledFor);
   if (!recoveryGate.allowed) {
     return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
+  // 4. Practice carrier authorization
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
   if (!authGate.allowed) {
     return authGate;
   }
 
-  // 4. Claims under 30 days old — do not queue. This is a flat floor for every
+  // 5. Claims under 30 days old — do not queue. This is a flat floor for every
   // carrier: CARRIER_CONFIGS.minWaitDays documents per-carrier SLAs (21 days
   // for TELUS, 32 for the rest) but nothing in dispatch consults that field —
   // see docs/operations/HUMAN-DECISIONS-PENDING.md item 1 for the decision on
@@ -362,7 +365,7 @@ export async function validateDispatch(
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 5. Claims over 90 days — escalate to human, skip AI
+  // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }

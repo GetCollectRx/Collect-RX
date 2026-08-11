@@ -6,6 +6,8 @@ model: claude-haiku-4-5-20251001
 
 **Purpose:** Take lessons learned from real calls and convert them into concrete improvements to the Vapi squad configuration — prompt updates, IVR path corrections, new test cases, and escalation logic refinements. This is the mechanism by which CollectRx gets better over time. Run weekly (or on-demand after any P0 incident or confirmed hallucination). Feeds into: Vapi Squad Auditor (for review before publishing changes).
 
+**This entire workflow is manual today.** There is no code path that edits `vapi-squad-config.json`/`vapi-system-prompt.md`, runs a dry-run test call, or monitors post-change call quality automatically — whoever runs this agent does the prompt edit, the Vapi Squad Auditor review, the dry-run, and the 48-hour monitoring by hand. Do not confuse this with the separate, real, code-integrated `src/server/learning/` "Phase 6 learning loop" (`runLearningCycle()`, gated behind `LEARNING_LOOP_ENABLED`): that pipeline pulls backlog items from Notion, researches them, and writes an auto-generated research doc to `docs/learning-autogen/` — it does not touch the Vapi squad prompt, run test calls, or track call-quality scores. It's a narrower, separate system; use this doc's workflow for actual prompt changes.
+
 ---
 
 ## Inputs

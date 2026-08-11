@@ -1,5 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
 
+// A claim can be confirmed paid via automated PMS-sync verification or via a
+// staff member manually confirming payment (transitionClaimRecovery.ts). Both
+// write amountRecoveredCents on a ClaimRecoveryEvent; "dollars recovered" must
+// count both or it silently drops every manually-closed claim from AR totals.
+const VERIFIED_PAYMENT_EVENT_TYPES = ['PAYMENT_VERIFIED_SYNC', 'MANUAL_PAYMENT_CONFIRMED'] as const;
+
 export interface RecoveryMetricsSnapshot {
   dollarsRecoveredSyncVerified: number;
   paymentsVerifiedBySync: number;
@@ -94,14 +100,14 @@ export async function computeRecoveryMetrics(
   const [verifiedEvents, verified30, verifiedToday, openClaims, blockingGates, awaitingSync, medianSync, medianGate] =
     await Promise.all([
       prisma.claimRecoveryEvent.aggregate({
-        where: { practiceId, eventType: 'PAYMENT_VERIFIED_SYNC' },
+        where: { practiceId, eventType: { in: [...VERIFIED_PAYMENT_EVENT_TYPES] } },
         _sum: { amountRecoveredCents: true },
         _count: true,
       }),
       prisma.claimRecoveryEvent.aggregate({
         where: {
           practiceId,
-          eventType: 'PAYMENT_VERIFIED_SYNC',
+          eventType: { in: [...VERIFIED_PAYMENT_EVENT_TYPES] },
           createdAt: { gte: thirtyDaysAgo },
         },
         _sum: { amountRecoveredCents: true },
@@ -109,7 +115,7 @@ export async function computeRecoveryMetrics(
       prisma.claimRecoveryEvent.count({
         where: {
           practiceId,
-          eventType: 'PAYMENT_VERIFIED_SYNC',
+          eventType: { in: [...VERIFIED_PAYMENT_EVENT_TYPES] },
           createdAt: { gte: startOfUtcDay },
         },
       }),
@@ -181,10 +187,10 @@ export async function computePlatformRecoveryMetrics(
       where: { recoveryRoute: 'WAIT_SYNC', outstandingAmount: { gt: 0 } },
     }),
     prisma.claimRecoveryEvent.count({
-      where: { eventType: 'PAYMENT_VERIFIED_SYNC', createdAt: { gte: sevenDaysAgo } },
+      where: { eventType: { in: [...VERIFIED_PAYMENT_EVENT_TYPES] }, createdAt: { gte: sevenDaysAgo } },
     }),
     prisma.claimRecoveryEvent.aggregate({
-      where: { eventType: 'PAYMENT_VERIFIED_SYNC', createdAt: { gte: sevenDaysAgo } },
+      where: { eventType: { in: [...VERIFIED_PAYMENT_EVENT_TYPES] }, createdAt: { gte: sevenDaysAgo } },
       _sum: { amountRecoveredCents: true },
     }),
   ]);

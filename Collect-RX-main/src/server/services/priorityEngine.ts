@@ -90,7 +90,13 @@ export async function buildPriorityQueue(
   prisma: PrismaClient,
   practiceId: string,
   referenceDate: Date = new Date(),
+  options: { resolvePatientNames?: boolean } = {},
 ): Promise<RankedClaim[]> {
+  // Scheduling-only callers (syncCallQueueSchedulingFromPriority) never surface
+  // patientName — skip detokenization entirely rather than doing it and
+  // discarding the result, so PHI is only touched when a human will see it.
+  const resolvePatientNames = options.resolvePatientNames ?? true;
+
   const claims = await prisma.insuranceClaim.findMany({
     where: {
       practiceId,
@@ -120,7 +126,9 @@ export async function buildPriorityQueue(
       carrierId: c.carrierId,
       claim: {
         claimId: c.id,
-        patientName: displayPatientName(prisma, c.patientToken, practiceId, c.id),
+        patientName: resolvePatientNames
+          ? displayPatientName(prisma, c.patientToken, practiceId, c.id)
+          : `Patient ${c.patientToken.slice(0, 8)}…`,
         carrier: carrierName,
         amountCents,
         daysOutstanding: c.daysOutstanding,
@@ -203,7 +211,11 @@ export async function syncCallQueueSchedulingFromPriority(
   let rowsUpdated = 0;
 
   for (const pid of practiceIds) {
-    const ranked = await buildPriorityQueue(prisma, pid, referenceDate);
+    // Scheduling only needs claimId + score — never surfaces patientName —
+    // so skip PHI detokenization entirely for this internal re-ranking pass.
+    const ranked = await buildPriorityQueue(prisma, pid, referenceDate, {
+      resolvePatientNames: false,
+    });
     const rankByClaimId = new Map(ranked.map((r, i) => [r.claimId, i]));
     const scoreByClaimId = new Map(ranked.map((r) => [r.claimId, r.scores.total]));
 

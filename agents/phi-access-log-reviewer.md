@@ -10,13 +10,11 @@ model: claude-haiku-4-5-20251001
 
 ## Context
 
-CollectRx logs every PHI access event via `phiAuditService.log()`. The log lives in the `phiAccessLog` map (in-memory, current implementation) or the `PhiAccessLog` Prisma table (if migrated to DB). Three access types are logged:
+CollectRx logs PHI access events via `appendPhiAccessEvent()` (`src/server/audit/auditLog.ts`) into the `PhiAccessEvent` Prisma model (`phi_access_events` table). Each row has `operation` (a specific string like `detokenize_for_carrier_call`, not a fixed enum), `recordType`/`recordId` (e.g. `InsuranceClaim` + claim id), `actorId`, `practiceId`, `purpose`, and `correlationId`.
 
-- `detokenize` — backend maps UUID → patient identifiers after a call completes
-- `view` — staff opens a claim detail screen that shows patient identifiers
-- `export` — any CSV or PDF export containing patient data
+**Current reality (verify against `src/server` before each run — this drifts):** every existing call site logs a `detokenize_*` operation (carrier-call dispatch, pre-visit dispatch/portal checks, TELUS Tx23, priority-queue display, manual carrier trigger). **There is no `view` or `export` PHI-access logging implemented today** — staff opening a claim detail screen or exporting a CSV/PDF containing patient data does not currently write a `PhiAccessEvent` row. Treat the "Volume Anomalies" and "Platform Admin Without Grant" checks below as aspirational until that logging exists; today they will just return zero rows, which is a coverage gap, not a clean bill of health. Flag this gap explicitly in the monthly report rather than reporting "no `view`/`export` anomalies found."
 
-Access to this log is the PHIPA audit trail. If CollectRx is ever investigated, this log is what you produce.
+Access to this log is the PHIPA audit trail. If CollectRx is ever investigated, this log is what you produce — so the `view`/`export` gap above is itself worth escalating.
 
 ---
 
@@ -33,69 +31,71 @@ Access to this log is the PHIPA audit trail. If CollectRx is ever investigated, 
 Query for PHI access events between 10pm and 7am Eastern or on weekends:
 
 ```sql
-SELECT * FROM phi_access_log
-WHERE EXTRACT(DOW FROM performedAt AT TIME ZONE 'America/Toronto') IN (0, 6)
-   OR EXTRACT(HOUR FROM performedAt AT TIME ZONE 'America/Toronto') NOT BETWEEN 7 AND 22
-ORDER BY performedAt DESC;
+SELECT * FROM phi_access_events
+WHERE EXTRACT(DOW FROM created_at AT TIME ZONE 'America/Toronto') IN (0, 6)
+   OR EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/Toronto') NOT BETWEEN 7 AND 22
+ORDER BY created_at DESC;
 ```
 
-Flag any non-`system` access outside these hours. System detokenizations (after overnight calls) are expected; staff `view` or `export` at 3am is not.
+Flag any non-system access outside these hours. System detokenizations (after overnight calls) are expected; a staff `view` or `export` at 3am would not be — but see the note above, that access type isn't logged yet, so today this query only ever surfaces detokenize events.
 
 ### Platform Admin Without Grant
 
 The access control rule: `platform_admin` cannot view claim-level PHI for a practice without a `platformAdminGrant` record. Query:
 
 ```sql
-SELECT pal.* 
-FROM phi_access_log pal
-JOIN users u ON u.id = pal.performedBy
+SELECT pae.*
+FROM phi_access_events pae
+JOIN users u ON u.id = pae.actor_id
 WHERE u.role = 'platform_admin'
-  AND pal.action IN ('view', 'export')
   AND NOT EXISTS (
-    SELECT 1 FROM platform_admin_grants pag
-    WHERE pag.adminId = pal.performedBy
-      AND pag.practiceId = pal.practiceId
+    SELECT 1 FROM platform_admin_practice_grants pag
+    WHERE pag.admin_user_id = pae.actor_id
+      AND pag.practice_id = pae.practice_id
   );
 ```
+
+(Dropped the `action IN ('view', 'export')` filter — those operations aren't logged yet, see the note above. Until they are, this query checks whether a `platform_admin` has any `detokenize_*` event on a practice they lack a grant for, which is still a real violation worth catching.)
 
 Any result here is an access control violation. Flag immediately.
 
-### Detokenize Without Completed Call
+### Detokenize Without a Following Call
 
-Every `detokenize` event should have a corresponding `callAttempt` with `completedAt` set within the same minute:
+Detokenization happens server-side at dispatch time, *before* the carrier call is placed (PHI-VAPI-BOUNDARY.md Option B) — not after completion. So every `detokenize_*` event should have a corresponding `call_attempts` row `initiated_at` shortly *after* it, not a completed call within the same minute:
 
 ```sql
-SELECT pal.*
-FROM phi_access_log pal
-WHERE pal.action = 'detokenize'
+SELECT pae.*
+FROM phi_access_events pae
+WHERE pae.operation LIKE 'detokenize_%'
+  AND pae.record_type = 'InsuranceClaim'
   AND NOT EXISTS (
     SELECT 1 FROM call_attempts ca
-    WHERE ca.claimId = pal.claimId
-      AND ca.completedAt BETWEEN pal.performedAt - INTERVAL '2 minutes'
-                              AND pal.performedAt + INTERVAL '2 minutes'
+    WHERE ca.claim_id = pae.record_id
+      AND ca.initiated_at BETWEEN pae.created_at
+                               AND pae.created_at + INTERVAL '5 minutes'
   );
 ```
 
-Orphaned detokenize events (no matching call) indicate a bug in the detokenization path — PHI was accessed without a legitimate trigger.
+Orphaned detokenize events (no matching subsequent call) indicate a bug in the detokenization path — PHI was resolved without a call ever being placed.
 
 ### Missing Log Entries
 
-Estimate: every completed `callAttempt` should have exactly one `detokenize` log entry. Query:
+Estimate: every `call_attempts` row should have exactly one preceding `detokenize_*` log entry. Query:
 
 ```sql
-SELECT ca.id, ca.claimId
+SELECT ca.id, ca.claim_id
 FROM call_attempts ca
-WHERE ca.completedAt IS NOT NULL
-  AND NOT EXISTS (
-    SELECT 1 FROM phi_access_log pal
-    WHERE pal.claimId = ca.claimId
-      AND pal.action = 'detokenize'
-      AND pal.performedAt BETWEEN ca.completedAt - INTERVAL '5 minutes'
-                               AND ca.completedAt + INTERVAL '5 minutes'
+WHERE NOT EXISTS (
+    SELECT 1 FROM phi_access_events pae
+    WHERE pae.record_type = 'InsuranceClaim'
+      AND pae.record_id = ca.claim_id
+      AND pae.operation LIKE 'detokenize_%'
+      AND pae.created_at BETWEEN ca.initiated_at - INTERVAL '5 minutes'
+                              AND ca.initiated_at
   );
 ```
 
-Missing entries = `phiAuditService.log()` is not being called at all detokenization points. Flag the missing call sites.
+Missing entries = `appendPhiAccessEvent()` is not being called at all detokenization points. Flag the missing call sites — this is exactly the class of bug AA-01 found and fixed for 3 of the 6 real call sites; re-run this check after any new dispatch path is added.
 
 ---
 
@@ -145,5 +145,5 @@ CollectRx as the agent of the practice is responsible for reporting the breach t
 ## How to Run This Agent
 
 ```
-"Run the CollectRx PHI Access Log review for the last 30 days. Query the phiAccessLog table (or in-memory equivalent). Run all anomaly queries in agents/phi-access-log-reviewer.md. Flag any access control violations immediately. Produce the monthly report."
+"Run the CollectRx PHI Access Log review for the last 30 days. Query the phi_access_events table. Run all anomaly queries in agents/phi-access-log-reviewer.md. Flag any access control violations immediately, and flag the missing view/export logging coverage gap. Produce the monthly report."
 ```
