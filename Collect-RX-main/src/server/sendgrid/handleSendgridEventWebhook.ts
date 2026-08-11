@@ -9,6 +9,7 @@ import type { Request, Response } from 'express';
 import { handleProspectSendGridEvent } from '../marketing/prospectEngagement.js';
 import { markEmailEvent, type EmailEventType } from '../services/emailService.js';
 import { logger } from '../observability/logger.js';
+import { sendgridEventBatchSchema, sendgridEventSchema } from './sendgridEventSchema.js';
 
 const require = createRequire(import.meta.url);
 const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook') as {
@@ -17,18 +18,6 @@ const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook') a
     verifySignature: (key: unknown, body: string | Buffer, sig: string, ts: string) => boolean;
   };
   EventWebhookHeader: { SIGNATURE: () => string; TIMESTAMP: () => string };
-};
-
-type SgEvent = {
-  email?: string;
-  event?: string;
-  reason?: string;
-  url?: string;
-  sg_message_id?: string;
-  /** custom_args from SendGrid v3 */
-  prospect_id?: string;
-  campaign_id?: string;
-  template_id?: string;
 };
 
 function prospectEngagementRelevant(e: string | undefined) {
@@ -85,17 +74,34 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
       logger.warn('[sendgrid/webhook] SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY unset — webhook is not verified (dev only)', {});
     }
 
-    let events: SgEvent[];
+    let rawEvents: unknown;
     try {
-      events = JSON.parse(bodyString) as SgEvent[];
-      if (!Array.isArray(events)) {
-        return res.status(400).type('text/plain').send('expected array');
-      }
+      rawEvents = JSON.parse(bodyString);
     } catch {
       return res.status(400).type('text/plain').send('invalid json');
     }
 
-    for (const ev of events) {
+    const batchParsed = sendgridEventBatchSchema.safeParse(rawEvents);
+    if (!batchParsed.success) {
+      logger.error('[sendgrid/webhook] payload is not a JSON array — rejecting', {
+        error: batchParsed.error.issues,
+      });
+      return res.status(400).type('text/plain').send('expected array');
+    }
+
+    // Validate each event independently: SendGrid batches can carry
+    // thousands of events per POST, and one malformed/unexpectedly-shaped
+    // element must not drop (or crash processing of) the rest of a
+    // legitimately-signed batch. Invalid elements are logged and skipped.
+    for (const rawEvent of batchParsed.data) {
+      const eventParsed = sendgridEventSchema.safeParse(rawEvent);
+      if (!eventParsed.success) {
+        logger.error('[sendgrid/webhook] skipping malformed event', {
+          error: eventParsed.error.issues,
+        });
+        continue;
+      }
+      const ev = eventParsed.data;
       if (!ev.prospect_id) continue;
 
       if (prospectEngagementRelevant(ev.event)) {
