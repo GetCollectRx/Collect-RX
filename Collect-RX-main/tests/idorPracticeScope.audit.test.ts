@@ -3,7 +3,7 @@
  * not trust body/query practiceId alone.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(import.meta.dirname, '../src');
@@ -44,7 +44,19 @@ const AUTH_ROUTE_FILES = [
   'server/routes/pmsApiRoutes.ts',
   'server/routes/connectorAdminRoutes.ts',
   'server/routes/productTelemetry.ts',
+  'server/routes/callQualityRoutes.ts',
+  'server/routes/carrierDiscoveryRoutes.ts',
+  'server/routes/complianceWorkspaceRoutes.ts',
+  'server/routes/dlqAdminRoutes.ts',
+  'server/routes/gocardlessRoutes.ts',
+  'server/routes/triageCredentialRoutes.ts',
 ];
+
+/**
+ * Mounts `authenticate` but is not a route module: this is the helper that
+ * supplies `useOwnerPracticeApi` to the routers audited above.
+ */
+const NON_ROUTE_AUTH_FILES = ['server/middleware/ownerPracticeApi.ts'];
 
 /**
  * Platform-level routers that intentionally read/aggregate across ALL practices
@@ -60,6 +72,24 @@ const PLATFORM_ROLE_GATED_ROUTE_FILES = [
 ];
 
 describe('IDOR practice scope audit', () => {
+  it('audits every router that mounts authenticate — the lists cannot fall behind src/', () => {
+    // Without this the audit silently skips any router added after the lists were
+    // last edited, which is how six authenticated routers came to sit outside it.
+    // collectTsFiles() was written for this check and never wired in.
+    const audited = new Set([
+      ...AUTH_ROUTE_FILES,
+      ...PLATFORM_ROLE_GATED_ROUTE_FILES,
+      ...NON_ROUTE_AUTH_FILES,
+    ]);
+
+    const unaudited = collectTsFiles(ROOT)
+      .filter((abs) => /\.use\(authenticate\)/.test(readFileSync(abs, 'utf8')))
+      .map((abs) => relative(ROOT, abs).split(sep).join('/'))
+      .filter((rel) => !audited.has(rel));
+
+    expect(unaudited, 'authenticated routers missing from this audit').toEqual([]);
+  });
+
   it('authenticated route files import session practice helpers', () => {
     for (const rel of AUTH_ROUTE_FILES) {
       const src = readFileSync(join(ROOT, rel), 'utf8');

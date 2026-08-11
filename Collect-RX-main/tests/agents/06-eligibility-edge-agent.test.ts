@@ -15,7 +15,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateEstimate, getCarrierConfig, identifyTelusPlan } from '../../src/services/eligibility/engine';
 import { reconcile } from '../../src/services/eligibility/reconciliation';
-import { getCoverageTier } from '../../src/services/eligibility/rules/cdt-codes';
 import {
   buildDeductibleState,
   applyDeductible,
@@ -37,7 +36,6 @@ import {
 
 const TODAY = '2026-06-13';
 const PLAN_2Y_AGO = '2024-01-01';
-const PLAN_2W_AGO = '2026-05-30';
 const PLAN_5M_AGO = '2026-01-01'; // 5 months old
 
 function makeSnap(carrier: Carrier, overrides: Partial<EligibilitySnapshot> = {}): EligibilitySnapshot {

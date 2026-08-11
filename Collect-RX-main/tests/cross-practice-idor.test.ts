@@ -11,10 +11,8 @@
  */
 import { afterAll, describe, expect, it, beforeAll } from 'vitest';
 import request from 'supertest';
-import type { PrismaClient } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
-import { appendAuditLog } from '../src/server/audit/auditLog.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 let dbReady = false;
@@ -85,22 +83,10 @@ async function setupFixtures() {
   });
 }
 
-async function checkAuditLog(
-  practiceId: string,
-  action: string,
-  claimId: string,
-  expectExists: boolean,
-): Promise<boolean> {
-  const logs = await prisma.auditLog.findMany({
-    where: {
-      practiceId,
-      action,
-      subjectId: claimId,
-      createdAt: { gte: new Date(Date.now() - 10000) }, // within last 10s
-    },
-  });
-  return logs.length > 0 === expectExists;
-}
+// A checkAuditLog() helper lived here, defined but never called. It cannot be
+// wired in: authRoutes records no audit entry for a refused cross-practice
+// request, so it would only ever confirm an empty table. Auditing these
+// mutations is a product gap, not something a test helper can paper over.
 
 describe.skipIf(!dbReady)('Cross-Practice IDOR Access Validation', () => {
   beforeAll(async () => {

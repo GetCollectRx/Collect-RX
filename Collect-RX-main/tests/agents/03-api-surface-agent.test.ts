@@ -5,22 +5,17 @@
 // the correct status codes. This agent enforces the security contract: unauthenticated
 // requests must never return 200, and health endpoints must always be accessible.
 //
-// Note: DB-dependent tests are skipped gracefully when DATABASE_URL is unreachable
-// (same pattern as app.integration.test.ts).
+// Note: no case here requires a database — all 29 assert HTTP status, headers or
+// auth behaviour, and pass with DATABASE_URL unset.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterAll, describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../../src/server/index.js';
 
-let dbReady = false;
-try {
-  await prisma.$connect();
-  await prisma.$queryRaw`SELECT 1`;
-  dbReady = true;
-} catch {
-  console.warn('[Agent 03] DATABASE_URL unreachable — DB-dependent tests skipped.');
-}
+// No test here touches the database — every case asserts HTTP status, headers or
+// auth behaviour through supertest. A dbReady probe used to sit here warning that
+// "DB-dependent tests skipped" while skipping nothing.
 
 afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);

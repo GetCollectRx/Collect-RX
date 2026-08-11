@@ -11,9 +11,9 @@
  * Requires DATABASE_URL (skipped when unreachable).
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { app, prisma } from '../src/server/index.js';
+import { prisma } from '../src/server/index.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 let dbReady = false;
@@ -175,7 +175,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
       },
     });
 
-    const callAttempt = await prisma.callAttempt.create({
+    await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
         vapiCallId: `vapi-${crypto.randomUUID()}`,
@@ -184,7 +184,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
       },
     });
 
-    const eligibilitySnapshot = await prisma.eligibilitySnapshot.create({
+    await prisma.eligibilitySnapshot.create({
       data: {
         practiceId: practice.id,
         patientId: `patient-${patientToken}`,
@@ -196,7 +196,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Create PHI vault entry (encrypted backing store)
-    const phiVaultEntry = await prisma.phiVaultEntry.create({
+    await prisma.phiVaultEntry.create({
       data: {
         token: patientToken,
         practiceId: practice.id,
@@ -208,7 +208,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Log the deletion request in audit trail
-    const deletionAuditLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_requested',
@@ -267,7 +267,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Log completion in audit trail
-    const completionAuditLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_completed',
@@ -332,7 +332,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     const patientToken = crypto.randomUUID();
 
     // Create claim data
-    const claim = await prisma.insuranceClaim.create({
+    await prisma.insuranceClaim.create({
       data: {
         practiceId: practice.id,
         carrierId: 'green_shield',
@@ -420,7 +420,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Step 1 audit: Log claim creation
-    const creationLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'claim_created',
@@ -445,7 +445,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Step 2 audit: Log call attempt
-    const callLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'call_attempt_recorded',
@@ -461,7 +461,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
 
     // Step 3: Request deletion
     const deletionRequestId = crypto.randomUUID();
-    const deletionRequestLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_requested',
@@ -488,7 +488,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Step 4 audit: Log deletion execution
-    const deletionExecutionLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_executed',
@@ -555,7 +555,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
       },
     });
 
-    const call = await prisma.callAttempt.create({
+    await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
         vapiCallId: `vapi-retry-${Date.now()}`,
@@ -565,7 +565,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
 
     // Log deletion attempt
     const deletionRequestId = crypto.randomUUID();
-    const attemptLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_attempt_1',
@@ -581,7 +581,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
 
     // Simulate partial failure: attempt calls deletion first (which fails)
     // In this scenario, we'll log the failure without actually deleting claims yet
-    const failureLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_attempt_1_failed',
@@ -611,7 +611,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Log successful retry
-    const retrySuccessLog = await prisma.auditLog.create({
+    await prisma.auditLog.create({
       data: {
         practiceId: practice.id,
         action: 'phipa_deletion_completed',
@@ -684,7 +684,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
       },
     });
 
-    const call2 = await prisma.callAttempt.create({
+    await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
         vapiCallId: `vapi-comprehensive-2-${Date.now()}`,
@@ -694,7 +694,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Create transcript lines
-    const line1 = await prisma.callTranscriptLine.create({
+    await prisma.callTranscriptLine.create({
       data: {
         practiceId: practice.id,
         vapiCallId: call1.vapiCallId,
@@ -704,7 +704,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Create eligibility snapshot
-    const snapshot = await prisma.eligibilitySnapshot.create({
+    await prisma.eligibilitySnapshot.create({
       data: {
         practiceId: practice.id,
         patientId: `patient-${patientToken}`,
@@ -716,7 +716,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Create recovery action
-    const recovery = await prisma.claimRecoveryAction.create({
+    await prisma.claimRecoveryAction.create({
       data: {
         practiceId: practice.id,
         claimId: claim.id,
@@ -727,7 +727,7 @@ describe.skipIf(!dbReady)('PHIPA Compliance — Deletion Request Workflow', () =
     });
 
     // Create PHI vault entry
-    const phiEntry = await prisma.phiVaultEntry.create({
+    await prisma.phiVaultEntry.create({
       data: {
         token: patientToken,
         practiceId: practice.id,

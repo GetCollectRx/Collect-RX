@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { readPublicAppUrl, readServerUrl, readAllowedOriginsRaw } from '../src/server/envAliases.js';
 
 describe('env aliases', () => {

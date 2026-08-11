@@ -22,7 +22,6 @@ import {
 import {
   buildAnnualMaxState,
   applyAnnualMax,
-  annualMaxRemaining,
   isAnnualMaxExhausted,
 } from '../src/services/eligibility/rules/annual-max';
 import { applyBirthdayRule, calculateCOB, type COBInput } from '../src/services/eligibility/rules/cob';
@@ -725,7 +724,7 @@ describe('Edge cases', () => {
     const carrier = Carrier.SunLife;
     const patient = makePatient(carrier);
     const snapshot = makeSnapshot(carrier);
-    const procedures = Array.from({ length: 10 }, (_, i) => ({
+    const procedures = Array.from({ length: 10 }, () => ({
       cdtCode: 'D2740',
       providerFee: 1200,
       quantity: 1,
