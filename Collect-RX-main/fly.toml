@@ -68,12 +68,13 @@ memory = '512mb'
 cpu_kind = 'shared'
 cpus = 1
 
-[[mounts]]
-source = 'collectrx_app_logs'
-destination = '/app/logs'
-processes = ['app']
+# Volume mounts temporarily disabled for demo deployment
+# [[mounts]]
+# source = 'collectrx_app_logs'
+# destination = '/app/logs'
+# processes = ['app']
 
-[[mounts]]
-source = 'collectrx_worker_logs'
-destination = '/app/logs'
-processes = ['worker']
+# [[mounts]]
+# source = 'collectrx_worker_logs'
+# destination = '/app/logs'
+# processes = ['worker']
