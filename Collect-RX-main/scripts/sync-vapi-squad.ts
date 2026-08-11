@@ -82,29 +82,44 @@ async function vapiRequest<T>(method: 'GET' | 'PATCH', path: string, body?: unkn
   return res.json() as Promise<T>;
 }
 
-function loadConfig(): SquadConfig {
+export function loadConfig(): SquadConfig {
   return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) as SquadConfig;
+}
+
+// This script assumes GET /assistant returns a bare JSON array. That's
+// unverified against Vapi's current docs (unreachable from this sandbox's
+// network policy) — asserting it explicitly turns a wrong assumption into a
+// clear, immediate error instead of a cryptic crash three calls deeper, the
+// same failure shape that cost real debugging time twice already tonight.
+function assertAssistantArray(page: unknown, path: string): asserts page is LiveAssistant[] {
+  if (!Array.isArray(page)) {
+    throw new Error(
+      `Expected GET ${path} to return a JSON array of assistants, got ${typeof page}: ${JSON.stringify(page)?.slice(0, 200)}. ` +
+        'Vapi\'s API response shape may not match what this script assumes — check their current docs before assuming this script is broken.',
+    );
+  }
 }
 
 async function listLiveAssistants(): Promise<LiveAssistant[]> {
   const all: LiveAssistant[] = [];
-  let page = await vapiRequest<LiveAssistant[]>('GET', '/assistant?limit=100');
+  const firstPath = '/assistant?limit=100';
+  let page = await vapiRequest<LiveAssistant[]>('GET', firstPath);
+  assertAssistantArray(page, firstPath);
   all.push(...page);
   // Vapi paginates with a `createdAtLt` cursor keyed off the last item; stop
   // once a page comes back short of the page size.
   while (page.length === 100) {
     const cursor = page[page.length - 1]?.createdAt;
     if (!cursor) break;
-    page = await vapiRequest<LiveAssistant[]>(
-      'GET',
-      `/assistant?limit=100&createdAtLt=${encodeURIComponent(String(cursor))}`,
-    );
+    const nextPath = `/assistant?limit=100&createdAtLt=${encodeURIComponent(String(cursor))}`;
+    page = await vapiRequest<LiveAssistant[]>('GET', nextPath);
+    assertAssistantArray(page, nextPath);
     all.push(...page);
   }
   return all;
 }
 
-function stripIgnored(obj: Record<string, unknown>): Record<string, unknown> {
+export function stripIgnored(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (IGNORED_FIELDS.has(k)) continue;
@@ -113,7 +128,7 @@ function stripIgnored(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-function diffValues(path: string, repoVal: unknown, liveVal: unknown, out: string[]): void {
+export function diffValues(path: string, repoVal: unknown, liveVal: unknown, out: string[]): void {
   if (JSON.stringify(repoVal) === JSON.stringify(liveVal)) return;
   const isPlainObj = (v: unknown) =>
     typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -129,14 +144,18 @@ function diffValues(path: string, repoVal: unknown, liveVal: unknown, out: strin
     return;
   }
   const truncate = (v: unknown) => {
+    // JSON.stringify(undefined) returns the value undefined, not the string
+    // "undefined" — this branch is normal here, not an edge case: any field
+    // present on only one side of the diff (repo vs. live) hits it.
+    if (v === undefined) return '(missing)';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
     return s.length > 120 ? `${s.slice(0, 117)}...` : s;
   };
   out.push(`  ${path}\n    repo: ${truncate(repoVal)}\n    live: ${truncate(liveVal)}`);
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const args = argv;
   const mode = args.includes('--push') ? 'push' : 'check';
   const onlyIdx = args.indexOf('--only');
   const only = onlyIdx >= 0 ? args[onlyIdx + 1] : undefined;
@@ -209,7 +228,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
-  process.exitCode = 1;
-});
+// Only auto-run when executed directly (npm run vapi:squad-check/-push) —
+// importing this module from a test must not trigger a real network call.
+const isMainModule = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? (err.stack ?? err.message) : err);
+    process.exitCode = 1;
+  });
+}
