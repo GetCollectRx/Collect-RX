@@ -176,13 +176,11 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
 
   beforeAll(async () => {
     if (!dbReady) return;
-    // Only Date is faked — setTimeout/setInterval/network stay real, so the
-    // real DB and Vapi-mock I/O below still runs on the actual clock. This
-    // must be set before seeding: seedDispatchablePractice() below stamps
-    // callQueue.scheduledFor from Date.now(), and it needs to land inside the
-    // same pinned window the dispatch checks will later evaluate against.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(BUSINESS_HOURS_ET);
+    // Date is already pinned to FIXED_BUSINESS_HOURS_INSTANT by the file-level
+    // beforeAll above, which runs before this one — required here too since
+    // seedDispatchablePractice() below stamps callQueue.scheduledFor from
+    // Date.now(), and it needs to land inside the same pinned window the
+    // dispatch checks will later evaluate against.
 
     // queue_engine_lease is a global singleton row (by design — one lease
     // for the whole fleet). A previous test process can leave it live for up
