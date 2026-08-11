@@ -88,7 +88,7 @@ async function verifyPlatformDevPassword(password: string): Promise<boolean> {
  *  - practice_owner: can manage all roles below owner (not another owner)
  *  - office_manager: can manage billing_coordinator, front_desk, associate_dentist, accountant
  */
-function canManageRole(
+export function canManageRole(
   actorAuth: UserAuthPayload,
   targetRole: string,
 ): boolean {

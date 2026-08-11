@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PrismaClient, Prospect } from '@prisma/client';
+import { makeProspect } from '../factories/prospect.js';
 import {
   computeProspectScore,
   DEFAULT_SCORE_WEIGHTS,
@@ -8,47 +9,16 @@ import {
 } from '../../src/server/marketing/prospectScoring.js';
 import { runMarketingLearningCycle } from '../../src/server/marketing/marketingLearningJob.js';
 
-const baseProspect: Prospect = {
-  id: 'p1',
-  practiceName: 'Downtown Dental',
-  contactName: null,
-  email: 'office@downtown.ca',
-  phone: '4165550100',
-  city: 'Toronto',
-  province: 'ON',
+const baseProspect: Prospect = makeProspect({
   website: 'https://downtown.ca',
-  googlePlaceId: null,
-  score: 80,
   stage: 'closed_won',
   source: 'referral',
   pmsHint: 'Abeldent',
   sequenceStep: 0,
-  sequencePausedUntil: null,
   sequenceCompleted: true,
-  referralStep: 0,
-  referralCompleted: false,
-  emailOpenCount: 0,
-  emailClickCount: 0,
-  lastEmailSentAt: null,
-  lastEngagedAt: null,
   closedWonAt: new Date(),
-  demoScheduledAt: null,
-  preDemoEmailSentAt: null,
-  dnclCheckedAt: null,
-  dnclListed: null,
-  hubspotDealId: null,
-  campaignId: null,
-  linkedPracticeId: null,
-  optOutAt: null,
-  callSummary: null,
-  replyIntent: null,
-  suggestedReply: null,
-  painPoints: null,
   metadata: { rating: 4.6 },
-  lastVapiCallId: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+});
 
 describe('prospectScoring', () => {
   it('scores referral + phone + website higher than bare base', () => {

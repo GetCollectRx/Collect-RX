@@ -4,10 +4,10 @@
  *
  * Aggregates and scores call quality across all carriers, agents, and time
  * periods. Provides:
- *   1. Success rate by carrier (RESOLVED/APPROVED outcomes)
+ *   1. Success rate by carrier (RESOLVED outcomes)
  *   2. Average call duration trends (increasing/decreasing/stable)
  *   3. Agent performance metrics (success rates)
- *   4. Outcome distribution (RESOLVED%, TIMEOUT%, NOT_FOUND%, ESCALATED%)
+ *   4. Outcome distribution across the CallOutcome enum
  *   5. Quality score trends (week-over-week comparison)
  *
  * Public API:
@@ -16,7 +16,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import type { CarrierId, PrismaClient } from '@prisma/client';
+import type { CallOutcome, CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,23 +29,31 @@ export interface QualityScoreInput {
   practiceId?: string; // If provided, scope to single practice; otherwise platform-wide
 }
 
+/**
+ * Counts keyed by the `CallOutcome` enum, plus `unrecorded` for attempts whose
+ * outcome is still null (call in flight, or never finalised by the webhook).
+ */
+export interface OutcomeDistribution {
+  resolved: number;
+  pending: number;
+  denied: number;
+  escalated: number;
+  blockDetected: number;
+  failed: number;
+  noAnswer: number;
+  hungUp: number;
+  unrecorded: number;
+}
+
 export interface CarrierQualityMetrics {
   carrierId: string;
   carrierName: string;
-  successRate: number; // % (0-100): (RESOLVED + APPROVED) / total_calls
+  successRate: number; // % (0-100): RESOLVED / total_calls
   successCount: number;
   totalCalls: number;
   avgDurationSeconds: number;
   durationTrend: 'increasing' | 'decreasing' | 'stable';
-  outcomeDistribution: {
-    resolved: number;
-    approved: number;
-    denied: number;
-    escalated: number;
-    failed: number;
-    noAnswer: number;
-    other: number;
-  };
+  outcomeDistribution: OutcomeDistribution;
   outliers: string[];
 }
 
@@ -87,15 +95,7 @@ export interface CallQualityReport {
   agentPerformance: AgentPerformance[];
 
   // Outcome distribution (platform-wide)
-  outcomeDistribution: {
-    resolved: number;
-    approved: number;
-    denied: number;
-    escalated: number;
-    failed: number;
-    noAnswer: number;
-    other: number;
-  };
+  outcomeDistribution: OutcomeDistribution;
 
   // Time series for week-over-week analysis
   weeklyTrends: WeekOverWeekTrend[];
@@ -121,8 +121,19 @@ export interface CallQualityReport {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SUCCESS_OUTCOMES = new Set(['RESOLVED', 'APPROVED_PENDING_PAYMENT']);
-const FAILURE_OUTCOMES = new Set(['FAILED', 'NO_ANSWER', 'HUNG_UP']);
+// Typed against the generated enum so a schema rename breaks the build here
+// rather than silently zeroing a metric. `APPROVED_PENDING_PAYMENT` is a
+// ClaimStatus, not a CallOutcome — a call attempt never carries it.
+const SUCCESS_OUTCOMES = new Set<CallOutcome>(['RESOLVED']);
+const FAILURE_OUTCOMES = new Set<CallOutcome>(['FAILED', 'NO_ANSWER', 'HUNG_UP']);
+
+function isSuccess(outcome: CallOutcome | null): boolean {
+  return outcome !== null && SUCCESS_OUTCOMES.has(outcome);
+}
+
+function isFailure(outcome: CallOutcome | null): boolean {
+  return outcome !== null && FAILURE_OUTCOMES.has(outcome);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN API
@@ -165,12 +176,8 @@ export async function scoreCallQuality(
   const weeklyTrends = computeWeeklyTrends(callAttempts, since, to);
 
   // Overall quality score and success rate
-  const successfulCalls = callAttempts.filter((a) =>
-    SUCCESS_OUTCOMES.has(a.outcome as string),
-  ).length;
-  const failedCalls = callAttempts.filter((a) =>
-    FAILURE_OUTCOMES.has(a.outcome as string),
-  ).length;
+  const successfulCalls = callAttempts.filter((a) => isSuccess(a.outcome)).length;
+  const failedCalls = callAttempts.filter((a) => isFailure(a.outcome)).length;
 
   const overallSuccessRate =
     callAttempts.length > 0
@@ -250,22 +257,12 @@ export async function scoreSingleCarrier(
       totalCalls: 0,
       avgDurationSeconds: 0,
       durationTrend: 'stable',
-      outcomeDistribution: {
-        resolved: 0,
-        approved: 0,
-        denied: 0,
-        escalated: 0,
-        failed: 0,
-        noAnswer: 0,
-        other: 0,
-      },
+      outcomeDistribution: emptyOutcomeDistribution(),
       outliers: [],
     };
   }
 
-  const successCount = calls.filter((c) =>
-    SUCCESS_OUTCOMES.has(c.outcome as string),
-  ).length;
+  const successCount = calls.filter((c) => isSuccess(c.outcome)).length;
   const totalDuration = calls
     .filter((c) => c.durationSeconds)
     .reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
@@ -296,12 +293,12 @@ export async function scoreSingleCarrier(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function computeCarrierMetrics(
-  calls: Array<{ outcome: string | null; claim: { carrierId: string } | null; durationSeconds: number | null; initiatedAt: Date }>,
+  calls: Array<{ outcome: CallOutcome | null; claim: { carrierId: string } | null; durationSeconds: number | null; initiatedAt: Date }>,
 ): CarrierQualityMetrics[] {
   const byCarrier = new Map<
     string,
     {
-      calls: Array<{ outcome: string | null; durationSeconds: number | null; initiatedAt: Date }>;
+      calls: Array<{ outcome: CallOutcome | null; durationSeconds: number | null; initiatedAt: Date }>;
     }
   >();
 
@@ -314,9 +311,7 @@ function computeCarrierMetrics(
   }
 
   return Array.from(byCarrier.entries()).map(([carrierId, data]) => {
-    const successCount = data.calls.filter((c) =>
-      SUCCESS_OUTCOMES.has(c.outcome as string),
-    ).length;
+    const successCount = data.calls.filter((c) => isSuccess(c.outcome)).length;
     const totalDuration = data.calls
       .filter((c) => c.durationSeconds)
       .reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
@@ -341,7 +336,7 @@ function computeCarrierMetrics(
 function computeAgentMetrics(
   calls: Array<{
     activeAgent: string | null;
-    outcome: string | null;
+    outcome: CallOutcome | null;
     durationSeconds: number | null;
     claim: { carrierId: string } | null;
   }>,
@@ -367,9 +362,7 @@ function computeAgentMetrics(
   }
 
   return Array.from(byAgent.entries()).map(([agentName, data]) => {
-    const successCount = data.calls.filter((c) =>
-      SUCCESS_OUTCOMES.has(c.outcome as string),
-    ).length;
+    const successCount = data.calls.filter((c) => isSuccess(c.outcome)).length;
     const totalDuration = data.calls
       .filter((c) => c.durationSeconds)
       .reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
@@ -386,34 +379,47 @@ function computeAgentMetrics(
   });
 }
 
+function emptyOutcomeDistribution(): OutcomeDistribution {
+  return {
+    resolved: 0,
+    pending: 0,
+    denied: 0,
+    escalated: 0,
+    blockDetected: 0,
+    failed: 0,
+    noAnswer: 0,
+    hungUp: 0,
+    unrecorded: 0,
+  };
+}
+
+/** Bucket key for each CallOutcome. Exhaustive by type — adding an enum member
+ *  without a bucket is a compile error, not a silently dropped metric. */
+const OUTCOME_BUCKETS: Record<CallOutcome, keyof OutcomeDistribution> = {
+  RESOLVED: 'resolved',
+  PENDING: 'pending',
+  DENIED: 'denied',
+  ESCALATED: 'escalated',
+  BLOCK_DETECTED: 'blockDetected',
+  FAILED: 'failed',
+  NO_ANSWER: 'noAnswer',
+  HUNG_UP: 'hungUp',
+};
+
 function computeOutcomeDistribution(
-  calls: Array<{ outcome: string | null }>,
-): ReturnType<typeof computeOutcomeDistributionForCalls> {
+  calls: Array<{ outcome: CallOutcome | null }>,
+): OutcomeDistribution {
   return computeOutcomeDistributionForCalls(calls);
 }
 
 function computeOutcomeDistributionForCalls(
-  calls: Array<{ outcome: string | null }>,
-) {
-  const dist = {
-    resolved: 0,
-    approved: 0,
-    denied: 0,
-    escalated: 0,
-    failed: 0,
-    noAnswer: 0,
-    other: 0,
-  };
+  calls: Array<{ outcome: CallOutcome | null }>,
+): OutcomeDistribution {
+  const dist = emptyOutcomeDistribution();
 
   for (const call of calls) {
-    const outcome = call.outcome ?? 'other';
-    if (outcome === 'RESOLVED') dist.resolved++;
-    else if (outcome === 'APPROVED_PENDING_PAYMENT') dist.approved++;
-    else if (outcome === 'DENIED') dist.denied++;
-    else if (outcome === 'ESCALATED') dist.escalated++;
-    else if (outcome === 'FAILED') dist.failed++;
-    else if (outcome === 'NO_ANSWER') dist.noAnswer++;
-    else dist.other++;
+    const bucket = call.outcome === null ? 'unrecorded' : OUTCOME_BUCKETS[call.outcome];
+    dist[bucket]++;
   }
 
   return dist;
@@ -422,7 +428,7 @@ function computeOutcomeDistributionForCalls(
 function computeWeeklyTrends(
   calls: Array<{
     initiatedAt: Date;
-    outcome: string | null;
+    outcome: CallOutcome | null;
     durationSeconds: number | null;
   }>,
   since: Date,
@@ -447,9 +453,7 @@ function computeWeeklyTrends(
     const key = cursor.toISOString().split('T')[0];
     const weekCalls = weekMap.get(key) ?? [];
 
-    const successCount = weekCalls.filter((c) =>
-      SUCCESS_OUTCOMES.has(c.outcome as string),
-    ).length;
+    const successCount = weekCalls.filter((c) => isSuccess(c.outcome)).length;
     const successRate =
       weekCalls.length > 0
         ? Math.round((successCount / weekCalls.length) * 100)
@@ -507,9 +511,11 @@ function calculateQualityScore(
 
   const baseScore = successRate * 0.6;
 
-  // Duration quality: expect 120-300 seconds (2-5 min)
+  // Duration quality: expect 120-300 seconds (2-5 min). No timed calls earns no
+  // duration credit — crediting the full 20 for absent evidence scored an empty
+  // reporting window at 20/100 and floored every call-less week at the same.
   const validDurationCalls = calls.filter((c) => c.durationSeconds);
-  let durationScore = 20;
+  let durationScore = 0;
   if (validDurationCalls.length > 0) {
     const avgDuration =
       validDurationCalls.reduce((s, c) => s + (c.durationSeconds ?? 0), 0) /
@@ -596,7 +602,7 @@ function identifyOutliers(
 function generateEscalationRecommendations(
   carrierMetrics: CarrierQualityMetrics[],
   agentMetrics: AgentPerformance[],
-  outcomeDistribution: ReturnType<typeof computeOutcomeDistributionForCalls>,
+  outcomeDistribution: OutcomeDistribution,
 ): CallQualityReport['escalationRecommendations'] {
   const recommendations: CallQualityReport['escalationRecommendations'] = [];
 
@@ -627,14 +633,17 @@ function generateEscalationRecommendations(
     }
   }
 
-  // Escalate unusual outcome patterns
+  // Escalate unusual outcome patterns. Denominator counts recorded outcomes
+  // only — attempts still in flight would otherwise deflate the rate.
   const total =
     outcomeDistribution.resolved +
-    outcomeDistribution.approved +
+    outcomeDistribution.pending +
     outcomeDistribution.denied +
     outcomeDistribution.escalated +
+    outcomeDistribution.blockDetected +
     outcomeDistribution.failed +
-    outcomeDistribution.noAnswer;
+    outcomeDistribution.noAnswer +
+    outcomeDistribution.hungUp;
 
   if (total > 0) {
     const escalationRate = Math.round(

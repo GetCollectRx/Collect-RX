@@ -1,53 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient, Prospect } from '@prisma/client';
+import { makeProspect } from '../factories/prospect.js';
 
 vi.mock('../../src/server/marketing/geminiClient.js', () => ({
   runGeminiJson: vi.fn(),
 }));
 
-const baseProspect: Prospect = {
-  id: 'p1',
-  practiceName: 'Downtown Dental',
-  contactName: null,
-  email: 'office@downtown.ca',
-  phone: '4165550100',
-  city: 'Toronto',
-  province: 'ON',
-  website: null,
-  googlePlaceId: null,
-  score: 80,
-  stage: 'contacted',
-  source: 'harvest',
-  pmsHint: null,
-  sequenceStep: 1,
-  sequencePausedUntil: null,
-  sequenceCompleted: false,
-  referralStep: 0,
-  referralCompleted: false,
-  emailOpenCount: 2,
-  emailClickCount: 0,
-  lastEmailSentAt: null,
-  lastEngagedAt: null,
-  closedWonAt: null,
-  demoScheduledAt: null,
-  preDemoEmailSentAt: null,
-  dnclCheckedAt: null,
-  dnclListed: null,
-  hubspotDealId: null,
-  campaignId: null,
-  linkedPracticeId: null,
-  optOutAt: null,
-  trialStartedAt: null,
-  trialSequenceStep: 0,
-  callSummary: null,
-  replyIntent: null,
-  suggestedReply: null,
-  painPoints: null,
-  metadata: null,
-  lastVapiCallId: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+const baseProspect: Prospect = makeProspect({ emailOpenCount: 2 });
 
 function mockPrisma(overrides: Partial<Prospect> = {}) {
   const prospect = { ...baseProspect, ...overrides };
