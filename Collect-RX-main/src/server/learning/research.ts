@@ -4,6 +4,7 @@ import type { NotionLearningItem, ResearchResult } from './types.js';
 import { learningRepoRoot, learningResearchProvider, learningResearchTimeoutMs } from './config.js';
 import { externalResearchProviders } from './providers/registry.js';
 import { toProviderResearchInput, withTimeout } from './providers/util.js';
+import { logger } from '../observability/logger.js';
 
 const SRC_SCAN_ROOTS = ['src', 'docs', 'Product Requirement Document'];
 const MAX_HITS = 8;
@@ -114,7 +115,7 @@ export async function researchItem(item: NotionLearningItem): Promise<ResearchRe
         break;
       }
     } catch (err) {
-      console.warn(`[learning] research provider ${p.name}`, (err as Error).message);
+      logger.warn('[learning] research provider failed', { providerName: p.name, error: err });
     }
   }
 

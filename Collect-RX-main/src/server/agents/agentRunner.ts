@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import type { PrismaClient } from '@prisma/client';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 // ── Path resolution ───────────────────────────────────────────────────────────
 // agents/ is bundled inside Collect-RX-main/ (copied at repo level, included in Docker image).
@@ -149,8 +150,11 @@ async function routeActions(
 
         case 'alert': {
           const urgency = String(action.payload.urgency ?? 'next_check');
-          const prefix = urgency === 'immediate' ? '[AGENT ALERT][IMMEDIATE]' : '[AGENT ALERT]';
-          console.warn(`${prefix} [${agentName}] ${String(action.payload.message ?? '')}`);
+          logger.warn('[AGENT ALERT]', {
+            immediate: urgency === 'immediate',
+            agentName,
+            message: String(action.payload.message ?? ''),
+          });
           await appendAuditLog(prisma, {
             practiceId: 'platform',
             action: `agent.alert.${urgency}`,
@@ -163,9 +167,11 @@ async function routeActions(
           // Log cross-agent triggers; they are picked up by the next cron tick
           // or handled by the event system — not recursively called here to
           // avoid unbounded chains.
-          console.log(
-            `[AgentRunner] ${agentName} requests trigger of "${action.payload.agentName}": ${action.payload.reason}`,
-          );
+          logger.info('[AgentRunner] requests trigger of another agent', {
+            agentName,
+            targetAgentName: action.payload.agentName,
+            reason: action.payload.reason,
+          });
           await appendAuditLog(prisma, {
             practiceId: 'platform',
             action: 'agent.trigger_requested',
@@ -176,10 +182,10 @@ async function routeActions(
         case 'update_db':
           // Agent-requested DB mutations are logged but NOT auto-executed.
           // A human (Khalid) must approve structural DB changes.
-          console.log(
-            `[AgentRunner] ${agentName} requested DB update (logged, awaiting human approval):`,
-            action.payload,
-          );
+          logger.info('[AgentRunner] requested DB update (logged, awaiting human approval)', {
+            agentName,
+            payload: action.payload,
+          });
           await appendAuditLog(prisma, {
             practiceId: 'platform',
             action: 'agent.db_update_requested',
@@ -188,7 +194,7 @@ async function routeActions(
           break;
       }
     } catch (err) {
-      console.error(`[AgentRunner] action routing error (${action.type}) for ${agentName}:`, err);
+      logger.error('[AgentRunner] action routing error', { actionType: action.type, agentName, error: err });
     }
   }
 }
@@ -208,13 +214,13 @@ export async function runAgent(
   prisma: PrismaClient,
 ): Promise<AgentResult> {
   const start = Date.now();
-  console.log(`[AgentRunner] starting ${agentName}`);
+  logger.info('[AgentRunner] starting', { agentName });
 
   let systemPrompt: string;
   try {
     systemPrompt = loadAgentPrompt(agentName);
   } catch (err) {
-    console.error(`[AgentRunner] failed to load prompt for ${agentName}:`, err);
+    logger.error('[AgentRunner] failed to load prompt', { agentName, error: err });
     throw err;
   }
 
@@ -250,16 +256,14 @@ Only include actions that are warranted. Empty actions array is valid when sever
   try {
     rawOutput = await callGemini(systemPrompt, userMessage);
   } catch (err) {
-    console.error(`[AgentRunner] Gemini call failed for ${agentName}:`, err);
+    logger.error('[AgentRunner] Gemini call failed', { agentName, error: err });
     throw err;
   }
 
   const { findings, severity, actions } = parseAgentOutput(rawOutput);
   const durationMs = Date.now() - start;
 
-  console.log(
-    `[AgentRunner] ${agentName} done — severity=${severity} actions=${actions.length} (${durationMs}ms)`,
-  );
+  logger.info('[AgentRunner] done', { agentName, severity, actionCount: actions.length, durationMs });
 
   // Persist run record to audit log
   try {

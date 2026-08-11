@@ -12,6 +12,7 @@ import {
   isCarrierDiscoveryEnabled,
 } from './discovery/carrierDiscoveryService.js';
 import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
+import { logger } from './observability/logger.js';
 
 /**
  * Insurance operations tick: call queue priority, EMR outbox, payment trace recalls,
@@ -23,41 +24,41 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
   try {
     const sync = await syncCallQueueSchedulingFromPriority(prisma);
     if (sync.rowsUpdated > 0) {
-      console.log(
-        `[rulesEngine] priority queue sync: ${sync.rowsUpdated} call_queue row(s), ${sync.practices} practice(s)`,
-      );
+      logger.info('[rulesEngine] priority queue sync', { rowsUpdated: sync.rowsUpdated, practices: sync.practices });
     }
   } catch (err) {
-    console.error('[rulesEngine] priority queue sync failed:', (err as Error).message);
+    logger.error('[rulesEngine] priority queue sync failed', { error: err });
   }
 
   try {
     const emr = await processEmrSyncOutboxBatch(prisma);
     if (emr.markedProcessed > 0 || emr.deliveryFailed > 0) {
-      console.log(
-        `[rulesEngine] EMR outbox: pulled ${emr.pulled}, processed ${emr.markedProcessed}, failed ${emr.deliveryFailed}`,
-      );
+      logger.info('[rulesEngine] EMR outbox', {
+        pulled: emr.pulled,
+        processed: emr.markedProcessed,
+        failed: emr.deliveryFailed,
+      });
     }
   } catch (err) {
-    console.error('[rulesEngine] EMR outbox batch failed:', (err as Error).message);
+    logger.error('[rulesEngine] EMR outbox batch failed', { error: err });
   }
 
   try {
     const traced = await processPaymentTraceDue(prisma);
     if (traced > 0) {
-      console.log(`[rulesEngine] payment trace recalls scheduled: ${traced}`);
+      logger.info('[rulesEngine] payment trace recalls scheduled', { traced });
     }
   } catch (err) {
-    console.error('[rulesEngine] payment trace due failed:', (err as Error).message);
+    logger.error('[rulesEngine] payment trace due failed', { error: err });
   }
 
   try {
     const overdueEscalated = await escalateOverdueRecoveryActions(prisma);
     if (overdueEscalated > 0) {
-      console.log(`[rulesEngine] overdue practice actions escalated: ${overdueEscalated}`);
+      logger.info('[rulesEngine] overdue practice actions escalated', { overdueEscalated });
     }
   } catch (err) {
-    console.error('[rulesEngine] overdue action sweep failed:', (err as Error).message);
+    logger.error('[rulesEngine] overdue action sweep failed', { error: err });
   }
 
   const now = new Date();
@@ -71,7 +72,7 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
         });
       }
     } catch (err) {
-      console.error('[rulesEngine] hourly work queue / recovery alerts failed:', err);
+      logger.error('[rulesEngine] hourly work queue / recovery alerts failed', { error: err });
     }
   }
 
@@ -80,7 +81,7 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     try {
       await runDailyArCloseAllPractices(prisma);
     } catch (err) {
-      console.error('[rulesEngine] daily AR close failed:', (err as Error).message);
+      logger.error('[rulesEngine] daily AR close failed', { error: err });
     }
   }
 
@@ -92,10 +93,10 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     try {
       const created = await ensureMonthlyDiscoveryRoster(prisma);
       if (created > 0) {
-        console.log(`[rulesEngine] monthly IVR discovery roster: ${created} carrier run(s) scheduled`);
+        logger.info('[rulesEngine] monthly IVR discovery roster', { carrierRunsScheduled: created });
       }
     } catch (err) {
-      console.error('[rulesEngine] monthly discovery roster failed:', (err as Error).message);
+      logger.error('[rulesEngine] monthly discovery roster failed', { error: err });
     }
   }
 
@@ -104,17 +105,17 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
     try {
       const swept = await sweepUpcomingAppointmentsAcrossPractices(prisma);
       if (swept > 0) {
-        console.log(`[rulesEngine] pre-visit sweep verified ${swept} appointment(s)`);
+        logger.info('[rulesEngine] pre-visit sweep verified appointments', { swept });
       }
     } catch (err) {
-      console.error('[rulesEngine] pre-visit appointment sweep failed:', (err as Error).message);
+      logger.error('[rulesEngine] pre-visit appointment sweep failed', { error: err });
     }
   }
   });
 }
 
 export function startRulesEngine(prisma: PrismaClient) {
-  console.log('🤖 Insurance ops engine started — evaluating every 60 seconds (in-process)');
+  logger.info('[rulesEngine] insurance ops engine started — evaluating every 60 seconds (in-process)', {});
 
   // M-2: prevent concurrent ticks — if a tick takes longer than 60 seconds
   // (large EMR outbox batch, many practices), the next interval fires but
@@ -123,14 +124,14 @@ export function startRulesEngine(prisma: PrismaClient) {
 
   const evaluateRules = async () => {
     if (isRunning) {
-      console.warn('[rulesEngine] previous tick still running — skipping');
+      logger.warn('[rulesEngine] previous tick still running — skipping', {});
       return;
     }
     isRunning = true;
     try {
       await runRulesEngineTick(prisma);
     } catch (error) {
-      console.error('❌ Rules engine error:', error);
+      logger.error('[rulesEngine] rules engine error', { error });
     } finally {
       isRunning = false;
     }

@@ -6,6 +6,7 @@ import {
   formatStartupDigest,
   type StartupCheckResult,
 } from './startupHealthScan.js';
+import { logger } from './logger.js';
 
 const DEFAULT_STARTUP_EMAIL = 'khalid@collectrx.ca';
 const digestCooldownMs = () =>
@@ -32,7 +33,7 @@ async function sendDigestEmail(subject: string, text: string, html: string): Pro
   const apiKey = process.env.SENDGRID_API_KEY?.trim();
   const toRaw = startupAlertEmailTo();
   if (!apiKey || !toRaw) {
-    console.warn('[startupAlerts] SENDGRID_API_KEY or email recipient missing — skip email');
+    logger.warn('[startupAlerts] SENDGRID_API_KEY or email recipient missing — skip email', {});
     return false;
   }
   const sg = await import('@sendgrid/mail');
@@ -60,21 +61,21 @@ export async function sendStartupFailureDigest(
 ): Promise<{ sent: boolean; failureCount: number }> {
   const failures = failedStartupChecks(results);
   if (failures.length === 0) {
-    console.log('[startupAlerts] Startup scan OK — no email sent');
+    logger.info('[startupAlerts] Startup scan OK — no email sent', {});
     return { sent: false, failureCount: 0 };
   }
 
   if (!startupEmailAlertsEnabled()) {
-    console.warn(
-      `[startupAlerts] ${failures.length} issue(s) but email disabled (set SENDGRID_API_KEY + STARTUP_ALERT_EMAIL_TO)`,
-    );
-    failures.forEach((f) => console.warn(`  ✗ ${f.label}: ${f.detail ?? ''}`));
+    logger.warn('[startupAlerts] issue(s) found but email disabled (set SENDGRID_API_KEY + STARTUP_ALERT_EMAIL_TO)', {
+      failureCount: failures.length,
+      failures: failures.map((f) => ({ label: f.label, detail: f.detail ?? '' })),
+    });
     return { sent: false, failureCount: failures.length };
   }
 
   const now = Date.now();
   if (now - lastDigestSentAt < digestCooldownMs()) {
-    console.log('[startupAlerts] Cooldown active — skip duplicate startup email');
+    logger.info('[startupAlerts] Cooldown active — skip duplicate startup email', {});
     return { sent: false, failureCount: failures.length };
   }
 
@@ -82,10 +83,13 @@ export async function sendStartupFailureDigest(
   try {
     await sendDigestEmail(subject, text, html);
     lastDigestSentAt = now;
-    console.log(`[startupAlerts] Sent startup digest (${failures.length} issues) → ${startupAlertEmailTo()}`);
+    logger.info('[startupAlerts] Sent startup digest', {
+      failureCount: failures.length,
+      to: startupAlertEmailTo(),
+    });
     return { sent: true, failureCount: failures.length };
   } catch (err) {
-    console.error('[startupAlerts] Email failed:', (err as Error).message);
+    logger.error('[startupAlerts] Email failed', { error: err });
     return { sent: false, failureCount: failures.length };
   }
 }

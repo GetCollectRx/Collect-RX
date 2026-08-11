@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { strictLimiter } from '../middleware/rateLimiter';
+import { logger } from '../observability/logger.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -52,12 +53,12 @@ export function createEarlyAccessRouter(prisma: PrismaClient): Router {
         },
       });
     } catch (e) {
-      console.error('[POST /api/early-access] db error', e);
+      logger.error('[POST /api/early-access] db error', { error: e });
       return res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
     }
 
     notifyEarlyAccessRequest({ name, email, practiceName, phone, intent, message }).catch((e) => {
-      console.error('[POST /api/early-access] notify error', e);
+      logger.error('[POST /api/early-access] notify error', { error: e });
     });
 
     res.status(201).json({ success: true });

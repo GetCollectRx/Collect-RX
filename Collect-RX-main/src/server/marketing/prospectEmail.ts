@@ -2,6 +2,7 @@ import { createRequire } from 'module';
 import type { Prospect, PrismaClient } from '@prisma/client'
 import { logProspectActivity } from './prospectActivity.js';
 import { buildProspectUnsubscribeUrl } from '../email/unsubscribeUrl.js';
+import { logger } from '../observability/logger.js';
 
 const require = createRequire(import.meta.url);
 
@@ -32,7 +33,7 @@ export async function sendProspectEmail(
   const replyTo = process.env.SENDGRID_REPLY_TO || 'reply@inbound.collectrx.ca';
 
   if (!sg) {
-    console.log('[prospectEmail] SENDGRID_API_KEY unset — would send to', prospect.email, opts.subject);
+    logger.info('[prospectEmail] SENDGRID_API_KEY unset — would send', { to: prospect.email, subject: opts.subject });
     if (prisma) {
       await logProspectActivity(prisma, prospect.id, opts.activityType, `[dev] ${opts.subject}`);
     }
@@ -73,7 +74,7 @@ export async function sendProspectEmail(
     }
     return true;
   } catch (err) {
-    console.error('[prospectEmail] send failed', (err as Error).message);
+    logger.error('[prospectEmail] send failed', { error: err });
     return false;
   }
 }

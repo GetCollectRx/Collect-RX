@@ -2,6 +2,7 @@
  * Send a password reset email via SendGrid.
  * Falls back to console logging when SENDGRID_API_KEY is not configured.
  */
+import { logger } from '../observability/logger.js';
 
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -39,10 +40,10 @@ export async function sendPasswordResetEmail(
   const sg = getSendGrid();
 
   if (!sg) {
-    console.log(
-      `[password-reset] SENDGRID_API_KEY not set — skipping email.\n` +
-      `  Recipient: ${toEmail}\n  Reset URL: ${resetUrl}`,
-    );
+    logger.info('[password-reset] SENDGRID_API_KEY not set — skipping email', {
+      recipient: toEmail,
+      resetUrl,
+    });
     return;
   }
 

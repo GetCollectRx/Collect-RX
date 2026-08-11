@@ -7,6 +7,7 @@ import {
 import type { CdcpDenialReasonCode, ReconsiderationRecord, ReconsiderationStatus, CdcpDeniedClaim, EvidenceSubmissionMethod } from '../services/cdcp/types.js';
 import { upsertReconsiderationFromSignal } from '../canadianExpansion/autoReconsideration.js';
 import { buildPmsT11DenialSignal } from './cdcpRecoveryBridge.js';
+import { logger } from '../observability/logger.js';
 
 export interface CdcpCaseMetadata {
   assignedAdjudicatorId?: string;
@@ -239,7 +240,7 @@ export async function patchCdcpReconsiderationCase(
         notes: nextMeta.notes,
       });
     } catch (err) {
-      console.error('[cdcpPrismaQueue] Failed to send notification:', err);
+      logger.error('[cdcpPrismaQueue] Failed to send notification', { error: err });
     }
   }
 

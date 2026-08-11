@@ -16,6 +16,7 @@ import { canMakeCall } from '../plans/planBridge.js';
 import type { PreVisitJobPayload } from './preVisitJobs.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { tryTelusTx23PreVisit } from './electronicPreVisit.js';
+import { logger } from '../observability/logger.js';
 
 const MAX_PRE_VISIT_ATTEMPTS = 3;
 
@@ -70,7 +71,7 @@ export async function dispatchPreVisitCall(
     practiceId: payload.practiceId,
   });
   if (!phiResult.success || !phiResult.phi) {
-    console.error('[preVisitDispatch] detokenize failed:', phiResult.error ?? 'unknown');
+    logger.error('[preVisitDispatch] detokenize failed', { error: phiResult.error ?? 'unknown' });
     return { skipped: true, reason: 'detokenize_failed' };
   }
   const phi = phiResult.phi;

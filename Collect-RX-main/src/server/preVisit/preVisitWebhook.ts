@@ -12,6 +12,7 @@ import { enqueuePreVisitJob } from './preVisitJobs.js';
 import { isCdcpCarrier, requiresCdcpPredetermination } from './procedureRules.js';
 import { parsePreVisitStructuredData } from './preVisitStructuredOutput.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 const PRE_VISIT_RECALL_DELAY_MS = 4 * 60 * 60 * 1000;
 
@@ -35,7 +36,7 @@ export async function processPreVisitCallEnded(
     }),
   );
   if (!verification) {
-    console.warn(`[preVisitWebhook] verification not found: ${verificationId}`);
+    logger.warn('[preVisitWebhook] verification not found', { verificationId });
     return true;
   }
 
@@ -50,7 +51,9 @@ export async function processPreVisitCallEnded(
 
     const parsed = parsePreVisitStructuredData(sd);
     if (!parsed.valid && Object.keys(sd).length > 0) {
-      console.warn('[preVisitWebhook] structured output parse warnings:', parsed.parseWarnings);
+      logger.warn('[preVisitWebhook] structured output parse warnings', {
+        warnings: parsed.parseWarnings,
+      });
     }
 
     const eligibilityStatus = parsed.eligibilityStatus;
@@ -213,7 +216,7 @@ export async function processPreVisitCallEnded(
           PRE_VISIT_RECALL_DELAY_MS,
         );
       } catch (enqueueErr) {
-        console.error('[preVisitWebhook] failed to enqueue recall job:', enqueueErr);
+        logger.error('[preVisitWebhook] failed to enqueue recall job', { error: enqueueErr });
       }
     }
 

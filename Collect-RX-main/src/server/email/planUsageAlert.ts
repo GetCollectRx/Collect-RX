@@ -1,6 +1,7 @@
 /**
  * Email practice owners (and opted-in staff) when plan usage crosses thresholds.
  */
+import { logger } from '../observability/logger.js';
 
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -33,10 +34,11 @@ export async function sendPlanUsageAlertEmail(opts: {
   ].join('\n');
 
   if (!sg) {
-    console.log(
-      `[plan-usage-alert] SENDGRID_API_KEY not set — skipping email.\n` +
-        `  To: ${opts.toEmail}\n  Subject: ${opts.subject}\n  ${opts.bodyLines.join(' ')}`,
-    );
+    logger.info('[plan-usage-alert] SENDGRID_API_KEY not set — skipping email', {
+      to: opts.toEmail,
+      subject: opts.subject,
+      body: opts.bodyLines.join(' '),
+    });
     return;
   }
 

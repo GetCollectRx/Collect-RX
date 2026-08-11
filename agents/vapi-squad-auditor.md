@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Vapi Squad Auditor Agent
 
 **Purpose:** Audit the 4-agent Vapi squad configuration, system prompts, and call payload for correctness, PHI safety, CRTC disclosure compliance, and clinical accuracy. Run before any prompt change goes live and monthly as a standing check.

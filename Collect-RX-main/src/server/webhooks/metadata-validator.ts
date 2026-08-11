@@ -7,6 +7,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { VapiWebhookPayload } from '../../vapi/client';
+import { logger } from '../observability/logger.js';
 
 export interface MetadataValidationResult {
   valid: boolean;
@@ -80,7 +81,7 @@ export async function validateWebhookMetadata(
         };
       }
     } catch (err) {
-      console.error('[webhook-validator] Error validating claimId:', err);
+      logger.error('[webhook-validator] Error validating claimId', { error: err });
       // If DB lookup fails, let it pass — downstream handler will fail gracefully
       return { valid: true };
     }
@@ -118,7 +119,7 @@ export async function validateWebhookMetadata(
       };
     }
   } catch (err) {
-    console.error('[webhook-validator] Error validating vapiCallId:', err);
+    logger.error('[webhook-validator] Error validating vapiCallId', { error: err });
     return { valid: true };
   }
 
