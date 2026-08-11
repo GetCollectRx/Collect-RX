@@ -435,7 +435,7 @@
       {
         "assistant": {
           "name": "Escalation_Closer",
-          "firstMessage": "Thank you for that information. I will make sure our clinical team follows up with the required documentation. Can I get a reference number for this call and your name?",
+          "firstMessage": "{{#if reference_number}}Thank you for that information. I have your reference number and name on file — I will make sure our clinical team follows up with the required documentation.{{else}}Thank you for that information. I will make sure our clinical team follows up with the required documentation. Can I get a reference number for this call and your name?{{/if}}",
           "firstMessageMode": "assistant-speaks-first",
           "model": {
             "provider": "anthropic",

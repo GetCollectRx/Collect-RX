@@ -8,6 +8,9 @@
 // `npm run eval:conversation-robustness`.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import {
   CONVERSATION_ROBUSTNESS_SCENARIOS,
@@ -15,6 +18,18 @@ import {
   renderTemplate,
   ROBUSTNESS_EVAL_FIXTURE_VARS,
 } from '../../src/services/analytics/conversation-robustness-eval';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SQUAD_CONFIG_PATH = join(__dirname, '../../vapi-squad-config.json');
+
+function getEscalationCloserFirstMessage(): string {
+  const config = JSON.parse(readFileSync(SQUAD_CONFIG_PATH, 'utf-8')) as {
+    squad: { members: Array<{ assistant: { name: string; firstMessage: string } }> };
+  };
+  const escalationCloser = config.squad.members.find((m) => m.assistant.name === 'Escalation_Closer');
+  if (!escalationCloser) throw new Error('Escalation_Closer not found in squad config');
+  return escalationCloser.assistant.firstMessage;
+}
 
 describe('CONVERSATION_ROBUSTNESS_SCENARIOS', () => {
   it('has a non-trivial library of unexpected-response scenarios', () => {
@@ -200,5 +215,25 @@ describe('new known-channel scenarios', () => {
       'Can you tell me exactly what documentation is needed and the best way to submit it?',
     );
     expect(baselinePrompt.systemPrompt).not.toContain('Our records show documentation for');
+  });
+});
+
+describe('Escalation_Closer does not re-ask for info already handed off from Claims_Agent', () => {
+  // Found via a manual bot-vs-bot style walkthrough: Escalation_Closer's
+  // firstMessage always asked "can I get a reference number and your name?"
+  // even when Claims_Agent had already captured and handed off both —
+  // visibly redundant on a live call (the rep notices and points it out).
+  const template = getEscalationCloserFirstMessage();
+
+  it('skips the re-ask when reference_number is already known from the handoff', () => {
+    const rendered = renderTemplate(template, { reference_number: 'R8841D' });
+    expect(rendered).not.toContain('Can I get a reference number');
+    expect(rendered).not.toMatch(/\{\{/);
+  });
+
+  it('still asks once when reference_number was not captured by Claims_Agent', () => {
+    const rendered = renderTemplate(template, {});
+    expect(rendered).toContain('Can I get a reference number for this call and your name?');
+    expect(rendered).not.toMatch(/\{\{/);
   });
 });
