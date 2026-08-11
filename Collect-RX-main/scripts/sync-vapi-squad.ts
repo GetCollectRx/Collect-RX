@@ -22,7 +22,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// import.meta.dirname requires Node 20.11+/21.2+ and is undefined on older
+// runtimes, which makes path.join() below throw "Cannot read properties of
+// undefined (reading 'length')" with no indication why. fileURLToPath is
+// portable back to Node 10.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface SquadConfig {
   squad: {
@@ -37,7 +44,7 @@ interface LiveAssistant {
   [key: string]: unknown;
 }
 
-const CONFIG_PATH = join(import.meta.dirname, '..', 'vapi-squad-config.json');
+const CONFIG_PATH = join(__dirname, '..', 'vapi-squad-config.json');
 
 // Fields Vapi assigns/manages server-side — never present in our source
 // config, and never something we diff or push. Anything not in this list is
@@ -203,6 +210,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exitCode = 1;
 });
