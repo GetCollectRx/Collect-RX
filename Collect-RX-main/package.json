@@ -71,6 +71,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx src/server/seed.ts",
     "demo:seed": "tsx scripts/seed-demo.ts",
+    "demo:call": "node demo-agent-call.cjs",
     "validate:logins": "node scripts/validate-logins.mjs",
     "personas:reset-passwords": "node scripts/set-persona-test-passwords.mjs",
     "db:reset": "prisma migrate reset",
