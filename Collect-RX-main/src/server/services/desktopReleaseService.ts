@@ -5,6 +5,7 @@ import {
   proxyDesktopAssetUrl,
   type DesktopReleaseInfo,
 } from '../../lib/desktopReleases.js';
+import { logger } from '../observability/logger.js';
 
 const GITHUB_REPO = 'GetCollectRx/Collect-RX';
 const PINNED_RELEASE_TAG = process.env.DESKTOP_RELEASE_TAG?.trim() || '';
@@ -66,7 +67,7 @@ function githubHeaders(accept = 'application/vnd.github+json'): Record<string, s
 async function fetchGithubRelease(url: string): Promise<GithubRelease | null> {
   const res = await fetch(url, { headers: githubHeaders() });
   if (!res.ok) {
-    console.error('[desktop/releases] GitHub API', res.status, url.replace(GITHUB_REPO, '***'));
+    logger.error('[desktop/releases] GitHub API', { status: res.status, url: url.replace(GITHUB_REPO, '***') });
     return null;
   }
   return (await res.json()) as GithubRelease;
@@ -158,7 +159,7 @@ export async function streamGithubReleaseAsset(
 
   const asset = await findGithubAsset(fileName);
   if (!asset) {
-    console.error('[desktop/releases] asset not in release:', fileName);
+    logger.error('[desktop/releases] asset not in release', { error: fileName });
     return null;
   }
 
@@ -167,7 +168,7 @@ export async function streamGithubReleaseAsset(
     { headers: githubHeaders('application/octet-stream'), redirect: 'follow' },
   );
   if (!res.ok || !res.body) {
-    console.error('[desktop/releases] asset stream', res.status, fileName);
+    logger.error('[desktop/releases] asset stream', { status: res.status, fileName });
     return null;
   }
 

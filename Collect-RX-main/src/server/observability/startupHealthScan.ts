@@ -5,6 +5,8 @@ import { readdirSync } from 'fs';
 import { join } from 'path';
 import type { PrismaClient } from '@prisma/client';
 import { getAlertDefinition } from './alertCatalog.js';
+import { opsAlertsEnabled } from './opsAlerts.js';
+import { opsMonitorEnabled } from './opsMonitor.js';
 
 export interface StartupCheckResult {
   id: string;
@@ -47,6 +49,8 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
       ok: vapi,
       detail: vapi ? 'set' : 'required in production',
     });
+
+    results.push(checkOpsAlertingConfigured());
   }
 
   try {
@@ -95,6 +99,40 @@ export async function runInternalStartupChecks(prisma: PrismaClient): Promise<St
   results.push(await checkMigrationDrift(prisma));
 
   return results;
+}
+
+/**
+ * Reuses the real `opsAlertsEnabled()`/`opsMonitorEnabled()` gates rather than
+ * re-deriving on/off from raw env vars — both now default on in production,
+ * so a second, independent truthy-check here would silently drift out of
+ * sync with the actual gates (reporting "missing OPS_MONITOR_ENABLED" for a
+ * production boot where monitoring is in fact already running by default).
+ * This check's own delivery path is still independent of OPS_ALERTS_ENABLED:
+ * it rides the startup digest email (SendGrid + STARTUP_ALERT_EMAIL_TO), not
+ * the ops-alert dispatch channel it's reporting on.
+ */
+export function checkOpsAlertingConfigured(): StartupCheckResult {
+  const monitorOn = opsMonitorEnabled();
+  const alertsOn = opsAlertsEnabled();
+  const hasSmsChannel = Boolean(
+    process.env.ALERT_SMS_TO && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN,
+  );
+  const hasEmailChannel = Boolean(process.env.OPS_ALERT_EMAIL_TO && process.env.SENDGRID_API_KEY);
+  const hasWebhookChannel = Boolean(process.env.OPS_ALERT_WEBHOOK_URL);
+  const hasChannel = hasSmsChannel || hasEmailChannel || hasWebhookChannel;
+  const ok = monitorOn && alertsOn && hasChannel;
+
+  const missing: string[] = [];
+  if (!monitorOn) missing.push('OPS_MONITOR_ENABLED');
+  if (!alertsOn) missing.push('OPS_ALERTS_ENABLED');
+  if (!hasChannel) missing.push('a delivery channel (ALERT_SMS_TO+Twilio, OPS_ALERT_EMAIL_TO+SendGrid, or OPS_ALERT_WEBHOOK_URL)');
+
+  return {
+    id: 'ops_alerting_disabled',
+    label: 'Ongoing ops alerting configured',
+    ok,
+    detail: ok ? 'monitor + alerts + at least one channel configured' : `missing: ${missing.join(', ')}`,
+  };
 }
 
 /**

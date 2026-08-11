@@ -13,6 +13,7 @@ import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { getPracticePmsContext } from '../pms/practicePmsContext.js';
 import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -40,7 +41,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       try {
         await syncWorkItemsForPractice(prisma, practiceId);
       } catch (syncErr) {
-        console.warn('[GET /dashboard/stats] work queue bootstrap failed:', (syncErr as Error).message);
+        logger.warn('[GET /dashboard/stats] work queue bootstrap failed', { error: syncErr });
       }
     }
 
@@ -153,7 +154,7 @@ router.get('/stats', async (req: Request, res: Response) => {
         .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
         .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
     } catch (carrierStatsErr) {
-      console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
+      logger.warn('[GET /dashboard/stats] carrier trend check failed', { error: carrierStatsErr });
     }
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
@@ -163,7 +164,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
       revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
     } catch (recoveryErr) {
-      console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
+      logger.warn('[GET /dashboard/stats] recovery metrics failed', { error: recoveryErr });
     }
 
     return res.json({
@@ -200,7 +201,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /dashboard/stats]', err);
+    logger.error('[GET /dashboard/stats]', { error: err });
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021') {
       return res.status(503).json({
         error:
@@ -235,7 +236,7 @@ router.get('/ar-close', async (req: Request, res: Response) => {
       })),
     });
   } catch (err) {
-    console.error('[GET /dashboard/ar-close]', err);
+    logger.error('[GET /dashboard/ar-close]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -247,7 +248,7 @@ router.post('/ar-close/run', async (req: Request, res: Response) => {
     const result = await runDailyArCloseForPractice(prisma, practiceId);
     return res.json({ success: true, data: result });
   } catch (err) {
-    console.error('[POST /dashboard/ar-close/run]', err);
+    logger.error('[POST /dashboard/ar-close/run]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -335,7 +336,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /dashboard/setup-status]', err);
+    logger.error('[GET /dashboard/setup-status]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

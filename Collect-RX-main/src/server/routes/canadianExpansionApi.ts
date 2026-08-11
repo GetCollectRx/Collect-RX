@@ -32,6 +32,7 @@ import {
 import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { practiceIdFromSession } from '../middleware/requirePracticeSession.js';
+import { logger } from '../observability/logger.js';
 
 function practiceId(req: Request): string {
   return practiceIdFromSession(req);
@@ -47,7 +48,7 @@ function handleError(label: string, e: unknown, res: Response): Response {
       return res.status(409).json({ error: 'A record with this identifier already exists' });
     }
   }
-  console.error(label, e);
+  logger.error(label, { error: e });
   return res.status(500).json({ error: `${label} failed` });
 }
 

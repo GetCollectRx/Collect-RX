@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { isUserSession, type UserAuthPayload } from '../accessControl/types.js'
+import { logger } from '../observability/logger.js';
 
 /**
  * P5-04: append-only audit. Do not put names, free-text PHI, or full request bodies in `details`.
@@ -53,7 +54,7 @@ export async function appendAuditLog(
       },
     });
   } catch (e) {
-    console.error('[audit] append failed (non-fatal)', { action: input.action, err: (e as Error).message });
+    logger.error('[audit] append failed (non-fatal)', { action: input.action, error: e });
   }
 }
 
@@ -73,9 +74,9 @@ export async function appendPhiAccessEvent(
   try {
     await prisma.phiAccessEvent.create({ data: input });
   } catch (e) {
-    console.error('[audit] PHI access event append failed (non-fatal)', {
+    logger.error('[audit] PHI access event append failed (non-fatal)', {
       operation: input.operation,
-      err: (e as Error).message,
+      error: e,
     });
   }
 }

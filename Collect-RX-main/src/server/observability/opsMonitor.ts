@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { getMetrics } from './metrics.js';
 import { dispatchOpsAlert } from './opsAlerts.js';
+import { logger } from './logger.js';
 import {
   getQueueHealth,
   evaluateQueueHealthAlerts,
@@ -13,8 +14,16 @@ import {
 
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Same three-state defaulting as `opsAlertsEnabled()` — see its comment for why. */
+export function opsMonitorEnabled(): boolean {
+  const raw = (process.env.OPS_MONITOR_ENABLED || '').trim().toLowerCase();
+  if (['1', 'true', 'yes'].includes(raw)) return true;
+  if (['0', 'false', 'no'].includes(raw)) return false;
+  return process.env.NODE_ENV === 'production';
+}
+
 export function startOpsMonitor(prisma: PrismaClient): void {
-  if (!['1', 'true', 'yes'].includes((process.env.OPS_MONITOR_ENABLED || '').trim().toLowerCase())) {
+  if (!opsMonitorEnabled()) {
     return;
   }
 
@@ -69,7 +78,7 @@ export function startOpsMonitor(prisma: PrismaClient): void {
         });
       }
     } catch (err) {
-      console.error('[opsMonitor] queue health check failed:', err);
+      logger.error('[opsMonitor] queue health check failed', { error: err });
     }
   };
 
@@ -78,5 +87,5 @@ export function startOpsMonitor(prisma: PrismaClient): void {
     void tick();
   }, intervalMs).unref?.();
 
-  console.log(`[opsMonitor] Started (interval ${intervalMs}ms)`);
+  logger.info('[opsMonitor] Started', { intervalMs });
 }

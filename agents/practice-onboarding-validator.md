@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Practice Onboarding Validator Agent
 
 **Purpose:** Validate that a new practice is fully configured and ready to go live before the first call is placed. Nothing goes live without passing this checklist. Run once per new practice at the end of onboarding.

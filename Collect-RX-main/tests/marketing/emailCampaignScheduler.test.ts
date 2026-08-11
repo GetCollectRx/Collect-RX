@@ -1,53 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prospect, PrismaClient } from '@prisma/client';
+import { makeProspect } from '../factories/prospect.js';
 
 vi.mock('../../src/server/marketing/prospectEmail.js', () => ({
   sendProspectEmail: vi.fn(),
 }));
 
-const baseProspect: Prospect = {
-  id: 'p1',
-  practiceName: 'Downtown Dental',
+const baseProspect: Prospect = makeProspect({
   contactName: 'Dr. Jane Smith',
-  email: 'office@downtown.ca',
-  phone: '4165550100',
-  city: 'Toronto',
-  province: 'ON',
-  website: null,
-  googlePlaceId: null,
-  score: 80,
   stage: 'new',
-  source: 'harvest',
-  pmsHint: null,
   sequenceStep: 0,
-  sequencePausedUntil: null,
-  sequenceCompleted: false,
-  referralStep: 0,
-  referralCompleted: false,
-  emailOpenCount: 0,
-  emailClickCount: 0,
-  lastEmailSentAt: null,
-  lastEngagedAt: null,
-  closedWonAt: null,
-  demoScheduledAt: null,
-  preDemoEmailSentAt: null,
-  dnclCheckedAt: null,
-  dnclListed: null,
-  hubspotDealId: null,
   campaignId: 'camp1',
-  linkedPracticeId: null,
-  optOutAt: null,
-  trialStartedAt: null,
-  trialSequenceStep: 0,
-  callSummary: null,
-  replyIntent: null,
-  suggestedReply: null,
-  painPoints: null,
-  metadata: null,
-  lastVapiCallId: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+});
 
 function mockPrisma(prospects: Prospect[] = [baseProspect]) {
   return {

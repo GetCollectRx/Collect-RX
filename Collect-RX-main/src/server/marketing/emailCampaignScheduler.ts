@@ -2,6 +2,7 @@ import type { Prospect, PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
 import { sendProspectEmail } from './prospectEmail.js';
 import { renderEmailTemplate, type EmailTemplateData } from './emailCampaignTemplates.js';
+import { logger } from '../observability/logger.js';
 
 const MAX_EMAILS_PER_BATCH = 10; // Rate limit: max 10 emails per scheduler run
 
@@ -163,20 +164,20 @@ export function startEmailCampaignScheduler(prisma: PrismaClient): void {
     runEmailCampaignScheduler(prisma)
       .then((result) => {
         if (result.configError) {
-          console.error(`[emailCampaignScheduler] not sending — ${result.configError}`);
+          logger.error('[emailCampaignScheduler] not sending', { configError: result.configError });
           return;
         }
         if (result.sent > 0) {
-          console.log(`[emailCampaignScheduler] Sent ${result.sent} emails, scheduled ${result.scheduled} follow-ups`);
+          logger.info('[emailCampaignScheduler] Sent emails', { sent: result.sent, scheduled: result.scheduled });
         }
         if (result.errors.length > 0) {
-          console.error(`[emailCampaignScheduler] ${result.errors.length} errors:`, result.errors);
+          logger.error('[emailCampaignScheduler] errors', { errors: result.errors });
         }
       })
       .catch((err) => {
-        console.error('[emailCampaignScheduler] cycle error:', (err as Error).message);
+        logger.error('[emailCampaignScheduler] cycle error', { error: err });
       });
   });
 
-  console.log('[emailCampaignScheduler] Cron scheduled: every 5 minutes');
+  logger.info('[emailCampaignScheduler] Cron scheduled: every 5 minutes', {});
 }

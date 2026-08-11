@@ -17,6 +17,7 @@ import {
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { carrierUnblockBodySchema, formatZodError } from '../server/validation/zodSchemas.js';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -128,7 +129,7 @@ router.get('/health', async (req: Request, res: Response) => {
       window: { from: from.toISOString(), to: to.toISOString() },
     });
   } catch (err) {
-    console.error('[GET /carriers/health]', err);
+    logger.error('[GET /carriers/health]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -195,7 +196,11 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       data: { status: 'PENDING' },
     });
 
-    console.log(`[carriers/unblock] ${carrierId} unblocked by ${resumedBy}. ${updateResult.count} block event(s) resolved.`);
+    logger.info('[carriers/unblock] carrier unblocked', {
+      carrierId,
+      resumedBy,
+      blockEventsResolved: updateResult.count,
+    });
 
     return res.json({
       success: true,
@@ -203,7 +208,7 @@ router.post('/:id/unblock', async (req: Request, res: Response) => {
       blocksResolved: updateResult.count,
     });
   } catch (err) {
-    console.error('[POST /carriers/:id/unblock]', err);
+    logger.error('[POST /carriers/:id/unblock]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

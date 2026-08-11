@@ -1,6 +1,7 @@
 import type { ClaimStatus, PrismaClient, RecoveryRoute, Prisma } from '@prisma/client';
 import { routeForSyncPaymentVerified } from './claimRouter.js';
 import { enqueueEmrClaimEvent } from '../emrSyncOutbox.js';
+import { logger } from '../observability/logger.js';
 
 export type RecoveryTransitionKind =
   | 'GATE_CLEARED'
@@ -203,7 +204,7 @@ export async function transitionClaimRecovery(
           },
         });
       } catch (emrErr) {
-        console.error('[transitionClaimRecovery] EMR outbox:', emrErr);
+        logger.error('[transitionClaimRecovery] EMR outbox', { error: emrErr });
       }
     }
 
@@ -260,7 +261,7 @@ export async function transitionClaimRecovery(
         },
       });
     } catch (emrErr) {
-      console.error('[transitionClaimRecovery] EMR outbox:', emrErr);
+      logger.error('[transitionClaimRecovery] EMR outbox', { error: emrErr });
     }
 
     return {

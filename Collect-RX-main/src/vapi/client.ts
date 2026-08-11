@@ -34,6 +34,7 @@
 
 import { CarrierId } from '@prisma/client';
 import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
+import { vapiCircuitBreaker } from './circuitBreaker.js';
 
 /**
  * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
@@ -220,23 +221,25 @@ async function vapiRequest<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const url = `${VAPI_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+  return vapiCircuitBreaker.execute(async () => {
+    const url = `${VAPI_BASE_URL}${path}`;
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '(no body)');
+      throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
+    }
+
+    return res.json() as Promise<T>;
   });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '(no body)');
-    throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
-  }
-
-  return res.json() as Promise<T>;
 }
 
 // ---------------------------------------------------------------------------

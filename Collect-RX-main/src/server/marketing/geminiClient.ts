@@ -1,4 +1,5 @@
 /** Shared Gemini helper for partnerships marketing AI features. */
+import { logger } from '../observability/logger.js';
 export async function runGeminiPrompt(prompt: string): Promise<string | null> {
   const key = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
   if (!key) return null;
@@ -12,7 +13,7 @@ export async function runGeminiPrompt(prompt: string): Promise<string | null> {
     const text = result.response.text()?.trim();
     return text || null;
   } catch (err) {
-    console.error('[marketing/gemini]', (err as Error).message);
+    logger.error('[marketing/gemini]', { error: err });
     return null;
   }
 }
@@ -25,7 +26,7 @@ export async function runGeminiJson<T>(prompt: string): Promise<T | null> {
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    console.warn('[marketing/gemini] failed to parse JSON response');
+    logger.warn('[marketing/gemini] failed to parse JSON response', {});
     return null;
   }
 }

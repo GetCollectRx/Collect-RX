@@ -20,6 +20,7 @@ import { verifyProspectUnsubscribeRequest } from '../email/unsubscribeUrl.js';
 import { isValidPublicUuid, publicJsonError } from '../publicApiHelpers.js';
 import { optOutProspect } from '../marketing/prospectEngagement.js';
 import { publicLimiter } from '../middleware/rateLimiter.js';
+import { logger } from '../observability/logger.js';
 
 function unsubscribePage(message: string): string {
   const safe = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -53,7 +54,7 @@ async function handleProspectUnsubscribe(prisma: PrismaClient, req: Request, res
     if (asHtml) { res.status(200).send(unsubscribePage("You've been unsubscribed. You won't receive further emails from CollectRx.")); return; }
     res.status(200).json({ success: true });
   } catch (err) {
-    console.error('[prospect-unsubscribe]', err);
+    logger.error('[prospect-unsubscribe]', { error: err });
     const { status, body } = publicJsonError(
       err,
       'Unsubscribe is temporarily unavailable — please try again shortly.',
