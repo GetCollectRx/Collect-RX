@@ -21,6 +21,17 @@ import type { PracticeRole } from '@prisma/client';
 import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { sendPasswordResetEmail } from '../src/server/email/passwordReset.js';
+
+// Mocked so the "token stored hashed, still round-trips" test below can
+// recover the raw token directly from the call arguments instead of parsing
+// log output — parsing console/logger output for a secret token is coupled
+// to logging internals (format, redaction, structured-vs-plain) that change
+// independently of this behavior and previously made this test CI-flaky.
+vi.mock('../src/server/email/passwordReset.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/server/email/passwordReset.js')>();
+  return { ...actual, sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined) };
+});
 
 let dbReady = false;
 try {
@@ -300,22 +311,19 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
       },
     });
 
-    // passwordReset.ts logs the reset URL (containing the raw token) via the
-    // structured logger.info('[password-reset] ...', { resetUrl }) fallback
-    // when SENDGRID_API_KEY is unset, which is always true in this test env —
-    // spy on console.log (what the structured logger writes JSON lines to)
-    // to recover the raw token the same way an emailed link would.
-    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    // sendPasswordResetEmail() is mocked at the top of this file — recover
+    // the raw token from its call args directly, the same value an emailed
+    // link would carry.
+    const sendEmailMock = vi.mocked(sendPasswordResetEmail);
+    sendEmailMock.mockClear();
 
     const resRequest = await request(app)
       .post('/api/auth/reset-password/request')
       .send({ email: user.email });
     expect(resRequest.status).toBe(200);
 
-    const loggedLine = consoleLogSpy.mock.calls
-      .map((args) => args.join(' '))
-      .find((line) => line.includes('resetUrl'));
-    consoleLogSpy.mockRestore();
+    expect(sendEmailMock, 'expected sendPasswordResetEmail to be invoked').toHaveBeenCalledTimes(1);
+    const [, , rawToken] = sendEmailMock.mock.calls[0];
 
     const stored = await prisma.passwordResetToken.findFirst({
       where: { userId: user.id },
@@ -324,11 +332,6 @@ describe.skipIf(!dbReady)('Adversarial Multi-Tenant Isolation', () => {
     expect(stored).not.toBeNull();
     // 64 lowercase hex chars = a SHA-256 digest, not the raw 32-byte-hex token.
     expect(stored!.token).toMatch(/^[0-9a-f]{64}$/);
-
-    expect(loggedLine, 'expected password-reset console fallback to have logged the reset URL').toBeDefined();
-    const match = loggedLine!.match(/token=([0-9a-f]+)/);
-    expect(match, 'expected reset URL to contain a hex token query param').not.toBeNull();
-    const rawToken = decodeURIComponent(match![1]);
 
     // The raw token must NOT equal what's stored — proves storage isn't plaintext.
     expect(stored!.token).not.toBe(rawToken);
