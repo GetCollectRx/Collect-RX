@@ -85,6 +85,13 @@ function safeMetaValue(key: string, value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((v) => (typeof v === 'string' ? redactString(v) : v));
   }
+  // Error.message/.stack are non-enumerable, so Object.entries (what safeMeta
+  // does below) silently returns {} for any Error not passed through the
+  // dedicated `error` key on logger.error() — e.g. logger.warn(msg, { cause:
+  // someError }). Serialize explicitly so those don't lose PHI redaction.
+  if (value instanceof Error) {
+    return { name: value.name, message: redactString(value.message), stack: value.stack };
+  }
   if (value && typeof value === 'object') {
     return safeMeta(value as Record<string, unknown>);
   }
