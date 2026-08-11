@@ -122,6 +122,7 @@ function diffValues(path: string, repoVal: unknown, liveVal: unknown, out: strin
     return;
   }
   const truncate = (v: unknown) => {
+    if (v === undefined) return '(missing)';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
     return s.length > 120 ? `${s.slice(0, 117)}...` : s;
   };
