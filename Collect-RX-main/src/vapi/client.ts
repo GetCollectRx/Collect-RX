@@ -235,12 +235,22 @@ const VAPI_HTTP_TIMEOUT_MS = Math.max(5_000, Number(process.env.VAPI_HTTP_TIMEOU
  * immediate auto-retry that could dial the carrier twice.
  */
 export class VapiAmbiguousOutcomeError extends Error {
+  /**
+   * The original fetch failure (TimeoutError/AbortError/etc.) this wraps.
+   * vapiCircuitBreaker's failure-reason classifier reads this to tell a
+   * timeout from a generic network error, which it can no longer do from
+   * this wrapper's own .name alone. A plain property rather than the ES2022
+   * Error `cause` option — this project's tsconfig lib is capped at ES2020.
+   */
+  readonly originalCause: unknown;
+
   constructor(method: string, path: string, cause: unknown) {
     super(
       `[VapiClient] ${method} ${path} — no response received (timeout or network failure); ` +
         `Vapi call may or may not have been created: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
     this.name = 'VapiAmbiguousOutcomeError';
+    this.originalCause = cause;
   }
 }
 
