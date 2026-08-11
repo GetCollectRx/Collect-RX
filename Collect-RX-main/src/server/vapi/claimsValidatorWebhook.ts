@@ -18,6 +18,7 @@ import { createHash } from 'crypto';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { runWithRlsBypass } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 export interface ValidatorExtractedFacts {
   claimNumber: string;
@@ -480,7 +481,7 @@ export async function runClaimsValidation(
   try {
     await applyDeadlineFromFacts(prisma, attempt.claim.id, input.extractedFacts);
   } catch (deadlineErr) {
-    console.error('[validator] deadline stamping failed (non-fatal):', deadlineErr);
+    logger.error('[validator] deadline stamping failed (non-fatal)', { error: deadlineErr });
   }
 
   if (!result.passed) {
@@ -504,7 +505,7 @@ export async function runClaimsValidation(
         severity: result.carrierBlockRisk === 'HIGH' ? 'critical' : 'warning',
       });
     } catch (notifErr) {
-      console.error('[validator] Practice notification failed (non-fatal):', notifErr);
+      logger.error('[validator] Practice notification failed (non-fatal)', { error: notifErr });
     }
 
     return { status: 'escalated', result };
@@ -571,7 +572,7 @@ export async function handleClaimsValidatorWebhook(
       });
     }
   } catch (err) {
-    console.error('[validator-webhook] Error:', err);
+    logger.error('[validator-webhook] Error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 }

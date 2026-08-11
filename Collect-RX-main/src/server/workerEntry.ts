@@ -12,6 +12,7 @@ import express from 'express';
 import IORedis from 'ioredis';
 import { prisma } from '../lib/prisma.js';
 import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
+import { runWithCorrelationId } from './observability/correlationContext.js';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
@@ -22,16 +23,28 @@ import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisi
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
 import { runDataRetentionAcrossPractices } from './jobs/dataRetentionJob.js';
+import { dispatchOpsAlert } from './observability/opsAlerts.js';
+import {
+  shouldAlertOnJobExhaustion,
+  buildJobFailureAlertDetail,
+  resolveJobCorrelationId,
+} from './jobs/jobFailureAlert.js';
+import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
+import { runAgent } from './jobs/agentRunnerService.js';
+import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
 
 if (!process.env.REDIS_URL) {
-  console.error(
-    'worker: REDIS_URL is required.\n' +
-      '  Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env:\n' +
-      '    REDIS_URL=redis://127.0.0.1:6379\n' +
-      '  Without Redis: rules + reminders run in-process inside `npm run dev` (no worker process).\n' +
-      '  One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
+  logger.error(
+    'worker: REDIS_URL is required',
+    {
+      hint:
+        'Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env: ' +
+        'REDIS_URL=redis://127.0.0.1:6379. Without Redis: rules + reminders run in-process inside `npm run dev` ' +
+        '(no worker process). One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
+    },
   );
   process.exit(1);
 }
@@ -67,14 +80,15 @@ healthApp.get('/api/health/ready', async (_req, res) => {
   }
 });
 const healthServer = healthApp.listen(healthPort, () => {
-  console.log(`[worker] health endpoint listening on port ${healthPort}`);
+  logger.info('[worker] health endpoint listening', { healthPort });
 });
 healthServer.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(
-      `[worker] port ${healthPort} already in use (API may be on ${parseInt(process.env.PORT ?? '3000', 10)}). ` +
-        'Stop the other process or set WORKER_HEALTH_PORT.',
-    );
+    logger.error('[worker] health port already in use', {
+      healthPort,
+      apiPort: parseInt(process.env.PORT ?? '3000', 10),
+      hint: 'Stop the other process or set WORKER_HEALTH_PORT.',
+    });
     process.exit(1);
   }
   throw err;
@@ -93,13 +107,13 @@ async function handlePreVisitEligibility(db: PrismaClient, payload: PreVisitJobP
       Math.max(0, result.retryAt.getTime() - Date.now()),
       `window:${result.retryAt.toISOString()}`,
     );
-    console.warn('[worker] PRE_VISIT_ELIGIBILITY deferred:', result.reason);
+    logger.warn('[worker] PRE_VISIT_ELIGIBILITY deferred', { reason: result.reason });
     return;
   }
   if ('skipped' in result) {
-    console.log('[worker] PRE_VISIT_ELIGIBILITY skipped:', result.reason);
+    logger.info('[worker] PRE_VISIT_ELIGIBILITY skipped', { reason: result.reason });
   } else {
-    console.log('[worker] PRE_VISIT_ELIGIBILITY dispatched:', result.vapiCallId);
+    logger.info('[worker] PRE_VISIT_ELIGIBILITY dispatched', { vapiCallId: result.vapiCallId });
   }
 }
 
@@ -114,13 +128,13 @@ async function handlePreVisitCdcpPredet(db: PrismaClient, payload: PreVisitJobPa
       Math.max(0, result.retryAt.getTime() - Date.now()),
       `window:${result.retryAt.toISOString()}`,
     );
-    console.warn('[worker] PRE_VISIT_CDCP_PREDET deferred:', result.reason);
+    logger.warn('[worker] PRE_VISIT_CDCP_PREDET deferred', { reason: result.reason });
     return;
   }
   if ('skipped' in result) {
-    console.log('[worker] PRE_VISIT_CDCP_PREDET skipped:', result.reason);
+    logger.info('[worker] PRE_VISIT_CDCP_PREDET skipped', { reason: result.reason });
   } else {
-    console.log('[worker] PRE_VISIT_CDCP_PREDET dispatched:', result.vapiCallId);
+    logger.info('[worker] PRE_VISIT_CDCP_PREDET dispatched', { vapiCallId: result.vapiCallId });
   }
 }
 
@@ -129,39 +143,45 @@ async function handlePreVisitTelusTx23(db: PrismaClient, payload: PreVisitJobPay
     dispatchTelusTx23Check(db, payload),
   );
   if (result.resolved) {
-    console.log('[worker] PRE_VISIT_TELUS_TX23 resolved');
+    logger.info('[worker] PRE_VISIT_TELUS_TX23 resolved', {});
   } else {
-    console.log('[worker] PRE_VISIT_TELUS_TX23 unresolved:', result.reason);
+    logger.info('[worker] PRE_VISIT_TELUS_TX23 unresolved', { reason: result.reason });
   }
 }
 
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
-    await runWithRlsBypass(async () => {
+    const correlationId = resolveJobCorrelationId(job.data as { correlationId?: string } | undefined);
+
+    await runWithCorrelationId(correlationId, () =>
+    runWithRlsBypass(async () => {
       if (job.name === 'RULES_TICK') {
         await runRulesEngineTick(prisma);
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
-        console.log(`[worker] TRIAGE_CREDENTIAL_HEALTH checked ${checked} credential(s)`);
+        logger.info('[worker] TRIAGE_CREDENTIAL_HEALTH checked credentials', { checked });
       } else if (job.name === 'DATA_RETENTION') {
         const results = await runDataRetentionAcrossPractices(prisma);
         const ran = results.filter((r) => r.ran);
         const errored = results.filter((r) => r.errors.length > 0);
         if (ran.length > 0 || errored.length > 0) {
-          console.log(
-            `[worker] DATA_RETENTION ran for ${ran.length} practice(s): ` +
-              `${ran.reduce((s, r) => s + r.claimsPurged, 0)} claim(s), ` +
-              `${ran.reduce((s, r) => s + r.auditLogRowsPurged, 0)} audit log row(s), ` +
-              `${ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0)} PHI access event row(s) purged` +
-              (errored.length > 0 ? `; ${errored.length} practice(s) hit errors` : ''),
-          );
+          logger.info('[worker] DATA_RETENTION completed', {
+            practicesRan: ran.length,
+            claimsPurged: ran.reduce((s, r) => s + r.claimsPurged, 0),
+            auditLogRowsPurged: ran.reduce((s, r) => s + r.auditLogRowsPurged, 0),
+            phiAccessEventRowsPurged: ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0),
+            practicesErrored: errored.length,
+          });
           for (const r of errored) {
-            console.error(`[worker] DATA_RETENTION errors for practice ${r.practiceId}:`, r.errors);
+            logger.error('[worker] DATA_RETENTION errors for practice', {
+              practiceId: r.practiceId,
+              errors: r.errors,
+            });
           }
         }
       } else if (job.name === 'REMINDER_CYCLE') {
-        console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
+        logger.info('[worker] REMINDER_CYCLE skipped — patient outreach disabled', {});
       } else if (job.name === 'LEARNING_CYCLE') {
         await runLearningCycle(prisma);
       } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
@@ -176,25 +196,112 @@ const worker = new Worker(
         await handlePreVisitTelusTx23(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
         const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
-        if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
+        if (n > 0) logger.info('[worker] APPOINTMENT_VERIFICATION_SWEEP verified appointments', { verified: n });
+      } else if (job.name === 'DLQ_RETENTION_SWEEP') {
+        const pruned = await pruneOldDeadLetters(prisma);
+        if (pruned > 0) logger.info('[worker] DLQ_RETENTION_SWEEP pruned dead letters', { pruned });
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
-    });
+    }));
   },
   { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
 );
 
 worker.on('failed', (job, err) => {
-  console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  logger.error('[worker] job failed', {
+    id: job?.id,
+    name: job?.name,
+    attemptsMade,
+    attemptsAllowed,
+    error: err,
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'worker_job_failed',
+      detail: buildJobFailureAlertDetail(job.name, job.id, attemptsMade, attemptsAllowed, (err as Error).message),
+      source: 'worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch worker_job_failed alert', { error: alertErr });
+    });
+
+    void insertDeadLetter(prisma, {
+      queueName: AR_QUEUE_NAME,
+      jobName: job.name,
+      bullJobId: job.id,
+      payload: job.data,
+      stacktrace: job.stacktrace ?? undefined,
+      finalErrorMessage: (err as Error).message,
+      attemptsMade,
+    }).catch((dlqErr) => {
+      logger.error('[worker] failed to write dead letter record', { error: dlqErr });
+    });
+  }
 });
 
-console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
+logger.info('[worker] listening on queue', { queue: AR_QUEUE_NAME });
+
+// Agent runner worker (separate queue for autonomous agents)
+const agentWorker = new Worker(
+  'agent-runner',
+  async (job) => {
+    const correlationId = job.id ?? 'agent-run-' + Date.now();
+
+    await runWithCorrelationId(correlationId, () =>
+      runWithRlsBypass(async () => {
+        if (job.name === 'AGENT_RUN') {
+          await runAgent(job);
+        } else {
+          throw new Error(`Unknown agent job name: ${job.name}`);
+        }
+      }),
+    );
+  },
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
+);
+
+agentWorker.on('failed', (job, err) => {
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  const agentName = job?.data?.agentName ?? 'unknown';
+
+  logger.error('[worker] agent job failed', {
+    id: job?.id,
+    agentName,
+    attemptsMade,
+    attemptsAllowed,
+    error: String(err),
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'agent_job_failed',
+      detail: `Agent ${agentName} failed after ${attemptsMade} attempts: ${(err as Error).message}`,
+      source: 'agent-worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch agent_job_failed alert', { error: alertErr });
+    });
+  }
+});
+
+agentWorker.on('completed', (job) => {
+  logger.info('[worker] agent job completed', {
+    id: job?.id,
+    agentName: job?.data?.agentName,
+  });
+});
+
+logger.info('[worker] agent runner listening on queue', { queue: 'agent-runner' });
 
 async function shutdown() {
-  console.log('[worker] shutting down...');
+  logger.info('[worker] shutting down', {});
   healthServer.close();
   await worker.close();
+  await agentWorker.close();
+  await closeAgentRunnerQueue();
   await prisma.$disconnect();
   await connection.quit();
   process.exit(0);

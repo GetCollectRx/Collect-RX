@@ -17,6 +17,7 @@ import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { redactPriorityScoreRow } from '../server/accessControl/redaction.js';
 import { appendAuditLog } from '../server/audit/auditLog';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -33,7 +34,7 @@ router.get('/carrier-order', async (req: Request, res: Response) => {
     const order = row ? parseCarrierOrderJson(row.order, DEFAULT_CARRIER_ORDER) : [...DEFAULT_CARRIER_ORDER];
     return res.json({ order });
   } catch (err) {
-    console.error('[GET /queue/carrier-order]', err);
+    logger.error('[GET /queue/carrier-order]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -54,7 +55,7 @@ router.post('/carrier-order', async (req: Request, res: Response) => {
     });
     return res.json({ ok: true });
   } catch (err) {
-    console.error('[POST /queue/carrier-order]', err);
+    logger.error('[POST /queue/carrier-order]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -80,7 +81,7 @@ router.get('/priority-scores', async (req: Request, res: Response) => {
     });
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[GET /queue/priority-scores]', err);
+    logger.error('[GET /queue/priority-scores]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

@@ -922,6 +922,34 @@ model QueueEngineLease {
   @@map("queue_engine_lease")
 }
 
+/// A BullMQ repeatable job (RULES_TICK, TRIAGE_CREDENTIAL_HEALTH, etc. — see
+/// registerSchedulers.ts) lands here once it exhausts all retry attempts.
+/// BullMQ has no built-in dead-letter concept; this table plus the worker's
+/// 'failed' handler (workerEntry.ts) is the DLQ. errorHistory keeps one
+/// entry per attempt so an operator can see whether the failure was
+/// consistent or intermittent before deciding whether to retry.
+model WorkerDeadLetter {
+  id            String    @id @default(uuid())
+  queueName     String    @map("queue_name")
+  jobName       String    @map("job_name")
+  bullJobId     String?   @map("bull_job_id")
+  payload       Json
+  /// Array of { attempt: number, error: string, failedAt: string (ISO) }
+  errorHistory  Json      @map("error_history")
+  attemptsMade  Int       @map("attempts_made")
+  /// Generated at DLQ-insertion time — the job's own dispatch-time
+  /// correlation ID isn't propagated yet (see PRODUCTION-SAFETY-BACKLOG.md's
+  /// P0.3 logging-consolidation item), so this traces the DLQ record itself.
+  correlationId String    @map("correlation_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  retriedAt     DateTime? @map("retried_at")
+  retriedBy     String?   @map("retried_by")
+
+  @@map("worker_dead_letters")
+  @@index([queueName, jobName])
+  @@index([createdAt])
+}
+
 /// Written when a carrier detects automation. Triggers practice-wide suspension
 /// of ALL calls to that carrier until resumedAt is set.
 /// This is the highest-risk operational event — must fire on every block signal.

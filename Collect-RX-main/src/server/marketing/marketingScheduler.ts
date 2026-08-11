@@ -7,6 +7,7 @@ import {
   runMarketingLearningCycle,
 } from './marketingLearningJob.js';
 import { runTrialOnboardingTick } from './trialOnboarding.js';
+import { logger } from '../observability/logger.js';
 
 let started = false;
 let learningStarted = false;
@@ -18,20 +19,20 @@ export function startMarketingLoopInProcess(prisma: PrismaClient): void {
 
   const pattern = (process.env.MARKETING_CRON || '0 * * * *').trim();
   if (!cron.validate(pattern)) {
-    console.error(`[marketing] Invalid MARKETING_CRON "${pattern}"`);
+    logger.error('[marketing] Invalid MARKETING_CRON', { pattern });
     return;
   }
 
   started = true;
   cron.schedule(pattern, () => {
     runMarketingSequenceTick(prisma).catch((err) => {
-      console.error('[marketing] tick failed', (err as Error).message);
+      logger.error('[marketing] tick failed', { error: err });
     });
     runTrialOnboardingTick(prisma).catch((err) => {
-      console.error('[trial-onboarding] tick failed', (err as Error).message);
+      logger.error('[trial-onboarding] tick failed', { error: err });
     });
   });
-  console.log(`[marketing] In-process sequence tick scheduled: ${pattern}`);
+  logger.info('[marketing] In-process sequence tick scheduled', { pattern });
 }
 
 /** Weekly self-tuning score weights when BullMQ / Redis is unavailable. */
@@ -42,15 +43,15 @@ export function startMarketingLearningInProcess(prisma: PrismaClient): void {
 
   const pattern = marketingLearningCronExpression();
   if (!cron.validate(pattern)) {
-    console.error(`[marketing-learning] Invalid MARKETING_LEARNING_CRON "${pattern}"`);
+    logger.error('[marketing-learning] Invalid MARKETING_LEARNING_CRON', { pattern });
     return;
   }
 
   learningStarted = true;
   cron.schedule(pattern, () => {
     runMarketingLearningCycle(prisma).catch((err) => {
-      console.error('[marketing-learning] cycle failed', (err as Error).message);
+      logger.error('[marketing-learning] cycle failed', { error: err });
     });
   });
-  console.log(`[marketing-learning] In-process cron scheduled: ${pattern}`);
+  logger.info('[marketing-learning] In-process cron scheduled', { pattern });
 }

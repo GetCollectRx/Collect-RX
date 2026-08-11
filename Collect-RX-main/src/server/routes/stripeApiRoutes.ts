@@ -8,6 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import { getStripe, handlePlatformBillingWebhook } from '../stripe/billing.js';
 import { apiClientErrorMessage } from '../apiErrorMessage.js';
+import { logger } from '../observability/logger.js';
 
 /** Raw-body webhook handler — must be mounted before express.json(). */
 export function stripeWebhookHandler(prisma: PrismaClient) {
@@ -35,11 +36,11 @@ export function stripeWebhookHandler(prisma: PrismaClient) {
       return;
     }
     try {
-      console.log('[stripe/webhook] received', { type: event.type, id: event.id });
+      logger.info('[stripe/webhook] received', { type: event.type, id: event.id });
       const result = await handlePlatformBillingWebhook(event, prisma, getStripe());
       res.json({ received: true, ...result });
     } catch (e) {
-      console.error('[stripe/webhook]', e);
+      logger.error('[stripe/webhook]', { error: e });
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   };

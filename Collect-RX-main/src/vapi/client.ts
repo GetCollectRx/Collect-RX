@@ -34,6 +34,7 @@
 
 import { CarrierId } from '@prisma/client';
 import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
+import { vapiCircuitBreaker } from './circuitBreaker.js';
 
 /**
  * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
@@ -249,32 +250,34 @@ async function vapiRequest<T>(
   body?: unknown,
   options?: { idempotencyKey?: string },
 ): Promise<T> {
-  const url = `${VAPI_BASE_URL}${path}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method,
-      headers: {
-        'Authorization': `Bearer ${getApiKey()}`,
-        'Content-Type': 'application/json',
-        ...(options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
-    });
-  } catch (err) {
-    // fetch() itself throwing means no response ever arrived — genuinely
-    // ambiguous, as opposed to the !res.ok branch below where Vapi *did*
-    // respond and told us definitively that nothing was created.
-    throw new VapiAmbiguousOutcomeError(method, path, err);
-  }
+  return vapiCircuitBreaker.execute(async () => {
+    const url = `${VAPI_BASE_URL}${path}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${getApiKey()}`,
+          'Content-Type': 'application/json',
+          ...(options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+      });
+    } catch (err) {
+      // fetch() itself throwing means no response ever arrived — genuinely
+      // ambiguous, as opposed to the !res.ok branch below where Vapi *did*
+      // respond and told us definitively that nothing was created.
+      throw new VapiAmbiguousOutcomeError(method, path, err);
+    }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '(no body)');
-    throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
-  }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '(no body)');
+      throw new Error(`[VapiClient] ${method} ${path} → ${res.status}: ${text}`);
+    }
 
-  return res.json() as Promise<T>;
+    return res.json() as Promise<T>;
+  });
 }
 
 // ---------------------------------------------------------------------------

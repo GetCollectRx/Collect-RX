@@ -10,6 +10,7 @@ import { sendOrganizationInviteEmail } from '../email/organizationInviteEmail.js
 import { appendAuditLog } from '../audit/auditLog.js';
 import { formatZodError } from '../validation/zodSchemas.js';
 import { setUserAuthCookie } from '../authToken.js';
+import { logger } from '../observability/logger.js';
 
 const INVITE_EXPIRY_MS = 72 * 60 * 60 * 1000;
 
@@ -86,7 +87,7 @@ export function createOrganizationRouter(prisma: PrismaClient): Router {
 
       return res.status(201).json({ organization: { id: org.id, name: org.name } });
     } catch (e) {
-      console.error('organization create error:', e);
+      logger.error('organization create error', { error: e });
       return res.status(500).json({ error: 'Failed to create group' });
     }
   });
@@ -120,7 +121,7 @@ export function createOrganizationRouter(prisma: PrismaClient): Router {
       }));
       return res.json({ organizations });
     } catch (e) {
-      console.error('organizations mine error:', e);
+      logger.error('organizations mine error', { error: e });
       return res.status(500).json({ error: 'Failed to load groups' });
     }
   });
@@ -172,7 +173,7 @@ export function createOrganizationRouter(prisma: PrismaClient): Router {
 
       return res.json({ invited: true });
     } catch (e) {
-      console.error('organization invite error:', e);
+      logger.error('organization invite error', { error: e });
       return res.status(500).json({ error: 'Failed to send invite' });
     }
   });
@@ -196,7 +197,7 @@ export function createOrganizationPublicRouter(prisma: PrismaClient): Router {
       if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'This invite has expired' });
       return res.json({ organizationName: invite.organization.name, inviteeEmail: invite.inviteeEmail });
     } catch (e) {
-      console.error('organization invite lookup error:', e);
+      logger.error('organization invite lookup error', { error: e });
       return res.status(500).json({ error: 'Failed to look up invite' });
     }
   });
@@ -258,7 +259,7 @@ export function createOrganizationPublicRouter(prisma: PrismaClient): Router {
         if (e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === 'P2002') {
           return res.status(409).json({ error: 'This practice already belongs to a group' });
         }
-        console.error('organization accept-invite error:', e);
+        logger.error('organization accept-invite error', { error: e });
         return res.status(500).json({ error: 'Failed to join group' });
       }
     },

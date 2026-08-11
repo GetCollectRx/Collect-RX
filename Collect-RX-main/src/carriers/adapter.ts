@@ -26,7 +26,12 @@ export interface CarrierConfig {
   displayName: string;
   /** Direct-dial number for claims department */
   phone: string;
-  /** Minimum days outstanding before calling — day 21 for TELUS, day 32 others */
+  /**
+   * Documented carrier SLA for minimum days outstanding before calling — day
+   * 21 for TELUS, day 32 for others. Not currently enforced by
+   * `validateDispatch`, which applies a flat 30-day floor to every carrier
+   * instead (see docs/operations/HUMAN-DECISIONS-PENDING.md item 1).
+   */
   minWaitDays: number;
   /** Expected hold time in minutes (for analytics time-saved calc) */
   avgHoldMinutes: number;
@@ -298,11 +303,15 @@ export async function checkCarrierAuthorizationGate(
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
  *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Per-carrier minimum days outstanding (32 for most carriers, 21 for TELUS — reject if under)
- *   5. Days outstanding > 90 → escalate to human
- *   6. Max attempts (>= 3 → reject)
- *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
- * Subscription monthly claim limit is enforced separately by canMakeCall() — not part of this function.
+ *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+ *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
+ *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
+ *      of this flat 30 is a pending product decision, not an engineering gap —
+ *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
+ *   5. Max attempts (>= 3 → reject)
+ *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ * Subscription/usage capacity (canMakeCall()) is enforced by the caller
+ * (queueEngine.ts) before this function runs, not here.
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -344,18 +353,13 @@ export async function validateDispatch(
     return authGate;
   }
 
-  // 4. Per-carrier minimum wait — data-driven from carrier-configs.json
-  // (21 days for TELUS AdjudiCare, 32 for all other carriers). A single
-  // carrier-specific gate replaces the old global 30-day floor, which sat in
-  // front of the TELUS check and made it unreachable, and which was also 2
-  // days looser than the configured 32-day minimum for every other carrier.
-  const config = CARRIER_CONFIGS[carrierId];
-  if (daysOutstanding < config.minWaitDays) {
-    return {
-      allowed: false,
-      code: 'CLAIM_TOO_YOUNG',
-      reason: `${config.displayName} requires minimum ${config.minWaitDays} days outstanding (currently ${daysOutstanding})`,
-    };
+  // 4. Claims under 30 days old — do not queue. This is a flat floor for every
+  // carrier: CARRIER_CONFIGS.minWaitDays documents per-carrier SLAs (21 days
+  // for TELUS, 32 for the rest) but nothing in dispatch consults that field —
+  // see docs/operations/HUMAN-DECISIONS-PENDING.md item 1 for the decision on
+  // whether to enforce those per-carrier numbers instead of this flat one.
+  if (daysOutstanding < 30) {
+    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
   // 5. Claims over 90 days — escalate to human, skip AI
