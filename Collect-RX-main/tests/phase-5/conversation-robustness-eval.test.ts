@@ -93,3 +93,112 @@ describe('getClaimsAgentPrompt', () => {
     expect(prompt.systemPrompt).toContain('Do not claim to be human if asked directly');
   });
 });
+
+describe('known_documentation_channel / known_resubmission_channel branches', () => {
+  it('renders the confirm-first branch when known_documentation_channel is set, with no leftover handlebars', () => {
+    const prompt = getClaimsAgentPrompt({
+      ...ROBUSTNESS_EVAL_FIXTURE_VARS,
+      known_documentation_channel: 'fax to 416-555-0199',
+    });
+    expect(prompt.systemPrompt).toContain('Our records show documentation for');
+    expect(prompt.systemPrompt).toContain('fax to 416-555-0199');
+    expect(prompt.systemPrompt).not.toContain('{{#if known_documentation_channel}}');
+    expect(prompt.systemPrompt).not.toContain('{{/if}}');
+    expect(prompt.systemPrompt).not.toMatch(/\{\{/);
+  });
+
+  it('falls back to the cold-ask documentation line when known_documentation_channel is unset', () => {
+    const prompt = getClaimsAgentPrompt(ROBUSTNESS_EVAL_FIXTURE_VARS);
+    expect(prompt.systemPrompt).toContain(
+      'Can you tell me exactly what documentation is needed and the best way to submit it?',
+    );
+    expect(prompt.systemPrompt).not.toContain('Our records show documentation for');
+  });
+
+  it('renders the confirm-first branch when known_resubmission_channel is set, with no leftover handlebars', () => {
+    const prompt = getClaimsAgentPrompt({
+      ...ROBUSTNESS_EVAL_FIXTURE_VARS,
+      known_resubmission_channel: 'the provider portal, uploaded under claim documents',
+    });
+    expect(prompt.systemPrompt).toContain('Our records show resubmissions to');
+    expect(prompt.systemPrompt).toContain('the provider portal, uploaded under claim documents');
+    expect(prompt.systemPrompt).not.toContain('{{#if known_resubmission_channel}}');
+    expect(prompt.systemPrompt).not.toContain('{{/if}}');
+    expect(prompt.systemPrompt).not.toMatch(/\{\{/);
+  });
+
+  it('falls back to the cold-ask resubmission line when known_resubmission_channel is unset', () => {
+    const prompt = getClaimsAgentPrompt(ROBUSTNESS_EVAL_FIXTURE_VARS);
+    expect(prompt.systemPrompt).toContain('What is the best method to resubmit');
+    expect(prompt.systemPrompt).not.toContain('Our records show resubmissions to');
+  });
+});
+
+describe('new known-channel scenarios', () => {
+  const NEW_SCENARIO_IDS = [
+    'known_channel_documentation_confirm',
+    'known_channel_resubmission_confirm',
+    'no_known_channel_cold_ask_baseline',
+    'known_channel_rep_states_new_destination',
+  ];
+
+  it('all 4 new scenario ids exist in CONVERSATION_ROBUSTNESS_SCENARIOS with valid structure', () => {
+    const byId = new Map(CONVERSATION_ROBUSTNESS_SCENARIOS.map((s) => [s.id, s]));
+    for (const id of NEW_SCENARIO_IDS) {
+      const scenario = byId.get(id);
+      expect(scenario, `expected scenario ${id} to exist`).toBeTruthy();
+      expect(scenario!.label.length).toBeGreaterThan(0);
+      expect(scenario!.description.length).toBeGreaterThan(0);
+      expect(scenario!.expectation.length).toBeGreaterThan(0);
+      expect(Array.isArray(scenario!.repTurns)).toBe(true);
+      expect(scenario!.repTurns.length).toBeGreaterThan(0);
+      for (const turn of scenario!.repTurns) {
+        expect(typeof turn).toBe('string');
+        expect(turn.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('known-channel scenarios carry the expected varsOverride; the baseline carries none', () => {
+    const byId = new Map(CONVERSATION_ROBUSTNESS_SCENARIOS.map((s) => [s.id, s]));
+
+    expect(byId.get('known_channel_documentation_confirm')?.varsOverride).toEqual({
+      known_documentation_channel: 'fax to 416-555-0199',
+    });
+    expect(byId.get('known_channel_resubmission_confirm')?.varsOverride).toEqual({
+      known_resubmission_channel: 'the provider portal, uploaded under claim documents',
+    });
+    expect(byId.get('known_channel_rep_states_new_destination')?.varsOverride).toEqual({
+      known_documentation_channel: 'fax to 416-555-0199',
+    });
+    expect(byId.get('no_known_channel_cold_ask_baseline')?.varsOverride).toBeUndefined();
+  });
+
+  it('rendering each new scenario\'s merged vars on top of the fixture produces the expected prompt branch', () => {
+    const byId = new Map(CONVERSATION_ROBUSTNESS_SCENARIOS.map((s) => [s.id, s]));
+
+    const docConfirm = byId.get('known_channel_documentation_confirm')!;
+    const docConfirmPrompt = getClaimsAgentPrompt({
+      ...ROBUSTNESS_EVAL_FIXTURE_VARS,
+      ...docConfirm.varsOverride,
+    });
+    expect(docConfirmPrompt.systemPrompt).toContain('Our records show documentation for');
+
+    const resubmitConfirm = byId.get('known_channel_resubmission_confirm')!;
+    const resubmitConfirmPrompt = getClaimsAgentPrompt({
+      ...ROBUSTNESS_EVAL_FIXTURE_VARS,
+      ...resubmitConfirm.varsOverride,
+    });
+    expect(resubmitConfirmPrompt.systemPrompt).toContain('Our records show resubmissions to');
+
+    const baseline = byId.get('no_known_channel_cold_ask_baseline')!;
+    const baselinePrompt = getClaimsAgentPrompt({
+      ...ROBUSTNESS_EVAL_FIXTURE_VARS,
+      ...(baseline.varsOverride ?? {}),
+    });
+    expect(baselinePrompt.systemPrompt).toContain(
+      'Can you tell me exactly what documentation is needed and the best way to submit it?',
+    );
+    expect(baselinePrompt.systemPrompt).not.toContain('Our records show documentation for');
+  });
+});

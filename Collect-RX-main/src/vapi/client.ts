@@ -98,6 +98,10 @@ export interface VapiCallParams {
   /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
   languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
+  /** Known resubmission channel from prior confirmed calls (Scenario A) — see submissionChannelMemory.ts. */
+  knownResubmissionChannel?: string;
+  /** Known documentation-submission channel from prior confirmed calls (Scenario D) — see submissionChannelMemory.ts. */
+  knownDocumentationChannel?: string;
   /**
    * Stable per-attempt key (e.g. `${claimId}:${attemptNumber}`) — sent as the
    * Idempotency-Key header so a retry of the *same* attempt (after a timeout
@@ -339,6 +343,8 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practicePhone,
     languagePreference,
     carrierIvrInstructions,
+    knownResubmissionChannel,
+    knownDocumentationChannel,
     idempotencyKey,
   } = params;
 
@@ -417,6 +423,8 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',
+      known_resubmission_channel: knownResubmissionChannel ?? '',
+      known_documentation_channel: knownDocumentationChannel ?? '',
       },
     },
   };
