@@ -50,7 +50,6 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
   };
 });
 
-// Skip the Mon-Fri 8am-5pm ET gate so this test is not flaky depending on
 // when CI happens to run it. validateDispatch and CARRIER_CONFIGS stay
 // real — this test's whole point is exercising the real dispatch guard
 // chain, not bypassing it.
@@ -195,28 +194,14 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
     initiateCallMock.mockClear();
 
-    // runDeskQueueTick has no injectable clock — it checks real wall-clock
-    // business hours (Mon-Fri 08:00-17:00 Eastern) via `isWithinCallWindow()`.
-    // Without forcing the window open, this test only passes during real
-    // Eastern business hours and fails with OUTSIDE_CALL_WINDOW the rest of
-    // the day (reproduced directly, including in this sandbox at ~9pm ET) —
-    // a real flake risk in CI too, not just locally. Faking the global Date
-    // was tried and rejected: this test's beforeAll seeds real rows (PHI
-    // vault entries, claims, call-queue timestamps) at real wall-clock time,
-    // and jumping the JS clock to a fixed date elsewhere breaks any
-    // now-minus-created-at arithmetic downstream in the pipeline that
-    // implicitly assumes time only moves forward. `COLLECTRX_FORCE_CALL_WINDOW`
-    // (src/carriers/adapter.ts's `callWindowForced()`) is the sanctioned
-    // escape hatch for exactly this — it forces `isWithinCallWindow()` true
-    // without touching the clock, and explicitly refuses to activate in
-    // production.
-    process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
-
-    const start = Date.now();
+    // performance.now() rather than Date.now(): Date is pinned by the
+    // file-level beforeAll above (so isWithinCallWindow() sees real business
+    // hours without a separate COLLECTRX_FORCE_CALL_WINDOW escape hatch), and
+    // a pinned Date.now() would always read ~0ms elapsed, making the bound
+    // below assert nothing.
+    const start = performance.now();
     await runDeskQueueTick(prisma);
-    const elapsedMs = Date.now() - start;
-
-    delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
+    const elapsedMs = performance.now() - start;
 
     // Every one of the 20 real, independently-tokenized, fully-authorized
     // claims made it all the way through: RLS-scoped candidate fetch, PHI
