@@ -303,10 +303,15 @@ export async function checkCarrierAuthorizationGate(
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
  *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate)
+ *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+ *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
+ *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
+ *      of this flat 30 is a pending product decision, not an engineering gap —
+ *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
  *   5. Max attempts (>= 3 → reject)
- *   6. Subscription monthly claim limit
- *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ * Subscription/usage capacity (canMakeCall()) is enforced by the caller
+ * (queueEngine.ts) before this function runs, not here.
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -362,12 +367,12 @@ export async function validateDispatch(
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 7. Max 3 attempts
+  // 6. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

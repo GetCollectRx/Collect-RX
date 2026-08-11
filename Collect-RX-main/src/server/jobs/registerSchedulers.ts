@@ -7,6 +7,7 @@ import { logger } from '../observability/logger.js';
 
 const RULES_EVERY_MS = 60_000;
 const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
+const DATA_RETENTION_CRON = '0 4 * * *';
 const DLQ_RETENTION_SWEEP_CRON = '0 4 * * *';
 
 /**
@@ -54,6 +55,11 @@ export async function registerArJobSchedulers(): Promise<void> {
     { repeat: { pattern: DLQ_RETENTION_SWEEP_CRON }, ...JOB_RETRY_OPTS },
   );
 
+  // DATA_RETENTION_ENABLED is a second, global gate on top of this repeatable —
+  // see dataRetentionJob.ts. Registered even when the global flag is off so
+  // flipping the env var doesn't also require a scheduler re-registration.
+  await q.add('DATA_RETENTION', {}, { repeat: { pattern: DATA_RETENTION_CRON } });
+
   // REMINDER_CYCLE (patient SMS/email) intentionally not registered — insurance-only product.
 
   const learningPattern = (process.env.LEARNING_CRON || '0 6 * * *').trim();
@@ -97,6 +103,7 @@ export async function registerArJobSchedulers(): Promise<void> {
     rulesEveryMs: RULES_EVERY_MS,
     triageCredentialHealth: 'daily',
     dlqRetentionSweep: 'daily',
+    dataRetentionEnabled: process.env.DATA_RETENTION_ENABLED === '1',
     learningCron: learningOn ? learningPattern : null,
     marketingEveryMs: process.env.MARKETING_LOOP_ENABLED !== '0' ? marketingEveryMs : null,
     marketingLearningCron:

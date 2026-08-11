@@ -661,6 +661,10 @@ model InsuranceClaim {
   treatmentCodes    String?        @map("treatment_codes")
   status            ClaimStatus    @default(PENDING)
   priority          ClaimPriority  @default(NORMAL)
+  /// Set when status transitions to RESOLVED — the retention job's purge clock
+  /// starts here, not at createdAt/updatedAt (which CSV re-import can bump on
+  /// an already-resolved claim without meaning to reopen the retention window).
+  resolvedAt        DateTime?      @map("resolved_at")
   /// Active recovery routing — set by claim router after calls/sync.
   recoveryRoute     RecoveryRoute? @map("recovery_route")
   /// When carrier confirmed payment but PMS sync has not yet verified balance drop.
@@ -687,6 +691,7 @@ model InsuranceClaim {
   @@index([practiceId, deletedAt])
   @@index([carrierId, daysOutstanding])
   @@index([practiceId, status, updatedAt])
+  @@index([practiceId, status, resolvedAt])
   @@map("insurance_claims")
 }
 
