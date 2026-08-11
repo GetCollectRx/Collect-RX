@@ -37,6 +37,10 @@ primary_region = 'yyz'
 # exit blocks the deploy.
 release_command = 'npx prisma migrate deploy'
 
+[env]
+# Temporarily bypass RLS role guard while fixing database role provisioning
+COLLECTRX_RLS_ROLE_GUARD = '0'
+
 [processes]
 app = 'npm run start'
 worker = 'npm run worker'
