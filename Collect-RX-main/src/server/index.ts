@@ -207,9 +207,8 @@ app.use(
         ? { maxAge: 31536000, includeSubDomains: true, preload: false }
         : false,
     contentSecurityPolicy:
-      process.env.NODE_ENV === 'development'
-        ? false
-        : {
+      process.env.STRICT_CSP === 'true'
+        ? {
             directives: {
               defaultSrc: ["'self'"],
               scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com'],
@@ -220,7 +219,8 @@ app.use(
               objectSrc: ["'none'"],
               frameAncestors: ["'none'"],
             },
-          },
+          }
+        : false,
   }),
 );
 
