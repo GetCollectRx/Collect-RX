@@ -428,6 +428,73 @@
         }
       }
     },
+    "khalid_life": {
+      "carrierId": "khalid_life",
+      "name": "Khalid Life Insurance",
+      "coveragePercent": {
+        "preventive": 100,
+        "basic": 85,
+        "major": 60,
+        "ortho": 50
+      },
+      "deductible": {
+        "individual": 25,
+        "family": 75,
+        "appliesToTiers": [
+          "basic",
+          "major"
+        ]
+      },
+      "annualMax": {
+        "individual": 2000,
+        "family": 5000
+      },
+      "waitingPeriods": [
+        {
+          "tier": "major",
+          "months": 3,
+          "description": "3-month waiting period for major restorative"
+        }
+      ],
+      "frequencyLimits": [
+        {
+          "cdtCodePattern": "D1110",
+          "limitPerMonths": 6,
+          "description": "Adult prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D1120",
+          "limitPerMonths": 6,
+          "description": "Child prophylaxis — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0210",
+          "limitPerMonths": 36,
+          "description": "Full-mouth X-rays — once every 36 months"
+        },
+        {
+          "cdtCodePattern": "D0120",
+          "limitPerMonths": 6,
+          "description": "Periodic oral exam — once per 6 months"
+        },
+        {
+          "cdtCodePattern": "D0274",
+          "limitPerMonths": 12,
+          "description": "Bitewing X-rays — once per 12 months"
+        }
+      ],
+      "notes": "Test carrier for demonstration and quality assurance. Generous coverage with short waiting period.",
+      "isClearinghouse": false,
+      "minWaitDayForClaims": 21,
+      "dispatch": {
+        "displayName": "Khalid Life Insurance",
+        "avgHoldMinutes": 10,
+        "ivrHints": [
+          "Press 1 for claim inquiry",
+          "Enter policy number"
+        ]
+      }
+    },
     "cdcp": {
       "carrierId": "cdcp",
       "name": "Canadian Dental Care Plan (Sun Life)",

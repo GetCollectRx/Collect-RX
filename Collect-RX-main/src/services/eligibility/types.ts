@@ -14,6 +14,7 @@ export enum Carrier {
   GreenShield = 'green_shield',
   RBC = 'rbc',
   TELUSAdjudiCare = 'telus_adjudicare',
+  KhalidLife = 'khalid_life',
 }
 
 export enum CoverageTier {

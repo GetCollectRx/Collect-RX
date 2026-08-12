@@ -1,0 +1,4 @@
+patient_first_name,patient_last_name,policy_number,carrier_name,procedure_code,procedure_description,treatment_date,amount_submitted,date_submitted,claim_status
+Khalid,Egeh,KL-5001-999,Khalid Life Insurance,D2750,Crown - Porcelain Fused to Metal,2024-06-15,1250.00,2024-06-20,pending
+Ahmed,Hassan,KL-5002-888,Khalid Life Insurance,D4910,Periodontal Maintenance,2024-06-10,220.00,2024-06-12,pending
+Fatima,Ali,KL-5003-777,Khalid Life Insurance,D2392,Posterior Composite - 3 Surfaces,2024-06-01,420.00,2024-06-05,pending
