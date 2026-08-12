@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 
 const validateDispatchMock = vi.fn();
 const initiateCallMock = vi.fn();
+const endVapiCallMock = vi.fn();
 const detokenizeMock = vi.fn();
 const probeClaimStatusMock = vi.fn();
 const canMakeCallMock = vi.fn();
@@ -31,7 +32,7 @@ vi.mock('../../src/carriers/adapter.js', () => ({
 
 vi.mock('../../src/vapi/client.js', () => ({
   initiateCall: (...args: unknown[]) => initiateCallMock(...args),
-  endVapiCall: vi.fn(),
+  endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
   VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
 }));
 
@@ -459,6 +460,43 @@ describe('runDeskQueueTick resilience', () => {
     });
     expect(prisma.insuranceClaim.updateMany).toHaveBeenCalledWith({
       where: { id: 'claim-old', status: 'CALLING' },
+      data: { status: 'IN_QUEUE' },
+    });
+  });
+
+  it('closes an over-ceiling attempt immediately when ending its Vapi call fails, instead of leaving it open for the stale watchdog', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    // No stale attempts (first callAttempt.findMany call); one over-ceiling
+    // attempt whose age is past the absolute duration ceiling but well under
+    // STALE_ATTEMPT_MS, so only the over-ceiling terminator should touch it.
+    prisma.callAttempt.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'attempt-ceiling',
+          claimId: 'claim-ceiling',
+          vapiCallId: 'vapi-ceiling',
+          initiatedAt: new Date(Date.now() - 50 * 60 * 1000),
+        },
+      ]);
+    endVapiCallMock.mockRejectedValueOnce(new Error('Vapi: call not found (404)'));
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(endVapiCallMock).toHaveBeenCalledWith('vapi-ceiling');
+    expect(prisma.callAttempt.update).toHaveBeenCalledWith({
+      where: { id: 'attempt-ceiling' },
+      data: expect.objectContaining({ liveState: 'ceiling_terminated_no_webhook' }),
+    });
+    expect(prisma.callQueue.updateMany).toHaveBeenCalledWith({
+      where: { claimId: 'claim-ceiling', status: 'IN_PROGRESS' },
+      data: expect.objectContaining({ status: 'PENDING' }),
+    });
+    expect(prisma.insuranceClaim.updateMany).toHaveBeenCalledWith({
+      where: { id: 'claim-ceiling', status: 'CALLING' },
       data: { status: 'IN_QUEUE' },
     });
   });
