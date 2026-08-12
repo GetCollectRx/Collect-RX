@@ -76,7 +76,7 @@ vi.mock('../src/pii-vault.js', () => ({
   piiVault: { detokenize: vi.fn() },
 }));
 
-const loggerMock = { warn: vi.fn(), error: vi.fn(), audit: vi.fn() };
+const loggerMock = { warn: vi.fn(), error: vi.fn(), audit: vi.fn(), info: vi.fn(), debug: vi.fn() };
 vi.mock('../src/server/observability/logger.js', () => ({
   default: loggerMock,
   logger: loggerMock,
