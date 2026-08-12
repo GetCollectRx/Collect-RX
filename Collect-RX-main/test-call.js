@@ -12,8 +12,10 @@
  * YOU play the carrier — respond naturally to test the flow.
  */
 
-require("dotenv").config();
-const axios = require("axios");
+import dotenv from "dotenv";
+import axios from "axios";
+
+dotenv.config();
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const VAPI_API_KEY       = process.env.VAPI_API_KEY;
