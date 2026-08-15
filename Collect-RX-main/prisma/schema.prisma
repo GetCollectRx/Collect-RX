@@ -2024,3 +2024,13 @@ model EmailCampaignEvent {
   @@index([eventType])
   @@map("email_campaign_events")
 }
+
+/// Revoked JWT tokens (session invalidation on logout). Entries are pruned after expiration.
+model RevokedToken {
+  jti       String   @id
+  revokedAt DateTime @default(now()) @map("revoked_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("revoked_tokens")
+}

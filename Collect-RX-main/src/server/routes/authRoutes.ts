@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import type { PrismaClient } from '@prisma/client';
 import {
   getUserRole,
@@ -21,6 +22,10 @@ import {
   clearAuthCookie,
   signUserToken,
   signBriefSessionToken,
+  REFRESH_TOKEN_COOKIE_NAME,
+  generateTokenPair,
+  revokeToken,
+  isTokenRevoked,
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
@@ -106,6 +111,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     return req.get('X-CRX-Desktop') === '1';
   }
 
+  function setRefreshTokenCookie(res: Response, refreshToken: string): void {
+    const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: maxAgeMs,
+    });
+  }
+
   async function respondPracticeLogin(
     req: Request,
     res: Response,
@@ -118,10 +134,22 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       email: string;
     },
   ) {
+    const role = user.role as UserAuthPayload['role'];
+    const tokenPair = generateTokenPair({
+      userId: user.id,
+      practiceId: user.practiceId,
+      role,
+      ...(user.providerId ? { providerId: user.providerId } : {}),
+    });
+
+    // Set refresh token in httpOnly cookie
+    setRefreshTokenCookie(res, tokenPair.refreshToken);
+
+    // Also set access token cookie for browser sessions
     setUserAuthCookie(res, {
       userId: user.id,
       practiceId: user.practiceId,
-      role: user.role as UserAuthPayload['role'],
+      role,
       ...(user.providerId ? { providerId: user.providerId } : {}),
     });
 
@@ -141,14 +169,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       subscription,
       user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
       health,
+      expiresIn: tokenPair.expiresIn,
       ...(wantsDesktopSession(req)
         ? {
-            sessionToken: signUserToken({
-              userId: user.id,
-              practiceId: user.practiceId,
-              role: user.role as UserAuthPayload['role'],
-              ...(user.providerId ? { providerId: user.providerId } : {}),
-            }),
+            sessionToken: tokenPair.accessToken,
+            refreshToken: tokenPair.refreshToken,
           }
         : {}),
     });
@@ -344,10 +369,76 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     }
   });
 
+  /** POST /api/auth/refresh — refresh access token using refresh token */
+  r.post('/refresh', async (req, res) => {
+    try {
+      const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+      if (!refreshToken) {
+        return res.status(401).json({ error: 'No refresh token found' });
+      }
+
+      try {
+        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET || 'dev-collectrx-jwt-not-for-production', {
+          algorithms: ['HS256'],
+        }) as any;
+
+        // Verify it's a refresh token
+        if (decoded.type !== 'refresh') {
+          return res.status(401).json({ error: 'Invalid token type' });
+        }
+
+        // Check if the old refresh token was revoked
+        if (await isTokenRevoked(prisma, decoded.jti)) {
+          clearAuthCookie(res);
+          return res.status(401).json({ error: 'Session has been invalidated' });
+        }
+
+        // Generate new token pair
+        const newTokenPair = generateTokenPair({
+          userId: decoded.userId,
+          practiceId: decoded.practiceId,
+          role: decoded.role as PracticeRole,
+        });
+
+        // Revoke the old refresh token (rotation)
+        await revokeToken(prisma, decoded.jti);
+
+        // Set new refresh token cookie
+        setRefreshTokenCookie(res, newTokenPair.refreshToken);
+
+        // Return new access token
+        return res.json({
+          accessToken: newTokenPair.accessToken,
+          expiresIn: newTokenPair.expiresIn,
+        });
+      } catch (error) {
+        if (error instanceof jwt.JsonWebTokenError) {
+          return res.status(401).json({ error: 'Invalid or expired refresh token' });
+        }
+        throw error;
+      }
+    } catch (e) {
+      logger.error('[authRoutes] refresh token error', { error: e });
+      return res.status(500).json({ error: 'Token refresh failed' });
+    }
+  });
+
   /** POST /api/auth/logout */
-  r.post('/logout', (_req, res) => {
-    clearAuthCookie(res);
-    res.json({ ok: true });
+  r.post('/logout', async (req, res) => {
+    try {
+      const auth = req.auth;
+      // Revoke the current token if it has a JTI
+      if (auth && 'jti' in auth && typeof (auth as any).jti === 'string') {
+        await revokeToken(prisma, (auth as any).jti);
+      }
+      clearAuthCookie(res);
+      res.json({ ok: true });
+    } catch (e) {
+      logger.error('[authRoutes] logout error', { error: e });
+      // Even if revocation fails, clear cookies
+      clearAuthCookie(res);
+      res.json({ ok: true });
+    }
   });
 
   /** GET /api/auth/session-health — runtime health check for restored sessions */

@@ -1,12 +1,20 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import type { CookieOptions, Response } from 'express';
 import { practiceRoleToBrief, type AuthJwtPayload, type PracticeRole, type UserAuthPayload, type BriefAuthFields } from './accessControl/types.js';
 import type { UserRole } from '../types/userRole.js';
 
 export const COOKIE_NAME = 'crx_access';
+export const REFRESH_TOKEN_COOKIE_NAME = 'crx_refresh';
 
 /** Pinned signing/verification algorithm — prevents alg-confusion and `alg:none` attacks. */
 const JWT_ALGORITHM = 'HS256' as const;
+
+/** Access token TTL: 15 minutes for all roles (short-lived, requires refresh for extended sessions) */
+const ACCESS_TOKEN_TTL = 15 * 60; // 15 minutes in seconds
+
+/** Refresh token TTL: 7 days (long-lived, rotated on each use) */
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
 /** @deprecated Use `UserAuthPayload` — kept for importers that referenced the old name. */
 export type PracticeJwtPayload = UserAuthPayload;
@@ -64,9 +72,9 @@ function phiAccessForRole(role: PracticeRole): boolean {
   }
 }
 
-/** TTL for each role. Accountants get a 90-day token; everyone else gets 8 hours. */
-function tokenTtlForRole(role: PracticeRole): string {
-  return role === 'accountant' ? '90d' : '8h';
+/** TTL for each role. All roles now use 15-minute access tokens with refresh token rotation. */
+function tokenTtlForRole(_role: PracticeRole): number {
+  return ACCESS_TOKEN_TTL;
 }
 
 // ─── Sign ────────────────────────────────────────────────────────────────────
@@ -76,10 +84,19 @@ export interface SignUserTokenOptions {
   practiceId: string;
   role: PracticeRole;
   providerId?: string;
+  jti?: string;
 }
 
-export function signUserToken({ userId, practiceId, role, providerId }: SignUserTokenOptions): string {
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+export function signUserToken({ userId, practiceId, role, providerId, jti }: SignUserTokenOptions): string {
+  const tokenJti = jti || crypto.randomBytes(16).toString('hex');
   const payload = {
+    jti: tokenJti,
     role,
     userId,
     practiceId,
@@ -87,7 +104,35 @@ export function signUserToken({ userId, practiceId, role, providerId }: SignUser
     userRole: practiceRoleToBrief(role),
     ...(providerId ? { providerId } : {}),
   };
-  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: tokenTtlForRole(role) as unknown as number });
+  return jwt.sign(payload, signingSecret(), {
+    algorithm: JWT_ALGORITHM,
+    expiresIn: tokenTtlForRole(role),
+  });
+}
+
+/** Generate both access and refresh tokens for a user. */
+export function generateTokenPair(opts: SignUserTokenOptions): TokenPair {
+  const jti = crypto.randomBytes(16).toString('hex');
+  const accessToken = signUserToken({ ...opts, jti });
+  const refreshToken = jwt.sign(
+    {
+      jti,
+      userId: opts.userId,
+      practiceId: opts.practiceId,
+      role: opts.role,
+      type: 'refresh',
+    },
+    signingSecret(),
+    {
+      algorithm: JWT_ALGORITHM,
+      expiresIn: REFRESH_TOKEN_TTL,
+    }
+  );
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: ACCESS_TOKEN_TTL,
+  };
 }
 
 export function signPlatformDevToken(): string {
@@ -204,7 +249,37 @@ export function setBriefAuthCookie(
 export function clearAuthCookie(res: Response): void {
   if (crossSiteAuthCookie()) {
     res.clearCookie(COOKIE_NAME, { path: '/', sameSite: 'none', secure: true });
+    res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, { path: '/', sameSite: 'none', secure: true });
     return;
   }
   res.clearCookie(COOKIE_NAME, { path: '/' });
+  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, { path: '/' });
+}
+
+/** Check if a token JTI has been revoked (for logout/session invalidation). */
+export async function isTokenRevoked(prisma: any, jti: string): Promise<boolean> {
+  try {
+    const revoked = await prisma.revokedToken.findUnique({ where: { jti } });
+    return !!revoked;
+  } catch {
+    return false;
+  }
+}
+
+/** Revoke a token by its JTI (called on logout). */
+export async function revokeToken(prisma: any, jti: string): Promise<void> {
+  try {
+    await prisma.revokedToken.upsert({
+      where: { jti },
+      create: {
+        jti,
+        revokedAt: new Date(),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL * 1000),
+      },
+      update: {},
+    });
+  } catch (error) {
+    // Log but don't throw — revocation failure should not break logout
+    console.error('[authToken] Failed to revoke token:', error);
+  }
 }

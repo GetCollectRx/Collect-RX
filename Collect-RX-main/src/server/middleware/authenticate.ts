@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-namespace -- standard Express `Request` augmentation */
 import type { Request, Response, NextFunction } from 'express';
-import { COOKIE_NAME, verifyAuthToken } from '../authToken';
+import { COOKIE_NAME, verifyAuthToken, isTokenRevoked } from '../authToken';
 import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
@@ -53,6 +53,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
     const payload = verifyAuthToken(raw);
+
+    // Check if token has been revoked (e.g., during logout)
+    const jti = (payload as any).jti;
+    if (jti && await isTokenRevoked(prisma, jti)) {
+      res.status(401).json({ error: 'Session has been invalidated' });
+      return;
+    }
+
     const briefRole = getUserRole(payload);
     const crossPractice =
       briefRole === 'billing_ops_manager' ||
