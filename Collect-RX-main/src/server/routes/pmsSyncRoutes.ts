@@ -156,6 +156,7 @@ router.post('/import/eob', upload.single('file'), async (req: Request, res: Resp
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });
   } catch (err) {
+    const practiceId = practiceIdFromSession(req);
     logger.error('[POST /admin/sync/import/eob] EOB import failed', {
       practice_id: practiceId,
       error_type: err instanceof Error ? err.constructor.name : typeof err,
