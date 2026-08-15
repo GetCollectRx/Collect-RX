@@ -105,9 +105,9 @@ export function decryptVapiPayload(
   const authTagBuffer = Buffer.from(authTag, 'hex');
 
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
-  decipher.setAuthTag(authTagBuffer);
 
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decipher.setAuthTag(authTagBuffer);
   decrypted += decipher.final('utf8');
 
   return JSON.parse(decrypted);
