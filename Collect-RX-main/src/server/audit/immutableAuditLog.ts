@@ -156,7 +156,9 @@ export async function verifyAuditEntryIntegrity(
 
     return expectedHash === actualHash;
   } catch (error) {
-    logger.error('Failed to verify audit entry', { error });
+    logLine('error', 'Failed to verify audit entry', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -166,7 +168,7 @@ export async function verifyAuditEntryIntegrity(
  * Post-launch: integrate with PagerDuty, Slack, or monitoring system.
  */
 async function sendSecurityAlert(message: string): Promise<void> {
-  logger.warn('[SECURITY ALERT]', { message });
+  logLine('warn', '[SECURITY ALERT]', { message });
   // TODO: Post-launch: Send to monitoring system
   // - PagerDuty critical alert
   // - Slack security channel
