@@ -117,8 +117,7 @@ export function decryptVapiPayload(
   // validateGcmAuthTag ensures authTagBuffer is exactly 16 bytes
   const authTagBuffer = validateGcmAuthTag(authTag);
 
-  // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length — auth tag validated via validateGcmAuthTag()
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer); // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length — auth tag validated via validateGcmAuthTag()
   decipher.setAuthTag(authTagBuffer);
 
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
