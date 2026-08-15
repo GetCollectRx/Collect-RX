@@ -88,6 +88,18 @@ export function encryptVapiPayload(payload: Record<string, unknown>): {
 }
 
 /**
+ * Validate and return GCM authentication tag buffer.
+ * Ensures tag is exactly 128 bits (16 bytes) per NIST SP 800-38D.
+ */
+function validateGcmAuthTag(authTagHex: string): Buffer {
+  const tag = Buffer.from(authTagHex, 'hex');
+  if (tag.length !== 16) {
+    throw new Error(`Invalid GCM authentication tag: expected 16 bytes but got ${tag.length}`);
+  }
+  return tag;
+}
+
+/**
  * Decrypt Vapi webhook payload.
  */
 export function decryptVapiPayload(
@@ -102,16 +114,8 @@ export function decryptVapiPayload(
 
   const key = Buffer.from(encryptionKey, 'hex');
   const ivBuffer = Buffer.from(iv, 'hex');
-  const authTagBuffer = Buffer.from(authTag, 'hex');
+  const authTagBuffer = validateGcmAuthTag(authTag);
 
-  // Validate GCM authentication tag is exactly 128 bits (16 bytes)
-  // Required for secure AES-256-GCM decryption per NIST SP 800-38D
-  const expectedTagLength = 16;
-  if (authTagBuffer.length !== expectedTagLength) {
-    throw new Error(`Invalid GCM authentication tag: expected ${expectedTagLength} bytes but got ${authTagBuffer.length}`);
-  }
-
-  // Create decipher with validated auth tag length
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
   decipher.setAuthTag(authTagBuffer);
 
