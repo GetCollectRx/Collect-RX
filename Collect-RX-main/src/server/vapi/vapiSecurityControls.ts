@@ -10,7 +10,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
-import { logger } from '../observability/logger.js';
+import { logLine } from '../observability/logger.js';
 
 export enum VapiSecurityMode {
   DISABLED = 'disabled', // No AI calls, all claims require manual review
@@ -49,13 +49,13 @@ export async function queueClaimForManualReview(
       },
     });
 
-    logger.info('Claim queued for manual review', {
+    logLine('info', 'Claim queued for manual review', {
       claimId,
       reason,
     });
   } catch (error) {
-    logger.error('Failed to queue claim for manual review', {
-      error,
+    logLine('error', 'Failed to queue claim for manual review', {
+      error: error instanceof Error ? error.message : String(error),
       claimId,
     });
   }
@@ -151,14 +151,14 @@ export async function logRecordingAccess(
       },
     });
 
-    logger.audit('recording_access', {
+    logLine('info', 'Recording access logged', {
       recordingId: input.recordingId,
       userId: input.userId,
       reason: input.accessReason,
     });
   } catch (error) {
-    logger.error('Failed to log recording access', {
-      error,
+    logLine('error', 'Failed to log recording access', {
+      error: error instanceof Error ? error.message : String(error),
       recordingId: input.recordingId,
     });
   }
@@ -189,8 +189,8 @@ export async function getRecordingMetadata(
       encrypted: true, // All recordings are encrypted post-launch
     };
   } catch (error) {
-    logger.error('Failed to retrieve recording metadata', {
-      error,
+    logLine('error', 'Failed to retrieve recording metadata', {
+      error: error instanceof Error ? error.message : String(error),
       recordingId,
     });
     return null;
@@ -225,7 +225,7 @@ export function validateVapiSecurityConfiguration(): {
   }
 
   if (warnings.length > 0) {
-    logger.warn('Vapi security configuration warnings', { warnings });
+    logLine('warn', 'Vapi security configuration warnings', { warnings: warnings.join('; ') });
   }
 
   return {

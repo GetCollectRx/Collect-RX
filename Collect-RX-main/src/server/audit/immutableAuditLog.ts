@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { PrismaClient } from '@prisma/client';
-import { logger } from '../observability/logger.js';
+import { logLine } from '../observability/logger.js';
 
 /**
  * Emergency mitigation #1: Immutable audit log with SHA-256 chaining.
@@ -76,7 +76,7 @@ export async function logImmutableAuditEntry(
     // Update last hash for next entry
     lastHash = hash;
 
-    logger.audit('phi_access', {
+    logLine('info', 'PHI access logged', {
       action: entry.action,
       resourceType: entry.resourceType,
       resourceId: entry.resourceId,
@@ -85,8 +85,8 @@ export async function logImmutableAuditEntry(
     });
   } catch (error) {
     // CRITICAL: If audit log write fails, alert immediately
-    logger.error('[CRITICAL] Failed to write immutable audit log', {
-      error,
+    logLine('error', '[CRITICAL] Failed to write immutable audit log', {
+      error: error instanceof Error ? error.message : String(error),
       action: entry.action,
       resourceType: entry.resourceType,
     });
@@ -97,7 +97,9 @@ export async function logImmutableAuditEntry(
         `Audit log write failed: ${error instanceof Error ? error.message : String(error)}`
       );
     } catch (alertError) {
-      logger.error('[CRITICAL] Failed to send security alert', { error: alertError });
+      logLine('error', '[CRITICAL] Failed to send security alert', {
+        error: alertError instanceof Error ? alertError.message : String(alertError),
+      });
     }
   }
 }
@@ -117,11 +119,13 @@ export async function initializeLastHash(prisma: PrismaClient): Promise<void> {
       const details = lastEntry.details as Record<string, unknown>;
       if (typeof details.hash === 'string') {
         lastHash = details.hash;
-        logger.info('Audit log chain initialized', { hash: lastHash });
+        logLine('info', 'Audit log chain initialized', { hash: lastHash });
       }
     }
   } catch (error) {
-    logger.warn('Could not initialize audit log chain', { error });
+    logLine('warn', 'Could not initialize audit log chain', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
