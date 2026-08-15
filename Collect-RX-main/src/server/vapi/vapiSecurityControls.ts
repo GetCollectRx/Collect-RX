@@ -104,16 +104,18 @@ export function decryptVapiPayload(
   const ivBuffer = Buffer.from(iv, 'hex');
   const authTagBuffer = Buffer.from(authTag, 'hex');
 
-  // Validate GCM authentication tag length (128-bit = 16 bytes)
-  // This validation is critical for AES-256-GCM security to prevent tag confusion attacks
-  if (authTagBuffer.length !== 16) {
-    throw new Error(`Invalid GCM auth tag length: expected 16 bytes, got ${authTagBuffer.length}`);
+  // Validate GCM authentication tag is exactly 128 bits (16 bytes)
+  // Required for secure AES-256-GCM decryption per NIST SP 800-38D
+  const expectedTagLength = 16;
+  if (authTagBuffer.length !== expectedTagLength) {
+    throw new Error(`Invalid GCM authentication tag: expected ${expectedTagLength} bytes but got ${authTagBuffer.length}`);
   }
 
+  // Create decipher with validated auth tag length
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+  decipher.setAuthTag(authTagBuffer);
 
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decipher.setAuthTag(authTagBuffer);
   decrypted += decipher.final('utf8');
 
   return JSON.parse(decrypted);
