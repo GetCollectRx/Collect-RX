@@ -7,6 +7,13 @@ import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logImmutableAuditEntry } from '../audit/immutableAuditLog.js';
 
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    practiceId: string;
+  };
+}
+
 // Routes that access PHI
 const SENSITIVE_ROUTES = [
   '/api/insurance/claims',
@@ -20,7 +27,7 @@ const SENSITIVE_ROUTES = [
  * Middleware to audit all PHI access.
  * Should be mounted early in the middleware stack.
  */
-export function auditPhiAccessMiddleware(req: Request, res: Response, next: NextFunction) {
+export function auditPhiAccessMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   // Check if this is a sensitive route
   const isSensitiveRoute = SENSITIVE_ROUTES.some((route) => req.path.startsWith(route));
 
@@ -32,12 +39,13 @@ export function auditPhiAccessMiddleware(req: Request, res: Response, next: Next
       // Log PHI access after response (only if successful)
       if (res.statusCode < 400 && req.user) {
         logImmutableAuditEntry(prisma, {
-          userId: (req.user as any).id,
+          practiceId: req.user.practiceId,
+          userId: req.user.id,
           action: getActionFromMethod(req.method),
           resourceType: getResourceType(req.path),
           resourceId: extractResourceId(req),
-          ipAddress: req.ip,
-          userAgent: req.headers['user-agent'],
+          ipAddress: req.ip || undefined,
+          userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
           result: 'success',
           details: `${req.method} ${req.path}`,
         }).catch((error) => {
@@ -54,7 +62,7 @@ export function auditPhiAccessMiddleware(req: Request, res: Response, next: Next
   next();
 }
 
-function getActionFromMethod(method: string): 'read' | 'write' | 'delete' | 'export' {
+function getActionFromMethod(method: string): 'read' | 'write' | 'delete' | 'export' | 'access_recording' {
   switch (method.toUpperCase()) {
     case 'GET':
       return 'read';

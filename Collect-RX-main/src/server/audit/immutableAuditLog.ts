@@ -14,6 +14,7 @@ import { logLine } from '../observability/logger.js';
 export interface ImmutableAuditEntry {
   id: string;
   timestamp: Date;
+  practiceId: string;
   userId?: string;
   action: 'read' | 'write' | 'delete' | 'export' | 'access_recording';
   resourceType: 'patient' | 'claim' | 'recording' | 'practice_setting' | 'other';
@@ -34,7 +35,7 @@ let lastHash = '';
  */
 export async function logImmutableAuditEntry(
   prisma: PrismaClient,
-  entry: Omit<ImmutableAuditEntry, 'id' | 'hash' | 'previousHash' | 'timestamp'>
+  entry: Omit<ImmutableAuditEntry, 'id' | 'hash' | 'previousHash' | 'timestamp'> & { practiceId: string }
 ): Promise<void> {
   try {
     const timestamp = new Date();
@@ -59,6 +60,7 @@ export async function logImmutableAuditEntry(
     // Store in database (audit log table)
     await prisma.auditLog.create({
       data: {
+        practiceId: entry.practiceId,
         userId: entry.userId,
         action: entry.action,
         subjectType: entry.resourceType,

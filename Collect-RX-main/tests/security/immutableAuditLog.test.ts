@@ -2,12 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { logImmutableAuditEntry, initializeLastHash } from '../../src/server/audit/immutableAuditLog.js';
 import { prisma } from '../../src/lib/prisma.js';
 
+// Test practice ID used across all tests
+const TEST_PRACTICE_ID = 'test_practice_' + Date.now();
+
 describe('Immutable Audit Log', () => {
   it('creates audit entries with hash chaining', async () => {
     await initializeLastHash(prisma);
 
     // Create first entry
     await logImmutableAuditEntry(prisma, {
+      practiceId: TEST_PRACTICE_ID,
       userId: 'user_' + Date.now(),
       action: 'read',
       resourceType: 'claim',
@@ -42,6 +46,7 @@ describe('Immutable Audit Log', () => {
 
     for (const action of actions) {
       await logImmutableAuditEntry(prisma, {
+        practiceId: TEST_PRACTICE_ID,
         userId,
         action,
         resourceType: 'claim',
@@ -63,6 +68,7 @@ describe('Immutable Audit Log', () => {
 
     for (const resourceType of resourceTypes) {
       await logImmutableAuditEntry(prisma, {
+        practiceId: TEST_PRACTICE_ID,
         userId,
         action: 'read',
         resourceType,

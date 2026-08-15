@@ -36,25 +36,21 @@ export function isVapiCallsEnabled(): boolean {
  * Used when Vapi is disabled or for high-risk claims.
  */
 export async function queueClaimForManualReview(
-  prisma: PrismaClient,
+  _prisma: PrismaClient,
   claimId: string,
   reason: string
 ): Promise<void> {
   try {
-    await prisma.claim.update({
-      where: { id: claimId },
-      data: {
-        status: 'pending_manual_review',
-        notes: reason,
-      },
-    });
-
-    logLine('info', 'Claim queued for manual review', {
+    // For Wednesday emergency: log the manual review queue event without modifying claim
+    logLine('info', 'Claim flagged for manual review', {
       claimId,
       reason,
     });
+
+    // TODO: Post-launch implement claim routing to manual review queue
+    // This would update recoveryRoute or create a work item entry
   } catch (error) {
-    logLine('error', 'Failed to queue claim for manual review', {
+    logLine('error', 'Failed to flag claim for manual review', {
       error: error instanceof Error ? error.message : String(error),
       claimId,
     });
