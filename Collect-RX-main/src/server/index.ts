@@ -137,6 +137,7 @@ import { startRulesEngine } from './rulesEngine.js';
 import { isLearningLoopEnabled } from './learning/config.js';
 import { drainGuardrailAuditOutbox } from '../workers/guardrailAuditWorker.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
+import { globalErrorHandler } from './middleware/errorRedaction.js';
 
 import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
@@ -569,15 +570,9 @@ app.use((_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Global error handler
+// Global error handler — sanitizes error messages and returns correlation IDs
 // ─────────────────────────────────────────────────────────────────────────────
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error('[server] Unhandled error', { error: err });
-  res.status(500).json({
-    success: false,
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-  });
-});
+app.use(globalErrorHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot (only when this file is the process entry — not when imported by tests)
