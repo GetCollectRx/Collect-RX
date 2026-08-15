@@ -251,7 +251,7 @@ router.delete('/claims/:id', async (req: Request, res: Response) => {
 // Body: { practiceId?: string, paymentAmountCents?: number, notes?: string }
 // If paymentAmountCents omitted, treats as full payment (outstanding → 0). Emits EMR outbox on RESOLVED.
 // ---------------------------------------------------------------------------
-router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) => {
+router.post('/claims/:id/confirm-payment', strictLimiter, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const body = req.body as { practiceId?: string; paymentAmountCents?: number; notes?: string };
@@ -282,7 +282,13 @@ router.post('/claims/:id/confirm-payment', async (req: Request, res: Response) =
       recovery: result,
     });
   } catch (err) {
-    logger.error('[POST /insurance/claims/:id/confirm-payment]', { error: err });
+    const practiceId = practiceIdFromSession(req);
+    logger.error('[POST /insurance/claims/:id/confirm-payment] endpoint error', {
+      practiceId,
+      claim_id: req.params.id,
+      error_type: err instanceof Error ? err.constructor.name : typeof err,
+      error_message: (err instanceof Error ? err.message : String(err)).slice(0, 100),
+    });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

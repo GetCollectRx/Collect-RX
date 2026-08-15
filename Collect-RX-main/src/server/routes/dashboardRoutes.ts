@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import {
@@ -15,6 +16,14 @@ import { getPracticePmsContext } from '../pms/practicePmsContext.js';
 import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
 import { logger } from '../observability/logger.js';
 
+const dashboardRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req: Request) => practiceIdFromSession(req) || 'unknown',
+  message: 'Dashboard refresh limit exceeded.',
+  statusCode: 429,
+});
+
 const router = Router();
 useOwnerPracticeApi(router);
 
@@ -28,7 +37,7 @@ const OPEN_STATUSES: ClaimStatus[] = [
   'BLOCKED',
 ];
 
-router.get('/stats', async (req: Request, res: Response) => {
+router.get('/stats', dashboardRateLimit, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.practiceId === 'string' ? req.query.practiceId.trim() : '';
     if (queryPracticeConflictsSession(req, q || undefined)) {
@@ -41,7 +50,11 @@ router.get('/stats', async (req: Request, res: Response) => {
       try {
         await syncWorkItemsForPractice(prisma, practiceId);
       } catch (syncErr) {
-        logger.warn('[GET /dashboard/stats] work queue bootstrap failed', { error: syncErr });
+        logger.warn('[GET /dashboard/stats] work queue bootstrap failed', {
+          practiceId,
+          error_type: syncErr instanceof Error ? syncErr.constructor.name : typeof syncErr,
+          error_message: (syncErr instanceof Error ? syncErr.message : String(syncErr)).slice(0, 100),
+        });
       }
     }
 
@@ -154,7 +167,11 @@ router.get('/stats', async (req: Request, res: Response) => {
         .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
         .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
     } catch (carrierStatsErr) {
-      logger.warn('[GET /dashboard/stats] carrier trend check failed', { error: carrierStatsErr });
+      logger.warn('[GET /dashboard/stats] carrier trend check failed', {
+        practiceId,
+        error_type: carrierStatsErr instanceof Error ? carrierStatsErr.constructor.name : typeof carrierStatsErr,
+        error_message: (carrierStatsErr instanceof Error ? carrierStatsErr.message : String(carrierStatsErr)).slice(0, 100),
+      });
     }
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
@@ -164,7 +181,11 @@ router.get('/stats', async (req: Request, res: Response) => {
       recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
       revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
     } catch (recoveryErr) {
-      logger.warn('[GET /dashboard/stats] recovery metrics failed', { error: recoveryErr });
+      logger.warn('[GET /dashboard/stats] recovery metrics failed', {
+        practiceId,
+        error_type: recoveryErr instanceof Error ? recoveryErr.constructor.name : typeof recoveryErr,
+        error_message: (recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr)).slice(0, 100),
+      });
     }
 
     return res.json({
@@ -201,7 +222,12 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    logger.error('[GET /dashboard/stats]', { error: err });
+    const practiceId = practiceIdFromSession(req);
+    logger.error('[GET /dashboard/stats] endpoint error', {
+      practiceId,
+      error_type: err instanceof Error ? err.constructor.name : typeof err,
+      error_message: (err instanceof Error ? err.message : String(err)).slice(0, 100),
+    });
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021') {
       return res.status(503).json({
         error:
@@ -212,7 +238,7 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/ar-close', async (req: Request, res: Response) => {
+router.get('/ar-close', dashboardRateLimit, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.practiceId === 'string' ? req.query.practiceId.trim() : '';
     if (queryPracticeConflictsSession(req, q || undefined)) {
@@ -236,7 +262,12 @@ router.get('/ar-close', async (req: Request, res: Response) => {
       })),
     });
   } catch (err) {
-    logger.error('[GET /dashboard/ar-close]', { error: err });
+    const practiceId = practiceIdFromSession(req);
+    logger.error('[GET /dashboard/ar-close] endpoint error', {
+      practiceId,
+      error_type: err instanceof Error ? err.constructor.name : typeof err,
+      error_message: (err instanceof Error ? err.message : String(err)).slice(0, 100),
+    });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });

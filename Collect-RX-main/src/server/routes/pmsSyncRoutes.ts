@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { prisma } from '../../lib/prisma';
 import {
   practiceIdFromSession,
@@ -18,6 +19,14 @@ import { logger } from '../observability/logger.js';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 12 * 1024 * 1024 },
+});
+
+const pmsSyncRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req: Request) => practiceIdFromSession(req) || 'unknown',
+  message: 'Too many import requests. Max 10 per minute.',
+  statusCode: 429,
 });
 
 const router = Router();
@@ -69,7 +78,7 @@ router.get('/runs/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/:pmsVendor', upload.single('file'), pmsSyncRateLimit, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const slug = req.params.pmsVendor;
@@ -120,7 +129,13 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
 
     return res.json({ success: true, ...result });
   } catch (err) {
-    logger.error('[POST /admin/sync/import]', { error: err });
+    const practiceId = practiceIdFromSession(req);
+    logger.error('[POST /admin/sync/import] Import pipeline failed', {
+      practice_id: practiceId,
+      pms_vendor: req.params.pmsVendor,
+      error_type: err instanceof Error ? err.constructor.name : typeof err,
+      error_message: (err instanceof Error ? err.message : String(err)).slice(0, 100),
+    });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -141,7 +156,11 @@ router.post('/import/eob', upload.single('file'), async (req: Request, res: Resp
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });
   } catch (err) {
-    logger.error('[POST /admin/sync/import/eob]', { error: err });
+    logger.error('[POST /admin/sync/import/eob] EOB import failed', {
+      practice_id: practiceId,
+      error_type: err instanceof Error ? err.constructor.name : typeof err,
+      error_message: (err instanceof Error ? err.message : String(err)).slice(0, 100),
+    });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
