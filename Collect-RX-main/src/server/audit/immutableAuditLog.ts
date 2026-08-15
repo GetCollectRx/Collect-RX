@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, AuditLog } from '@prisma/client';
 import { logLine } from '../observability/logger.js';
 
 /**
@@ -136,25 +136,26 @@ export async function initializeLastHash(prisma: PrismaClient): Promise<void> {
  * Call this periodically or when an entry is accessed.
  */
 export async function verifyAuditEntryIntegrity(
-  entry: any,
+  entry: AuditLog,
   previousHash: string
 ): Promise<boolean> {
   try {
+    const details = entry.details as Record<string, unknown> | null;
     const entryString = JSON.stringify({
-      timestamp: entry.timestamp,
+      timestamp: entry.createdAt.toISOString(),
       userId: entry.userId,
       action: entry.action,
       resourceType: entry.subjectType,
       resourceId: entry.subjectId,
       ipAddress: entry.requestIp,
       userAgent: entry.userAgent,
-      result: entry.details?.result,
-      details: entry.details?.details,
+      result: details?.result,
+      details: details?.details,
     });
 
     const chainInput = entryString + previousHash;
     const expectedHash = crypto.createHash('sha256').update(chainInput).digest('hex');
-    const actualHash = entry.details?.hash;
+    const actualHash = typeof details?.hash === 'string' ? details.hash : '';
 
     return expectedHash === actualHash;
   } catch (error) {

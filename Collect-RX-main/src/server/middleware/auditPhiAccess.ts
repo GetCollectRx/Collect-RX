@@ -35,7 +35,7 @@ export function auditPhiAccessMiddleware(req: AuthenticatedRequest, res: Respons
     // Capture response for audit
     const originalSend = res.send;
 
-    res.send = function (data: any) {
+    res.send = function (data: unknown) {
       // Log PHI access after response (only if successful)
       if (res.statusCode < 400 && req.user) {
         logImmutableAuditEntry(prisma, {
