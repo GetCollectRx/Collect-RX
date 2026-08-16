@@ -6,11 +6,11 @@
  */
 
 // Patterns for common PII
-const SSN_PATTERN = /\d{3}-\d{2}-\d{4}/g;
+const SSN_PATTERN = /\d{3}-\d{2}-\d{4}(?!\d)/g;
 const CANADIAN_PHN_PATTERN = /\d{4}\s\d{4}\s\d{4}/g; // Canadian health card
 const PATIENT_NAME_PATTERN = /([A-Z][a-z]+\s+[A-Z][a-z]+)/g; // Capitalized names (aggressive)
 const CREDIT_CARD_PATTERN = /\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g;
-const SIN_PATTERN = /\d{3}-\d{3}-\d{3}/g; // Social Insurance Number
+const SIN_PATTERN = /\d{3}-\d{3}-\d{3}(?!\d)/g; // Social Insurance Number
 
 export interface PiiRedactionConfig {
   redactSSN?: boolean;
@@ -173,12 +173,22 @@ export function detectPIITypes(obj: unknown): string[] {
   const text = JSON.stringify(obj);
   const types: string[] = [];
 
+  SSN_PATTERN.lastIndex = 0;
   if (SSN_PATTERN.test(text)) types.push('SSN');
+
+  CANADIAN_PHN_PATTERN.lastIndex = 0;
   if (CANADIAN_PHN_PATTERN.test(text)) types.push('PHN');
+
+  SIN_PATTERN.lastIndex = 0;
   if (SIN_PATTERN.test(text)) types.push('SIN');
+
+  CREDIT_CARD_PATTERN.lastIndex = 0;
   if (CREDIT_CARD_PATTERN.test(text)) types.push('CreditCard');
+
   if (/@/.test(text)) types.push('Email');
   if (/\d{3}-\d{3}-\d{4}/.test(text)) types.push('Phone');
+
+  PATIENT_NAME_PATTERN.lastIndex = 0;
   if (PATIENT_NAME_PATTERN.test(text)) types.push('Name');
 
   return types;
