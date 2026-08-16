@@ -105,7 +105,7 @@ export function decryptVapiPayload(
   const authTagBuffer = Buffer.from(authTag, 'hex');
 
   if (authTagBuffer.length !== 16) {
-    throw new Error(`Invalid GCM authentication tag: expected 16 bytes but got ${authTagBuffer.length}`);
+    throw new Error(`Invalid GCM authentication tag: expected 16 bytes, got ${authTagBuffer.length}`);
   }
 
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
