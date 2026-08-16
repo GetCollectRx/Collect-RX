@@ -1,1 +1,3 @@
+# Semgrep configuration
+# See https://semgrep.dev/docs/configuration/
 rules: []

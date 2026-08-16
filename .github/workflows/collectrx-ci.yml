@@ -90,7 +90,7 @@ jobs:
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/src" returntocorp/semgrep \
             semgrep --config=p/typescript --config=p/owasp-top-ten --error \
-            --skip-rules=javascript.node-crypto.security.gcm-no-tag-length \
+            --exclude-rule javascript.node-crypto.security.gcm-no-tag-length \
             /src/Collect-RX-main/src
 
       - name: Production build
