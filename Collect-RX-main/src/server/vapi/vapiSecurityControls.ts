@@ -109,6 +109,8 @@ export function decryptVapiPayload(
     throw new Error(`Invalid GCM authentication tag: expected 16 bytes, got ${authTagBuffer.length}`);
   }
 
+  // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length
+  // Auth tag length is validated immediately above (line 108-110)
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
   decipher.setAuthTag(authTagBuffer);
 
