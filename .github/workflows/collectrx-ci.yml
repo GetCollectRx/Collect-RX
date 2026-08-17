@@ -19,6 +19,13 @@ env:
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Test runner assignment
+        run: echo "Runner assignment successful"
+
   branch-up-to-date:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
