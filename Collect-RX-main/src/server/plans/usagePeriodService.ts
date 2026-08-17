@@ -112,8 +112,19 @@ async function pauseCalls(prisma: PrismaClient, practiceId: string, reason: stri
   });
 }
 
+async function pauseOrgCalls(prisma: PrismaClient, orgId: string, reason: string): Promise<void> {
+  await prisma.organization.updateMany({
+    where: { id: orgId, callsPaused: false },
+    data: { callsPaused: true, callsPausedReason: reason, callsPausedAt: new Date() },
+  });
+}
+
 async function triggerSoftStop(prisma: PrismaClient, practice: Practice): Promise<void> {
   await pauseCalls(prisma, practice.id, 'overage_pending');
+}
+
+async function triggerOrgSoftStop(prisma: PrismaClient, orgId: string): Promise<void> {
+  await pauseOrgCalls(prisma, orgId, 'overage_pending');
 }
 
 /**
@@ -257,36 +268,68 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     }
   }
 
-  const usage = await getOrCreateUsagePeriod(prisma, practice);
-  if (usage.minutesConsumed >= tier.includedMinutes) {
+  let minutesConsumed = 0;
+  let overageConfirmed = false;
+  let billingEntity_Org: Awaited<ReturnType<typeof prisma.organization.findUnique>> | null = null;
+
+  if (billingEntity.kind === 'organization') {
+    billingEntity_Org = await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } });
+    overageConfirmed = billingEntity_Org?.overageConfirmed ?? false;
+    // Sum minutes across all member practices
+    for (const memberId of billingEntity.memberPracticeIds) {
+      const memberUsage = await getOrCreateUsagePeriod(prisma, { id: memberId } as any);
+      minutesConsumed += memberUsage.minutesConsumed;
+    }
+  } else {
+    const usage = await getOrCreateUsagePeriod(prisma, practice);
+    minutesConsumed = usage.minutesConsumed;
+    overageConfirmed = practice.overageConfirmed;
+  }
+
+  if (minutesConsumed >= tier.includedMinutes) {
     if (tier.hardStopAtLimit) {
       return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
     }
     // Confirmed overage: every further minute bills at the overage rate,
     // which exceeds delivery cost on all paid tiers — profitable, so neither
     // the soft stop nor the COGS breaker applies. Daily caps still do.
-    if (practice.overageConfirmed) {
+    if (overageConfirmed) {
       return { allowed: true, reason: 'OK', overageRatePerMinute: tier.overageRatePerMinute };
     }
-    await triggerSoftStop(prisma, practice);
+    // For org-pooled billing, soft-stop at org level; for practice billing, at practice level
+    if (billingEntity.kind === 'organization') {
+      await triggerOrgSoftStop(prisma, billingEntity.organizationId);
+    } else {
+      await triggerSoftStop(prisma, practice);
+    }
     return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
   }
 
-  const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
+  const cogs = evaluateCogsBreaker(tier, minutesConsumed);
   if (cogs === 'pause') {
-    await pauseCalls(prisma, practice.id, 'cogs_breaker');
-    logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
-      pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
-      practiceId: practice.id,
-      minutesConsumed: usage.minutesConsumed,
-      billingTier: practice.billingTier,
-    });
+    if (billingEntity.kind === 'organization') {
+      await pauseCalls(prisma, billingEntity.organizationId, 'cogs_breaker');
+      logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing org calls', {
+        pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
+        orgId: billingEntity.organizationId,
+        minutesConsumed,
+        billingTier: tier,
+      });
+    } else {
+      await pauseCalls(prisma, practice.id, 'cogs_breaker');
+      logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
+        pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
+        practiceId: practice.id,
+        minutesConsumed,
+        billingTier: practice.billingTier,
+      });
+    }
     try {
       const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
       await dispatchOpsAlert({
         alertId: 'cogs_breaker',
-        source: practice.id,
-        detail: `${usage.minutesConsumed} min consumed on ${practice.billingTier} tier`,
+        source: billingEntity.kind === 'organization' ? billingEntity.organizationId : practice.id,
+        detail: `${minutesConsumed} min consumed on ${billingEntity.kind === 'organization' ? 'org' : practice.billingTier} tier`,
       });
     } catch (alertErr) {
       logger.error('[cogsBreaker] ops alert dispatch failed (non-fatal)', { error: alertErr });
