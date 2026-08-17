@@ -270,7 +270,7 @@ export async function applyRecoveryAfterCall(
         where: {
           claimId: claim.id,
           status: 'open',
-          reason: decision.reason,
+          reason: decision.actionDetail ?? '',
         },
       });
       if (!existing) {
@@ -279,7 +279,7 @@ export async function applyRecoveryAfterCall(
             claimId: claim.id,
             practiceId: claim.practiceId,
             carrierId: claim.carrierId,
-            reason: decision.reason,
+            reason: decision.actionDetail ?? '',
             status: 'open',
           },
         });
