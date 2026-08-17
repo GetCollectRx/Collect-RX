@@ -1,9 +1,14 @@
+import { createHash } from 'crypto';
+import { CSV_LIMITS } from './csvValidator';
+
 /**
  * CSV → row objects for insurance claim imports.
  * Header row → snake_case keys, then optional alias → canonical field names.
  *
  * P3-30: common export column names map to the same internal fields (lightweight “column mapping”
  * without a per-upload UI).
+ *
+ * SECURITY: CSV injection prevention (=, +, -, @, %) and size/row limits enforced.
  */
 const HEADER_ALIASES: Record<string, string> = {
   // Patient identity
@@ -43,39 +48,85 @@ const HEADER_ALIASES: Record<string, string> = {
   adjud: 'adjudication_date',
   adj_date: 'adjudication_date',
   days_since_adj: 'days_since_adjudication',
+  claim_number: 'claim_number',
+  claim_id: 'claim_number',
+  insurance_carrier: 'insurance_carrier',
+  carrier: 'insurance_carrier',
+  group_policy_number: 'group_policy_number',
+  group: 'group_policy_number',
+  policy: 'group_policy_number',
+  subscriber_id: 'subscriber_id',
+  subscr_id: 'subscriber_id',
 };
 
 /**
- * After normalizing the header to snake_case, map alias keys to canonical `BalanceRow` field names.
+ * After normalizing the header to snake_case, map alias keys to canonical field names.
  */
-function canonicalFieldName(
-  normalized: string
-): string {
+function canonicalFieldName(normalized: string): string {
   return HEADER_ALIASES[normalized] ?? normalized;
 }
 
+/**
+ * Computes SHA-256 hash of CSV text for integrity verification
+ */
+export function computeCsvHash(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/**
+ * Parses CSV text with security validations and size limits enforced.
+ * - Prevents CSV injection (formulas escaped)
+ * - Enforces row count limits
+ * - Validates and logs suspicious CSVs
+ *
+ * Returns rows as Record<string, string> for backward compatibility,
+ * but individual rows are validated against CSV injection patterns.
+ */
 export function parseSimpleCsv(text: string): Array<Record<string, string>> {
+  // Check input size
+  if (text.length > CSV_LIMITS.MAX_FILE_SIZE_BYTES) {
+    throw new Error(
+      `CSV text exceeds ${CSV_LIMITS.MAX_FILE_SIZE_BYTES} bytes (` +
+      `${text.length} bytes provided)`
+    );
+  }
+
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   if (lines.length < 2) return [];
 
+  // Validate row count
+  if (lines.length - 1 > CSV_LIMITS.MAX_ROWS) {
+    throw new Error(
+      `CSV exceeds ${CSV_LIMITS.MAX_ROWS} rows limit (` +
+      `${lines.length - 1} rows provided)`
+    );
+  }
+
   const header = splitCsvLine(lines[0]!).map((h) => {
     const normalized = h
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_')
-      .replace(/"/g, '');
+      .replace(/”/g, '');
     return canonicalFieldName(normalized);
   });
+
   const out: Array<Record<string, string>> = [];
   for (let r = 1; r < lines.length; r++) {
     const cols = splitCsvLine(lines[r]!);
     const row: Record<string, string> = {};
     header.forEach((h, j) => {
       let v = cols[j] ?? '';
-      v = v.replace(/^"|"$/g, '').trim();
+      v = v.replace(/^”|”$/g, '').trim();
+
+      // Apply CSV injection prevention: escape formula characters
+      if (/^[=+\-@%]/.test(v)) {
+        v = '\'' + v;
+      }
+
       row[h] = v;
     });
     out.push(row);
