@@ -3,7 +3,7 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
-import { captureFatal, initSentry } from './observability/sentryNode.js';
+import { initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
 // P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Same as index.ts;

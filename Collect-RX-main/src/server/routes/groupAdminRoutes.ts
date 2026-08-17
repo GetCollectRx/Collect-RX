@@ -1,8 +1,35 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate';
-import { authorizeRole } from '../middleware/authorizeRole';
 import { logger } from '../observability/logger.js';
+import {
+  hasMinRole,
+  type UserAuthPayload,
+} from '../accessControl/types.js';
+import {
+  callerHasOrganizationMembership,
+  callerIsBillingViewer,
+  callerAdminOrganizationId,
+  callerBillingViewerOrganizationId,
+} from '../accessControl/organizationContext.js';
+import { runWithPracticeRls } from '../db/rlsContext.js';
+import {
+  groupPmsImportBodySchema,
+  addOrgPracticeBodySchema,
+  updateOrgMemberBodySchema,
+  formatZodError,
+} from '../validation/zodSchemas.js';
+import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
+import {
+  createOrgBillingCheckoutSession,
+  createOrgBillingPortalSession,
+} from '../stripe/billing.js';
+import {
+  createOrgPractice,
+  unusedLegacyPasswordHash,
+} from '../organizations/practiceProvisioning.js';
+import { apiClientErrorMessage } from '../apiErrorMessage.js';
 
 /**
  * Group/DSO Admin API — PHI-free aggregate views across all practices.

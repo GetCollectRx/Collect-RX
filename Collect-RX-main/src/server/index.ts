@@ -64,7 +64,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
-import { captureFatal, initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
+import { initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
 import { checkRlsRoleSafety, getCachedRlsRoleSafety } from './observability/rlsRoleSafety.js';
 import { prisma } from '../lib/prisma';
 // Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.

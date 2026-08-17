@@ -32,6 +32,8 @@ import {
 import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { practiceIdFromSession } from '../middleware/requirePracticeSession.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
+import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
 import { logger } from '../observability/logger.js';
 
 function practiceId(req: Request): string {

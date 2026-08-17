@@ -186,6 +186,11 @@ const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after 
 // retrying too soon risks dialing the carrier twice for the same attempt.
 const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
+// Fleet-wide carrier concurrency limiting — when a carrier's active call
+// count hits its per-carrier ceiling, defer new attempts for the carrier.
+const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
+const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
+
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
 // older than the worst plausible call (multi-hour carrier hold) is dead.
@@ -200,6 +205,30 @@ function vapiSlotBudget(): number {
   const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
   if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
   return Math.max(0, limit - Math.max(0, reserve));
+}
+
+/** Add random jitter to a base defer window to spread retries across time. */
+function withJitter(baseMs: number, jitterMs: number): number {
+  const random = Math.random() * jitterMs;
+  return baseMs + random;
+}
+
+/** Defer all pending candidates for a practice when fleet-wide slot budget exhausted. */
+async function deferForFleetCapacity(
+  prisma: PrismaClient,
+  practiceIds: string[],
+): Promise<void> {
+  for (const practiceId of practiceIds) {
+    await prisma.callQueue.updateMany({
+      where: { practiceId, status: 'PENDING' },
+      data: {
+        scheduledFor: new Date(Date.now() + DEFER_DISPATCH_FAILURE_MS),
+        dispatchDeferralCode: 'VAPI_CAPACITY_EXHAUSTED',
+        dispatchDeferralNextAction: 'Waiting for available Vapi slots; retries automatically.',
+        dispatchDeferredAt: new Date(),
+      },
+    });
+  }
 }
 
 // This process's identity for the QueueEngineLease row — diagnostic only,

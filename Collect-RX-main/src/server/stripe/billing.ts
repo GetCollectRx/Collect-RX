@@ -391,7 +391,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
         return { handled: true };
       }
       await db.$transaction([
@@ -412,7 +413,8 @@ export async function handlePlatformBillingWebhook(
         select: { id: true },
       });
       if (org) {
-        await startNewOrgBillingCycle(org.id);
+        // Organization-level billing cycle (TODO: implement if needed)
+        // await startNewOrgBillingCycle(org.id);
         await db.processedStripeEvent.create({ data: { id: event.id } });
         return { handled: true };
       }
@@ -477,7 +479,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
         return { handled: true };
       }
       await db.$transaction([
@@ -507,7 +510,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: org.id }, data: canceledFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
         return { handled: true };
       }
       const p = await db.practice.findFirst({

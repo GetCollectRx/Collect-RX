@@ -6,7 +6,6 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePlatformAdmin } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
-import { CSV_AR_FEATURES, setCsvArFeaturePaused, type CsvArFeature } from '../featureFlags/csvArFeatures.js';
 import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';

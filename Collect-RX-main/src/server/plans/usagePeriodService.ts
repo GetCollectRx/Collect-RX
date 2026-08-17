@@ -8,7 +8,7 @@
  *   - paid tiers → calls paused (callsPaused/callsPausedReason='overage_pending')
  *     until the practice confirms overage charges via confirmOverage().
  */
-import type { Practice, PrismaClient, UsagePeriod } from '@prisma/client';
+import type { Organization, Practice, PrismaClient, UsagePeriod } from '@prisma/client';
 import { logger } from '../observability/logger.js';
 import {
   billingTierForStripePrice,

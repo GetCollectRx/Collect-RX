@@ -16,6 +16,7 @@ import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js
 import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
 import { logger } from '../observability/logger.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
