@@ -265,6 +265,29 @@ export async function applyRecoveryAfterCall(
       },
     });
 
+    if (decision.claimStatus === 'ESCALATED') {
+      const existing = await tx.callEscalation.findFirst({
+        where: {
+          claimId: claim.id,
+          status: 'open',
+          reason: decision.actionDetail ?? '',
+        },
+      });
+      if (!existing) {
+        await tx.callEscalation.create({
+          data: {
+            claimId: claim.id,
+            claimRef: claim.claimNumber,
+            practiceId: claim.practiceId,
+            carrierId: claim.carrierId as import('@prisma/client').CarrierId,
+            amountClaimedCents: Math.round(Number(claim.outstandingAmount) * 100),
+            reason: decision.actionDetail ?? '',
+            status: 'open',
+          },
+        });
+      }
+    }
+
     return createdGate;
   });
 

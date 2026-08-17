@@ -60,6 +60,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { correlationIdMiddleware } from './middleware/correlationId.js';
 import { logger } from './observability/logger.js';
+import { initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
 import compression from 'compression';
 import helmet from 'helmet';
 
@@ -83,6 +84,7 @@ import {
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
 import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken } from './healthMetricsExposure.js';
 import { getEventLoopHealth } from './observability/eventLoopHealth.js';
+import { checkRlsRoleSafety, getCachedRlsRoleSafety } from './observability/rlsRoleSafety.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
 import { runWithRlsBypass } from './db/rlsContext.js';
@@ -105,7 +107,8 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
-import { createOrganizationRouter, createOrganizationPublicRouter } from './routes/organizationRoutes';
+import { createOrgAdminRouter } from './routes/orgAdminRoutes';
+import { createSsoRouter } from './routes/ssoRoutes';
 import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
@@ -160,6 +163,8 @@ import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
+initSentry();
+installSentryExpressErrorHandler(app);
 app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -372,6 +377,14 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
   try {
     await prisma.$queryRaw`SELECT 1`;
+    const rlsSafety = getCachedRlsRoleSafety();
+    if (!rlsSafety.safe) {
+      res.status(503).json({
+        status: 'not_ready',
+        error: `RLS safety check failed: the connecting role is superuser or has BYPASSRLS — this will silently bypass all FORCE ROW LEVEL SECURITY policies`,
+      });
+      return;
+    }
     res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'not_ready' });
@@ -459,9 +472,23 @@ app.use('/api', anonStandardLimiter);
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
-app.use('/api/organizations', createOrganizationPublicRouter(prisma));
-app.use('/api/organizations', createOrganizationRouter(prisma));
+// Mounted at /api/admin/organizations, not /api/admin — this router's own
+// authenticate/authorizeRole('platform_dev') gate is a router-wide `.use()`,
+// which Express applies to every request whose path starts with the mount
+// prefix regardless of whether one of this router's own routes matches.
+// Mounted at the bare /api/admin prefix (matching adminRouter below), it
+// intercepted and 403'd every /api/admin/* request for any non-platform_dev
+// session before adminRouter ever got a chance to handle it — reproduced
+// live via supertest: GET /api/admin/practice-identity 403'd for a real
+// practice_owner session with "Insufficient permissions for this action",
+// authorizeRole's exact error string, not adminRoutes.ts's own. Internal
+// route paths in orgAdminRoutes.ts already start with /organizations, so
+// this mount change alone keeps every external URL
+// (POST /api/admin/organizations, etc.) identical — see the route-path fix
+// alongside this one.
+app.use('/api/admin/organizations', createOrgAdminRouter(prisma));
 app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
@@ -788,6 +815,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 async function initializePersistentPhiVault(): Promise<void> {
   await connectDatabase();
   await assertRlsRoleSafeInProduction(prisma);
+  void checkRlsRoleSafety(prisma).catch((err) => {
+    logger.error('[server] RLS role safety cache population failed (non-fatal)', { error: err });
+  });
   claimsPiiVault.useStore(prisma);
   const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
   logger.info('[piiVault] Rehydrated PHI tokens from encrypted store', { rehydrated });

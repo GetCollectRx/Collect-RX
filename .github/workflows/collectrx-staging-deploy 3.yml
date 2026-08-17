@@ -1,0 +1,23 @@
+name: CollectRx staging deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: collectrx-staging-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to collect-rx-staging
+        working-directory: Collect-RX-main
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy -c fly.staging.toml -a collect-rx-staging --remote-only

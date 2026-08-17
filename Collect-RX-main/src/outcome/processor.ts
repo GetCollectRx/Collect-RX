@@ -48,6 +48,11 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /system.generated\s+call\s+(?:detected|blocked|rejected)/i,
   /bot\s+activity(\s+detected)?/i,
   /detected\s+bot\s+activity/i,
+  /(?:end|stop)\s+this\s+call.*(?:automated|dialers|auto-dialer)/i,
+  /(?:fraud|security)\s+team.*(?:before|before we)/i,
+  /compliance\s+team.*(?:not\s+)?(?:speak|talk).*(?:auto-dialer|automated)/i,
+  /(?:isn't|is\s+not)\s+a\s+real\s+person/i,
+  /remove\s+this\s+line.*(?:calling|calling system).*(?:will\s+)?not\s+answer/i,
 ];
 
 /** Literal phrases from `processor.legacy.cjs` (carrier_block branch). */
@@ -316,10 +321,10 @@ function legacyCodeToProcessedOutcome(
  */
 export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const transcript = payload.transcript ?? '';
-  const summary = payload.analysis?.summary ?? '';
-  const successEval = payload.analysis?.successEvaluation ?? '';
-  /** Original casing — used for name extraction and pattern display */
-  const rawText = `${transcript} ${summary} ${successEval}`;
+  // Use transcript if available; fall back to summary only if transcript is empty.
+  // This prevents LLM-generated summaries from hallucinating financial outcomes when we have a real transcript,
+  // but allows fallback classification when no transcript exists.
+  const rawText = transcript.trim() ? transcript : (payload.analysis?.summary ?? '');
   /** Lowercased — used for all pattern matching */
   const fullText = rawText.toLowerCase();
 

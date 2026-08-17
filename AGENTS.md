@@ -28,8 +28,9 @@ and the `scripts` blocks of `package.json` / `Collect-RX-main/package.json` — 
   (`npm run db:migrate:dev`) in this headless VM — it can hang waiting on an interactive
   prompt and hold a Postgres advisory lock.
 - `npm run db:seed` writes the baseline practice (needs `SEED_PRACTICE_PASSWORD`).
-- `npm run demo:seed` writes rich demo data and prints a login:
-  `demo@hasanfamilydental.ca` / `CollectRx2026!`.
+- `npm run demo:seed` writes rich demo data and prints a login: email defaults to
+  `demo@collectrx-test.local` (override with `SEED_PRACTICE_EMAIL`), password is whatever
+  `SEED_PRACTICE_PASSWORD` was set to — there is no default password, the script requires one.
 
 ### Running (from `Collect-RX-main/`, or `npm run dev` at repo root)
 - `npm run dev` starts API on **:3000** and Vite on **:5173** in one process (no Redis needed —
@@ -38,11 +39,12 @@ and the `scripts` blocks of `package.json` / `Collect-RX-main/package.json` — 
 - Redis is optional. Only set `REDIS_URL` + run `npm run worker` if testing distributed jobs.
 
 ### UI permissions gotcha (affects manual testing of write actions)
-- The seeded `demo@hasanfamilydental.ca` user has role `practice_owner`, which the UI treats as
-  **read-only** (see `src/lib/useRoleAccess.ts`) — write buttons (e.g. "Mark complete, ready to
-  re-call" to clear a gate) are hidden. To exercise write actions, give the user a write role, e.g.
-  `UPDATE "User" SET role='office_manager' WHERE email='demo@hasanfamilydental.ca';`
-  then log out and log back in so the new role is in the session.
+- The seeded demo user has role `practice_owner`, which the UI treats as **read-only** (see
+  `src/lib/useRoleAccess.ts`) — write buttons (e.g. "Mark complete, ready to re-call" to clear a
+  gate) are hidden. To exercise write actions, give the user a write role, e.g.
+  `UPDATE "User" SET role='office_manager' WHERE email='demo@collectrx-test.local';`
+  (or your `SEED_PRACTICE_EMAIL` override) then log out and log back in so the new role is in
+  the session.
 
 ### Lint / test status on `main`
 - `npm run lint` and `npm test` toolchains work, but `main` has pre-existing failures unrelated to

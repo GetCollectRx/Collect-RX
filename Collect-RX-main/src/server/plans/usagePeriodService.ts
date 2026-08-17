@@ -59,6 +59,10 @@ function tierFor(practice: Practice): TierConfig {
   return TIERS[practice.billingTier];
 }
 
+function tierForBillingTier(billingTier: string): TierConfig {
+  return TIERS[billingTier as keyof typeof TIERS];
+}
+
 /** Best-effort window for a freshly-created UsagePeriod when none covers "now". */
 function fallbackPeriodWindow(practice: Practice, now: Date): PeriodWindow {
   const tier = tierFor(practice);
@@ -108,8 +112,19 @@ async function pauseCalls(prisma: PrismaClient, practiceId: string, reason: stri
   });
 }
 
+async function pauseOrgCalls(prisma: PrismaClient, orgId: string, reason: string): Promise<void> {
+  await prisma.organization.updateMany({
+    where: { id: orgId, callsPaused: false },
+    data: { callsPaused: true, callsPausedReason: reason, callsPausedAt: new Date() },
+  });
+}
+
 async function triggerSoftStop(prisma: PrismaClient, practice: Practice): Promise<void> {
   await pauseCalls(prisma, practice.id, 'overage_pending');
+}
+
+async function triggerOrgSoftStop(prisma: PrismaClient, orgId: string): Promise<void> {
+  await pauseOrgCalls(prisma, orgId, 'overage_pending');
 }
 
 /**
@@ -122,59 +137,127 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
   }
 
-  const tier = tierFor(practice);
-  const now = new Date();
-
-  if (practice.subscriptionStatus === 'canceled') {
-    return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
-  }
-  if (practice.subscriptionStatus === 'past_due' || practice.subscriptionStatus === 'unpaid') {
-    return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
-  }
-
-  if (practice.billingTier === 'trial' && practice.trialEndsAt && practice.trialEndsAt < now) {
-    return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
+  const { resolveBillingEntity } = await import('../stripe/billingEntity.js');
+  let billingEntity;
+  try {
+    billingEntity = await resolveBillingEntity(prisma, practiceId);
+  } catch {
+    // Fall back to practice-level billing if org lookup fails (e.g., mocked test without organizationPractice)
+    billingEntity = { kind: 'practice' as const, practiceId };
   }
 
-  // Fail closed: under SUBSCRIPTION_ENFORCE a paid tier is only callable when
-  // Stripe is actually configured and the subscription is live. A practice
-  // whose tier has no price env, whose stored price ID maps to a different
-  // tier, or whose subscription never activated must not get a minute pool.
-  if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
-    if (!tier.stripePriceId) {
-      logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured — blocking', {
-        billingTier: practice.billingTier,
-        practiceId: practice.id,
-      });
+  let tier: TierConfig;
+
+  if (billingEntity.kind === 'organization') {
+    const org = await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } });
+    if (!org || !org.billingTier) {
       return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
     }
-    if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
+    tier = tierForBillingTier(org.billingTier);
+
+    // Check org-level subscription status
+    if (org.subscriptionStatus === 'canceled') {
       return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
     }
-    if (practice.subscriptionPriceId) {
-      const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
-      if (tierForPrice !== practice.billingTier) {
-        logger.error('[planGate] subscription price maps to a different tier — blocking until reconciled', {
-          subscriptionPriceId: practice.subscriptionPriceId,
-          mappedTier: tierForPrice ?? 'none',
-          practiceId: practice.id,
-          billingTier: practice.billingTier,
+    if (org.subscriptionStatus === 'past_due' || org.subscriptionStatus === 'unpaid') {
+      return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+    }
+
+    // Check org-level pause state
+    if (org.callsPaused) {
+      switch (org.callsPausedReason) {
+        case 'payment_failed':
+          return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+        case 'subscription_cancelled':
+          return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+        case 'cogs_breaker':
+          return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+        default:
+          return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
+    }
+
+    // Org-level billing: check org subscription enforcement
+    if (org.billingTier !== 'trial' && subscriptionEnforceEnabled()) {
+      if (!tier.stripePriceId) {
+        logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured for org — blocking', {
+          billingTier: org.billingTier,
+          orgId: org.id,
         });
         return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
       }
-    }
-  }
-
-  if (practice.callsPaused) {
-    switch (practice.callsPausedReason) {
-      case 'payment_failed':
-        return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
-      case 'subscription_cancelled':
+      if (org.subscriptionStatus !== 'active' && org.subscriptionStatus !== 'trialing') {
         return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
-      case 'cogs_breaker':
-        return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
-      default:
-        return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
+      if (org.subscriptionPriceId) {
+        const tierForPrice = billingTierForStripePrice(org.subscriptionPriceId);
+        if (tierForPrice !== org.billingTier) {
+          logger.error('[planGate] org subscription price maps to a different tier — blocking until reconciled', {
+            subscriptionPriceId: org.subscriptionPriceId,
+            mappedTier: tierForPrice ?? 'none',
+            orgId: org.id,
+            billingTier: org.billingTier,
+          });
+          return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+        }
+      }
+    }
+  } else {
+    tier = tierFor(practice);
+
+    const now = new Date();
+
+    if (practice.subscriptionStatus === 'canceled') {
+      return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+    }
+    if (practice.subscriptionStatus === 'past_due' || practice.subscriptionStatus === 'unpaid') {
+      return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+    }
+
+    if (practice.billingTier === 'trial' && practice.trialEndsAt && practice.trialEndsAt < now) {
+      return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
+    }
+
+    // Fail closed: under SUBSCRIPTION_ENFORCE a paid tier is only callable when
+    // Stripe is actually configured and the subscription is live. A practice
+    // whose tier has no price env, whose stored price ID maps to a different
+    // tier, or whose subscription never activated must not get a minute pool.
+    if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
+      if (!tier.stripePriceId) {
+        logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured — blocking', {
+          billingTier: practice.billingTier,
+          practiceId: practice.id,
+        });
+        return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+      }
+      if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
+        return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+      }
+      if (practice.subscriptionPriceId) {
+        const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
+        if (tierForPrice !== practice.billingTier) {
+          logger.error('[planGate] subscription price maps to a different tier — blocking until reconciled', {
+            subscriptionPriceId: practice.subscriptionPriceId,
+            mappedTier: tierForPrice ?? 'none',
+            practiceId: practice.id,
+            billingTier: practice.billingTier,
+          });
+          return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+        }
+      }
+    }
+
+    if (practice.callsPaused) {
+      switch (practice.callsPausedReason) {
+        case 'payment_failed':
+          return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+        case 'subscription_cancelled':
+          return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+        case 'cogs_breaker':
+          return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+        default:
+          return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
     }
   }
 
@@ -185,36 +268,71 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     }
   }
 
-  const usage = await getOrCreateUsagePeriod(prisma, practice);
-  if (usage.minutesConsumed >= tier.includedMinutes) {
+  let minutesConsumed = 0;
+  let overageConfirmed = false;
+  let billingEntity_Org: Awaited<ReturnType<typeof prisma.organization.findUnique>> | null = null;
+
+  if (billingEntity.kind === 'organization') {
+    billingEntity_Org = await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } });
+    overageConfirmed = billingEntity_Org?.overageConfirmed ?? false;
+    // Sum minutes across all member practices
+    for (const memberId of billingEntity.memberPracticeIds) {
+      const memberPractice = await prisma.practice.findUnique({ where: { id: memberId } });
+      if (memberPractice) {
+        const memberUsage = await getOrCreateUsagePeriod(prisma, memberPractice);
+        minutesConsumed += memberUsage.minutesConsumed;
+      }
+    }
+  } else {
+    const usage = await getOrCreateUsagePeriod(prisma, practice);
+    minutesConsumed = usage.minutesConsumed;
+    overageConfirmed = practice.overageConfirmed;
+  }
+
+  if (minutesConsumed >= tier.includedMinutes) {
     if (tier.hardStopAtLimit) {
       return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
     }
     // Confirmed overage: every further minute bills at the overage rate,
     // which exceeds delivery cost on all paid tiers — profitable, so neither
     // the soft stop nor the COGS breaker applies. Daily caps still do.
-    if (practice.overageConfirmed) {
+    if (overageConfirmed) {
       return { allowed: true, reason: 'OK', overageRatePerMinute: tier.overageRatePerMinute };
     }
-    await triggerSoftStop(prisma, practice);
+    // For org-pooled billing, soft-stop at org level; for practice billing, at practice level
+    if (billingEntity.kind === 'organization') {
+      await triggerOrgSoftStop(prisma, billingEntity.organizationId);
+    } else {
+      await triggerSoftStop(prisma, practice);
+    }
     return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
   }
 
-  const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
+  const cogs = evaluateCogsBreaker(tier, minutesConsumed);
   if (cogs === 'pause') {
-    await pauseCalls(prisma, practice.id, 'cogs_breaker');
-    logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
-      pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
-      practiceId: practice.id,
-      minutesConsumed: usage.minutesConsumed,
-      billingTier: practice.billingTier,
-    });
+    if (billingEntity.kind === 'organization') {
+      await pauseCalls(prisma, billingEntity.organizationId, 'cogs_breaker');
+      logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing org calls', {
+        pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
+        orgId: billingEntity.organizationId,
+        minutesConsumed,
+        billingTier: tier,
+      });
+    } else {
+      await pauseCalls(prisma, practice.id, 'cogs_breaker');
+      logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
+        pauseAtPct: Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100),
+        practiceId: practice.id,
+        minutesConsumed,
+        billingTier: practice.billingTier,
+      });
+    }
     try {
       const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
       await dispatchOpsAlert({
         alertId: 'cogs_breaker',
-        source: practice.id,
-        detail: `${usage.minutesConsumed} min consumed on ${practice.billingTier} tier`,
+        source: billingEntity.kind === 'organization' ? billingEntity.organizationId : practice.id,
+        detail: `${minutesConsumed} min consumed on ${billingEntity.kind === 'organization' ? 'org' : practice.billingTier} tier`,
       });
     } catch (alertErr) {
       logger.error('[cogsBreaker] ops alert dispatch failed (non-fatal)', { error: alertErr });
@@ -356,6 +474,33 @@ export async function confirmOverage(
   }
   await prisma.practice.update({
     where: { id: practiceId },
+    data: {
+      callsPaused: false,
+      callsPausedReason: null,
+      callsPausedAt: null,
+      overageConfirmed: true,
+      overageConfirmedAt: new Date(),
+    },
+  });
+  return { status: 'resumed' };
+}
+
+export async function confirmOrgOverage(
+  prisma: PrismaClient,
+  orgId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
+  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  if (!org?.callsPaused || org.callsPausedReason !== 'overage_pending') {
+    return { status: 'not_paused' };
+  }
+  if (org.callsPausedAt) {
+    const expiresAt = org.callsPausedAt.getTime() + OVERAGE.confirmationExpiryHours * 60 * 60 * 1000;
+    if (Date.now() > expiresAt) {
+      return { status: 'expired' };
+    }
+  }
+  await prisma.organization.update({
+    where: { id: orgId },
     data: {
       callsPaused: false,
       callsPausedReason: null,

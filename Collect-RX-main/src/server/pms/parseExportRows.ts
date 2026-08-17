@@ -15,10 +15,15 @@ export function getCell(raw: Record<string, unknown>, ...keys: string[]): string
   return null;
 }
 
-export function parseMoney(raw: string | null | undefined): number {
+export function parseMoney(raw: string | null | undefined, fieldName?: string): number {
   if (!raw) return 0;
-  const n = parseFloat(String(raw).replace(/[$,\s]/g, ''));
-  return Number.isFinite(n) ? n : 0;
+  const str = String(raw).trim();
+  if (!str) return 0;
+  const n = parseFloat(str.replace(/[$,\s]/g, ''));
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fieldName || 'Amount'} "${raw}" is not a valid number`);
+  }
+  return n;
 }
 
 export function parseIntSafe(raw: string | null | undefined, fallback = 0): number {
@@ -99,9 +104,11 @@ export function normalizePmsClaimRow(
       'Ins Balance',
       'Insurance Balance',
     ),
+    'Amount Outstanding',
   );
   const billed = parseMoney(
     getCell(raw, 'Amount Billed', 'Billed', 'amount_billed', 'Total Billed', 'Fee', 'Submitted Amount'),
+    'Amount Billed',
   ) || outstanding;
 
   const daysOutstanding = parseIntSafe(
@@ -173,7 +180,7 @@ export function normalizePmsClaimRow(
     'Expected Payment',
     'Estimated Insurance',
   );
-  const expectedAmount = expectedRaw ? parseMoney(expectedRaw) : null;
+  const expectedAmount = expectedRaw ? parseMoney(expectedRaw, 'Expected Amount') : null;
 
   const paidRaw = getCell(
     raw,
@@ -184,7 +191,7 @@ export function normalizePmsClaimRow(
     'paid_amount',
     'Payment Received',
   );
-  const insurancePaidAmount = paidRaw ? parseMoney(paidRaw) : null;
+  const insurancePaidAmount = paidRaw ? parseMoney(paidRaw, 'Insurance Paid Amount') : null;
 
   const treatmentCodesRaw = getCell(
     raw,
@@ -286,6 +293,7 @@ export function normalizePmsClaimRow(
       'Denial Reason',
       'Reason Code',
       'denial_code',
+      'denial_reason',
       'denial_reason_code',
       'EOB Code',
     ),
