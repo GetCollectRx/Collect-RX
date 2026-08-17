@@ -10,7 +10,7 @@ on:
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
