@@ -105,7 +105,8 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
-import { createOrganizationRouter, createOrganizationPublicRouter } from './routes/organizationRoutes';
+import { createOrgAdminRouter } from './routes/orgAdminRoutes';
+import { createSsoRouter } from './routes/ssoRoutes';
 import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
@@ -459,9 +460,23 @@ app.use('/api', anonStandardLimiter);
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
-app.use('/api/organizations', createOrganizationPublicRouter(prisma));
-app.use('/api/organizations', createOrganizationRouter(prisma));
+// Mounted at /api/admin/organizations, not /api/admin — this router's own
+// authenticate/authorizeRole('platform_dev') gate is a router-wide `.use()`,
+// which Express applies to every request whose path starts with the mount
+// prefix regardless of whether one of this router's own routes matches.
+// Mounted at the bare /api/admin prefix (matching adminRouter below), it
+// intercepted and 403'd every /api/admin/* request for any non-platform_dev
+// session before adminRouter ever got a chance to handle it — reproduced
+// live via supertest: GET /api/admin/practice-identity 403'd for a real
+// practice_owner session with "Insufficient permissions for this action",
+// authorizeRole's exact error string, not adminRoutes.ts's own. Internal
+// route paths in orgAdminRoutes.ts already start with /organizations, so
+// this mount change alone keeps every external URL
+// (POST /api/admin/organizations, etc.) identical — see the route-path fix
+// alongside this one.
+app.use('/api/admin/organizations', createOrgAdminRouter(prisma));
 app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
