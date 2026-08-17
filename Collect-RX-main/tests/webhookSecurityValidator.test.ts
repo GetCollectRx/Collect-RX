@@ -1,22 +1,22 @@
 /**
  * Webhook security validator tests — signature verification, timestamp validation, idempotency.
+ * Database-dependent tests are skipped when DATABASE_URL is not set.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'crypto';
-import { prisma } from '../src/lib/prisma';
 import {
   validateHmacSignature,
   validateStripeSignature,
   isStripeTimestampValid,
-  checkWebhookIdempotency,
-  logWebhookAudit,
   validateVapiWebhook,
   validateStripeWebhook,
   validateGoCardlessWebhook,
   extractAuditHeaders,
   getSourceIp,
 } from '../src/server/webhooks/webhookSecurityValidator';
+
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
 
 describe('Webhook Security Validator', () => {
   describe('validateHmacSignature', () => {
@@ -119,8 +119,17 @@ describe('Webhook Security Validator', () => {
     });
   });
 
-  describe('checkWebhookIdempotency', () => {
+  (hasDatabaseUrl ? describe : describe.skip)('checkWebhookIdempotency', () => {
+    let prisma: any;
+    let checkWebhookIdempotency: any;
+
     beforeEach(async () => {
+      if (!prisma) {
+        const prismaModule = await import('../src/lib/prisma');
+        prisma = prismaModule.prisma;
+        const validatorModule = await import('../src/server/webhooks/webhookSecurityValidator');
+        checkWebhookIdempotency = validatorModule.checkWebhookIdempotency;
+      }
       await prisma.webhookAuditLog.deleteMany();
     });
 
@@ -186,8 +195,17 @@ describe('Webhook Security Validator', () => {
     });
   });
 
-  describe('logWebhookAudit', () => {
+  (hasDatabaseUrl ? describe : describe.skip)('logWebhookAudit', () => {
+    let prisma: any;
+    let logWebhookAudit: any;
+
     beforeEach(async () => {
+      if (!prisma) {
+        const prismaModule = await import('../src/lib/prisma');
+        prisma = prismaModule.prisma;
+        const validatorModule = await import('../src/server/webhooks/webhookSecurityValidator');
+        logWebhookAudit = validatorModule.logWebhookAudit;
+      }
       await prisma.webhookAuditLog.deleteMany();
     });
 
@@ -269,8 +287,17 @@ describe('Webhook Security Validator', () => {
     });
   });
 
-  describe('validateVapiWebhook', () => {
+  (hasDatabaseUrl ? describe : describe.skip)('validateVapiWebhook', () => {
+    let prisma: any;
+    let validateVapiWebhook: any;
+
     beforeEach(async () => {
+      if (!prisma) {
+        const prismaModule = await import('../src/lib/prisma');
+        prisma = prismaModule.prisma;
+        const validatorModule = await import('../src/server/webhooks/webhookSecurityValidator');
+        validateVapiWebhook = validatorModule.validateVapiWebhook;
+      }
       await prisma.webhookAuditLog.deleteMany();
       vi.stubEnv('VAPI_WEBHOOK_SECRET', 'test_vapi_secret');
     });
@@ -337,8 +364,17 @@ describe('Webhook Security Validator', () => {
     });
   });
 
-  describe('validateStripeWebhook', () => {
+  (hasDatabaseUrl ? describe : describe.skip)('validateStripeWebhook', () => {
+    let prisma: any;
+    let validateStripeWebhook: any;
+
     beforeEach(async () => {
+      if (!prisma) {
+        const prismaModule = await import('../src/lib/prisma');
+        prisma = prismaModule.prisma;
+        const validatorModule = await import('../src/server/webhooks/webhookSecurityValidator');
+        validateStripeWebhook = validatorModule.validateStripeWebhook;
+      }
       await prisma.webhookAuditLog.deleteMany();
       vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'test_stripe_secret');
     });
@@ -395,8 +431,17 @@ describe('Webhook Security Validator', () => {
     });
   });
 
-  describe('validateGoCardlessWebhook', () => {
+  (hasDatabaseUrl ? describe : describe.skip)('validateGoCardlessWebhook', () => {
+    let prisma: any;
+    let validateGoCardlessWebhook: any;
+
     beforeEach(async () => {
+      if (!prisma) {
+        const prismaModule = await import('../src/lib/prisma');
+        prisma = prismaModule.prisma;
+        const validatorModule = await import('../src/server/webhooks/webhookSecurityValidator');
+        validateGoCardlessWebhook = validatorModule.validateGoCardlessWebhook;
+      }
       await prisma.webhookAuditLog.deleteMany();
       vi.stubEnv('GOCARDLESS_WEBHOOK_SECRET', 'test_gc_secret');
     });

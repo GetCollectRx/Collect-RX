@@ -1,16 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { logImmutableAuditEntry, initializeLastHash } from '../../src/server/audit/immutableAuditLog.js';
-import { prisma } from '../../src/lib/prisma.js';
+
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
 
 // Test practice ID used across all tests
 const TEST_PRACTICE_ID = 'test_practice_' + Date.now();
 
-describe('Immutable Audit Log', () => {
+(hasDatabaseUrl ? describe : describe.skip)('Immutable Audit Log', () => {
+  let prisma: any;
+
+  const getPrisma = async () => {
+    if (!prisma) {
+      const module = await import('../../src/lib/prisma.js');
+      prisma = module.prisma;
+    }
+    return prisma;
+  };
+
   it('creates audit entries with hash chaining', async () => {
-    await initializeLastHash(prisma);
+    const p = await getPrisma();
+    await initializeLastHash(p);
 
     // Create first entry
-    await logImmutableAuditEntry(prisma, {
+    await logImmutableAuditEntry(p, {
       practiceId: TEST_PRACTICE_ID,
       userId: 'user_' + Date.now(),
       action: 'read',
@@ -23,7 +35,7 @@ describe('Immutable Audit Log', () => {
     });
 
     // Verify the entry was created
-    const entries = await prisma.auditLog.findMany({
+    const entries = await p.auditLog.findMany({
       where: {
         userId: 'user_' + Date.now(),
       },
@@ -41,11 +53,12 @@ describe('Immutable Audit Log', () => {
   });
 
   it('logs different action types', async () => {
+    const p = await getPrisma();
     const userId = 'user_actions_' + Date.now();
     const actions: Array<'read' | 'write' | 'delete' | 'export'> = ['read', 'write', 'delete'];
 
     for (const action of actions) {
-      await logImmutableAuditEntry(prisma, {
+      await logImmutableAuditEntry(p, {
         practiceId: TEST_PRACTICE_ID,
         userId,
         action,
@@ -55,7 +68,7 @@ describe('Immutable Audit Log', () => {
       });
     }
 
-    const entries = await prisma.auditLog.findMany({
+    const entries = await p.auditLog.findMany({
       where: { userId },
     });
 
@@ -63,11 +76,12 @@ describe('Immutable Audit Log', () => {
   });
 
   it('logs different resource types', async () => {
+    const p = await getPrisma();
     const userId = 'user_resources_' + Date.now();
     const resourceTypes = ['patient', 'claim', 'recording'] as const;
 
     for (const resourceType of resourceTypes) {
-      await logImmutableAuditEntry(prisma, {
+      await logImmutableAuditEntry(p, {
         practiceId: TEST_PRACTICE_ID,
         userId,
         action: 'read',
@@ -77,7 +91,7 @@ describe('Immutable Audit Log', () => {
       });
     }
 
-    const entries = await prisma.auditLog.findMany({
+    const entries = await p.auditLog.findMany({
       where: { userId },
     });
 

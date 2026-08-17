@@ -265,6 +265,27 @@ export async function applyRecoveryAfterCall(
       },
     });
 
+    if (decision.claimStatus === 'ESCALATED') {
+      const existing = await tx.callEscalation.findFirst({
+        where: {
+          claimId: claim.id,
+          status: 'open',
+          reason: decision.reason,
+        },
+      });
+      if (!existing) {
+        await tx.callEscalation.create({
+          data: {
+            claimId: claim.id,
+            practiceId: claim.practiceId,
+            carrierId: claim.carrierId,
+            reason: decision.reason,
+            status: 'open',
+          },
+        });
+      }
+    }
+
     return createdGate;
   });
 

@@ -60,6 +60,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { correlationIdMiddleware } from './middleware/correlationId.js';
 import { logger } from './observability/logger.js';
+import { initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
 import compression from 'compression';
 import helmet from 'helmet';
 
@@ -161,6 +162,8 @@ import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
+initSentry();
+app.use(installSentryExpressErrorHandler(app));
 app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
