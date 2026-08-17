@@ -11,7 +11,7 @@
 import crypto from 'crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
-import { logger } from '../observability/logger.js';
+import { logLine } from '../observability/logger.js';
 
 export type WebhookType = 'vapi' | 'stripe' | 'sendgrid' | 'gocardless' | 'validator';
 export type IdempotencyCheckResult = 'new' | 'duplicate' | 'processing' | 'processed';
@@ -157,11 +157,13 @@ export async function logWebhookAudit(
         httpStatusCode: entry.httpStatusCode,
         sourceIp: entry.sourceIp,
         requestHeaders: entry.requestHeaders || {},
+        receivedAt: new Date(),
+        processedAt: new Date(),
       },
     });
   } catch (err) {
-    logger.error('[webhook-audit] Failed to log webhook audit entry', {
-      error: err,
+    logLine('error', '[webhook-audit] Failed to log webhook audit entry', {
+      error: String(err),
       webhookType: entry.webhookType,
       webhookId: entry.webhookId,
     });
