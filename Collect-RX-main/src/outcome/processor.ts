@@ -321,10 +321,9 @@ function legacyCodeToProcessedOutcome(
  */
 export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const transcript = payload.transcript ?? '';
-  const summary = payload.analysis?.summary ?? '';
-  const successEval = payload.analysis?.successEvaluation ?? '';
-  /** Original casing — used for name extraction and pattern display */
-  const rawText = `${transcript} ${summary} ${successEval}`;
+  // Only use the raw transcript for classification, not LLM-generated summary/successEvaluation
+  // which can hallucinate financial outcomes independent of what was actually said.
+  const rawText = transcript;
   /** Lowercased — used for all pattern matching */
   const fullText = rawText.toLowerCase();
 
