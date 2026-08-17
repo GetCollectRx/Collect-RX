@@ -71,6 +71,14 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
       # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
+      - name: Wait for Postgres to be ready
+        run: |
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -p 5432 -U prisma -d prisma && break
+            echo "Waiting for Postgres... ($i/30)"
+            sleep 1
+          done
+
       - name: Prisma generate
         run: npm run db:generate:collectrx
 
