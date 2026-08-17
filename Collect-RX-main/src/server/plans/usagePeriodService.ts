@@ -130,72 +130,117 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   const billingEntity = await resolveBillingEntity(prisma, practiceId);
 
   let tier: TierConfig;
-  let billingTarget: Practice | { billingTier: string; subscriptionStatus?: string; callsPaused?: boolean; callsPausedReason?: string | null; subscriptionPriceId?: string | null };
 
   if (billingEntity.kind === 'organization') {
     const org = await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } });
-    if (!org) {
+    if (!org || !org.billingTier) {
       return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
     }
     tier = tierForBillingTier(org.billingTier);
-    billingTarget = org;
-  } else {
-    tier = tierFor(practice);
-    billingTarget = practice;
-  }
 
-  const now = new Date();
-
-  if (practice.subscriptionStatus === 'canceled') {
-    return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
-  }
-  if (practice.subscriptionStatus === 'past_due' || practice.subscriptionStatus === 'unpaid') {
-    return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
-  }
-
-  if (practice.billingTier === 'trial' && practice.trialEndsAt && practice.trialEndsAt < now) {
-    return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
-  }
-
-  // Fail closed: under SUBSCRIPTION_ENFORCE a paid tier is only callable when
-  // Stripe is actually configured and the subscription is live. A practice
-  // whose tier has no price env, whose stored price ID maps to a different
-  // tier, or whose subscription never activated must not get a minute pool.
-  if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
-    if (!tier.stripePriceId) {
-      logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured — blocking', {
-        billingTier: practice.billingTier,
-        practiceId: practice.id,
-      });
-      return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
-    }
-    if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
+    // Check org-level subscription status
+    if (org.subscriptionStatus === 'canceled') {
       return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
     }
-    if (practice.subscriptionPriceId) {
-      const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
-      if (tierForPrice !== practice.billingTier) {
-        logger.error('[planGate] subscription price maps to a different tier — blocking until reconciled', {
-          subscriptionPriceId: practice.subscriptionPriceId,
-          mappedTier: tierForPrice ?? 'none',
-          practiceId: practice.id,
-          billingTier: practice.billingTier,
+    if (org.subscriptionStatus === 'past_due' || org.subscriptionStatus === 'unpaid') {
+      return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+    }
+
+    // Check org-level pause state
+    if (org.callsPaused) {
+      switch (org.callsPausedReason) {
+        case 'payment_failed':
+          return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+        case 'subscription_cancelled':
+          return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+        case 'cogs_breaker':
+          return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+        default:
+          return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
+    }
+
+    // Org-level billing: check org subscription enforcement
+    if (org.billingTier !== 'trial' && subscriptionEnforceEnabled()) {
+      if (!tier.stripePriceId) {
+        logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured for org — blocking', {
+          billingTier: org.billingTier,
+          orgId: org.id,
         });
         return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
       }
-    }
-  }
-
-  if (practice.callsPaused) {
-    switch (practice.callsPausedReason) {
-      case 'payment_failed':
-        return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
-      case 'subscription_cancelled':
+      if (org.subscriptionStatus !== 'active' && org.subscriptionStatus !== 'trialing') {
         return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
-      case 'cogs_breaker':
-        return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
-      default:
-        return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
+      if (org.subscriptionPriceId) {
+        const tierForPrice = billingTierForStripePrice(org.subscriptionPriceId);
+        if (tierForPrice !== org.billingTier) {
+          logger.error('[planGate] org subscription price maps to a different tier — blocking until reconciled', {
+            subscriptionPriceId: org.subscriptionPriceId,
+            mappedTier: tierForPrice ?? 'none',
+            orgId: org.id,
+            billingTier: org.billingTier,
+          });
+          return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+        }
+      }
+    }
+  } else {
+    tier = tierFor(practice);
+
+    const now = new Date();
+
+    if (practice.subscriptionStatus === 'canceled') {
+      return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+    }
+    if (practice.subscriptionStatus === 'past_due' || practice.subscriptionStatus === 'unpaid') {
+      return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+    }
+
+    if (practice.billingTier === 'trial' && practice.trialEndsAt && practice.trialEndsAt < now) {
+      return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
+    }
+
+    // Fail closed: under SUBSCRIPTION_ENFORCE a paid tier is only callable when
+    // Stripe is actually configured and the subscription is live. A practice
+    // whose tier has no price env, whose stored price ID maps to a different
+    // tier, or whose subscription never activated must not get a minute pool.
+    if (practice.billingTier !== 'trial' && subscriptionEnforceEnabled() && !billingSkipPracticeIds().has(practice.id)) {
+      if (!tier.stripePriceId) {
+        logger.error('[planGate] SUBSCRIPTION_ENFORCE is on but no Stripe price is configured — blocking', {
+          billingTier: practice.billingTier,
+          practiceId: practice.id,
+        });
+        return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+      }
+      if (practice.subscriptionStatus !== 'active' && practice.subscriptionStatus !== 'trialing') {
+        return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+      }
+      if (practice.subscriptionPriceId) {
+        const tierForPrice = billingTierForStripePrice(practice.subscriptionPriceId);
+        if (tierForPrice !== practice.billingTier) {
+          logger.error('[planGate] subscription price maps to a different tier — blocking until reconciled', {
+            subscriptionPriceId: practice.subscriptionPriceId,
+            mappedTier: tierForPrice ?? 'none',
+            practiceId: practice.id,
+            billingTier: practice.billingTier,
+          });
+          return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+        }
+      }
+    }
+
+    if (practice.callsPaused) {
+      switch (practice.callsPausedReason) {
+        case 'payment_failed':
+          return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+        case 'subscription_cancelled':
+          return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+        case 'cogs_breaker':
+          return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+        default:
+          return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+      }
     }
   }
 
