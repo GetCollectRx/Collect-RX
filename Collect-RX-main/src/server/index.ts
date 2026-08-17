@@ -379,7 +379,10 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
     await prisma.$queryRaw`SELECT 1`;
     const rlsSafety = getCachedRlsRoleSafety();
     if (!rlsSafety.safe) {
-      res.status(503).json({ status: 'not_ready', reason: 'rls_role_unsafe' });
+      res.status(503).json({
+        status: 'not_ready',
+        error: `RLS safety check failed: the connecting role is superuser or has BYPASSRLS — this will silently bypass all FORCE ROW LEVEL SECURITY policies`,
+      });
       return;
     }
     res.json({ status: 'ready' });
