@@ -16,9 +16,20 @@ import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js
 import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
 import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 
+// Configure multer with enhanced security limits
+// 100MB max file size as per security audit requirements
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 12 * 1024 * 1024 },
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB max
+  },
+  fileFilter: (_req, file, cb) => {
+    // Only allow CSV files
+    if (!file.originalname.endsWith('.csv')) {
+      return cb(new Error('Only .csv files allowed'));
+    }
+    cb(null, true);
+  },
 });
 
 const router = Router();
@@ -85,12 +96,20 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
     let sourceBalanceTotal: number | undefined;
 
     if (req.file?.buffer) {
-      const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 12 * 1024 * 1024 });
+      const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
       if (!uploadCheck.ok) {
         return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
       }
       const text = req.file.buffer.toString('utf8');
-      rows = parseSimpleCsv(text) as Record<string, unknown>[];
+      try {
+        rows = parseSimpleCsv(text) as Record<string, unknown>[];
+      } catch (parseErr) {
+        console.warn('[CSV Parse Error]', { error: parseErr, fileName: req.file.originalname });
+        return res.status(400).json({
+          success: false,
+          error: `CSV parsing failed: ${(parseErr as Error).message}`,
+        });
+      }
     } else {
       const bodyParsed = pmsImportBodySchema.safeParse(req.body);
       if (!bodyParsed.success) {
@@ -132,12 +151,21 @@ router.post('/import/eob', blockAuditorWrites, preserveRlsAcrossMiddleware(uploa
     if (!req.file?.buffer) {
       return res.status(400).json({ success: false, error: 'CSV file required' });
     }
-    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 12 * 1024 * 1024 });
+    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
     if (!uploadCheck.ok) {
       return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
     }
     const text = req.file.buffer.toString('utf8');
-    const rows = parseSimpleCsv(text) as Record<string, unknown>[];
+    let rows: Record<string, unknown>[];
+    try {
+      rows = parseSimpleCsv(text) as Record<string, unknown>[];
+    } catch (parseErr) {
+      console.warn('[CSV Parse Error (EOB)]', { error: parseErr, fileName: req.file.originalname });
+      return res.status(400).json({
+        success: false,
+        error: `CSV parsing failed: ${(parseErr as Error).message}`,
+      });
+    }
     const { importEobRowsToPrisma } = await import('../reconciliation/eobImport.js');
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });
