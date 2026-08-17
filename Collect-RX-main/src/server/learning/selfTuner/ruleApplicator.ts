@@ -94,6 +94,18 @@ function writeLearnedConfidenceWeights(data: LearnedConfidenceWeights): void {
  * Returns true if all tests pass.
  */
 export function runValidationTests(): boolean {
+  const testEnv = {
+    ...process.env,
+  };
+
+  // Use environment variables for test secrets, with fallback to safe test defaults
+  if (!testEnv.STRIPE_SECRET_KEY) {
+    testEnv.STRIPE_SECRET_KEY = process.env.TEST_STRIPE_SECRET_KEY || 'sk_test_4eC39HqLyjWDarjtT1zdp7dc';
+  }
+  if (!testEnv.STRIPE_WEBHOOK_SECRET) {
+    testEnv.STRIPE_WEBHOOK_SECRET = process.env.TEST_STRIPE_WEBHOOK_SECRET || 'whsec_test_00000000000000000000000000000000';
+  }
+
   const result = spawnSync(
     'npx',
     ['vitest', 'run', AGENT_TEST_DIR],
@@ -101,11 +113,7 @@ export function runValidationTests(): boolean {
       cwd: REPO_ROOT,
       stdio: 'pipe',
       encoding: 'utf-8',
-      env: {
-        ...process.env,
-        STRIPE_SECRET_KEY: 'sk_test_4eC39HqLyjWDarjtT1zdp7dc',
-        STRIPE_WEBHOOK_SECRET: 'whsec_test_00000000000000000000000000000000',
-      },
+      env: testEnv,
     },
   );
   return result.status === 0;
