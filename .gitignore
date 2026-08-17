@@ -33,3 +33,6 @@ graphify-out/
 *.textClipping
 .platform-dev-password.local
 test-results/
+
+# Local Redis snapshot (written to whatever cwd redis-server was launched from)
+dump.rdb

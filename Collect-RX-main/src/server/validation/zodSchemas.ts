@@ -53,17 +53,121 @@ export const registerBodySchema = z.object({
   displayName: z.string().trim().min(1).max(120),
   email: z.string().email().toLowerCase(),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+  /** Self-serve DSO signup: when set, an Organization is created alongside additionalPractices. */
+  organizationName: z.string().trim().min(1).max(200).optional(),
+  additionalPractices: z
+    .array(
+      z.object({
+        practiceName: z.string().trim().min(1).max(200),
+        timezone: z.string().trim().min(1).max(64).optional(),
+      }),
+    )
+    .max(49, 'use a batch import for organizations larger than 50 locations')
+    .optional(),
 });
 
 export const inviteBodySchema = z.object({
   email: z.string().email().toLowerCase(),
   role: z.enum(PRACTICE_ROLES),
+  /** group_admin only: target a specific sibling practice instead of the inviter's own. */
+  practiceId: z.string().uuid().optional(),
+  /** Required when role is associate_dentist — carried onto the User row accept-invite creates. */
+  providerId: z.string().trim().optional(),
+  /**
+   * org_admin only: invite a DSO controller/CFO (role must be 'accountant')
+   * with billing-only org access instead of the default 'org_admin' co-invite
+   * (Phase 4 FR-9 — specs/phase-4-enterprise-it-compliance.md).
+   */
+  orgRole: z.enum(['org_admin', 'org_billing_viewer']).optional(),
 });
 
 export const acceptInviteBodySchema = z.object({
   token: z.string().uuid(),
   displayName: z.string().trim().min(1).max(120),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+});
+
+/**
+ * platform_dev-configured SAML IdP connection (Phase 4 FR-1, POST
+ * /api/admin/organizations/:organizationId/sso-config) — no self-serve UI in v1.
+ */
+export const organizationSsoConfigBodySchema = z.object({
+  orgSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9-]{3,64}$/, 'orgSlug must be 3-64 lowercase letters, digits, or hyphens'),
+  entryPoint: z.string().trim().url('entryPoint must be the IdP SSO URL'),
+  idpCert: z.string().trim().min(1, 'idpCert (X.509 certificate) is required'),
+  enforcedDomains: z.array(z.string().trim().toLowerCase().min(1)).default([]),
+});
+
+/**
+ * SSO break-glass override (Phase 4, POST
+ * /api/admin/organizations/:organizationId/sso/break-glass) — platform_dev
+ * force-disables ssoEnforced when a DSO's whole org_admin roster is locked
+ * out (their IdP is down and their own domain requires SSO, so the
+ * self-service enforce toggle is unreachable). A reason is mandatory —
+ * this is an emergency override, not a routine setting change.
+ */
+export const ssoBreakGlassBodySchema = z.object({
+  reason: z.string().trim().min(10, 'reason must describe the emergency (min 10 characters)').max(1000),
+});
+
+/** Admin-assisted DSO/multi-location org creation (POST /api/admin/organizations). */
+export const createOrganizationBodySchema = z.object({
+  organizationName: z.string().trim().min(1).max(200),
+  practices: z
+    .array(
+      z.object({
+        practiceName: z.string().trim().min(1).max(200),
+        timezone: z.string().trim().min(1).max(64).optional(),
+      }),
+    )
+    .min(1, 'at least one practice is required')
+    .max(50, 'use a batch import for organizations larger than 50 locations'),
+  /** Invited as group_admin on the first practice — sees the cross-practice dashboard. */
+  primaryContact: z.object({
+    email: z.string().email().toLowerCase(),
+    displayName: z.string().trim().min(1).max(120),
+  }),
+});
+
+/**
+ * Batch PMS import (POST /api/group/pms-import) — replaces the admin-run
+ * per-practice loop with one authorized call across an org's practices.
+ * Each entry runs through the same runPmsImportPipeline as the single-practice
+ * upload; the route validates every practiceId belongs to the caller's org
+ * before touching it (authorized narrow RLS iteration).
+ */
+export const groupPmsImportBodySchema = z.object({
+  imports: z
+    .array(
+      z.object({
+        practiceId: z.string().uuid(),
+        pmsVendor: z.string().trim().min(1),
+        records: z.array(z.record(z.string(), z.unknown())).min(1, 'at least one record is required'),
+        sourceBalanceTotal: z.coerce.number().finite().optional(),
+      }),
+    )
+    .min(1, 'at least one practice import is required')
+    .max(50, 'batch imports are capped at 50 practices per call'),
+});
+
+/** POST /api/group/practices — add a location to the caller's existing organization. */
+export const addOrgPracticeBodySchema = z.object({
+  practiceName: z.string().trim().min(1).max(200),
+  timezone: z.string().trim().min(1).max(64).optional(),
+});
+
+/** PATCH /api/group/members/:userId — promote/demote within the caller's organization. */
+export const updateOrgMemberBodySchema = z.object({
+  role: z.enum(['org_admin', 'org_member']),
+});
+
+/** POST /api/auth/convert-to-organization — upgrade a standalone practice into an org. */
+export const convertToOrganizationBodySchema = z.object({
+  organizationName: z.string().trim().min(1).max(200),
 });
 
 // ─── Existing schemas (unchanged) ─────────────────────────────────────────────

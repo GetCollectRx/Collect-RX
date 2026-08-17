@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
@@ -261,12 +261,27 @@ interface PracticeServeOrder {
  * lastServedAt touch inside the loop below.
  */
 export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
-  return prisma.$queryRaw<PracticeServeOrder[]>`
-    SELECT p.id
-    FROM "Practice" p
-    LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
-    ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
-  `;
+  // This ordering is inherently cross-practice by design — fairness across the whole
+  // fleet requires seeing every practice's last-served time, not just one tenant's.
+  // `$queryRaw` is a raw top-level Prisma Client method, not a model operation, so it
+  // is NOT intercepted by the collectrx-rls extension (src/lib/prismaRls.ts) the way
+  // `.create()`/`.findMany()` etc. are — calling it directly leaves `app.rls_bypass`
+  // unset on whatever pooled connection it runs on. `practice_desk_state` has FORCE
+  // ROW LEVEL SECURITY, so an unset bypass silently filters every row from the LEFT
+  // JOIN, making every practice appear "never served" and collapsing this into
+  // meaningless UUID tie-break order — found via adversarial ordering tests
+  // (tests/queueEngineFairnessAndLease.test.ts) reproducing even in full isolation.
+  // Set the bypass explicitly, scoped to this one query's own transaction.
+  const [, order] = await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`,
+    prisma.$queryRaw<PracticeServeOrder[]>`
+      SELECT p.id
+      FROM "Practice" p
+      LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+      ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+    `,
+  ]);
+  return order;
 }
 
 async function deferQueueEntry(
@@ -298,6 +313,7 @@ async function settleBlockedCandidate(
     id: string;
     practiceId: string;
     claimId: string;
+    attempts: number;
     claim: {
       claimNumber: string;
       carrierId: keyof typeof CARRIER_CONFIGS;
@@ -305,10 +321,11 @@ async function settleBlockedCandidate(
     };
   },
   guardCode: string | undefined,
+  guardReason: string | undefined,
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -319,29 +336,36 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      // The Escalations page (front-desk queue) reads call_escalations, not
+      // insurance_claims.status — every path that sets ESCALATED here must also
+      // write this row or the claim goes invisible to the one screen built to
+      // work it (see OUTSTANDING-FIXES-PRODUCT-READY.md P10-04).
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : guardReason ?? 'Claim aged past 90 days — escalate to human';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          attemptNumber: guardCode === 'MAX_ATTEMPTS' ? 3 : entry.attempts,
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
-        }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({
@@ -351,13 +375,19 @@ async function settleBlockedCandidate(
       return 'skip';
     case 'CARRIER_BLOCK':
       // Mirrors carrierBlockService for entries queued after the block landed.
+      // guardReason carries the specific cause (this practice's own block, or
+      // a sibling organization location's block) — surface it verbatim rather
+      // than a generic message, since a practice that never tripped its own
+      // block would otherwise see an unexplained pause.
       await prisma.$transaction([
         prisma.callQueue.update({
           where: { id: entry.id },
           data: {
             status: 'BLOCKED',
             dispatchDeferralCode: 'CARRIER_BLOCK',
-            dispatchDeferralNextAction: 'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
+            dispatchDeferralNextAction:
+              guardReason ??
+              'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
             dispatchDeferredAt: new Date(),
           },
         }),
@@ -379,6 +409,18 @@ async function settleBlockedCandidate(
         DEFER_CLAIM_AGE_MS,
         'CLAIM_TOO_YOUNG',
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
+      return 'skip';
+    case 'CARRIER_CONCURRENCY_LIMIT':
+      // Fleet-wide, not practice-wide — a different candidate in this same
+      // batch may target a carrier with room, so skip this one claim rather
+      // than stopping the practice's whole tick.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        withJitter(DEFER_CARRIER_CONCURRENCY_BASE_MS, DEFER_CARRIER_CONCURRENCY_JITTER_MS),
+        'CARRIER_CONCURRENCY_LIMIT',
+        'Waiting for an open fleet-wide calling slot to this carrier; retries automatically.',
       );
       return 'skip';
     default:
@@ -407,12 +449,30 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
   }
 
-  const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
+  const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
       orderPracticesByFairness(prisma),
       prisma.callAttempt.count({ where: { completedAt: null } }),
+      // Fleet-wide per-carrier snapshot for the concurrency guard below. Must
+      // be gathered here, outside any single practice's RLS scope — a query
+      // run inside runWithPracticeRls would silently narrow to that one
+      // practice's calls under enforced RLS, defeating a fleet-wide ceiling.
+      prisma.callAttempt.findMany({
+        where: { completedAt: null },
+        select: { claim: { select: { carrierId: true } } },
+      }),
     ]),
   );
+
+  // Mutated in-memory as calls dispatch through this tick so two practices
+  // targeting the same carrier in the same pass don't both slip under the
+  // ceiling before either write lands.
+  const carrierActiveCounts = new Map<CarrierId, number>();
+  for (const attempt of activeAttemptCarriers) {
+    const carrierId = attempt.claim?.carrierId;
+    if (!carrierId) continue;
+    carrierActiveCounts.set(carrierId, (carrierActiveCounts.get(carrierId) ?? 0) + 1);
+  }
 
   let slotsRemaining = vapiSlotBudget() - activeCallsGlobal;
   if (slotsRemaining <= 0) {
@@ -420,6 +480,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       activeCallsGlobal,
       slotBudget: vapiSlotBudget(),
     });
+    await runWithRlsBypass(() => deferForFleetCapacity(prisma, practices.map((p) => p.id)));
     return;
   }
 
@@ -567,15 +628,28 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     // COGS breaker throttle: spend the remaining budget on the claims worth
-    // the most, not on whatever is next in line.
+    // the most, not on whatever is next in line. The claims filtered out here
+    // still need a recorded reason — otherwise they sit PENDING with no
+    // dispatchDeferralCode indefinitely (as long as the practice stays
+    // throttled), indistinguishable from the engine never having reached them.
     const dispatchable = planGate.essentialOnly
       ? candidates.filter((c) => c.priority === 'HIGH' || c.priority === 'URGENT')
       : candidates;
     if (planGate.essentialOnly && dispatchable.length < candidates.length) {
+      const throttledOut = candidates.filter((c) => c.priority !== 'HIGH' && c.priority !== 'URGENT');
       logger.warn('[deskQueueEngine] COGS throttle active — dispatching high-priority claims only', {
         practiceId,
-        skipped: candidates.length - dispatchable.length,
+        skipped: throttledOut.length,
       });
+      for (const entry of throttledOut) {
+        await deferQueueEntry(
+          prisma,
+          entry.id,
+          DEFER_STAFF_ACTION_MS,
+          'COGS_THROTTLE_LOW_PRIORITY',
+          'Delivery cost is elevated this billing period — only HIGH/URGENT claims dispatch until it eases or the period resets.',
+        );
+      }
     }
 
     for (const next of dispatchable) {
@@ -588,6 +662,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       attemptsSoFar,
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
+      carrierActiveCounts,
     });
 
     if (!guard.allowed) {
@@ -596,7 +671,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         code: guard.code,
         reason: guard.reason,
       });
-      const disposition = await settleBlockedCandidate(prisma, next, guard.code);
+      const disposition = await settleBlockedCandidate(prisma, next, guard.code, guard.reason);
       if (disposition === 'stop') return;
       continue;
     }
@@ -798,6 +873,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       continue;
     }
     slotsRemaining -= 1;
+    carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
       const attempt = await prisma.callAttempt.create({

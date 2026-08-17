@@ -20,7 +20,9 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { InsuranceClaim, CarrierId, User, Practice, AuditLog, Prisma } from '@prisma/client';
-import { prisma } from '../src/server/index.js';
+import request from 'supertest';
+import { app, prisma } from '../src/server/index.js';
+import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import {
   createPracticeWithOwnerForTests,
   cleanupPracticeWithUsers,
@@ -989,5 +991,88 @@ describe.skipIf(!dbReady)('RLS: Direct SQL Enforcement (Database-Level Policies)
 
     // Should be empty (no claims in A with actions from B)
     expect((result as Array<unknown>).length).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: Group Admin Route — Cross-Practice RLS Re-Scoping (Phase 0 regression)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Under superuser/default test roles, RLS is not force-enforced, so an admin
+// route that forgets to re-scope per sibling practice would incidentally
+// return correct data anyway — only strict mode (restricted role + FORCE RLS)
+// proves groupAdminRoutes.ts actually re-scopes via runWithPracticeRls per
+// iteration instead of relying on the caller's own session-level practice_id.
+describe.skipIf(!dbReady || !strictRls)('RLS: Group Admin Cross-Practice Aggregation', () => {
+  let orgHomePractice: Practice;
+  let orgSiblingPractice: Practice;
+  let groupAdminUser: User;
+  let organizationId: string;
+  let siblingClaimId: string;
+
+  beforeAll(() => runWithRlsBypass(async () => {
+    if (!dbReady) return;
+    const home = await createPracticeWithOwnerForTests(prisma, { role: 'group_admin' });
+    orgHomePractice = home.practice;
+    groupAdminUser = home.user;
+
+    const sibling = await createPracticeWithOwnerForTests(prisma);
+    orgSiblingPractice = sibling.practice;
+
+    const org = await prisma.organization.create({ data: { name: `RLS Org ${Date.now()}` } });
+    organizationId = org.id;
+    await prisma.organizationMember.create({
+      data: { organizationId, userId: groupAdminUser.id, role: 'org_admin' },
+    });
+    await prisma.organizationPractice.createMany({
+      data: [
+        { organizationId, practiceId: orgHomePractice.id },
+        { organizationId, practiceId: orgSiblingPractice.id },
+      ],
+    });
+
+    const siblingClaim = await prisma.insuranceClaim.create({
+      data: {
+        practiceId: orgSiblingPractice.id,
+        carrierId: 'green_shield' as CarrierId,
+        claimNumber: `GROUP-SIBLING-${Date.now()}`,
+        patientToken: crypto.randomUUID(),
+        billedAmount: 400,
+        outstandingAmount: 400,
+        daysOutstanding: 40,
+      },
+    });
+    siblingClaimId = siblingClaim.id;
+  }));
+
+  afterAll(() => runWithRlsBypass(async () => {
+    if (!dbReady) return;
+    await prisma.insuranceClaim.deleteMany({ where: { id: siblingClaimId } });
+    await prisma.organizationPractice.deleteMany({ where: { organizationId } });
+    await prisma.organizationMember.deleteMany({ where: { organizationId } });
+    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
+    await cleanupPracticeWithUsers(prisma, orgHomePractice.id);
+    await cleanupPracticeWithUsers(prisma, orgSiblingPractice.id);
+  }));
+
+  it('practices-summary reports the sibling practice claim, not zero', async () => {
+    const cookie = `${COOKIE_NAME}=${signUserToken({
+      userId: groupAdminUser.id,
+      practiceId: orgHomePractice.id,
+      role: 'group_admin',
+    })}`;
+
+    const res = await request(app)
+      .get('/api/group/practices-summary')
+      .set('Cookie', cookie);
+
+    expect(res.status).toBe(200);
+    const siblingSummary = (res.body.practices as Array<{ id: string; totalClaims: number }>).find(
+      (p) => p.id === orgSiblingPractice.id,
+    );
+    expect(siblingSummary).toBeDefined();
+    // Pre-fix, this reads 0 — the session's RLS context stays pinned to the
+    // admin's home practice for every iteration of the sibling-practice loop.
+    expect(siblingSummary?.totalClaims).toBe(1);
   });
 });

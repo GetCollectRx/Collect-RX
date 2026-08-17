@@ -2,7 +2,7 @@ import { logger } from '../observability/logger.js';
 
 function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
   return sg;
 }
@@ -12,6 +12,7 @@ function appBaseUrl(): string {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  practice_owner: 'Practice Owner',
   office_manager: 'Office Manager',
   billing_coordinator: 'Billing Coordinator',
   front_desk: 'Front Desk',
@@ -27,7 +28,7 @@ export async function sendInviteEmail(opts: {
 }): Promise<void> {
   const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
-  const sg = getSendGrid();
+  const sg = await getSendGrid();
 
   if (!sg) {
     logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {

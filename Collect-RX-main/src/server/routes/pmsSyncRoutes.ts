@@ -15,9 +15,20 @@ import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
 import { logger } from '../observability/logger.js';
 
+// Configure multer with enhanced security limits
+// 100MB max file size as per security audit requirements
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 12 * 1024 * 1024 },
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB max
+  },
+  fileFilter: (_req, file, cb) => {
+    // Only allow CSV files
+    if (!file.originalname.endsWith('.csv')) {
+      return cb(new Error('Only .csv files allowed'));
+    }
+    cb(null, true);
+  },
 });
 
 const router = Router();
@@ -69,7 +80,7 @@ router.get('/runs/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const slug = req.params.pmsVendor;
@@ -84,12 +95,20 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
     let sourceBalanceTotal: number | undefined;
 
     if (req.file?.buffer) {
-      const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 12 * 1024 * 1024 });
+      const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
       if (!uploadCheck.ok) {
         return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
       }
       const text = req.file.buffer.toString('utf8');
-      rows = parseSimpleCsv(text) as Record<string, unknown>[];
+      try {
+        rows = parseSimpleCsv(text) as Record<string, unknown>[];
+      } catch (parseErr) {
+        console.warn('[CSV Parse Error]', { error: parseErr, fileName: req.file.originalname });
+        return res.status(400).json({
+          success: false,
+          error: `CSV parsing failed: ${(parseErr as Error).message}`,
+        });
+      }
     } else {
       const bodyParsed = pmsImportBodySchema.safeParse(req.body);
       if (!bodyParsed.success) {
@@ -125,18 +144,27 @@ router.post('/import/:pmsVendor', upload.single('file'), async (req: Request, re
   }
 });
 
-router.post('/import/eob', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/import/eob', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     if (!req.file?.buffer) {
       return res.status(400).json({ success: false, error: 'CSV file required' });
     }
-    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 12 * 1024 * 1024 });
+    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
     if (!uploadCheck.ok) {
       return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
     }
     const text = req.file.buffer.toString('utf8');
-    const rows = parseSimpleCsv(text) as Record<string, unknown>[];
+    let rows: Record<string, unknown>[];
+    try {
+      rows = parseSimpleCsv(text) as Record<string, unknown>[];
+    } catch (parseErr) {
+      console.warn('[CSV Parse Error (EOB)]', { error: parseErr, fileName: req.file.originalname });
+      return res.status(400).json({
+        success: false,
+        error: `CSV parsing failed: ${(parseErr as Error).message}`,
+      });
+    }
     const { importEobRowsToPrisma } = await import('../reconciliation/eobImport.js');
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });

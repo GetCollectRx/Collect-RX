@@ -20,9 +20,8 @@ interface EarlyAccessLead {
  */
 export function createEarlyAccessRouter(prisma: PrismaClient): Router {
   const r = Router();
-  r.use(strictLimiter);
 
-  r.post('/early-access', async (req: Request, res: Response) => {
+  r.post('/early-access', strictLimiter, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const email = typeof body.email === 'string' ? body.email.trim() : '';
@@ -72,7 +71,7 @@ async function notifyEarlyAccessRequest(lead: EarlyAccessLead): Promise<void> {
   if (!process.env.SENDGRID_API_KEY) return;
 
   const to = process.env.EARLY_ACCESS_NOTIFY_EMAIL || process.env.SENDGRID_FROM_EMAIL || 'billing@collectrx.ca';
-  const sg = require('@sendgrid/mail');
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
 
   const subject = lead.intent === 'demo'

@@ -64,6 +64,8 @@ import compression from 'compression';
 import helmet from 'helmet';
 
 import { resolveCorsAllowedOrigins } from './corsAllowedOrigins';
+import { captureFatal, initSentry, installSentryExpressErrorHandler } from './observability/sentryNode.js';
+import { checkRlsRoleSafety, getCachedRlsRoleSafety } from './observability/rlsRoleSafety.js';
 import { prisma } from '../lib/prisma';
 // Real PHI vault (full PatientPHI struct) — needs rehydrate on every boot.
 // H-6: the legacy services/pii-vault.ts (simple string tokenizer, 24h TTL) is
@@ -105,8 +107,9 @@ import { pingClickHouse, isClickHouseMockMode } from './productAnalytics/clickho
 // Routes
 import { createAuthRouter }  from './routes/authRoutes';
 import { createGroupAdminRouter } from './routes/groupAdminRoutes';
-import { createOrganizationRouter, createOrganizationPublicRouter } from './routes/organizationRoutes';
 import { createPublicUnsubscribeRouter } from './routes/publicUnsubscribeRoutes.js';
+import { createOrgAdminRouter } from './routes/orgAdminRoutes';
+import { createSsoRouter } from './routes/ssoRoutes';
 import insuranceRouter        from '../routes/insurance';
 import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
@@ -115,6 +118,8 @@ import eligibilityRouter      from '../routes/eligibility';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
+import holdParkTestRouter     from '../webhooks/holdParkTest';
+import { attachHoldParkAudioStream } from '../webhooks/holdParkAudioStream';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
@@ -159,6 +164,11 @@ import { createCarrierDiscoveryRouter } from './routes/carrierDiscoveryRoutes.js
 import { createTriageCredentialRouter } from './routes/triageCredentialRoutes.js';
 import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
+
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Must run before
+// other app setup so it can wrap what follows.
+initSentry();
+
 const app = express();
 app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -304,6 +314,21 @@ app.use(
   claimsValidatorRouter,
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Hold-Park billing test, temporary, engineering test only (see
+// src/webhooks/holdParkTest.ts). This URL is also this Vapi phone number's
+// server.url, so it receives Vapi's own JSON server-events in addition to
+// Twilio's application/x-www-form-urlencoded voice webhook; both parsers are
+// needed, each only acts on its own content-type and leaves the other alone.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/hold-park',
+  webhookLimiter,
+  express.json(),
+  express.urlencoded({ extended: false }),
+  holdParkTestRouter,
+);
+
 app.post(
   '/api/webhooks/sendgrid',
   webhookLimiter,
@@ -372,10 +397,25 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'not_ready' });
+    return;
   }
+  // See docs/operations/HUMAN-DECISIONS-PENDING.md #3 — a superuser/BYPASSRLS
+  // DB role makes tenant-isolation RLS a silent no-op. Only enforced where the
+  // boot-time check actually ran (production); staging/local dev report ready
+  // regardless, since developers routinely connect as a local superuser.
+  if (process.env.NODE_ENV === 'production') {
+    const rls = getCachedRlsRoleSafety();
+    if (rls.checked && !rls.safe) {
+      res.status(503).json({
+        status: 'not_ready',
+        error: 'Postgres role fails RLS safety check (superuser or BYPASSRLS) — tenant isolation is a no-op',
+      });
+      return;
+    }
+  }
+  res.json({ status: 'ready' });
 });
 
 app.get('/api/health/metrics', healthLimiter, async (req: Request, res: Response) => {
@@ -459,9 +499,23 @@ app.use('/api', anonStandardLimiter);
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       createAuthRouter(prisma));
+app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
-app.use('/api/organizations', createOrganizationPublicRouter(prisma));
-app.use('/api/organizations', createOrganizationRouter(prisma));
+// Mounted at /api/admin/organizations, not /api/admin — this router's own
+// authenticate/authorizeRole('platform_dev') gate is a router-wide `.use()`,
+// which Express applies to every request whose path starts with the mount
+// prefix regardless of whether one of this router's own routes matches.
+// Mounted at the bare /api/admin prefix (matching adminRouter below), it
+// intercepted and 403'd every /api/admin/* request for any non-platform_dev
+// session before adminRouter ever got a chance to handle it — reproduced
+// live via supertest: GET /api/admin/practice-identity 403'd for a real
+// practice_owner session with "Insufficient permissions for this action",
+// authorizeRole's exact error string, not adminRoutes.ts's own. Internal
+// route paths in orgAdminRoutes.ts already start with /organizations, so
+// this mount change alone keeps every external URL
+// (POST /api/admin/organizations, etc.) identical — see the route-path fix
+// alongside this one.
+app.use('/api/admin/organizations', createOrgAdminRouter(prisma));
 app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
@@ -567,6 +621,11 @@ app.get('*', (req: Request, res: Response) => {
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ success: false, error: 'Not found' });
 });
+
+// Must run after all routes/the 404 fallback, before the app's own error
+// handler below — Sentry.setupExpressErrorHandler re-throws to the next
+// error middleware after capturing, it doesn't send a response itself.
+installSentryExpressErrorHandler(app);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global error handler
@@ -772,6 +831,7 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
+  attachHoldParkAudioStream(server);
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);
@@ -858,6 +918,17 @@ async function boot() {
   } catch (err) {
     logger.error('[server] PHI vault initialization failed; refusing to start', { error: err });
     process.exit(1);
+  }
+
+  // docs/operations/HUMAN-DECISIONS-PENDING.md #3: a superuser/BYPASSRLS
+  // connection makes every RLS tenant-isolation policy a silent no-op. Cache
+  // the role's actual attributes so /api/health/ready can fail loudly instead
+  // — checked in every NODE_ENV (Fly sets NODE_ENV=production on both staging
+  // and prod) so this fires before real traffic ever gets routed here, but
+  // never blocks boot itself: a slow/flaky check here shouldn't turn into an
+  // outage on top of whatever it's trying to catch.
+  if (process.env.NODE_ENV === 'production') {
+    void checkRlsRoleSafety(prisma);
   }
 
   void afterListen(server).catch((err) => {

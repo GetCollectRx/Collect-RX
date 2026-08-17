@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
-import { authUserId } from '../accessControl/types.js';
+import { authUserId, isPracticeOwner } from '../accessControl/types.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { runWithPracticeRls } from '../db/rlsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
@@ -25,7 +25,7 @@ function ownerPracticeId(req: Request, res: Response): string | null {
     return null;
   }
   const auth = req.auth ?? req.practiceAuth;
-  if (auth?.role !== 'practice_owner') {
+  if (!isPracticeOwner(auth)) {
     res.status(403).json({ success: false, error: 'This action requires practice owner access' });
     return null;
   }

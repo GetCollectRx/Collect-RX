@@ -413,7 +413,6 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       // practice_phone is the billing/claims line, NOT the staff escalation line.
       practice_phone:           practicePhone,
       language_preference:      languagePreference ?? 'en',
-      disclosure_message:       `Hello, this is an automated calling system contacting you on behalf of ${practiceName}, a dental practice. You can reach us at ${practicePhone}. We are calling regarding an outstanding insurance claim. If you are a representative at the claims department, please stay on the line.`,
       // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',

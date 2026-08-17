@@ -24,10 +24,12 @@ const PLATFORM_ACCOUNTS = [
   ['platformadmin@collectrx.ca', 'platform_admin'],
 ];
 
+// No default password exists — seed.ts / seed-demo.ts both require
+// SEED_PRACTICE_PASSWORD and throw without it, so there's nothing to fall
+// back to here.
 const PASSWORD_CANDIDATES = [
   process.env.SEED_PRACTICE_PASSWORD,
   process.env.PERSONA_TEST_PASSWORD,
-  'CollectRx2026!',
 ].filter(Boolean);
 
 const DEV_PASSWORD = process.env.PLATFORM_DEV_PASSWORD?.trim() || '';

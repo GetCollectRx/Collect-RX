@@ -233,7 +233,9 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem('crx_last_practice_id', data.practice.id) } catch { /* ignore */ }
     setRole(sessionRole)
     setPhiAccess(data.phiAccess === true)
-    setPractices([data.practice])
+    // group_admin logins carry every org practice in `practices` — everyone
+    // else still gets just their own (data.practices is absent for them).
+    setPractices(data.practices?.length ? data.practices : [data.practice])
     setPracticeId(data.practice.id)
     setSessionUser(data.user ?? null)
     applySessionConfig(sessionRole, data.practice.id)

@@ -120,8 +120,15 @@ export function verifyAuthToken(token: string): AuthJwtPayload {
 
   // All other roles are practice-layer user sessions.
   const user = payload as UserAuthPayload & BriefAuthFields;
+  // Auditors are provisioned with practiceId: null and scoped via AuditorGrant
+  // instead — missing here meant verifyAuthToken threw on every request for a
+  // real auditor session (login succeeded, but the very next request, e.g.
+  // GET /api/auth/me on page load, 401'd with "Invalid or expired session").
+  // See OUTSTANDING-FIXES-PRODUCT-READY.md P10-09.
   const crossPractice =
-    user.userRole === 'billing_ops_manager' || user.userRole === 'platform_admin';
+    user.userRole === 'billing_ops_manager' ||
+    user.userRole === 'platform_admin' ||
+    user.userRole === 'auditor';
   if (!user.userId || (!user.practiceId && !crossPractice)) {
     throw new jwt.JsonWebTokenError('missing userId or practiceId');
   }

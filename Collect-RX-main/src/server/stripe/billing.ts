@@ -11,6 +11,7 @@ import {
   billingSkipPracticeIds,
   defaultSubscriptionPlan,
   getSubscriptionUsageState,
+  isKnownPlanId,
   resolvePracticeSubscriptionPlan,
   subscriptionEnforceEnabled,
   subscriptionPlanById,
@@ -193,13 +194,17 @@ export async function createBillingCheckoutSession(
   db: PrismaClient,
   requestedPlanId?: string
 ): Promise<{ url: string }> {
-  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
-  if (requestedPlanId && !plan) {
+  if (requestedPlanId && !isKnownPlanId(requestedPlanId)) {
     throw new Error(`Unknown plan "${requestedPlanId}" — valid plans are core, growth, scale`);
   }
+  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
   const price = plan?.priceId ?? subscriptionPriceId();
   if (!price) {
-    throw new Error('Stripe subscription price is not configured');
+    throw new Error(
+      requestedPlanId
+        ? `Plan "${requestedPlanId}" has no Stripe price configured — set STRIPE_PRICE_${requestedPlanId.toUpperCase()}`
+        : 'Stripe subscription price is not configured',
+    );
   }
   const stripe = getStripe();
   const practice = await db.practice.findUnique({ where: { id: practiceId } });
@@ -258,6 +263,84 @@ export async function createBillingPortalSession(practiceId: string, db: PrismaC
 }
 
 /**
+ * Org-level checkout — the DSO's parent company is charged once for every
+ * member practice, instead of each location subscribing individually.
+ * Mirrors createBillingCheckoutSession; metadata carries organization_id so
+ * the webhook routes subscription state onto the Organization, not a Practice.
+ */
+export async function createOrgBillingCheckoutSession(
+  organizationId: string,
+  db: PrismaClient,
+  requestedPlanId?: string,
+): Promise<{ url: string }> {
+  const plan = requestedPlanId ? subscriptionPlanById(requestedPlanId) : defaultSubscriptionPlan();
+  if (requestedPlanId && !plan) {
+    throw new Error(`Unknown plan "${requestedPlanId}" — valid plans are core, growth, scale`);
+  }
+  const price = plan?.priceId ?? subscriptionPriceId();
+  if (!price) {
+    throw new Error('Stripe subscription price is not configured');
+  }
+  const stripe = getStripe();
+  const organization = await db.organization.findUnique({ where: { id: organizationId } });
+  if (!organization) {
+    throw new Error('Organization not found');
+  }
+
+  let customerId = organization.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      metadata: { organization_id: organizationId },
+      name: organization.name,
+    });
+    customerId = customer.id;
+    await db.organization.update({
+      where: { id: organizationId },
+      data: { stripeCustomerId: customerId },
+    });
+  }
+
+  const base = frontendBaseUrl();
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer: customerId,
+    line_items: [{ price, quantity: 1 }],
+    success_url: `${base}/group/billing?subscribed=1`,
+    cancel_url: `${base}/group/billing?canceled=1`,
+    metadata: { organization_id: organizationId, collectrx_plan_id: plan?.id ?? 'core' },
+    subscription_data: {
+      metadata: { organization_id: organizationId, collectrx_plan_id: plan?.id ?? 'core' },
+    },
+    allow_promotion_codes: true,
+  });
+
+  if (!session.url) {
+    throw new Error('Stripe Checkout did not return a URL');
+  }
+  return { url: session.url };
+}
+
+export async function createOrgBillingPortalSession(
+  organizationId: string,
+  db: PrismaClient,
+): Promise<{ url: string }> {
+  const stripe = getStripe();
+  const organization = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { stripeCustomerId: true },
+  });
+  if (!organization?.stripeCustomerId) {
+    throw new Error('No billing account yet — subscribe first');
+  }
+  const base = frontendBaseUrl();
+  const session = await stripe.billingPortal.sessions.create({
+    customer: organization.stripeCustomerId,
+    return_url: `${base}/group/billing`,
+  });
+  return { url: session.url };
+}
+
+/**
  * Platform Billing webhook branch — call after `constructEvent`.
  * Marks the event processed when returning handled: true.
  */
@@ -272,10 +355,12 @@ export async function handlePlatformBillingWebhook(
       if (session.mode !== 'subscription') {
         return { handled: false, reason: 'not_subscription_checkout' };
       }
+      const rawOrgId = session.metadata?.organization_id;
+      const organizationId = typeof rawOrgId === 'string' && rawOrgId.length > 0 ? rawOrgId : undefined;
       const rawPid = session.metadata?.practice_id;
       const practiceId = typeof rawPid === 'string' && rawPid.length > 0 ? rawPid : undefined;
       const subRef = session.subscription;
-      if (!practiceId || !subRef) {
+      if ((!practiceId && !organizationId) || !subRef) {
         return { handled: false, reason: 'missing_practice_or_subscription' };
       }
       const subId = typeof subRef === 'string' ? subRef : subRef.id;
@@ -284,31 +369,36 @@ export async function handlePlatformBillingWebhook(
       const plan = subscriptionPlanSnapshot(sub);
       const billingTier = billingTierForStripePrice(priceId);
       if (priceId && !billingTier) {
-        // Fail closed: the practice keeps its current tier (trial for new
+        // Fail closed: the entity keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
         logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
           priceId,
           hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
         });
       }
+      const subscriptionFields = {
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
+        subscriptionStatus: sub.status,
+        subscriptionPriceId: priceId,
+        subscriptionPlanId: plan?.id ?? null,
+        subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
+        subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+        ...(billingTier ? { billingTier } : {}),
+      };
+      if (organizationId) {
+        await db.$transaction([
+          db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
+          db.processedStripeEvent.create({ data: { id: event.id } }),
+        ]);
+        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        return { handled: true };
+      }
       await db.$transaction([
-        db.practice.update({
-          where: { id: practiceId },
-          data: {
-            stripeSubscriptionId: sub.id,
-            stripeCustomerId:
-              typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
-            subscriptionStatus: sub.status,
-            subscriptionPriceId: priceId,
-            subscriptionPlanId: plan?.id ?? null,
-            subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
-            subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
-            ...(billingTier ? { billingTier } : {}),
-          },
-        }),
+        db.practice.update({ where: { id: practiceId as string }, data: subscriptionFields }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
-      await syncPlanStatusFromSubscription(practiceId, sub.status);
+      await syncPlanStatusFromSubscription(practiceId as string, sub.status);
       return { handled: true };
     }
 
@@ -317,6 +407,15 @@ export async function handlePlatformBillingWebhook(
       const subRef = invoice.subscription;
       if (!subRef) return { handled: false, reason: 'invoice_without_subscription' };
       const subId = typeof subRef === 'string' ? subRef : subRef.id;
+      const org = await db.organization.findFirst({
+        where: { stripeSubscriptionId: subId },
+        select: { id: true },
+      });
+      if (org) {
+        await startNewOrgBillingCycle(org.id);
+        await db.processedStripeEvent.create({ data: { id: event.id } });
+        return { handled: true };
+      }
       const p = await db.practice.findFirst({
         where: { stripeSubscriptionId: subId },
         select: { id: true },
@@ -329,53 +428,88 @@ export async function handlePlatformBillingWebhook(
 
     if (event.type === 'customer.subscription.updated') {
       const sub = event.data.object as Stripe.Subscription;
+      const metaOrgId = sub.metadata?.organization_id;
+      let organizationId: string | undefined =
+        typeof metaOrgId === 'string' && metaOrgId.length > 0 ? metaOrgId : undefined;
       const metaPid = sub.metadata?.practice_id;
       let practiceId: string | undefined =
         typeof metaPid === 'string' && metaPid.length > 0 ? metaPid : undefined;
-      if (!practiceId) {
-        const p = await db.practice.findFirst({
+      if (!organizationId && !practiceId) {
+        const org = await db.organization.findFirst({
           where: { stripeSubscriptionId: sub.id },
           select: { id: true },
         });
-        practiceId = p?.id;
+        organizationId = org?.id;
+        if (!organizationId) {
+          const p = await db.practice.findFirst({
+            where: { stripeSubscriptionId: sub.id },
+            select: { id: true },
+          });
+          practiceId = p?.id;
+        }
       }
-      if (!practiceId) {
+      if (!organizationId && !practiceId) {
         return { handled: false, reason: 'practice_not_found_for_subscription' };
       }
       const priceId = subscriptionPrimaryPriceId(sub);
       const plan = subscriptionPlanSnapshot(sub);
       const billingTier = billingTierForStripePrice(priceId);
       if (priceId && !billingTier) {
-        // Fail closed: the practice keeps its current tier (trial for new
+        // Fail closed: the entity keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
         logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
           priceId,
           hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
         });
       }
+      const subscriptionFields = {
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
+        subscriptionStatus: sub.status,
+        subscriptionPriceId: priceId,
+        subscriptionPlanId: plan?.id ?? null,
+        subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
+        subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
+        ...(billingTier ? { billingTier } : {}),
+      };
+      if (organizationId) {
+        await db.$transaction([
+          db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
+          db.processedStripeEvent.create({ data: { id: event.id } }),
+        ]);
+        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        return { handled: true };
+      }
       await db.$transaction([
-        db.practice.update({
-          where: { id: practiceId },
-          data: {
-            stripeSubscriptionId: sub.id,
-            stripeCustomerId:
-              typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
-            subscriptionStatus: sub.status,
-            subscriptionPriceId: priceId,
-            subscriptionPlanId: plan?.id ?? null,
-            subscriptionCurrentPeriodStart: subscriptionPeriodStartDate(sub),
-            subscriptionCurrentPeriodEnd: subscriptionPeriodEndDate(sub),
-            ...(billingTier ? { billingTier } : {}),
-          },
-        }),
+        db.practice.update({ where: { id: practiceId as string }, data: subscriptionFields }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
-      await syncPlanStatusFromSubscription(practiceId, sub.status);
+      await syncPlanStatusFromSubscription(practiceId as string, sub.status);
       return { handled: true };
     }
 
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object as Stripe.Subscription;
+      const canceledFields = {
+        subscriptionStatus: 'canceled',
+        stripeSubscriptionId: null,
+        subscriptionPriceId: null,
+        subscriptionPlanId: null,
+        subscriptionCurrentPeriodStart: null,
+        subscriptionCurrentPeriodEnd: null,
+      };
+      const org = await db.organization.findFirst({
+        where: { stripeSubscriptionId: sub.id },
+        select: { id: true },
+      });
+      if (org) {
+        await db.$transaction([
+          db.organization.update({ where: { id: org.id }, data: canceledFields }),
+          db.processedStripeEvent.create({ data: { id: event.id } }),
+        ]);
+        await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
+        return { handled: true };
+      }
       const p = await db.practice.findFirst({
         where: { stripeSubscriptionId: sub.id },
         select: { id: true },
@@ -384,17 +518,7 @@ export async function handlePlatformBillingWebhook(
         return { handled: false, reason: 'practice_not_found_for_subscription' };
       }
       await db.$transaction([
-        db.practice.update({
-          where: { id: p.id },
-          data: {
-            subscriptionStatus: 'canceled',
-            stripeSubscriptionId: null,
-            subscriptionPriceId: null,
-            subscriptionPlanId: null,
-            subscriptionCurrentPeriodStart: null,
-            subscriptionCurrentPeriodEnd: null,
-          },
-        }),
+        db.practice.update({ where: { id: p.id }, data: canceledFields }),
         db.processedStripeEvent.create({ data: { id: event.id } }),
       ]);
       await syncPlanStatusFromSubscription(p.id, 'canceled');

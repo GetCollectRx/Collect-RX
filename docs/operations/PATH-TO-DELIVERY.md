@@ -98,8 +98,8 @@ Execute on staging, then prod:
 
 **Eng prepared:** [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) + [PHASE6-OPS.md](PHASE6-OPS.md). Detailed implementation backlog (graceful shutdown, Vapi circuit breaker, logging consolidation, queue retry/DLQ, diagnostics, deploy/rollback): [PRODUCTION-SAFETY-BACKLOG.md](PRODUCTION-SAFETY-BACKLOG.md) — backlog only, nothing in it is built yet.
 
-- [ ] Sentry DSNs + alerts
-- [ ] Uptime on `/api/health/ready`
+- [ ] Sentry DSNs + alerts — **code-level blocker fixed 2026-08-06** (see `OUTSTANDING-FIXES-PRODUCT-READY.md` P11-01): server-side Sentry was fully implemented but never called from `index.ts`/`workerEntry.ts`, only the frontend was wired up. Now called from both Node entry points; still needs an operator to create the Sentry project and set `SENTRY_DSN` on Fly.
+- [ ] Uptime on `/api/health/ready` — **verified correct in-repo**: real DB ping (`SELECT 1`), returns 503 on failure. No code gap; just needs an operator-side uptime monitor pointed at it.
 - [ ] Backups + tested restore + RPO/RTO
 - [ ] Deploy/rollback practiced
 - [ ] On-call **or** “no 24/7” in Terms

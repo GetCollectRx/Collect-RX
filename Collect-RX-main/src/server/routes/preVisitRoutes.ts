@@ -147,6 +147,10 @@ router.post(
   async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.PREVISIT_CSV))) {
+      return res.status(403).json({ error: 'Pre-visit CSV import is paused for this practice' });
+    }
     const contentType = String(req.headers['content-type'] ?? '').toLowerCase();
     let rows: CdcpPredetImportRow[] = [];
     const parseErrors: Array<{ row: number; claimRef?: string; error: string }> = [];

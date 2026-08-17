@@ -13,7 +13,7 @@ import type { UserRole } from '../types/userRole'
 type SettingsResponse = {
   success: boolean
   data: {
-    practice: { id: string; name: string; timezone: string } | null
+    practice: { id: string; name: string; timezone: string; recoveryMode?: 'CSV_FIRST' | 'PMS_WRITEBACK' } | null
     settings: PracticeSettings
     pms?: PracticePmsInfo
   }
@@ -39,6 +39,9 @@ export default function PracticeSettings() {
   const [telusValue, setTelusValue] = useState('')
   const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
   const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
+  const [recoveryMode, setRecoveryMode] = useState<'CSV_FIRST' | 'PMS_WRITEBACK'>('CSV_FIRST')
+  const [recoveryModeSaving, setRecoveryModeSaving] = useState(false)
+  const [recoveryModeError, setRecoveryModeError] = useState<string | null>(null)
   const [triageCredential, setTriageCredential] = useState('')
   const [triageStatus, setTriageStatus] = useState<TriageCredentialStatus | null>(null)
   const [triageBusy, setTriageBusy] = useState(false)
@@ -61,6 +64,7 @@ export default function PracticeSettings() {
       const res = await apiFetchJson<SettingsResponse>(`/api/practices/${practiceId}/settings`)
       setSettings(res.data.settings)
       setPmsInfo(res.data.pms ?? null)
+      setRecoveryMode(res.data.practice?.recoveryMode ?? 'CSV_FIRST')
       const triage = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
         `/api/practices/${practiceId}/triage-credential`,
       )
@@ -98,6 +102,23 @@ export default function PracticeSettings() {
       setError((e as Error).message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function saveRecoveryMode(next: 'CSV_FIRST' | 'PMS_WRITEBACK') {
+    if (!practiceId || isReadOnly) return
+    setRecoveryModeSaving(true)
+    setRecoveryModeError(null)
+    try {
+      const res = await apiFetchJson<{ success: boolean; data: { recoveryMode: 'CSV_FIRST' | 'PMS_WRITEBACK' } }>(
+        `/api/practices/${practiceId}/recovery-mode`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoveryMode: next }) },
+      )
+      setRecoveryMode(res.data.recoveryMode)
+    } catch (e) {
+      setRecoveryModeError((e as Error).message)
+    } finally {
+      setRecoveryModeSaving(false)
     }
   }
 
@@ -264,6 +285,22 @@ export default function PracticeSettings() {
                 Phone decisions use profile <code className="text-2xs">{pmsInfo?.phoneDecisionProfile ?? 'carrier_recovery_v1'}</code>
                 {' '}(not PMS-specific logic).
               </p>
+              {pmsCatalog.find((v) => v.id === (settings.pmsVendor ?? pmsInfo?.vendorId))?.supportsDesktopConnector && (
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                  <Select
+                    label="Recovery confirmation"
+                    value={recoveryMode}
+                    disabled={isReadOnly || recoveryModeSaving}
+                    onChange={(e) => void saveRecoveryMode(e.target.value as 'CSV_FIRST' | 'PMS_WRITEBACK')}
+                  >
+                    <option value="CSV_FIRST">CSV re-import (confirm recovery from your next claims export)</option>
+                    <option value="PMS_WRITEBACK">PMS writeback (confirm recovery from the desktop sync)</option>
+                  </Select>
+                  {recoveryModeError && (
+                    <p className="text-xs text-red-600 dark:text-red-400">{recoveryModeError}</p>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
 

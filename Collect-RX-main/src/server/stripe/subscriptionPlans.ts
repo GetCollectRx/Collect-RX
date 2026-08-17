@@ -43,6 +43,16 @@ export function billingSkipPracticeIds(): Set<string> {
 
 const PAID_TIER_IDS: BillingTier[] = ['core', 'growth', 'scale'];
 
+/**
+ * True for any recognized plan id, regardless of whether it currently has a
+ * configured Stripe price — distinguishes "you typed a plan that doesn't
+ * exist" from "this plan exists but nobody set STRIPE_PRICE_<ID> yet",
+ * which need different error messages (see createBillingCheckoutSession).
+ */
+export function isKnownPlanId(planId: string | null | undefined): planId is BillingTier {
+  return !!planId && (PAID_TIER_IDS as string[]).includes(planId);
+}
+
 let warnedLegacyPlanConfig = false;
 
 /**

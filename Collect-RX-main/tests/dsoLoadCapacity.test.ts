@@ -102,6 +102,12 @@ try {
 }
 
 afterAll(async () => {
+  // vitest.config.ts runs the suite in one sequential process (maxWorkers: 1)
+  // — leaving this set would make isWithinCallWindow always return true for
+  // every later file, silently breaking tests that assert real business-hour
+  // rejection (e.g. tests/phase-5/carrier-adapter.test.ts's Sat/Sun/early/late
+  // isWithinCallWindow cases).
+  delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
   await prisma.$disconnect().catch(() => undefined);
 });
 
@@ -112,13 +118,13 @@ interface FleetPractice {
   claimId: string;
 }
 
-async function seedDispatchablePractice(): Promise<FleetPractice> {
+async function seedDispatchablePractice(carrierId: CarrierId): Promise<FleetPractice> {
   const practice = await createPracticeForTests(prisma);
 
   const settings = defaultPracticeSettings();
   settings.voiceAgentEnabled = true;
   settings.carrierConfigs = settings.carrierConfigs.map((c) =>
-    c.carrierId === 'sun_life'
+    c.carrierId === carrierId
       ? { ...c, authorizationSubmitted: true, providerNumber: `PN-LOAD-${practice.id.slice(0, 8)}` }
       : c,
   );
@@ -138,7 +144,7 @@ async function seedDispatchablePractice(): Promise<FleetPractice> {
   const claim = await prisma.insuranceClaim.create({
     data: {
       practiceId: practice.id,
-      carrierId: 'sun_life' as CarrierId,
+      carrierId,
       claimNumber: `LOAD-${practice.id.slice(0, 8)}`,
       patientToken,
       billedAmount: 250,
@@ -189,7 +195,16 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     // for up to 90s after any prior run. Reproduced directly: back-to-back
     // invocations of this file failed every time until this reset was added.
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
-    fleet = await Promise.all(Array.from({ length: FLEET_SIZE }, () => seedDispatchablePractice()));
+    // Spread across all 6 carriers (4 max per carrier well under
+    // CARRIER_CONCURRENCY_LIMITS' fleet-wide cap of 5/carrier — see
+    // src/billing/tiers.ts) so that real, intentional guard doesn't throttle
+    // this test's own fleet before it can prove the pipeline dispatches all
+    // 20; per-carrier scarcity has its own dedicated coverage in
+    // tests/queueEngineFairnessAndLease.test.ts.
+    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
+    fleet = await Promise.all(
+      Array.from({ length: FLEET_SIZE }, (_, i) => seedDispatchablePractice(CARRIERS[i % CARRIERS.length])),
+    );
   }, 60_000);
 
   afterAll(async () => {
