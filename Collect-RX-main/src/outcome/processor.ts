@@ -48,6 +48,11 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /system.generated\s+call\s+(?:detected|blocked|rejected)/i,
   /bot\s+activity(\s+detected)?/i,
   /detected\s+bot\s+activity/i,
+  /(?:end|stop)\s+this\s+call.*(?:automated|dialers|auto-dialer)/i,
+  /(?:fraud|security)\s+team.*(?:before|before we)/i,
+  /compliance\s+team.*(?:not\s+)?(?:speak|talk).*(?:auto-dialer|automated)/i,
+  /(?:isn't|is\s+not)\s+a\s+real\s+person/i,
+  /remove\s+this\s+line.*(?:calling|calling system).*(?:will\s+)?not\s+answer/i,
 ];
 
 /** Literal phrases from `processor.legacy.cjs` (carrier_block branch). */
