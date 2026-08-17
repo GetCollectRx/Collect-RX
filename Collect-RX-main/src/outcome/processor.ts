@@ -321,9 +321,10 @@ function legacyCodeToProcessedOutcome(
  */
 export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const transcript = payload.transcript ?? '';
-  // Only use the raw transcript for classification, not LLM-generated summary/successEvaluation
-  // which can hallucinate financial outcomes independent of what was actually said.
-  const rawText = transcript;
+  // Use transcript if available; fall back to summary only if transcript is empty.
+  // This prevents LLM-generated summaries from hallucinating financial outcomes when we have a real transcript,
+  // but allows fallback classification when no transcript exists.
+  const rawText = transcript.trim() ? transcript : (payload.analysis?.summary ?? '');
   /** Lowercased — used for all pattern matching */
   const fullText = rawText.toLowerCase();
 

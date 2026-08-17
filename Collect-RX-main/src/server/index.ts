@@ -84,6 +84,7 @@ import {
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
 import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken } from './healthMetricsExposure.js';
 import { getEventLoopHealth } from './observability/eventLoopHealth.js';
+import { checkRlsRoleSafety, getCachedRlsRoleSafety } from './observability/rlsRoleSafety.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
 import { runWithRlsBypass } from './db/rlsContext.js';
@@ -376,6 +377,11 @@ app.get('/api/health/ready', healthLimiter, async (_req: Request, res: Response)
   }
   try {
     await prisma.$queryRaw`SELECT 1`;
+    const rlsSafety = getCachedRlsRoleSafety();
+    if (!rlsSafety.safe) {
+      res.status(503).json({ status: 'not_ready', reason: 'rls_role_unsafe' });
+      return;
+    }
     res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'not_ready' });
@@ -806,6 +812,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
 async function initializePersistentPhiVault(): Promise<void> {
   await connectDatabase();
   await assertRlsRoleSafeInProduction(prisma);
+  void checkRlsRoleSafety(prisma).catch((err) => {
+    logger.error('[server] RLS role safety cache population failed (non-fatal)', { error: err });
+  });
   claimsPiiVault.useStore(prisma);
   const rehydrated = await runWithRlsBypass(async () => claimsPiiVault.rehydrate());
   logger.info('[piiVault] Rehydrated PHI tokens from encrypted store', { rehydrated });
