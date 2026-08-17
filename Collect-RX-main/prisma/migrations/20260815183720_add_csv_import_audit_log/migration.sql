@@ -5,14 +5,14 @@
 
 CREATE TABLE csv_import_logs (
   id SERIAL PRIMARY KEY,
-  practice_id UUID NOT NULL,
+  practice_id TEXT NOT NULL,
   file_name VARCHAR(255) NOT NULL,
   file_hash VARCHAR(64) NOT NULL,
   row_count INT NOT NULL,
   error_count INT NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'success',
   error_details TEXT,
-  imported_by UUID NOT NULL,
+  imported_by TEXT NOT NULL,
   imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
   ip_address INET,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
