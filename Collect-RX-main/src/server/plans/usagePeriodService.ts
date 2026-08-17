@@ -59,6 +59,10 @@ function tierFor(practice: Practice): TierConfig {
   return TIERS[practice.billingTier];
 }
 
+function tierForBillingTier(billingTier: string): TierConfig {
+  return TIERS[billingTier as keyof typeof TIERS];
+}
+
 /** Best-effort window for a freshly-created UsagePeriod when none covers "now". */
 function fallbackPeriodWindow(practice: Practice, now: Date): PeriodWindow {
   const tier = tierFor(practice);
@@ -122,7 +126,24 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
   }
 
-  const tier = tierFor(practice);
+  const { resolveBillingEntity } = await import('../stripe/billingEntity.js');
+  const billingEntity = await resolveBillingEntity(prisma, practiceId);
+
+  let tier: TierConfig;
+  let billingTarget: Practice | { billingTier: string; subscriptionStatus?: string; callsPaused?: boolean; callsPausedReason?: string | null; subscriptionPriceId?: string | null };
+
+  if (billingEntity.kind === 'organization') {
+    const org = await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } });
+    if (!org) {
+      return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+    }
+    tier = tierForBillingTier(org.billingTier);
+    billingTarget = org;
+  } else {
+    tier = tierFor(practice);
+    billingTarget = practice;
+  }
+
   const now = new Date();
 
   if (practice.subscriptionStatus === 'canceled') {
@@ -356,6 +377,33 @@ export async function confirmOverage(
   }
   await prisma.practice.update({
     where: { id: practiceId },
+    data: {
+      callsPaused: false,
+      callsPausedReason: null,
+      callsPausedAt: null,
+      overageConfirmed: true,
+      overageConfirmedAt: new Date(),
+    },
+  });
+  return { status: 'resumed' };
+}
+
+export async function confirmOrgOverage(
+  prisma: PrismaClient,
+  orgId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
+  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  if (!org?.callsPaused || org.callsPausedReason !== 'overage_pending') {
+    return { status: 'not_paused' };
+  }
+  if (org.callsPausedAt) {
+    const expiresAt = org.callsPausedAt.getTime() + OVERAGE.confirmationExpiryHours * 60 * 60 * 1000;
+    if (Date.now() > expiresAt) {
+      return { status: 'expired' };
+    }
+  }
+  await prisma.organization.update({
+    where: { id: orgId },
     data: {
       callsPaused: false,
       callsPausedReason: null,
