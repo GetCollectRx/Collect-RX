@@ -2127,3 +2127,27 @@ model CsvImportLog {
   @@index([importedAt(sort: Desc)])
   @@map("csv_import_logs")
 }
+
+/// Audit log for all incoming webhooks — tracks validation results, replays, and errors.
+/// No sensitive data (PHI) is stored — only structural/technical metadata for security monitoring.
+model WebhookAuditLog {
+  id                 String    @id @default(uuid())
+  webhookType        String    @map("webhook_type") // vapi, stripe, sendgrid, gocardless, validator
+  webhookId          String    @map("webhook_id")
+  signatureValid     Boolean?  @map("signature_valid")
+  timestampValid     Boolean?  @map("timestamp_valid")
+  idempotencyCheck   String?   @map("idempotency_check") // new, duplicate, processing, processed
+  errorMessage       String?   @map("error_message") @db.Text
+  httpStatusCode     Int?      @map("http_status_code")
+  sourceIp           String?   @map("source_ip")
+  requestHeaders     Json?     @map("request_headers") // sanitized; no auth tokens
+  receivedAt         DateTime  @map("received_at")
+  processedAt        DateTime? @map("processed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@index([webhookType])
+  @@index([webhookId])
+  @@index([signatureValid])
+  @@index([createdAt(sort: Desc)])
+  @@map("webhook_audit_logs")
+}
