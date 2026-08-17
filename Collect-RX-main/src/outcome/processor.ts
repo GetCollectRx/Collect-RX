@@ -318,9 +318,14 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const transcript = payload.transcript ?? '';
   const summary = payload.analysis?.summary ?? '';
   const successEval = payload.analysis?.successEvaluation ?? '';
-  /** Original casing — used for name extraction and pattern display */
-  const rawText = `${transcript} ${summary} ${successEval}`;
-  /** Lowercased — used for all pattern matching */
+
+  // Use transcript if available; fall back to summary only if transcript is empty.
+  // This prevents LLM-generated summaries from hallucinating financial outcomes when we have a real transcript,
+  // but allows fallback classification when no transcript exists.
+  const rawText = transcript.trim() ? transcript : summary;
+
+  // Carrier-block detection scans everything to prevent missing real blocks.
+  const blockScanText = `${transcript} ${summary} ${successEval}`.toLowerCase();
   const fullText = rawText.toLowerCase();
 
   const durationSeconds = payload.call.durationSeconds ?? null;
