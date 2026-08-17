@@ -277,8 +277,10 @@ export async function applyRecoveryAfterCall(
         await tx.callEscalation.create({
           data: {
             claimId: claim.id,
+            claimRef: claim.claimNumber,
             practiceId: claim.practiceId,
             carrierId: claim.carrierId as import('@prisma/client').CarrierId,
+            amountClaimedCents: Math.round(Number(claim.outstandingAmount) * 100),
             reason: decision.actionDetail ?? '',
             status: 'open',
           },
