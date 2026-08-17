@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "collectrx-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:frontend", "--prefix", "Collect-RX-main"],
+      "port": 5173
+    }
+  ]
+}

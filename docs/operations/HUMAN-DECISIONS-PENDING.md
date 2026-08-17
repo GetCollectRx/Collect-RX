@@ -76,6 +76,8 @@ This was previously carried in `OUTSTANDING-FIXES-PRODUCT-READY.md` as "Done," w
 
 ## 3. Production RLS tenant isolation depends on the DB role never being superuser
 
+**Update 2026-08-06 — Option B is now implemented.** `src/server/observability/rlsRoleSafety.ts` queries `pg_roles` for the connecting role's `rolsuper`/`rolbypassrls` once at boot (production only — `NODE_ENV === 'production'`, which Fly sets on both staging and prod) and caches the result; `GET /api/health/ready` now returns `503` in production if the role fails that check, instead of silently reporting healthy. This turns the failure mode from silent into loud and deploy-blocking (Fly won't route traffic to a machine that never passes its readiness check), but it does **not** replace Option A below — running it once against this repo's own local dev Postgres found the connecting role (`collectrx`) genuinely **is** a superuser, which is exactly the class of misconfiguration this check exists to catch. Whoever holds Fly Postgres production credentials should still run the manual verification once and fix the role if needed; the runtime check is the safety net for future drift, not a substitute for confirming today's actual state.
+
 **Owner needed:** Whoever manages the production Fly.io Postgres role/credentials (infra/ops) — this is a verification task, not a code change.
 
 **Verified current state:** Postgres RLS is real and deployed (`prisma/migrations/20260712000000_rls_and_phi_vault_practice`), and it's genuinely tested — but only under a role built specifically for the test. `.github/workflows/collectrx-ci.yml`'s `rls-strict` job (lines 279-330) creates a dedicated `collectrx_rls_tester` role with `NOSUPERUSER NOBYPASSRLS` explicitly, then runs `tests/rls.strict.test.ts` against it — that test (`Collect-RX-main/tests/rls.strict.test.ts`) is itself gated behind `COLLECTRX_RLS_TEST_STRICT=1` and proves practice A genuinely cannot read or update practice B's claims under that role. That part is solid: the isolation mechanism works correctly *when the connecting role is non-superuser and doesn't have `BYPASSRLS`*.
@@ -117,6 +119,10 @@ Then, ideally, actually run `tests/rls.strict.test.ts` with `COLLECTRX_RLS_TEST_
 
 - **#1 (TELUS timing):** shipped on this pass — docs and the dead unreachable branch are now honest about the flat 30-day floor. What's still open is a product decision on whether to move either carrier group (TELUS to 21 days, the other five to 32) off that flat floor — see the recommendation above for why those are two separate calls, not one.
 - **#2 (PHIPA):** needs legal/privacy review kicked off (long pole); Option B's doc/runbook update can ship immediately and independently.
+<<<<<<< HEAD
 - **#3 (RLS role):** Option B's runtime guard is shipped and tested — it will refuse to boot against an unsafe role in production from the next deploy onward. Option A's actual verification (what the role is *today*, before that deploy happens) still needs whoever holds Fly Postgres production credentials to run the two queries above, or to trigger a production deploy and watch the boot log for the guard's result.
+=======
+- **#3 (RLS role):** Option B (standing runtime check) shipped 2026-08-06. Still needs whoever holds Fly Postgres production credentials to run the two verification queries above once and record the result (Option A) — the runtime check catches future drift, it doesn't replace confirming today's actual production state.
+>>>>>>> origin/dev
 
 None of these block the rest of the launch checklist in [PATH-TO-DELIVERY.md](PATH-TO-DELIVERY.md) — they're tracked separately here because each needs a decision-maker outside engineering, not because they're blocked on more code.
