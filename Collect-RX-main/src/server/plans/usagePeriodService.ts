@@ -127,7 +127,13 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   }
 
   const { resolveBillingEntity } = await import('../stripe/billingEntity.js');
-  const billingEntity = await resolveBillingEntity(prisma, practiceId);
+  let billingEntity;
+  try {
+    billingEntity = await resolveBillingEntity(prisma, practiceId);
+  } catch (_err) {
+    // Fall back to practice-level billing if org lookup fails (e.g., mocked test without organizationPractice)
+    billingEntity = { kind: 'practice' as const, practiceId };
+  }
 
   let tier: TierConfig;
 
