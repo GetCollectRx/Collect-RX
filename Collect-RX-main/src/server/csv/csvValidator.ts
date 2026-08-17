@@ -84,9 +84,9 @@ function trimObjectStrings(obj: Record<string, unknown>): Record<string, unknown
  */
 export function validatePhoneFormat(phone: string): boolean {
   if (!phone) return true; // Optional field
-  // Allow +1234567890 or 2134567890 (10 digits)
+  // Allow +1234567890 (11 digits with country code) or 2134567890 (10 digits)
   const cleaned = phone.replace(/\D/g, '');
-  return cleaned.length === 10;
+  return cleaned.length === 10 || cleaned.length === 11;
 }
 
 /**
