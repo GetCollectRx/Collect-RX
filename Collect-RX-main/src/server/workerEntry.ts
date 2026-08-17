@@ -33,8 +33,11 @@ import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js
 import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
 import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
+import { initSentry } from './observability/sentryNode.js';
 
 assertPostgresTlsInProduction();
+
+initSentry();
 
 if (!process.env.REDIS_URL) {
   logger.error(
