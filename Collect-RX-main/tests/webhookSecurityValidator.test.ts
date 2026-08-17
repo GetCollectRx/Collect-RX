@@ -139,6 +139,7 @@ describe('Webhook Security Validator', () => {
           signatureValid: true,
           timestampValid: true,
           idempotencyCheck: 'new',
+          receivedAt: new Date(),
           processedAt: new Date(),
         },
       });
@@ -157,6 +158,7 @@ describe('Webhook Security Validator', () => {
           signatureValid: true,
           timestampValid: true,
           idempotencyCheck: 'processing',
+          receivedAt: new Date(),
         },
       });
 
@@ -175,6 +177,7 @@ describe('Webhook Security Validator', () => {
           timestampValid: true,
           idempotencyCheck: 'new',
           errorMessage: 'Invalid signature',
+          receivedAt: new Date(),
         },
       });
 
@@ -317,6 +320,7 @@ describe('Webhook Security Validator', () => {
           signatureValid: true,
           timestampValid: true,
           idempotencyCheck: 'new',
+          receivedAt: new Date(),
           processedAt: new Date(),
         },
       });
