@@ -163,7 +163,7 @@ import { registerEmailCampaignRoutes } from './routes/emailCampaignRoutes.js';
 import { registerCampaignRoutes } from './routes/campaignRoutes.js';
 const app = express();
 initSentry();
-app.use(installSentryExpressErrorHandler(app));
+installSentryExpressErrorHandler(app);
 app.use(compression());
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 

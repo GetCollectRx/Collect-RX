@@ -278,7 +278,7 @@ export async function applyRecoveryAfterCall(
           data: {
             claimId: claim.id,
             practiceId: claim.practiceId,
-            carrierId: claim.carrierId,
+            carrierId: claim.carrierId as import('@prisma/client').CarrierId,
             reason: decision.actionDetail ?? '',
             status: 'open',
           },
