@@ -193,7 +193,9 @@ export async function validateVapiWebhook(
     };
   }
 
-  const { isValid: signatureOk } = validateHmacSignature(rawBody, signature, secret);
+  const signatureParts = signature.split('=');
+  const signatureValue = signatureParts.length > 1 ? signatureParts[1] : signature;
+  const { isValid: signatureOk } = validateHmacSignature(rawBody, signatureValue, secret);
 
   let payload: unknown;
   try {
