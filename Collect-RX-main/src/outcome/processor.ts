@@ -327,20 +327,13 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const summary = payload.analysis?.summary ?? '';
   const successEval = payload.analysis?.successEvaluation ?? '';
 
-  // `summary`/`successEvaluation` are themselves LLM-generated interpretations of the
-  // call (Vapi's own post-call analysis), not carrier speech — a hallucinated summary
-  // ("the representative confirmed payment, reference X") can fabricate exactly the
-  // resolution language and reference number a financial-terminal outcome depends on.
-  // Financial classification (resolution/denial detection, reference/rep extraction)
-  // therefore reads ONLY the raw transcript when one exists — summary/successEvaluation
-  // are consulted only as a fallback when there's no transcript at all (e.g. a call that
-  // never reached transcribable speech), where they're the sole available signal rather
-  // than a second, contradictable one. Carrier-block detection is the one case that
-  // always scans everything — missing a real block is the more dangerous failure mode.
+  // Use transcript if available; fall back to summary only if transcript is empty.
+  // This prevents LLM-generated summaries from hallucinating financial outcomes when we have a real transcript,
+  // but allows fallback classification when no transcript exists.
+  const rawText = transcript.trim() ? transcript : summary;
+
+  // Carrier-block detection scans everything to prevent missing real blocks.
   const blockScanText = `${transcript} ${summary} ${successEval}`.toLowerCase();
-  /** Original casing — used for name extraction and pattern display */
-  const rawText = transcript.trim() ? transcript : `${transcript} ${summary} ${successEval}`.trim();
-  /** Lowercased — used for financial-outcome pattern matching and extraction */
   const fullText = rawText.toLowerCase();
 
   const durationSeconds = payload.call.durationSeconds ?? null;
