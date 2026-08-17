@@ -41,10 +41,12 @@ function extractCollectrxStructured(payload: VapiWebhookPayload): CollectrxWebho
 }
 
 /** Extract structured data from analysis.structuredData (deployed squad shape). */
-function extractStructuredData(payload: VapiWebhookPayload): { claimNumber?: string; outcome?: string; referenceNumber?: string } | null {
+function extractStructuredData(
+  payload: VapiWebhookPayload,
+): { claimNumber?: string; outcome?: string; referenceNumber?: string } | null {
   const data = payload.analysis?.structuredData;
   if (!data || typeof data !== 'object') return null;
-  return data as Record<string, unknown>;
+  return data as { claimNumber?: string; outcome?: string; referenceNumber?: string };
 }
 
 function parseCallOutcome(raw: string | undefined): CallOutcome | null {

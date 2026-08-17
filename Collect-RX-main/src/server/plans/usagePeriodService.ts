@@ -141,7 +141,7 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   let billingEntity;
   try {
     billingEntity = await resolveBillingEntity(prisma, practiceId);
-  } catch (_err) {
+  } catch {
     // Fall back to practice-level billing if org lookup fails (e.g., mocked test without organizationPractice)
     billingEntity = { kind: 'practice' as const, practiceId };
   }
@@ -277,8 +277,11 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     overageConfirmed = billingEntity_Org?.overageConfirmed ?? false;
     // Sum minutes across all member practices
     for (const memberId of billingEntity.memberPracticeIds) {
-      const memberUsage = await getOrCreateUsagePeriod(prisma, { id: memberId } as any);
-      minutesConsumed += memberUsage.minutesConsumed;
+      const memberPractice = await prisma.practice.findUnique({ where: { id: memberId } });
+      if (memberPractice) {
+        const memberUsage = await getOrCreateUsagePeriod(prisma, memberPractice);
+        minutesConsumed += memberUsage.minutesConsumed;
+      }
     }
   } else {
     const usage = await getOrCreateUsagePeriod(prisma, practice);
