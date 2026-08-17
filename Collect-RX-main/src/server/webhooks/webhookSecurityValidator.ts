@@ -215,7 +215,7 @@ export async function validateVapiWebhook(
   const idempotency = await checkWebhookIdempotency(prisma, 'vapi', webhookId);
 
   const result: WebhookValidationResult = {
-    isValid: signatureOk && idempotency !== 'processing',
+    isValid: signatureOk && idempotency === 'new',
     signatureValid: signatureOk,
     timestampValid: true,
     idempotencyCheck: idempotency,
@@ -279,7 +279,7 @@ export async function validateStripeWebhook(
   const idempotency = await checkWebhookIdempotency(prisma, 'stripe', webhookId);
 
   const result: WebhookValidationResult = {
-    isValid: signatureOk && timestampOk && idempotency !== 'processing',
+    isValid: signatureOk && timestampOk && idempotency === 'new',
     signatureValid: signatureOk,
     timestampValid: timestampOk,
     idempotencyCheck: idempotency,
@@ -349,7 +349,7 @@ export async function validateGoCardlessWebhook(
   const idempotency = await checkWebhookIdempotency(prisma, 'gocardless', webhookId);
 
   const result: WebhookValidationResult = {
-    isValid: signatureOk && idempotency !== 'processing',
+    isValid: signatureOk && idempotency === 'new',
     signatureValid: signatureOk,
     timestampValid: true,
     idempotencyCheck: idempotency,
