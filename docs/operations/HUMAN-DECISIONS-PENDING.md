@@ -42,6 +42,16 @@ The `< 30` check runs first and rejects every claim under 30 days old, TELUS inc
 
 ## 2. `PHIPADeletionRequest` / `PHIPABreachNotification` — schema exists, zero implementation
 
+**Update 2026-08-19 — Option B shipped.** `src/pages/LegalPrivacy.tsx` now states plainly that
+deletion and breach-notification requests are handled manually (support ticket → an engineer
+runs a scoped, logged deletion under supervision) until the automated workflow ships, and points
+requesters at support rather than implying a self-serve flow exists. This is a documentation/
+runbook change only — it does not touch `PHIPADeletionRequest`/`PHIPABreachNotification` or
+`tests/phipaCompliance.test.ts`, and it does not start the clock on Option A. Option A (the real
+workflow) still needs the legal/privacy sign-off below before any engineering work against those
+models begins — that has not happened yet. `docs/compliance/PHIPA-MANUAL-DELETION-BREACH-RUNBOOK.md`
+is the internal how-to for support/engineering handling a request under the interim manual process.
+
 **Owner needed:** Product + Legal/Privacy Officer (PHIPA compliance sign-off), before any engineering work starts.
 
 **Verified current state:** Both models are real, fully-fielded Prisma models (`Collect-RX-main/prisma/schema.prisma:1793`, with `status`, `requestedAt`/`completedAt`, `purgedClaimsCount`/`purgedCallsCount`/`purgedRecordingsCount` on the deletion side; `notificationType`, `notificationDeadline`, `remediationSteps` on the breach side). A repo-wide search turns up **zero production code that ever creates, reads, or updates either model** — no route, no admin UI, no cron job. The only file that references this workflow at all is `tests/phipaCompliance.test.ts`, and it doesn't exercise the real models either: it defines a local TypeScript `interface PHIPADeletionRequest` (a plain mock, not `prisma.phipaDeletionRequest`) and simulates "deletion" by directly calling `deleteMany()` on `insuranceClaim`/`callAttempt`/`phiVaultEntry`/etc. The test file's own docstring calls it what it is: it's testing that raw multi-table deletion is *possible*, not that a PHIPA request can be filed, tracked, or resolved by anyone. There is a companion doc, `docs/compliance/PHIPA-DELETION-TEST-GUIDE.md`, that includes a full "Implementation Guide for Cron Job" section — i.e. the design for this already exists in writing, it was just never built.

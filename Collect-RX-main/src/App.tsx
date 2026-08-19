@@ -38,6 +38,7 @@ const AgingReport           = lazy(() => import('./pages/AgingReport'))
 const CarrierStats          = lazy(() => import('./pages/CarrierStats'))
 const PracticeSettings      = lazy(() => import('./pages/PracticeSettings'))
 const Escalations           = lazy(() => import('./pages/Escalations'))
+const DispatchApprovals     = lazy(() => import('./pages/DispatchApprovals'))
 const QueueStatsReport      = lazy(() => import('./pages/QueueStatsReport'))
 const Portfolio             = lazy(() => import('./pages/Portfolio'))
 const AdminPractices        = lazy(() => import('./pages/AdminPractices'))
@@ -165,6 +166,7 @@ const PLATFORM_DEV_NAV_PATHS = new Set([
 const FRONT_DESK_NAV: NavItem[] = [
   { to: '/console', exact: true, label: 'Live console', icon: 'console' },
   { to: '/history', exact: true, label: 'Call history', icon: 'history' },
+  { to: '/dispatch-approvals', exact: true, label: 'Dispatch approvals', icon: 'workqueue' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
@@ -180,6 +182,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/dispatch-approvals', exact: true, label: 'Dispatch approvals', icon: 'workqueue' },
       { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
       { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
@@ -216,6 +219,7 @@ const BILLING_OPS_NAV: NavItem[] = [
   { to: '/portfolio', exact: true, label: 'Portfolio', icon: 'portfolio' },
   { to: '/reports/aging', exact: false, label: 'Aging (all)', icon: 'analytics' },
   { to: '/reports/carriers', exact: false, label: 'Carrier intel', icon: 'carriers' },
+  { to: '/dispatch-approvals', exact: true, label: 'Dispatch approvals', icon: 'workqueue' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
 
@@ -231,6 +235,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     label: 'After visit',
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+      { to: '/dispatch-approvals', exact: true, label: 'Dispatch approvals', icon: 'workqueue' },
       { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
       { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
@@ -255,6 +260,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
 const BILLING_COORDINATOR_NAV: NavItem[] = [
   { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
   { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
+  { to: '/dispatch-approvals', exact: true, label: 'Dispatch approvals', icon: 'workqueue' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },
 ]
@@ -483,6 +489,7 @@ function AppShell() {
           <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
           <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
+          <Route path="/dispatch-approvals" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><DispatchApprovals /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />
           <Route path="/admin/partnerships" element={<ProtectedRoute allowedRoles={['platform_admin']}><PartnershipsBoard /></ProtectedRoute>} />
