@@ -18,6 +18,9 @@ import {
 } from '../src/services/analytics/conversation-robustness-eval.js';
 
 async function main() {
+  console.log(`[DEBUG] Total scenarios available: ${CONVERSATION_ROBUSTNESS_SCENARIOS.length}`);
+  console.log(`[DEBUG] Scenario IDs: ${CONVERSATION_ROBUSTNESS_SCENARIOS.map((s) => s.id).join(', ')}`);
+
   const requested = process.argv.slice(2);
   const unknown = requested.filter((id) => !CONVERSATION_ROBUSTNESS_SCENARIOS.some((s) => s.id === id));
   if (unknown.length > 0) {
