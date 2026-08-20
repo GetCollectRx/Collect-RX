@@ -117,7 +117,7 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
     billing_coordinator: 'own',
     billing_ops_manager: 'read_all',
     platform_admin: 'grant',
-    auditor: 'read_all',
+    auditor: 'none',
   },
   decide_dispatch_approval: {
     front_desk: 'own',

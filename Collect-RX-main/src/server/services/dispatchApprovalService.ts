@@ -12,12 +12,14 @@ import { randomUUID } from 'crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { piiVault } from '../../pii-vault.js';
 
 const MAX_DECISIONS_PER_BATCH = 200;
 
 export interface PendingApprovalItem {
   callQueueId: string;
   claimId: string;
+  patientName: string;
   claimNumber: string;
   carrierId: CarrierId;
   outstandingAmount: number;
@@ -41,6 +43,20 @@ function flagReasonForClaim(claim: ClaimFlagFields): string {
   return 'Outstanding balance aged into the carrier-call window';
 }
 
+/**
+ * Resolves a patientToken to a display name for the reviewing practice — same
+ * detokenize pattern as priorityEngine.ts's displayPatientName. The practice
+ * IS the covered entity for its own patients (RBAC differentiates by role:
+ * see routes/dispatchApprovals.ts, which masks this for platform_dev only).
+ */
+function displayPatientName(patientToken: string, practiceId: string): string {
+  const r = piiVault.detokenize(patientToken, 'dispatch-approval-review', { practiceId });
+  if (!r.success || !r.phi?.patientName?.trim()) {
+    return `Patient ${patientToken.slice(0, 8)}…`;
+  }
+  return r.phi.patientName.trim();
+}
+
 export async function listPendingDispatchApprovals(
   prisma: PrismaClient,
   practiceId: string,
@@ -54,6 +70,7 @@ export async function listPendingDispatchApprovals(
     include: {
       claim: {
         select: {
+          patientToken: true,
           claimNumber: true,
           carrierId: true,
           outstandingAmount: true,
@@ -70,6 +87,7 @@ export async function listPendingDispatchApprovals(
   return rows.map((r) => ({
     callQueueId: r.id,
     claimId: r.claimId,
+    patientName: displayPatientName(r.claim.patientToken, practiceId),
     claimNumber: r.claim.claimNumber,
     carrierId: r.claim.carrierId,
     outstandingAmount: Number(r.claim.outstandingAmount),

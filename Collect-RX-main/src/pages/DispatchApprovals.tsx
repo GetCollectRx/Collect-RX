@@ -10,6 +10,7 @@ import {
 interface PendingApprovalItem {
   callQueueId: string
   claimId: string
+  patientName: string
   claimNumber: string
   carrierId: string
   outstandingAmount: number
@@ -118,6 +119,7 @@ export default function DispatchApprovals() {
             <Table>
               <Thead>
                 <Tr>
+                  <Th>Patient</Th>
                   <Th>Claim</Th>
                   <Th>Carrier</Th>
                   <Th align="right">Outstanding</Th>
@@ -129,7 +131,8 @@ export default function DispatchApprovals() {
               <Tbody>
                 {items.map((item) => (
                   <Tr key={item.callQueueId}>
-                    <Td bold>{item.claimNumber}</Td>
+                    <Td bold>{item.patientName}</Td>
+                    <Td muted>{item.claimNumber}</Td>
                     <Td>
                       <Badge color="gray">{item.carrierId.replace(/_/g, ' ')}</Badge>
                     </Td>
