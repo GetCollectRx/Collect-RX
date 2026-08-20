@@ -79,10 +79,18 @@ export async function evaluateSubmissionQuality(
     });
   }
 
-  const blockingGate = await prisma.claimRecoveryAction.findFirst({
+  // Checked against both OPEN and BLOCKING: a YELLOW clearance creates an
+  // OPEN gate (line below), but this dedup lookup previously only matched
+  // BLOCKING — so a claim with a persistent YELLOW finding (e.g. no
+  // expectedAmount set) got a brand new SUBMISSION_QUALITY gate row every
+  // time this ran, which is on every CSV import/re-import
+  // (prismaClaimImporter.ts calls this unconditionally per upserted claim).
+  // Reproduced live: 3 evaluations of one claim produced 3 duplicate gate
+  // rows instead of reusing the first.
+  const existingGate = await prisma.claimRecoveryAction.findFirst({
     where: {
       claimId,
-      status: 'BLOCKING',
+      status: { in: ['OPEN', 'BLOCKING'] },
       actionType: 'SUBMISSION_QUALITY',
     },
   });
@@ -93,7 +101,7 @@ export async function evaluateSubmissionQuality(
       ? 'YELLOW'
       : 'GREEN';
 
-  if (clearance !== 'GREEN' && !blockingGate) {
+  if (clearance !== 'GREEN' && !existingGate) {
     await prisma.claimRecoveryAction.create({
       data: {
         practiceId,
@@ -106,9 +114,9 @@ export async function evaluateSubmissionQuality(
         metadata: { findings, clearance } as unknown as Prisma.InputJsonValue,
       },
     });
-  } else if (clearance === 'GREEN' && blockingGate) {
+  } else if (clearance === 'GREEN' && existingGate) {
     await prisma.claimRecoveryAction.update({
-      where: { id: blockingGate.id },
+      where: { id: existingGate.id },
       data: { status: 'CLEARED', clearedAt: new Date() },
     });
   }

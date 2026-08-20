@@ -1,10 +1,13 @@
 import cron from 'node-cron';
 import type { JobsOptions } from 'bullmq';
 import { getArQueue } from './arQueue.js';
+import { getAgentRunnerQueue } from './agentRunnerQueue.js';
+import { AGENT_SCHEDULES } from './agentSchedules.js';
 import { logger } from '../observability/logger.js';
 
 const RULES_EVERY_MS = 60_000;
 const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
+const DATA_RETENTION_CRON = '0 4 * * *';
 const DLQ_RETENTION_SWEEP_CRON = '0 4 * * *';
 
 /**
@@ -52,6 +55,11 @@ export async function registerArJobSchedulers(): Promise<void> {
     { repeat: { pattern: DLQ_RETENTION_SWEEP_CRON }, ...JOB_RETRY_OPTS },
   );
 
+  // DATA_RETENTION_ENABLED is a second, global gate on top of this repeatable —
+  // see dataRetentionJob.ts. Registered even when the global flag is off so
+  // flipping the env var doesn't also require a scheduler re-registration.
+  await q.add('DATA_RETENTION', {}, { repeat: { pattern: DATA_RETENTION_CRON } });
+
   // REMINDER_CYCLE (patient SMS/email) intentionally not registered — insurance-only product.
 
   const learningPattern = (process.env.LEARNING_CRON || '0 6 * * *').trim();
@@ -95,6 +103,7 @@ export async function registerArJobSchedulers(): Promise<void> {
     rulesEveryMs: RULES_EVERY_MS,
     triageCredentialHealth: 'daily',
     dlqRetentionSweep: 'daily',
+    dataRetentionEnabled: process.env.DATA_RETENTION_ENABLED === '1',
     learningCron: learningOn ? learningPattern : null,
     marketingEveryMs: process.env.MARKETING_LOOP_ENABLED !== '0' ? marketingEveryMs : null,
     marketingLearningCron:
@@ -102,4 +111,77 @@ export async function registerArJobSchedulers(): Promise<void> {
         ? marketingLearningPattern
         : null,
   });
+}
+
+/**
+ * Register agent runner jobs for autonomous agent ecosystem
+ * Idempotent: clears existing agent repeatables and re-registers all agents
+ */
+export async function registerAgentRunners(): Promise<void> {
+  if (!process.env.REDIS_URL) {
+    logger.warn('[registerSchedulers] REDIS_URL not set — agent runners disabled', {});
+    return;
+  }
+
+  if (process.env.DISABLE_AGENT_RUNNERS === '1' || process.env.DISABLE_AGENT_RUNNERS === 'true') {
+    logger.warn('[registerSchedulers] DISABLE_AGENT_RUNNERS is set — skipping agent schedulers', {});
+    return;
+  }
+
+  if (!process.env.API_BASE) {
+    logger.warn('[registerSchedulers] API_BASE not set — agent runners disabled', {});
+    return;
+  }
+
+  if (!process.env.AGENT_RUNTIME_SECRET) {
+    logger.warn('[registerSchedulers] AGENT_RUNTIME_SECRET not set — agent runners disabled', {});
+    return;
+  }
+
+  try {
+    const q = getAgentRunnerQueue();
+
+    // Clear existing agent jobs
+    const existing = await q.getRepeatableJobs();
+    for (const r of existing) {
+      await q.removeRepeatableByKey(r.key);
+    }
+
+    // Register all agent schedules
+    for (const schedule of AGENT_SCHEDULES) {
+      if (!cron.validate(schedule.cron)) {
+        logger.error('[registerSchedulers] Invalid cron pattern for agent', {
+          agent: schedule.name,
+          cron: schedule.cron,
+        });
+        continue;
+      }
+
+      await q.add(
+        'AGENT_RUN',
+        {
+          agentName: schedule.name,
+          cron: schedule.cron,
+          upstreamAgents: schedule.upstreamAgents,
+          timeWindow: 'UTC',
+        },
+        {
+          repeat: { pattern: schedule.cron },
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: { age: 3600 }, // Keep completed jobs for 1 hour
+        },
+      );
+    }
+
+    logger.info('[registerSchedulers] Agent runner jobs registered', {
+      agentCount: AGENT_SCHEDULES.length,
+      startTime: '06:00 ET (Monday)',
+      endTime: '15:00 ET (Monday)',
+    });
+  } catch (err) {
+    logger.error('[registerSchedulers] Failed to register agent runners', {
+      error: String(err),
+    });
+  }
 }

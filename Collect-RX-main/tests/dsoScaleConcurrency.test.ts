@@ -7,7 +7,7 @@
  * 2. The dispatch fairness rotation (orderPracticesByFairness) bounds every
  *    practice's wait across many ticks at N=25 practices, not just N=2.
  * 3. A practice can never end up attached to two organizations even under a
- *    real concurrent race between two accept-invite requests.
+ *    real concurrent race on the OrganizationPractice.practiceId constraint.
  *
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable.
  */
@@ -64,12 +64,12 @@ describe.skipIf(!dbReady)('DSO scale: concurrent onboarding', () => {
       const meChecks = await Promise.all(
         logins.map((loginRes, i) => {
           const cookie = cookieHeaderFrom(loginRes);
-          return request(app).get('/api/organizations/mine').set('Cookie', cookie).then((r) => ({ r, i }));
+          return request(app).get('/api/auth/me').set('Cookie', cookie).then((r) => ({ r, i }));
         }),
       );
-      meChecks.forEach(({ r }) => {
+      meChecks.forEach(({ r }, i) => {
         expect(r.status).toBe(200);
-        expect(r.body.organizations).toEqual([]);
+        expect(r.body.practice.id).toBe(created[i].practice.id);
       });
     } finally {
       await Promise.all(created.map((c) => cleanupPracticeWithUsers(prisma, c.practice.id)));
@@ -113,60 +113,36 @@ describe.skipIf(!dbReady)('DSO scale: dispatch fairness bounds wait at N=25', ()
 });
 
 describe.skipIf(!dbReady)('DSO scale: no practice can end up in two organizations', () => {
-  it('a real concurrent race between two accept-invite requests only lets one win', async () => {
-    const orgAOwner = await createPracticeWithOwnerForTests(prisma);
-    const orgBOwner = await createPracticeWithOwnerForTests(prisma);
+  it('a real concurrent race to attach the same practice to two orgs only lets one win', async () => {
+    // There is no HTTP path today for attaching an *existing* practice (with
+    // its own owner login) to a DSO — orgAdminRoutes.ts creates all of a
+    // DSO's practices itself in one batch, and the invite flow
+    // (authRoutes.ts POST /invite, /accept-invite) provisions a brand-new
+    // staff account, not a pre-existing practice. What still matters under
+    // concurrency is the DB guarantee itself — OrganizationPractice.practiceId
+    // is @unique — so this races two concurrent attach attempts directly at
+    // that constraint the way any future caller (batch admin tooling, a
+    // later self-serve flow) would ultimately rely on it.
+    const orgA = await prisma.organization.create({ data: { name: 'Org A' } });
+    const orgB = await prisma.organization.create({ data: { name: 'Org B' } });
     const contested = await createPracticeWithOwnerForTests(prisma);
-    let orgAId: string | undefined;
-    let orgBId: string | undefined;
     try {
-      const orgALogin = await request(app).post('/api/auth/login').send({ email: orgAOwner.email, password: orgAOwner.password });
-      const orgACreate = await request(app).post('/api/organizations').set('Cookie', cookieHeaderFrom(orgALogin)).send({ name: 'Org A' });
-      orgAId = orgACreate.body.organization?.id;
-      const orgACookie = cookieHeaderFrom(orgACreate);
-
-      const orgBLogin = await request(app).post('/api/auth/login').send({ email: orgBOwner.email, password: orgBOwner.password });
-      const orgBCreate = await request(app).post('/api/organizations').set('Cookie', cookieHeaderFrom(orgBLogin)).send({ name: 'Org B' });
-      orgBId = orgBCreate.body.organization?.id;
-      const orgBCookie = cookieHeaderFrom(orgBCreate);
-
-      const [inviteAFromOrgA, inviteBFromOrgB] = await Promise.all([
-        request(app).post(`/api/organizations/${orgAId}/invite-practice`).set('Cookie', orgACookie).send({ email: contested.email }),
-        request(app).post(`/api/organizations/${orgBId}/invite-practice`).set('Cookie', orgBCookie).send({ email: contested.email }),
-      ]);
-      expect(inviteAFromOrgA.status).toBe(200);
-      expect(inviteBFromOrgB.status).toBe(200);
-
-      const [tokenA, tokenB] = await Promise.all([
-        prisma.organizationInviteToken.findFirst({ where: { organizationId: orgAId, inviteeEmail: contested.email }, orderBy: { createdAt: 'desc' } }),
-        prisma.organizationInviteToken.findFirst({ where: { organizationId: orgBId, inviteeEmail: contested.email }, orderBy: { createdAt: 'desc' } }),
-      ]);
-      expect(tokenA).not.toBeNull();
-      expect(tokenB).not.toBeNull();
-
-      const contestedLogin = await request(app).post('/api/auth/login').send({ email: contested.email, password: contested.password });
-      const contestedCookie = cookieHeaderFrom(contestedLogin);
-
-      // The real race: both accepts fire at the same instant against the same practiceId.
-      const [acceptA, acceptB] = await Promise.all([
-        request(app).post(`/api/organizations/invite/${tokenA!.token}/accept`).set('Cookie', contestedCookie),
-        request(app).post(`/api/organizations/invite/${tokenB!.token}/accept`).set('Cookie', contestedCookie),
+      const [attachA, attachB] = await Promise.allSettled([
+        prisma.organizationPractice.create({ data: { organizationId: orgA.id, practiceId: contested.practice.id } }),
+        prisma.organizationPractice.create({ data: { organizationId: orgB.id, practiceId: contested.practice.id } }),
       ]);
 
-      // Exactly one 200 and one clean 409 (the loser hits the practiceId unique
-      // constraint, caught and mapped back to the same "already in a group"
-      // response the sequential-case check gives) — never two 200s, which
-      // would mean the practice landed in both orgs.
-      expect([acceptA.status, acceptB.status].sort()).toEqual([200, 409]);
+      // Exactly one attach succeeds and the other hits the unique constraint —
+      // never two fulfilled attaches, which would mean the practice landed in both orgs.
+      const outcomes = [attachA.status, attachB.status].sort();
+      expect(outcomes).toEqual(['fulfilled', 'rejected']);
 
       const finalAttachment = await prisma.organizationPractice.findUnique({ where: { practiceId: contested.practice.id } });
       expect(finalAttachment).not.toBeNull();
-      expect([orgAId, orgBId]).toContain(finalAttachment!.organizationId);
+      expect([orgA.id, orgB.id]).toContain(finalAttachment!.organizationId);
     } finally {
-      if (orgAId) await prisma.organization.delete({ where: { id: orgAId } }).catch(() => undefined);
-      if (orgBId) await prisma.organization.delete({ where: { id: orgBId } }).catch(() => undefined);
-      await cleanupPracticeWithUsers(prisma, orgAOwner.practice.id);
-      await cleanupPracticeWithUsers(prisma, orgBOwner.practice.id);
+      await prisma.organization.delete({ where: { id: orgA.id } }).catch(() => undefined);
+      await prisma.organization.delete({ where: { id: orgB.id } }).catch(() => undefined);
       await cleanupPracticeWithUsers(prisma, contested.practice.id);
     }
   });

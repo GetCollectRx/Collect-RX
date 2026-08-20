@@ -32,6 +32,7 @@ vi.mock('../../src/carriers/adapter.js', () => ({
 vi.mock('../../src/vapi/client.js', () => ({
   initiateCall: (...args: unknown[]) => initiateCallMock(...args),
   endVapiCall: vi.fn(),
+  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
 }));
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
@@ -98,6 +99,7 @@ vi.mock('../../src/server/observability/logger.js', () => ({
 }));
 
 import { runDeskQueueTick } from '../../src/server/frontDesk/queueEngine.js';
+import { VapiAmbiguousOutcomeError } from '../../src/vapi/client.js';
 
 interface QueueEntryFixture {
   id: string;
@@ -281,6 +283,44 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });
 
+  // Regression for OUTSTANDING-FIXES-PRODUCT-READY.md P10-04: this guard code
+  // shared the same switch case as MAX_ATTEMPTS but the call_escalations write
+  // was gated to MAX_ATTEMPTS only, so 90-day-aged claims were marked ESCALATED
+  // everywhere except the dedicated Escalations page, which reads that table.
+  it('escalates an over-90-days head claim, writes a call_escalations row, and dispatches the next eligible claim', async () => {
+    const aged = queueEntry('1', { daysOutstanding: 94 });
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([aged, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: 'ESCALATE_OVER_90',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+      })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({
+      where: { id: 'claim-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: { status: 'ESCALATED' },
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        reason: 'Claim 94 days outstanding — escalate to human (> 90 days rule)',
+        attemptNumber: 0,
+      }),
+    });
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
   it('completes an APPROVED_PENDING_PAYMENT head entry and dispatches the next eligible claim', async () => {
     const approved = queueEntry('1', { status: 'APPROVED_PENDING_PAYMENT' });
     const eligible = queueEntry('2');
@@ -342,6 +382,65 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     const deferredTo = (deferCall[0].data.scheduledFor as Date).getTime();
     expect(deferredTo).toBeGreaterThan(Date.now() + 23 * 60 * 60 * 1000);
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers a carrier-concurrency-capped head claim (jittered, short) and dispatches the next eligible claim', async () => {
+    const capped = queueEntry('1');
+    const eligible = queueEntry('2', { carrierId: 'manulife' });
+    const prisma = tickPrisma([capped, eligible]);
+
+    validateDispatchMock
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: 'CARRIER_CONCURRENCY_LIMIT',
+        reason: '5 calls already active to sun_life fleet-wide (limit 5). Waiting for a slot to free up.',
+      })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    // Fleet-wide congestion is a short, jittered wait (3–5 min) — not the same
+    // multi-hour class of defer as a staff-action or claim-age gate, and not
+    // an exact round number either (see the dispatch-failure jitter test).
+    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
+    // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
+    // tick must not stop, unlike a practice-wide rejection.
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('builds a fleet-wide per-carrier active-call snapshot and passes it into validateDispatch', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    // findMany serves two different queries this tick (stale-attempt watchdog
+    // vs. the carrier snapshot) — discriminate on the `claim` select, since
+    // only the snapshot query selects through the claim relation. Two other
+    // in-flight attempts elsewhere in the fleet, both against sun_life — this
+    // is the exact query a multi-location practice's other locations feed into.
+    prisma.callAttempt.findMany = vi.fn(async (args: { select?: { claim?: unknown } }) => {
+      if (args?.select?.claim) {
+        return [{ claim: { carrierId: 'sun_life' } }, { claim: { carrierId: 'sun_life' } }];
+      }
+      return [];
+    });
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        carrierActiveCounts: new Map([['sun_life', 2]]),
+      }),
+    );
   });
 
   it('stops the whole practice on a practice-wide rejection without touching later candidates', async () => {
@@ -492,6 +591,37 @@ describe('runDeskQueueTick resilience', () => {
         args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
     );
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    // Jittered, not a fixed 15 minutes — every claim that failed around the
+    // same transient outage must not all re-dial on the same exact clock.
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    expect(deferredInMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(20 * 60 * 1000);
+    expect(initiateCallMock).toHaveBeenCalledTimes(2);
+    expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('defers a claim with a longer cooldown and a distinct code when the Vapi outcome is ambiguous (timeout/network)', async () => {
+    const failing = queueEntry('1');
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([failing, eligible]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    initiateCallMock
+      .mockRejectedValueOnce(new VapiAmbiguousOutcomeError('POST', '/call', new Error('timeout')))
+      .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    const [{ data }] = deferCall as [{ data: { dispatchDeferralCode: string; scheduledFor: Date } }];
+    expect(data.dispatchDeferralCode).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
+    // Ambiguous cooldown (60min) must be longer than the confirmed-failure cooldown (15min).
+    const deferredMinutes = (data.scheduledFor.getTime() - Date.now()) / 60_000;
+    expect(deferredMinutes).toBeGreaterThan(45);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });

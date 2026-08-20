@@ -1,8 +1,18 @@
 # CollectRx Agent System
 
-**29 agents** covering every dimension of building and running CollectRx as a company: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk.
+**This is the Claude Code / Cowork copy**, carrying the `model:` frontmatter added by `2d22558`. It is **not** what the server runs: `agentRunner.ts:loadAgentPrompt()` reads `$AGENTS_DIR`, which resolves to the copy under [`Collect-RX-main/agents/`](../Collect-RX-main/agents/) — that directory is inside the Docker build context and is what ships. The server runtime executes these prompts on Gemini (`gemini-2.0-flash`) and does not parse frontmatter.
 
-> **P0 OPEN:** PHI variables (`{{patient_name}}`, `{{patient_dob}}`) found in `Collect-RX-main/vapi-system-prompt.md`. This directly violates the PHI boundary rule. Production calls must not run until this is resolved. See `vapi-squad-auditor.md` for resolution options.
+⚠️ **The two trees drift and nothing checks them.** The root copy has model frontmatter the shipped copy lacks, and their READMEs have contradicted each other on compliance status. Edit both, and diff them before trusting either.
+
+**29 domain agents** covering every dimension of building and running CollectRx: product quality, compliance, business intelligence, call performance, client acquisition, analytics, and risk. Orchestration subagents (orchestrator, investigator, engineering, simulator, integration-tester, vapi-configurator, rollout-manager, escalation-manager, pre-launch-audit, weekly-health-reporter) live in [`.claude/agents/`](../.claude/agents/).
+
+> **Billing (2026-07-09):** Do **not** run these markdown prompts via Claude Code / `loop_runner.py` with your Anthropic API key — that pattern caused ~$56/week in Opus API charges. Use the **free** vitest agents instead: `npm run agents` (deterministic, no LLM). Paid LLM evals require `COLLECTRX_ANTHROPIC_EVAL=1` explicitly. All agents here run `claude-haiku-4-5` by design (commits `c95883a`, `2d22558`).
+
+> **Compliance status (2026-06-20):** PHI boundary closed (Option B — ephemeral Vapi call variables, `docs/compliance/PHI-VAPI-BOUNDARY.md`). BAAL hard gate enforced in `validateDispatch()`. Legal templates pending counsel — see `docs/compliance/LEGAL-REVIEW-PROMPT.md`.
+
+### Counting agents
+
+Five populations overlap; do not sum them. The cron registry (`scheduledAgents.ts`, 24 entries) and event registry (`eventAgents.ts`, 7 triggers) are the **runtime execution of the 29 prompts here**, not additional agents — 24 + 7 − 2 in both = 29, and every scheduled name resolves to a file in this directory. Adding the registries triple-counts the same agents; that error has produced published totals of 35 and 65. Separately: 9 deterministic validators in `Collect-RX-main/tests/agents/`, 5 Vapi voice squad members, and `productImprovementAgent.ts` (runtime-only, no prompt file). Derive the roster with the commands in [`.claude/agents/orchestrator.md`](../.claude/agents/orchestrator.md) §2 rather than quoting a number.
 
 ---
 
@@ -108,13 +118,19 @@ Client Acquisition → ROI Proof (prospect estimates)
 
 ---
 
-## Open Decisions Blocking Progress
+## Open Decisions
 
-1. **PHI in Vapi system prompt** — Option A (PHI-free design) or Option B (BAA with Vapi). Owner: Khalid. **Blocks: all production calls.**
+1. **AbelDent re-engagement** — Active pursuit or park. Owner: Khalid.
 
-2. **BAAL gate in queue engine** — Hard block or soft UI warning. Owner: Khalid. **Blocks: CRTC compliance for ADAD.**
+## Operator / Legal (blocking production scale)
 
-3. **AbelDent re-engagement** — Active pursuit or park. Owner: Khalid.
+1. **Counsel review** — Execute BAAL, Platform Agreement, Privacy Policy. Prompt: `Collect-RX-main/docs/compliance/LEGAL-REVIEW-PROMPT.md`.
+2. **Vendor BAAs** — Vapi, Twilio, SendGrid, Stripe (Document 5 in the legal prompt).
+
+## Closed Decisions (2026-06-20)
+
+1. **PHI / Vapi boundary** — Option B (ephemeral call variables). See `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`.
+2. **BAAL gate** — Hard block in `checkCarrierAuthorizationGate()` via `validateDispatch()`. Requires BAAL + provider number + voice agent enabled.
 
 ---
 

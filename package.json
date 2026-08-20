@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
+    "setup:collectrx": "npm run setup -w dental-ar-system",
     "start": "npm run start -w dental-ar-system",
     "dev": "npm run dev:collectrx",
     "dev:collectrx": "npm run dev -w dental-ar-system",

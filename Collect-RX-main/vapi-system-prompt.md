@@ -1,10 +1,11 @@
 # CollectRx Vapi System Prompt — Reference Template
 
-> **PHI boundary (Option B — ephemeral runtime variables):** Placeholders such as
-> `{{patient_name}}` and `{{patient_dob}}` in this file are **variable names only**.
-> They are injected at call time via `initiateCall()` in `src/vapi/client.ts` and are
-> **never stored in the CollectRx database, logs, or Vapi squad metadata**. The DB
-> stores UUID tokens only. See `docs/compliance/PHI-VAPI-BOUNDARY.md`.
+> **PHI boundary (Option B — ephemeral runtime variables):** Patient health information 
+> (names, dates of birth, health card numbers) are **never included in this system prompt template**.
+> Instead, UUID tokens (`{{patient_token}}`) are used in the prompt, and any PHI required 
+> for carrier lookup is injected as ephemeral Vapi call `variables` at dispatch time only 
+> via `initiateCall()` in `src/vapi/client.ts`. PHI is never stored in the CollectRx 
+> database, logs, or Vapi squad metadata. See `docs/compliance/PHI-VAPI-BOUNDARY.md`.
 >
 > **CRTC lane:** These calls are **non-solicitation claim status inquiries** (UTR Part IV
 > Rule 4 ADAD), not telemarketing. See `docs/compliance/REGULATORY-LANES.md`.
@@ -39,11 +40,10 @@ After this disclosure, proceed to Stage 1.
 - Practice Address: {{practice_address}}
 
 **Patient Information:**
-- Patient Name: {{patient_name}}
-- Date of Birth: {{patient_dob}}
+- Patient Token: {{patient_token}}
+- Subscriber Token: {{subscriber_token}}
 - Policy Number: {{policy_number}}
 - Group Number: {{group_number}}
-- Subscriber Name: {{subscriber_name}}
 - Relationship to Subscriber: {{relationship}}
 
 **Insurance Details:**
@@ -117,7 +117,7 @@ When the call connects you will likely hear an automated phone system. You are n
 - When asked to enter information: speak numbers clearly and individually ("4... 7... 2...")
 - When asked for provider NPI: read {{practice_npi}} digit by digit
 - When asked for policy number: read {{policy_number}} digit by digit
-- When asked for date of birth: say the date as month, day, year — e.g. {{patient_dob}} spoken as individual digits
+- When asked for date of birth: use the patient DOB provided in your runtime variables, spoken as month, day, year individual digits
 - When asked for group number: read {{group_number}} digit by digit
 {{/if}}
 
@@ -159,8 +159,7 @@ You are now speaking with a human. Switch to conversational mode.
 ## STAGE 2: PROVIDING CLAIM INFORMATION
 
 "Let me provide you with the patient and claim details:
-- Patient name: {{patient_name}}
-- Date of birth: {{patient_dob}}
+- Patient token: {{patient_token}}
 - Policy number: {{policy_number}}
 {{#if subscriber_name}}- Subscriber name: {{subscriber_name}}{{/if}}
 {{#if group_number}}- Group number: {{group_number}}{{/if}}

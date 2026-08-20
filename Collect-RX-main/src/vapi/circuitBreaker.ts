@@ -75,6 +75,15 @@ export function defaultClassifyVapiError(err: unknown): FailureReason {
       if (status >= 500) return '5xx';
       if (status >= 400) return '4xx';
     }
+    // VapiAmbiguousOutcomeError's own .name masks the fetch failure it wraps
+    // (timeout vs. a generic network error) — classify by the original cause
+    // it carries (duck-typed as `originalCause` rather than imported, since
+    // src/vapi/client.ts already imports this module) when this error's own
+    // name/message don't already resolve to a reason above.
+    const originalCause = (err as { originalCause?: unknown }).originalCause;
+    if (originalCause instanceof Error) {
+      return defaultClassifyVapiError(originalCause);
+    }
     return 'network';
   }
   return 'unknown';

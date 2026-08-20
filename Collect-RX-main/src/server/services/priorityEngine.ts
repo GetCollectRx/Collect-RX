@@ -11,6 +11,7 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter';
 import { piiVault } from '../../pii-vault';
+import { appendPhiAccessEvent } from '../audit/auditLog';
 import {
   applyPracticePriorityFloor,
   buildCarrierOrderRankMap,
@@ -52,11 +53,26 @@ export interface RankedClaim {
   scores: RankedClaimScores;
 }
 
-function displayPatientName(patientToken: string, practiceId: string): string {
+function displayPatientName(
+  prisma: PrismaClient,
+  patientToken: string,
+  practiceId: string,
+  claimId: string,
+): string {
   const r = piiVault.detokenize(patientToken, 'priority-queue', { practiceId });
   if (!r.success || !r.phi?.patientName?.trim()) {
     return `Patient ${patientToken.slice(0, 8)}…`;
   }
+  // Fire-and-forget: buildPriorityQueue runs per-claim in a hot loop (dashboard
+  // loads, queue ticks) — logging must not add a sequential DB round trip per
+  // claim. appendPhiAccessEvent already swallows its own errors (non-fatal).
+  void appendPhiAccessEvent(prisma, {
+    practiceId,
+    operation: 'detokenize_for_display',
+    recordType: 'InsuranceClaim',
+    recordId: claimId,
+    purpose: 'priority_queue_display',
+  });
   return r.phi.patientName.trim();
 }
 
@@ -104,7 +120,7 @@ export async function buildPriorityQueue(
       carrierId: c.carrierId,
       claim: {
         claimId: c.id,
-        patientName: displayPatientName(c.patientToken, practiceId),
+        patientName: displayPatientName(prisma, c.patientToken, practiceId, c.id),
         carrier: carrierName,
         amountCents,
         daysOutstanding: c.daysOutstanding,

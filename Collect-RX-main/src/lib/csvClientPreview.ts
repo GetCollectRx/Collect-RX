@@ -100,3 +100,21 @@ export function previewCsvFile(text: string, previewLimit = 5): CsvPreviewResult
     ready: missingRequired.length === 0,
   }
 }
+
+/** Full-file parse (every row, not just the preview slice) for building a batch-import payload. */
+export function parseCsvFile(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return []
+
+  const normalizedHeaders = splitCsvLine(lines[0]!).map(normalizeHeader)
+  const rows: Record<string, string>[] = []
+  for (let r = 1; r < lines.length; r++) {
+    const cols = splitCsvLine(lines[r]!)
+    const row: Record<string, string> = {}
+    normalizedHeaders.forEach((h, j) => {
+      row[h] = (cols[j] ?? '').replace(/^"|"$/g, '').trim()
+    })
+    rows.push(row)
+  }
+  return rows
+}

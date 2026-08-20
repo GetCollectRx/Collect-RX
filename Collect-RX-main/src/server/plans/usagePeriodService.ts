@@ -8,7 +8,7 @@
  *   - paid tiers → calls paused (callsPaused/callsPausedReason='overage_pending')
  *     until the practice confirms overage charges via confirmOverage().
  */
-import type { Practice, PrismaClient, UsagePeriod } from '@prisma/client';
+import type { Organization, Practice, PrismaClient, UsagePeriod } from '@prisma/client';
 import { logger } from '../observability/logger.js';
 import {
   billingTierForStripePrice,
@@ -24,6 +24,7 @@ import {
   billingSkipPracticeIds,
   subscriptionEnforceEnabled,
 } from '../stripe/subscriptionPlans.js';
+import { resolveBillingEntity } from '../stripe/billingEntity.js';
 
 export type PlanGateReason =
   | 'OK'
@@ -112,6 +113,127 @@ async function triggerSoftStop(prisma: PrismaClient, practice: Practice): Promis
   await pauseCalls(prisma, practice.id, 'overage_pending');
 }
 
+async function pauseOrgCalls(prisma: PrismaClient, organizationId: string, reason: string): Promise<void> {
+  await prisma.organization.updateMany({
+    where: { id: organizationId, callsPaused: false },
+    data: { callsPaused: true, callsPausedReason: reason, callsPausedAt: new Date() },
+  });
+}
+
+/**
+ * Same get-or-create as getOrCreateUsagePeriod, but the fallback window comes
+ * from the ORG's billing cycle, not the practice's own billingTier/trialEndsAt
+ * — those go unused once a practice is org-billed (see billingEntity.ts).
+ */
+async function getOrCreateOrgAlignedUsagePeriod(
+  prisma: PrismaClient,
+  practiceId: string,
+  org: Organization,
+): Promise<UsagePeriod> {
+  const now = new Date();
+  const existing = await prisma.usagePeriod.findFirst({
+    where: { practiceId, periodStart: { lte: now }, periodEnd: { gte: now } },
+    orderBy: { periodStart: 'desc' },
+  });
+  if (existing) return existing;
+
+  const periodEnd = org.subscriptionCurrentPeriodEnd ?? addMonths(now, 1);
+  const periodStart = org.billingPeriodStart ?? addMonths(periodEnd, -1);
+  return prisma.usagePeriod.create({ data: { practiceId, periodStart, periodEnd } });
+}
+
+/**
+ * Pooled equivalent of evaluateCallGate — sums minutesConsumed across every
+ * member practice's current-cycle UsagePeriod and gates on the ORG's tier,
+ * not any one practice's. Pause/throttle apply to the whole org: there's no
+ * per-practice cost attribution to decide which location is "driving" an
+ * overage, so the pool being exhausted pauses every member practice together.
+ */
+async function evaluateOrgCallGate(
+  prisma: PrismaClient,
+  organizationId: string,
+  memberPracticeIds: string[],
+): Promise<PlanGateResult> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org) {
+    return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+  }
+
+  if (org.subscriptionStatus === 'canceled') {
+    return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+  }
+  if (org.subscriptionStatus === 'past_due' || org.subscriptionStatus === 'unpaid') {
+    return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+  }
+  if (!org.billingTier) {
+    // Org has a Stripe customer (resolveBillingEntity's org-billed signal)
+    // but no tier yet — checkout started but the subscription webhook
+    // hasn't landed. Fail closed rather than guessing a minute pool.
+    console.error(
+      `[planGate] org=${organizationId} is billed but has no billingTier yet — blocking until the subscription webhook lands.`,
+    );
+    return { allowed: false, reason: 'BILLING_MISCONFIGURED' };
+  }
+  const tier = TIERS[org.billingTier];
+
+  if (org.callsPaused) {
+    switch (org.callsPausedReason) {
+      case 'payment_failed':
+        return { allowed: false, reason: 'SUBSCRIPTION_PAST_DUE' };
+      case 'subscription_cancelled':
+        return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+      case 'cogs_breaker':
+        return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+      default:
+        return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+    }
+  }
+
+  const periods = await Promise.all(
+    memberPracticeIds.map((pid) => getOrCreateOrgAlignedUsagePeriod(prisma, pid, org)),
+  );
+  const minutesConsumed = periods.reduce((sum, p) => sum + p.minutesConsumed, 0);
+
+  const inOverage = minutesConsumed >= tier.includedMinutes;
+  if (inOverage) {
+    if (tier.hardStopAtLimit) {
+      return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
+    }
+    if (!org.overageConfirmed) {
+      await pauseOrgCalls(prisma, organizationId, 'overage_pending');
+      return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+    }
+  }
+
+  const cogs = evaluateCogsBreaker(tier, minutesConsumed);
+  const overageRatePerMinute = inOverage ? tier.overageRatePerMinute : undefined;
+
+  if (cogs === 'pause') {
+    await pauseOrgCalls(prisma, organizationId, 'cogs_breaker');
+    console.error(
+      `[cogsBreaker] pooled delivery cost crossed ${Math.round(COGS_BREAKER.pauseAtPctOfPrice * 100)}% ` +
+        `of revenue collected — pausing calls for org=${organizationId} ` +
+        `(${minutesConsumed} pooled min consumed on ${org.billingTier})`,
+    );
+    try {
+      const { dispatchOpsAlert } = await import('../observability/opsAlerts.js');
+      await dispatchOpsAlert({
+        alertId: 'cogs_breaker',
+        source: organizationId,
+        detail: `${minutesConsumed} pooled min consumed on ${org.billingTier} tier`,
+      });
+    } catch (alertErr) {
+      console.error('[cogsBreaker] ops alert dispatch failed (non-fatal):', alertErr);
+    }
+    return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
+  }
+  if (cogs === 'throttle') {
+    return { allowed: true, reason: 'OK', essentialOnly: true, overageRatePerMinute };
+  }
+
+  return { allowed: true, reason: 'OK', overageRatePerMinute };
+}
+
 /**
  * The gate. Called by the queue dispatcher and manual-call routes BEFORE every dispatch.
  * Never throws — a missing practice is treated as a hard block.
@@ -120,6 +242,17 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   const practice = await prisma.practice.findUnique({ where: { id: practiceId } });
   if (!practice) {
     return { allowed: false, reason: 'SUBSCRIPTION_CANCELED' };
+  }
+
+  const billingEntity = await resolveBillingEntity(prisma, practiceId);
+  if (billingEntity.kind === 'organization') {
+    const org = await prisma.organization.findUnique({
+      where: { id: billingEntity.organizationId },
+      select: { cogsPoolingEnabled: true },
+    });
+    if (org?.cogsPoolingEnabled) {
+      return evaluateOrgCallGate(prisma, billingEntity.organizationId, billingEntity.memberPracticeIds);
+    }
   }
 
   const tier = tierFor(practice);
@@ -186,21 +319,25 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
   }
 
   const usage = await getOrCreateUsagePeriod(prisma, practice);
-  if (usage.minutesConsumed >= tier.includedMinutes) {
+  const inOverage = usage.minutesConsumed >= tier.includedMinutes;
+  if (inOverage) {
     if (tier.hardStopAtLimit) {
       return { allowed: false, reason: 'TRIAL_LIMIT_REACHED' };
     }
-    // Confirmed overage: every further minute bills at the overage rate,
-    // which exceeds delivery cost on all paid tiers — profitable, so neither
-    // the soft stop nor the COGS breaker applies. Daily caps still do.
-    if (practice.overageConfirmed) {
-      return { allowed: true, reason: 'OK', overageRatePerMinute: tier.overageRatePerMinute };
+    if (!practice.overageConfirmed) {
+      await triggerSoftStop(prisma, practice);
+      return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
     }
-    await triggerSoftStop(prisma, practice);
-    return { allowed: false, reason: 'OVERAGE_PENDING', overageRatePerMinute: tier.overageRatePerMinute };
+    // Confirmed overage still runs through the COGS breaker below — unlimited
+    // confirmed-overage minutes must not be exempt from a cost check just
+    // because the practice said yes to the rate. evaluateCogsBreaker compares
+    // against revenue collected so far (price + overage charges), not the
+    // flat subscription price, so this stays meaningful past includedMinutes.
   }
 
   const cogs = evaluateCogsBreaker(tier, usage.minutesConsumed);
+  const overageRatePerMinute = inOverage ? tier.overageRatePerMinute : undefined;
+
   if (cogs === 'pause') {
     await pauseCalls(prisma, practice.id, 'cogs_breaker');
     logger.error('[cogsBreaker] delivery cost crossed pause threshold — pausing calls', {
@@ -222,18 +359,32 @@ export async function evaluateCallGate(prisma: PrismaClient, practiceId: string)
     return { allowed: false, reason: 'COGS_BREAKER_PAUSED' };
   }
   if (cogs === 'throttle') {
-    return { allowed: true, reason: 'OK', essentialOnly: true };
+    return { allowed: true, reason: 'OK', essentialOnly: true, overageRatePerMinute };
   }
 
-  return { allowed: true, reason: 'OK' };
+  return { allowed: true, reason: 'OK', overageRatePerMinute };
 }
 
 /**
- * Month-to-date delivery cost as a fraction of the subscription price.
- * Structural guarantee that no practice can become unprofitable: at the
- * throttle threshold only high-value calls dispatch; at the pause threshold
- * calling stops until the billing cycle resets (startNewBillingCycle clears
- * the pause) or an operator intervenes.
+ * Month-to-date delivery cost as a fraction of REVENUE — base subscription
+ * price, plus overage-rate revenue for any minutes already beyond the
+ * included pool. Structural guarantee that no practice can become
+ * unprofitable: at the throttle threshold only high-value calls dispatch;
+ * at the pause threshold calling stops until the billing cycle resets
+ * (startNewBillingCycle clears the pause) or an operator intervenes.
+ *
+ * Comparing cost against the flat subscription price alone (as this
+ * function did previously) made it structurally unreachable once
+ * minutesConsumed passed includedMinutes: every tier is priced so 100% of
+ * included minutes costs only ~20% of price (that's the ~80% margin), while
+ * the throttle/pause thresholds are 40%/60% — mathematically impossible to
+ * cross within the included-minutes zone. The breaker was only ever called
+ * in exactly that unreachable zone (see evaluateCallGate below, which used
+ * to skip this function entirely once a practice confirmed overage) — a
+ * practice burning unlimited confirmed-overage minutes had no cost check at
+ * all. Using revenue-so-far instead of the flat price keeps the same
+ * behavior for in-plan usage (overageMinutes is 0, so revenue === tier.price
+ * exactly) while making the breaker meaningful in the overage zone too.
  */
 export function evaluateCogsBreaker(
   tier: TierConfig,
@@ -241,8 +392,10 @@ export function evaluateCogsBreaker(
 ): 'ok' | 'throttle' | 'pause' {
   if (tier.price <= 0) return 'ok';
   const deliveryCost = minutesConsumed * UNIT_ECONOMICS.costPerMinute;
-  if (deliveryCost >= tier.price * COGS_BREAKER.pauseAtPctOfPrice) return 'pause';
-  if (deliveryCost >= tier.price * COGS_BREAKER.throttleAtPctOfPrice) return 'throttle';
+  const overageMinutes = Math.max(0, minutesConsumed - tier.includedMinutes);
+  const revenue = tier.price + overageMinutes * (tier.overageRatePerMinute ?? 0);
+  if (deliveryCost >= revenue * COGS_BREAKER.pauseAtPctOfPrice) return 'pause';
+  if (deliveryCost >= revenue * COGS_BREAKER.throttleAtPctOfPrice) return 'throttle';
   return 'ok';
 }
 
@@ -269,8 +422,21 @@ export async function recordCallUsage(
     return { recorded: false };
   }
 
+  // Org-billed practices must record into the org-aligned UsagePeriod window
+  // (not their own, always-trial billingTier/trialEndsAt window) — otherwise
+  // evaluateOrgCallGate's pooled sum silently misses minutes recorded here.
+  const billingEntity = await resolveBillingEntity(prisma, opts.practiceId);
+  const org =
+    billingEntity.kind === 'organization'
+      ? await prisma.organization.findUnique({ where: { id: billingEntity.organizationId } })
+      : null;
+  const pooled = Boolean(org?.cogsPoolingEnabled);
+
   const minutesBilled = Math.max(1, Math.ceil(attempt.durationSeconds / 60));
-  const usage = await getOrCreateUsagePeriod(prisma, practice);
+  const usage =
+    pooled && org
+      ? await getOrCreateOrgAlignedUsagePeriod(prisma, opts.practiceId, org)
+      : await getOrCreateUsagePeriod(prisma, practice);
 
   await prisma.$transaction([
     prisma.callAttempt.update({ where: { id: attempt.id }, data: { minutesBilled } }),
@@ -281,13 +447,22 @@ export async function recordCallUsage(
   ]);
 
   const updated = await prisma.usagePeriod.findUnique({ where: { id: usage.id } });
-  const tier = tierFor(practice);
+  const tier = pooled && org ? TIERS[org.billingTier ?? 'trial'] : tierFor(practice);
 
   await maybeDispatchDailySpendAlert(prisma, practice, tier, minutesBilled);
 
+  // NOTE: this compares one practice's own minutesConsumed against the pooled
+  // org tier's full allowance, so it under-triggers for a busy multi-practice
+  // org (evaluateOrgCallGate — the authoritative dispatch gate — always sums
+  // correctly across every member practice regardless). Org-level pooled
+  // warning/soft-stop-on-write dedup is a follow-up, not a dispatch-safety gap.
   if (updated && updated.minutesConsumed >= tier.includedMinutes) {
-    if (!tier.hardStopAtLimit && !practice.overageConfirmed) {
-      await triggerSoftStop(prisma, practice);
+    if (!tier.hardStopAtLimit) {
+      if (pooled && org && !org.overageConfirmed) {
+        await pauseOrgCalls(prisma, org.id, 'overage_pending');
+      } else if (!pooled && !practice.overageConfirmed) {
+        await triggerSoftStop(prisma, practice);
+      }
     }
   } else if (updated && !updated.warning80Sent) {
     const pct = tier.includedMinutes > 0 ? updated.minutesConsumed / tier.includedMinutes : 0;
@@ -368,6 +543,39 @@ export async function confirmOverage(
 }
 
 /**
+ * Org-level equivalent of confirmOverage — resumes the whole pooled org's
+ * calling after an org_admin accepts overage charges from the Group Dashboard.
+ * evaluateOrgCallGate is the only writer of callsPausedReason='overage_pending'
+ * on Organization, so this mirrors confirmOverage's practice-level contract.
+ */
+export async function confirmOrgOverage(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<{ status: 'resumed' | 'not_paused' | 'expired' }> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org?.callsPaused || org.callsPausedReason !== 'overage_pending') {
+    return { status: 'not_paused' };
+  }
+  if (org.callsPausedAt) {
+    const expiresAt = org.callsPausedAt.getTime() + OVERAGE.confirmationExpiryHours * 60 * 60 * 1000;
+    if (Date.now() > expiresAt) {
+      return { status: 'expired' };
+    }
+  }
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: {
+      callsPaused: false,
+      callsPausedReason: null,
+      callsPausedAt: null,
+      overageConfirmed: true,
+      overageConfirmedAt: new Date(),
+    },
+  });
+  return { status: 'resumed' };
+}
+
+/**
  * Start a fresh UsagePeriod at billing-cycle renewal (Stripe invoice.paid).
  * Clears any pause that was waiting on this cycle's reset.
  */
@@ -392,6 +600,78 @@ export async function startNewBillingCycle(prisma: PrismaClient, practiceId: str
       },
     }),
   ]);
+}
+
+/**
+ * Org-level equivalent of startNewBillingCycle — resets every member
+ * practice's UsagePeriod to a fresh window aligned to the org's Stripe
+ * cycle, since pooled usage (evaluateOrgCallGate) sums across all of them.
+ */
+export async function startNewOrgBillingCycle(prisma: PrismaClient, organizationId: string): Promise<void> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org) return;
+
+  const periodStart = new Date();
+  const periodEnd = org.subscriptionCurrentPeriodEnd ?? addMonths(periodStart, 1);
+
+  const members = await prisma.organizationPractice.findMany({
+    where: { organizationId },
+    select: { practiceId: true },
+  });
+
+  await prisma.$transaction([
+    ...members.map((m) =>
+      prisma.usagePeriod.create({ data: { practiceId: m.practiceId, periodStart, periodEnd } }),
+    ),
+    prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        billingPeriodStart: periodStart,
+        callsPaused: false,
+        callsPausedReason: null,
+        callsPausedAt: null,
+        overageConfirmed: false,
+        overageConfirmedAt: null,
+      },
+    }),
+  ]);
+}
+
+/** Org-level equivalent of syncSubscriptionHealth — pauses/resumes the whole org. */
+export async function syncOrgSubscriptionHealth(
+  prisma: PrismaClient,
+  organizationId: string,
+  subscriptionStatus: string | null | undefined,
+): Promise<void> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  if (!org) return;
+
+  if (subscriptionStatus === 'past_due' || subscriptionStatus === 'unpaid') {
+    await prisma.organization.updateMany({
+      where: { id: organizationId, callsPaused: false },
+      data: { callsPaused: true, callsPausedReason: 'payment_failed', callsPausedAt: new Date() },
+    });
+    return;
+  }
+
+  if (subscriptionStatus === 'canceled') {
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: { callsPaused: true, callsPausedReason: 'subscription_cancelled', callsPausedAt: new Date() },
+    });
+    return;
+  }
+
+  if (
+    (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') &&
+    org.callsPaused &&
+    (org.callsPausedReason === 'payment_failed' || org.callsPausedReason === 'subscription_cancelled')
+  ) {
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: { callsPaused: false, callsPausedReason: null, callsPausedAt: null },
+    });
+  }
 }
 
 /**
@@ -450,16 +730,29 @@ export async function getUsageSnapshot(prisma: PrismaClient, practiceId: string)
   if (!practice) return null;
 
   const tier = tierFor(practice);
-  const [usage, todayMinutes, recovered] = await Promise.all([
+  const [usage, todayMinutes, resolvedClaims] = await Promise.all([
     getOrCreateUsagePeriod(prisma, practice),
     getTodayMinutes(prisma, practiceId),
-    prisma.insuranceClaim.aggregate({
+    prisma.insuranceClaim.findMany({
       where: { practiceId, status: 'RESOLVED' },
-      _sum: { outstandingAmount: true },
+      select: { billedAmount: true, outstandingAmount: true },
     }),
   ]);
 
-  const lifetimeRecoveredCents = Math.round(Number(recovered._sum.outstandingAmount ?? 0) * 100);
+  // Recovered = billedAmount - outstandingAmount, NOT outstandingAmount
+  // itself: transitionClaimRecovery.ts zeroes outstandingAmount as part of
+  // the RESOLVED transition, so summing outstandingAmount here always
+  // yielded 0 regardless of how much was actually recovered. Reproduced
+  // live on /billing: "Lifetime AR recovered: $0.00" for a practice whose
+  // 25 resolved claims actually totaled $41,270 recovered. Matches the
+  // same billedAmount-minus-outstandingAmount formula already used
+  // correctly for this exact metric in analytics.ts's practice-performance
+  // route.
+  const lifetimeRecovered = resolvedClaims.reduce(
+    (sum, c) => sum + Math.max(0, Number(c.billedAmount) - Number(c.outstandingAmount)),
+    0,
+  );
+  const lifetimeRecoveredCents = Math.round(lifetimeRecovered * 100);
 
   return { practice, tier, usage, todayMinutes, lifetimeRecoveredCents };
 }

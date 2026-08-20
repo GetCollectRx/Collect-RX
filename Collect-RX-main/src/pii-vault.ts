@@ -332,7 +332,12 @@ export class PIIVault {
   private enforceVaultLimit(): void {
     if (this.vault.size >= MAX_VAULT_SIZE) {
       const purged = this.gc();
-      if (purged === 0 && this.vault.size >= MAX_VAULT_SIZE) {
+      // Must re-check size even when purged > 0: a GC pass that reclaims a
+      // handful of expired tokens out of 100k active ones still leaves the
+      // vault at capacity. Using `&&` here let that case fall through and
+      // grow unbounded, since the throw only fired when GC found literally
+      // nothing to purge.
+      if (purged === 0 || this.vault.size >= MAX_VAULT_SIZE) {
         throw new Error(`PIIVault capacity exceeded (${MAX_VAULT_SIZE} active tokens). Token leak detected.`);
       }
     }

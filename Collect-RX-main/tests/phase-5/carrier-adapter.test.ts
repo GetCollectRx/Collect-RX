@@ -34,6 +34,9 @@ function authorizedSettings() {
 function makePrisma(settings = authorizedSettings()) {
   return {
     carrierBlockEvent: { findFirst: async () => null },
+    // This fixture practice belongs to no Organization — the sibling-block
+    // propagation check in checkCarrierBlock short-circuits on an empty list.
+    organizationPractice: { findMany: async () => [] },
     insuranceClaim: {
       findUnique: async () => ({
         recoveryRoute: 'CALL_CARRIER',
@@ -241,6 +244,7 @@ describe('CarrierAdapter', () => {
     function makePrismaAtSubscriptionLimit(callAttemptFindFirst: () => Promise<{ id: string } | null>) {
       return {
         carrierBlockEvent: { findFirst: async () => null },
+        organizationPractice: { findMany: async () => [] },
         insuranceClaim: {
           findUnique: async () => ({
             recoveryRoute: 'CALL_CARRIER',

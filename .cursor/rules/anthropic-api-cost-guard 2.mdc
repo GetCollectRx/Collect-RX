@@ -1,0 +1,44 @@
+---
+description: Prevent accidental Anthropic API billing — opt-in evals only, no shell keys, no Opus in dev tooling
+alwaysApply: true
+---
+
+# Anthropic API cost guard
+
+Direct Anthropic console billing must never happen accidentally. ~$56/week Opus spend came from `ANTHROPIC_API_KEY` in `~/.zshrc` + `loop_runner.py` / Claude Code — not from Cursor or Vapi.
+
+## Hard rules
+
+1. **Never** add `export ANTHROPIC_API_KEY` to `~/.zshrc`, `~/.bashrc`, or global shell profiles.
+2. **Never** call `api.anthropic.com` without `assertAnthropicEvalAllowed()` from `src/services/analytics/anthropicEvalGuard.ts`.
+3. **Default off:** live evals require `COLLECTRX_ANTHROPIC_EVAL=1` in `.env` for that run only.
+4. **No Opus** in eval/dev API tooling — use Haiku or Sonnet. Opus in `vapi-*.json` bills Vapi wallet, not this guard.
+5. **Do not** run `agents/*.md` via Claude Code / `loop_runner.py` for routine validation.
+
+## Free validation (use these)
+
+```bash
+npm test
+npm run agents    # vitest agents in tests/agents/ — no LLM
+```
+
+## Paid eval (explicit opt-in only)
+
+```bash
+COLLECTRX_ANTHROPIC_EVAL=1 ANTHROPIC_API_KEY=sk-ant-... npm run eval:conversation-robustness
+```
+
+## Billing separation
+
+| Tool | Billed where |
+|------|----------------|
+| Cursor chat/agents | Cursor subscription |
+| Vapi / IVR tests | Vapi dashboard |
+| `npm run agents` / `npm test` | Free |
+| Anthropic API eval scripts | Anthropic console (gated) |
+
+## When adding new Anthropic API usage
+
+- Import and call `assertAnthropicEvalAllowed(context)` before any fetch to Anthropic.
+- Call `assertAllowedEvalModel(model, context)` — block `claude-opus*`.
+- Document in `.env.example`. Do not add npm scripts that auto-run live LLM calls in CI.

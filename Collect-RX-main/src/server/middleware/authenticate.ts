@@ -54,9 +54,16 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
     const payload = verifyAuthToken(raw);
     const briefRole = getUserRole(payload);
+    // Auditors are provisioned with practiceId: null and scoped instead via
+    // AuditorGrant (see set-persona-test-passwords.mjs) — they were missing
+    // here, so every real auditor session 401'd on the very first request
+    // after login (GET /api/auth/me, which every page load triggers), even
+    // though login itself succeeded. See OUTSTANDING-FIXES-PRODUCT-READY.md
+    // P10-09.
     const crossPractice =
       briefRole === 'billing_ops_manager' ||
       briefRole === 'platform_admin' ||
+      briefRole === 'auditor' ||
       payload.role === 'platform_dev';
 
     if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
@@ -75,25 +82,42 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    // Accountant token expiry — must be checked against DB since the JWT itself
-    // has a 90-day TTL but the practice can revoke access before that via tokenExpiresAt.
-    if (payload.role === 'accountant') {
-      const userId = (payload as UserAuthPayload).userId;
-      prisma.user.findUnique({ where: { id: userId }, select: { tokenExpiresAt: true, isActive: true } })
+    // Practice-scoped sessions: the JWT's practiceId claim must match the user's
+    // actual practice on record — never trust it as authorization scoping on its
+    // own. A token whose userId is real but whose practiceId claim doesn't match
+    // that user's true practice (however it was produced) must not grant access
+    // to another practice's claims/PHI. Also re-checks isActive on every request,
+    // and (accountant only) tokenExpiresAt, since the JWT's own TTL can outlive a
+    // practice's revocation of that access. See OUTSTANDING-FIXES-PRODUCT-READY.md
+    // P10-09 for why the accountant check is guarded separately below.
+    //
+    // Brief/impersonation sessions (`platformUserSession: true`, from
+    // signBriefSessionToken — auditor, and platform-staff previews of a practice
+    // role) carry a platform_users row id in `userId`, not a User row, so this
+    // lookup would always miss and wrongly 401 them. Their practiceId is assigned
+    // server-side by platform logic rather than user-forgeable like a normal
+    // login JWT's claims, so skipping this particular check for them is safe.
+    if (payload.role !== 'platform_dev' && !crossPractice && !payload.platformUserSession) {
+      const { userId, practiceId } = payload as UserAuthPayload;
+      prisma.user.findUnique({ where: { id: userId }, select: { practiceId: true, tokenExpiresAt: true, isActive: true } })
         .then((user) => {
           if (!user || !user.isActive) {
             res.status(401).json({ error: 'Account is no longer active' });
             return;
           }
-          if (user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
+          if (user.practiceId !== practiceId) {
+            res.status(401).json({ error: 'Invalid or expired session' });
+            return;
+          }
+          if (payload.role === 'accountant' && user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
             res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
             return;
           }
           continueWithRls(req, next);
         })
         .catch(() => {
-          // Fail CLOSED: if we cannot confirm the accountant's access is still valid
-          // (active + not expired), deny rather than grant PHI access on a DB hiccup.
+          // Fail CLOSED: if we cannot confirm the session's practice binding is
+          // still valid, deny rather than grant PHI access on a DB hiccup.
           res.status(503).json({ error: 'Unable to verify access right now. Please retry.' });
         });
       return;

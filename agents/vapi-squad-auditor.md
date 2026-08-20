@@ -1,6 +1,10 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Vapi Squad Auditor Agent
 
-**Purpose:** Audit the 4-agent Vapi squad configuration, system prompts, and call payload for correctness, PHI safety, CRTC disclosure compliance, and clinical accuracy. Run before any prompt change goes live and monthly as a standing check.
+**Purpose:** Audit the 5-agent Vapi squad configuration (IVR_Navigator, Hold_Sentinel, Claims_Agent, Escalation_Closer, Resolution_Closer — verified against `Collect-RX-main/vapi-squad-config.json`), system prompts, and call payload for correctness, PHI safety, CRTC disclosure compliance, and clinical accuracy. Run before any prompt change goes live and monthly as a standing check.
 
 ---
 

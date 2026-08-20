@@ -4,9 +4,9 @@
  */
 import { logger } from '../observability/logger.js';
 
-function getSendGrid() {
+async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
   return sg;
 }
@@ -37,7 +37,7 @@ export async function sendPasswordResetEmail(
   token: string,
 ): Promise<void> {
   const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
-  const sg = getSendGrid();
+  const sg = await getSendGrid();
 
   if (!sg) {
     logger.info('[password-reset] SENDGRID_API_KEY not set — skipping email', {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { callOutcomeToUsageCode } from '../src/server/plans/outcomeToUsageCode';
-import { computeUsageAlerts, type PlanSummary } from '../src/server/plans/planBridge';
+import { computeUsageAlerts, gateBlockMessage, type PlanSummary } from '../src/server/plans/planBridge';
 
 describe('callOutcomeToUsageCode', () => {
   it('maps RESOLVED claim status to paid', () => {
@@ -121,5 +121,23 @@ describe('computeUsageAlerts', () => {
       cycle: { ...baseSummary.cycle, minutesConsumed: 50, usagePercent: 50 / 800 },
     });
     expect(alerts).toHaveLength(0);
+  });
+});
+
+describe('gateBlockMessage', () => {
+  it('COGS_BREAKER_PAUSED explains the actual trigger (hold time driving cost, not the minute count) rather than a generic "usage exceeded" line', () => {
+    const message = gateBlockMessage('COGS_BREAKER_PAUSED');
+    // The old copy ("usage far exceeded your plan") reads as a minutes
+    // problem, but this can fire while the visible monthly allowance is
+    // nowhere near exhausted — the message must say so explicitly or a
+    // practice checking their own dashboard sees a contradiction.
+    expect(message).toMatch(/hold times/i);
+    expect(message).toMatch(/allowance isn't exhausted/i);
+    expect(message).not.toMatch(/usage far exceeded/i);
+  });
+
+  it('OVERAGE_PENDING still includes the overage rate when provided', () => {
+    const message = gateBlockMessage('OVERAGE_PENDING', 0.25);
+    expect(message).toMatch(/\$0\.25\/min/);
   });
 });

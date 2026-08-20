@@ -91,6 +91,10 @@ function mockPrisma(practice: PracticeShape, opts: { minutesConsumed?: number; t
     callAttempt: {
       aggregate: vi.fn(async () => ({ _sum: { minutesBilled: opts.todayMinutes ?? 0 } })),
     },
+    // No org membership — resolveBillingEntity falls back to practice-level billing.
+    organizationPractice: {
+      findFirst: vi.fn(async () => null),
+    },
   } as unknown as PrismaClient;
   return { prisma, pauseSpy };
 }

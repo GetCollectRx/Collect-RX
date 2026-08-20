@@ -5,6 +5,7 @@ import {
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import {
   connectorHealth,
@@ -52,7 +53,7 @@ router.get('/agents', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/agents', async (req: Request, res: Response) => {
+router.post('/agents', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const label = typeof req.body?.label === 'string' && req.body.label.trim()
@@ -82,7 +83,7 @@ router.post('/agents', async (req: Request, res: Response) => {
   }
 });
 
-router.delete('/agents/:id', async (req: Request, res: Response) => {
+router.delete('/agents/:id', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const ok = await revokeConnectorAgent(req.params.id, practiceId);

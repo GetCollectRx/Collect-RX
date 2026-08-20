@@ -3,8 +3,12 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Same as index.ts;
+// this is a separate Node process so it needs its own init.
+initSentry();
 
 import type { PrismaClient } from '@prisma/client';
 import { Worker, type ConnectionOptions } from 'bullmq';
@@ -22,6 +26,7 @@ import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisit
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { runDataRetentionAcrossPractices } from './jobs/dataRetentionJob.js';
 import { dispatchOpsAlert } from './observability/opsAlerts.js';
 import {
   shouldAlertOnJobExhaustion,
@@ -29,6 +34,8 @@ import {
   resolveJobCorrelationId,
 } from './jobs/jobFailureAlert.js';
 import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
+import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
@@ -158,6 +165,25 @@ const worker = new Worker(
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
         logger.info('[worker] TRIAGE_CREDENTIAL_HEALTH checked credentials', { checked });
+      } else if (job.name === 'DATA_RETENTION') {
+        const results = await runDataRetentionAcrossPractices(prisma);
+        const ran = results.filter((r) => r.ran);
+        const errored = results.filter((r) => r.errors.length > 0);
+        if (ran.length > 0 || errored.length > 0) {
+          logger.info('[worker] DATA_RETENTION completed', {
+            practicesRan: ran.length,
+            claimsPurged: ran.reduce((s, r) => s + r.claimsPurged, 0),
+            auditLogRowsPurged: ran.reduce((s, r) => s + r.auditLogRowsPurged, 0),
+            phiAccessEventRowsPurged: ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0),
+            practicesErrored: errored.length,
+          });
+          for (const r of errored) {
+            logger.error('[worker] DATA_RETENTION errors for practice', {
+              practiceId: r.practiceId,
+              errors: r.errors,
+            });
+          }
+        }
       } else if (job.name === 'REMINDER_CYCLE') {
         logger.info('[worker] REMINDER_CYCLE skipped — patient outreach disabled', {});
       } else if (job.name === 'LEARNING_CYCLE') {
@@ -222,10 +248,64 @@ worker.on('failed', (job, err) => {
 
 logger.info('[worker] listening on queue', { queue: AR_QUEUE_NAME });
 
+// Agent runner worker (separate queue for autonomous agents)
+const agentWorker = new Worker(
+  'agent-runner',
+  async (job) => {
+    const correlationId = job.id ?? 'agent-run-' + Date.now();
+
+    await runWithCorrelationId(correlationId, () =>
+      runWithRlsBypass(async () => {
+        if (job.name === 'AGENT_RUN') {
+          await runAgent(job);
+        } else {
+          throw new Error(`Unknown agent job name: ${job.name}`);
+        }
+      }),
+    );
+  },
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
+);
+
+agentWorker.on('failed', (job, err) => {
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  const agentName = job?.data?.agentName ?? 'unknown';
+
+  logger.error('[worker] agent job failed', {
+    id: job?.id,
+    agentName,
+    attemptsMade,
+    attemptsAllowed,
+    error: String(err),
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'agent_job_failed',
+      detail: `Agent ${agentName} failed after ${attemptsMade} attempts: ${(err as Error).message}`,
+      source: 'agent-worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch agent_job_failed alert', { error: alertErr });
+    });
+  }
+});
+
+agentWorker.on('completed', (job) => {
+  logger.info('[worker] agent job completed', {
+    id: job?.id,
+    agentName: job?.data?.agentName,
+  });
+});
+
+logger.info('[worker] agent runner listening on queue', { queue: 'agent-runner' });
+
 async function shutdown() {
   logger.info('[worker] shutting down', {});
   healthServer.close();
   await worker.close();
+  await agentWorker.close();
+  await closeAgentRunnerQueue();
   await prisma.$disconnect();
   await connection.quit();
   process.exit(0);

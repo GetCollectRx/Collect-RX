@@ -248,6 +248,35 @@ export async function applyRecoveryAfterCall(
       processed.outcomeDetail,
     );
 
+    // The Escalations page (front-desk queue) reads call_escalations, not
+    // insurance_claims.status or claim_recovery_actions — every path that can
+    // route a claim to ESCALATED must also write this row or the claim is
+    // invisible to the one screen built to work it (see
+    // OUTSTANDING-FIXES-PRODUCT-READY.md P10-04; queueEngine.ts had the same
+    // gap for the pre-dispatch guard codes).
+    if (decision.claimStatus === 'ESCALATED') {
+      const escalationReason = decision.actionDetail ?? decision.actionTitle ?? decision.reason;
+      const existingEscalation = await tx.callEscalation.findFirst({
+        where: { practiceId: claim.practiceId, claimId: claim.id, status: 'open', reason: escalationReason },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await tx.callEscalation.create({
+          data: {
+            practiceId: claim.practiceId,
+            claimId: claim.id,
+            claimRef: claim.claimNumber,
+            carrierId: claim.carrierId as import('@prisma/client').CarrierId,
+            amountClaimedCents: outstandingCents,
+            reason: escalationReason,
+            callAttemptId: attemptId,
+            attemptNumber: attemptCount,
+            status: 'open',
+          },
+        });
+      }
+    }
+
     await tx.claimRecoveryEvent.create({
       data: {
         practiceId: claim.practiceId,

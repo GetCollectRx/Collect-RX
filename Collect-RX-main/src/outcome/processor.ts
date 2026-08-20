@@ -48,6 +48,14 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /system.generated\s+call\s+(?:detected|blocked|rejected)/i,
   /bot\s+activity(\s+detected)?/i,
   /detected\s+bot\s+activity/i,
+  // Added 2026-08-09 — found via adversarial phrase testing (tests/carrierBlockPhraseGap.test.ts):
+  // reps object to automation without ever using the literal words "bot"/"automated calls".
+  /(?:doesn.?t|does\s+not|won.?t|will\s+not|can.?t|cannot)\s+(?:allow|accept|permit|process)\s+(?:automated|bots?|robocalls?|auto[- ]?dialers?)/i,
+  /(?:not|isn.?t|is\s+not)\s+a\s+real\s+person/i,
+  /remove\s+(?:this|your)\s+(?:number|line)\s+from\s+(?:your|the)\s+(?:calling\s+)?system/i,
+  /will\s+not\s+answer\s+(?:again|this\s+number|your\s+calls)/i,
+  /(?:asked|instructed|told)\s+(?:us|me)\s+not\s+to\s+(?:speak|talk|deal|engage)\s+with\s+(?:auto[- ]?dialers?|automated(?:\s+systems?)?|bots?)/i,
+  /transfer(?:ring)?\s+(?:this|you)\s+to\s+(?:our\s+)?fraud\s+(?:and|&)\s+security/i,
 ];
 
 /** Literal phrases from `processor.legacy.cjs` (carrier_block branch). */
@@ -318,16 +326,21 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const transcript = payload.transcript ?? '';
   const summary = payload.analysis?.summary ?? '';
   const successEval = payload.analysis?.successEvaluation ?? '';
-  /** Original casing — used for name extraction and pattern display */
-  const rawText = `${transcript} ${summary} ${successEval}`;
-  /** Lowercased — used for all pattern matching */
+
+  // Use transcript if available; fall back to summary only if transcript is empty.
+  // This prevents LLM-generated summaries from hallucinating financial outcomes when we have a real transcript,
+  // but allows fallback classification when no transcript exists.
+  const rawText = transcript.trim() ? transcript : summary;
+
+  // Carrier-block detection scans everything to prevent missing real blocks.
+  const blockScanText = `${transcript} ${summary} ${successEval}`.toLowerCase();
   const fullText = rawText.toLowerCase();
 
   const durationSeconds = payload.call.durationSeconds ?? null;
   const transcriptUrl = payload.recordingUrl ?? null;
 
   // ── Automation / bot block (regex only — not in legacy substring list) ───
-  if (BLOCK_SIGNAL_PATTERNS.some((p) => p.test(fullText))) {
+  if (BLOCK_SIGNAL_PATTERNS.some((p) => p.test(blockScanText))) {
     return {
       outcome: 'BLOCK_DETECTED',
       outcomeDetail:
@@ -377,7 +390,7 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   if (!fullText.trim()) {
     return {
       outcome: 'HUNG_UP',
-      outcomeDetail: 'No transcript or summary — manual review (legacy: unknown)',
+      outcomeDetail: 'No transcript available — manual review (legacy: unknown)',
       repName: null,
       referenceNumber: null,
       transcriptUrl,

@@ -6,14 +6,16 @@ Status tracking lives in [PATH-TO-DELIVERY.md](PATH-TO-DELIVERY.md) section E; t
 
 ---
 
-## 1. TELUS's day-21 minimum wait never fires
+## 1. TELUS's day-21 minimum wait never fires — and neither does the other carriers' day-32 minimum
 
 **Owner needed:** Product (carrier-relationship risk call).
 
-**Verified current behavior:** `CLAUDE.md` and `Collect-RX-main/CLAUDE.md` both document "TELUS minimum claim wait is day 21 (vs. day 32 for all other carriers)." The code that's supposed to enforce that is `validateDispatch()` in `Collect-RX-main/src/carriers/adapter.ts:307`. It checks a global floor first:
+**Status: docs and dead code fixed; the underlying behavior decision (Option A vs. B below) is still open.**
+
+**Verified current behavior (updated — the scope is wider than first reported):** `CLAUDE.md` and `Collect-RX-main/CLAUDE.md` used to document "TELUS minimum claim wait is day 21 (vs. day 32 for all other carriers)." The code that was supposed to enforce that was `validateDispatch()` in `Collect-RX-main/src/carriers/adapter.ts`. It checked a global floor first, then a TELUS-only carve-out:
 
 ```ts
-// Collect-RX-main/src/carriers/adapter.ts:347-356
+// as it read before this fix
 // 4. Claims under 30 days old — do not queue
 const config = CARRIER_CONFIGS[carrierId];
 if (daysOutstanding < 30) {
@@ -26,17 +28,21 @@ if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
 }
 ```
 
-The `< 30` check runs first and rejects every claim under 30 days old, TELUS included. The TELUS-specific `< 21` check on the next line can only ever evaluate for claims aged 21–29 days — but those were already rejected one line above. The comment in the code admits this ("informational only"). Net effect: TELUS claims wait the same 30 days as every other carrier, regardless of what the docs say. This isn't a subtle bug — the code and the docs have quietly disagreed since whenever this shipped, and nothing caught it because there's no test asserting TELUS claims actually get called at day 21–29 (`tests/eligibility.test.ts` covers TELUS's TPA identification and coverage math, not dispatch timing).
+The `< 30` check ran first and rejected every claim under 30 days old, TELUS included. The TELUS-specific `< 21` check could only ever evaluate for claims aged 21–29 days — already rejected one line above — so it was unreachable, exactly as its own comment admitted. **What the first pass at this doc missed:** `config.minWaitDays` (from `carrier-configs.json`'s `minWaitDayForClaims`) was *only ever read in that one TELUS-only branch* — grep confirms it's not referenced anywhere else in dispatch. So the five non-TELUS carriers, each configured with a 32-day minimum, were never actually held to it either; they were dispatched at the flat 30-day floor, two days earlier than their own documented SLA. `tests/workflowDispatchSafetyRules.test.ts` already had a test pinning exactly this ("a standard (non-TELUS) claim at exactly 30 days is allowed, despite CARRIER_CONFIGS documenting a 32-day minimum for this carrier") — this was a known, tested condition, just not written up with options until now.
 
-**Options:**
+**Fixed on this pass (safe, zero behavior change — Option A below):**
+- Removed the dead, unreachable TELUS-only branch from `validateDispatch()` in `Collect-RX-main/src/carriers/adapter.ts`.
+- Updated the `minWaitDays` field's doc comment and both `CLAUDE.md` files to state plainly that `carrier-configs.json`'s per-carrier minimums (21 for TELUS, 32 for the rest) are documented data, not enforced — every carrier is gated by the same flat 30-day floor today.
+- Left `minWaitDays`/`minWaitDayForClaims` and their values in place (removing the field would touch the `CarrierConfig` type contract and several unrelated tests in `tests/phase-5/carrier-adapter.test.ts`, `tests/agents/01-carrier-config-agent.test.ts`, and `tests/eligibility.test.ts` that check the config data itself, independent of whether dispatch enforces it — no reason to touch those just to fix the dead branch).
+
+**Still open — the actual behavior decision:**
 
 | Option | What changes | Tradeoff |
 |---|---|---|
-| **A — Fix the docs, not the code (recommended default if no one has an opinion)** | Update both `CLAUDE.md` files to say "day 30 for all carriers, including TELUS" and delete the dead branch in `adapter.ts`. | Zero behavior change, zero risk. Loses whatever the original 21-day number was based on — if it came from TELUS's actual SLA/contract language, this quietly gives up 9 days of AR recovery speed on ~78% of the market's clearinghouse with no one deciding to. |
-| **B — Make TELUS actually dispatch at day 21** | Reorder the checks so the carrier-specific minimum is evaluated instead of the global 30-day floor when `carrierId === 'telus_adjudicare'` (i.e., `daysOutstanding < config.minWaitDays` becomes the real gate for TELUS, `< 30` stays the gate for everyone else). | Claims start reaching TELUS 9 days sooner than they do today. This is a real behavior change to when automated calls hit a live carrier IVR — exactly the class of change that warrants an explicit go-ahead rather than a silent fix, per the carrier-relationship risk this repo already treats seriously (CARRIER_BLOCK protocol). Needs confirmation that day 21 is still accurate (TELUS SLAs can change) before flipping it. |
-| **C — Leave as-is, document the gap** | No code change. Add a note to `carrier-configs.json`'s TELUS entry and the CLAUDE.md files that the day-21 minimum is aspirational/not enforced. | Keeps optionality open without committing either way. Doesn't resolve the doc/code mismatch, just makes it honest. |
+| **A — Leave the flat 30-day floor as the real policy (docs/dead-code already fixed to match this)** | No further code change. `carrier-configs.json`'s per-carrier numbers stay as documented-but-unenforced reference data. | Zero behavior change, zero risk — this is what's shipped as of this pass. Two known costs: TELUS claims wait 9 days longer than the number originally documented for them (if 21 days reflected a real TELUS SLA, that's real AR recovery speed left on the table for ~78% of the market's clearinghouse); the five other carriers get dialed 2 days *before* their own documented 32-day minimum, which is the one with more direct carrier-relationship risk (calling before a carrier's own claim is ready to be looked up) and deserves attention independent of the TELUS question. |
+| **B — Enforce each carrier's own documented minimum** | Replace the flat `daysOutstanding < 30` check with `daysOutstanding < config.minWaitDays` for every carrier — TELUS gets gated at 21, the other five at 32, using the `minWaitDays` field that already exists and is already correctly populated per carrier. | Two independent behavior changes bundled in one flip: TELUS claims start reaching a live carrier IVR 9 days sooner than today, and the other five carriers' claims wait 2 days longer than today. Both are real changes to when automated calls hit a live carrier, which is exactly the class of change this repo already treats as needing explicit sign-off (CARRIER_BLOCK protocol, carrier-relationship risk). The two carrier groups don't need to move together — see below. |
 
-**Recommendation:** B, but only after confirming with whoever owns the TELUS relationship (or re-checking TELUS's published AdjudiCare provider documentation) that day 21 is still current. If nobody can confirm that quickly, ship A now (it's strictly safe) and revisit B once the number is re-verified — don't let the docs keep claiming a behavior the code doesn't have in the meantime.
+**Recommendation:** Ship A now (done on this pass — safe, and it's what the code actually did anyway, just no longer silently). Then treat the two carrier groups in Option B as two separate decisions, not one bundled flip: (1) the five carriers' 32-day minimum is the one with more direct downside (calling 2 days before a carrier's own claim is ready to be looked up) and is worth confirming/enforcing sooner — verify 32 days is still correct for each and flip that side first; (2) TELUS's 21-day minimum trades off against 9 fewer days of grace, which is lower-risk in the "did we call too early" direction but still needs the TELUS relationship owner (or current AdjudiCare provider documentation) to confirm 21 is still accurate before flipping it. Don't let the docs claim either number is enforced until the corresponding code change ships.
 
 ---
 
@@ -54,6 +60,8 @@ is the internal how-to for support/engineering handling a request under the inte
 
 **Owner needed:** Product + Legal/Privacy Officer (PHIPA compliance sign-off), before any engineering work starts.
 
+**Status: Option B's engineering-doable half is shipped (interim runbook below); Option A (the real automated workflow) is still blocked on legal/privacy sign-off, which only Legal/Product can unblock.**
+
 **Verified current state:** Both models are real, fully-fielded Prisma models (`Collect-RX-main/prisma/schema.prisma:1793`, with `status`, `requestedAt`/`completedAt`, `purgedClaimsCount`/`purgedCallsCount`/`purgedRecordingsCount` on the deletion side; `notificationType`, `notificationDeadline`, `remediationSteps` on the breach side). A repo-wide search turns up **zero production code that ever creates, reads, or updates either model** — no route, no admin UI, no cron job. The only file that references this workflow at all is `tests/phipaCompliance.test.ts`, and it doesn't exercise the real models either: it defines a local TypeScript `interface PHIPADeletionRequest` (a plain mock, not `prisma.phipaDeletionRequest`) and simulates "deletion" by directly calling `deleteMany()` on `insuranceClaim`/`callAttempt`/`phiVaultEntry`/etc. The test file's own docstring calls it what it is: it's testing that raw multi-table deletion is *possible*, not that a PHIPA request can be filed, tracked, or resolved by anyone. There is a companion doc, `docs/compliance/PHIPA-DELETION-TEST-GUIDE.md`, that includes a full "Implementation Guide for Cron Job" section — i.e. the design for this already exists in writing, it was just never built.
 
 This was previously carried in `OUTSTANDING-FIXES-PRODUCT-READY.md` as "Done," which it isn't — that line was corrected during the 2026-08-02 audit.
@@ -70,9 +78,15 @@ This was previously carried in `OUTSTANDING-FIXES-PRODUCT-READY.md` as "Done," w
 
 **Recommendation:** B immediately (it's a documentation/runbook change, doable today, and stops the schema from implying a capability nobody should assume exists), with A as the actual target — kick off the legal/privacy review now since it's the long pole, and let engineering build against the existing `PHIPA-DELETION-TEST-GUIDE.md` design once that review lands. Don't do C; the design work in that guide is worth keeping.
 
+**Shipped on this pass — Option B's internal-runbook half:** [`docs/compliance/PHIPA-MANUAL-PROCESS-RUNBOOK.md`](../compliance/PHIPA-MANUAL-PROCESS-RUNBOOK.md) — step-by-step process for a human to handle a deletion or breach-notification request today (intake, second-person sign-off before any deletion, the exact tables to purge, manual audit-log entries, 14-day breach deadline tracking), with its known gaps stated plainly at the bottom. Linked from `PHIPA-DELETION-TEST-GUIDE.md` (which now opens with a status callout clarifying it's a design spec, not a shipped feature) and from `COMPLIANCE-LAUNCH-TRACKER.md`'s Reviews table.
+
+**Deliberately not done on this pass — and shouldn't be done without counsel:** Option B also mentioned "add explicit language to the Terms/Privacy policy." `src/pages/LegalPrivacy.tsx` is explicitly marked in its own text as "template, have counsel review before production" and doesn't currently mention deletion/breach process at all. Writing new legal policy language into that page without counsel review would be worse than leaving the gap — it would be shipping unreviewed legal copy under the banner of a privacy policy. That page edit stays a P9-02 counsel-review item (`COMPLIANCE-LAUNCH-TRACKER.md`), not something engineering should draft unilaterally.
+
 ---
 
 ## 3. Production RLS tenant isolation depends on the DB role never being superuser
+
+**Update 2026-08-06 — Option B is now implemented.** `src/server/observability/rlsRoleSafety.ts` queries `pg_roles` for the connecting role's `rolsuper`/`rolbypassrls` once at boot (production only — `NODE_ENV === 'production'`, which Fly sets on both staging and prod) and caches the result; `GET /api/health/ready` now returns `503` in production if the role fails that check, instead of silently reporting healthy. This turns the failure mode from silent into loud and deploy-blocking (Fly won't route traffic to a machine that never passes its readiness check), but it does **not** replace Option A below — running it once against this repo's own local dev Postgres found the connecting role (`collectrx`) genuinely **is** a superuser, which is exactly the class of misconfiguration this check exists to catch. Whoever holds Fly Postgres production credentials should still run the manual verification once and fix the role if needed; the runtime check is the safety net for future drift, not a substitute for confirming today's actual state.
 
 **Owner needed:** Whoever manages the production Fly.io Postgres role/credentials (infra/ops) — this is a verification task, not a code change.
 
@@ -102,17 +116,19 @@ Then, ideally, actually run `tests/rls.strict.test.ts` with `COLLECTRX_RLS_TEST_
 | Option | What it requires | Tradeoff |
 |---|---|---|
 | **A — One-time manual verification (recommended, minimum bar)** | Whoever holds Fly Postgres admin access runs the two queries above against the production DB role once, records the result in `PRE-LAUNCH-STATUS.md` §3.2 with a date, and fixes the role (`ALTER ROLE ... NOSUPERUSER NOBYPASSRLS` or provisions a new restricted role and rotates `DATABASE_URL` to it) if it fails. Cheap, closes the gap for launch. | Doesn't protect against the role being changed later (e.g., a future ops action that re-grants superuser for a one-off maintenance task and forgets to revoke it). |
-| **B — A + a standing runtime check** | In addition to A, add a startup check (e.g. in the server boot sequence or `/api/health/ready`) that runs query 1 above and refuses to serve traffic / alerts loudly if the connected role is superuser or has `BYPASSRLS`. | Small amount of new code, but turns a silent, undetectable failure mode into a loud one permanently — worth it given how quietly this fails today. This is the only option that survives a future credential-rotation mistake. |
+| **B — A + a standing runtime check (implemented on this pass)** | In addition to A, add a startup check that runs query 1 above and refuses to serve traffic / alerts loudly if the connected role is superuser or has `BYPASSRLS`. | Small amount of new code, but turns a silent, undetectable failure mode into a loud one permanently — worth it given how quietly this fails today. This is the only option that survives a future credential-rotation mistake. |
 | **C — Do nothing, rely on defense-in-depth** | None. | The Prisma-layer `practiceId` scoping in application code is real and would still be the operative tenant boundary — this isn't "no isolation at all" if RLS silently no-ops. But it means RLS is providing zero actual protection against exactly the class of bug it exists to catch (an app-layer query that forgets a `practiceId` filter), while every doc in the repo describes it as active. Not recommended given how easy A is. |
 
 **Recommendation:** A now, as part of the go-live checklist (it's minutes of work for whoever has prod DB access) — this is the one item in this doc that's pure verification with no design ambiguity, so there's no reason to leave it as a bare checkbox. B is worth scheduling as a near-term follow-up once A confirms the current state, since it's the only option that catches future drift rather than just today's state.
+
+**Shipped on this pass — Option B's code half:** `Collect-RX-main/src/server/db/rlsRoleGuard.ts` (`assertRlsRoleSafeInProduction`), wired into server boot right after `connectDatabase()` in `src/server/index.ts`. In production, it queries `pg_roles` for the connected role's `rolsuper`/`rolbypassrls` flags and calls `process.exit(1)` with a message pointing at this doc if either is true; a diagnostic-query failure logs but does not crash (this guard must not become a new outage cause on its own); `COLLECTRX_RLS_ROLE_GUARD=0` is a temporary escape hatch for the window between discovering an unsafe role and rotating `DATABASE_URL`. Covered by `tests/rlsRoleGuard.test.ts` (13 tests: skip outside prod, skip when RLS is intentionally off, safe-role pass, unsafe-role exit, escape hatch, and query-failure non-fatal behavior) — all against a mocked Prisma client, no live DB required. **This code cannot verify Option A on its own** — it only reports what the role is the *next time the app boots against it*; someone still needs to trigger a production deploy (or run the two manual queries in the meantime) to actually get the result for today.
 
 ---
 
 ## How to close these out
 
-- **#1 (TELUS timing):** needs a product decision on Option A vs. B above, then a one-line-diff PR either way.
+- **#1 (TELUS timing):** shipped on this pass — docs and the dead unreachable branch are now honest about the flat 30-day floor. What's still open is a product decision on whether to move either carrier group (TELUS to 21 days, the other five to 32) off that flat floor — see the recommendation above for why those are two separate calls, not one.
 - **#2 (PHIPA):** needs legal/privacy review kicked off (long pole); Option B's doc/runbook update can ship immediately and independently.
-- **#3 (RLS role):** needs whoever holds Fly Postgres production credentials to run the two verification queries above and record the result — no code required for the minimum bar (Option A).
+- **#3 (RLS role):** Option B's runtime guard is shipped and tested — it will refuse to boot against an unsafe role in production from the next deploy onward. Option A's actual verification (what the role is *today*, before that deploy happens) still needs whoever holds Fly Postgres production credentials to run the two queries above, or to trigger a production deploy and watch the boot log for the guard's result.
 
 None of these block the rest of the launch checklist in [PATH-TO-DELIVERY.md](PATH-TO-DELIVERY.md) — they're tracked separately here because each needs a decision-maker outside engineering, not because they're blocked on more code.

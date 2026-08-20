@@ -6,7 +6,7 @@
  *
  * 20 real practices, 20 real concurrent authenticated sessions, each firing
  * concurrent requests at DB-backed endpoints (GET /api/insurance/claims,
- * GET /api/organizations/mine) via supertest directly against the real
+ * GET /api/auth/me) via supertest directly against the real
  * Express app + real Postgres — no mocking below the HTTP layer. This is
  * also the test that would surface Prisma connection-pool exhaustion: no
  * connection_limit is set anywhere in this repo (confirmed by search), so
@@ -64,7 +64,7 @@ describe.skipIf(!dbReady)('DSO HTTP load capacity: real concurrent business-endp
       const results = await Promise.all(
         cookies.flatMap((cookie, i) => [
           request(app).get('/api/insurance/claims').set('Cookie', cookie).then((r) => ({ r, i, kind: 'claims' as const })),
-          request(app).get('/api/organizations/mine').set('Cookie', cookie).then((r) => ({ r, i, kind: 'orgs' as const })),
+          request(app).get('/api/auth/me').set('Cookie', cookie).then((r) => ({ r, i, kind: 'orgs' as const })),
         ]),
       );
       const requestElapsedMs = Date.now() - requestStart;
