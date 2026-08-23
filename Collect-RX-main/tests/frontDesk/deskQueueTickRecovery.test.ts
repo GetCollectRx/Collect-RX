@@ -69,7 +69,12 @@ describe('desk queue engine — tick failure recovery', () => {
         return 1;
       }),
       $queryRaw: vi.fn(async () => []),
-      callAttempt: { count: async () => 0 },
+      // orderPracticesByFairness() wraps its own $executeRaw/$queryRaw pair in
+      // $transaction([...]) once claimTickLease succeeds — the array form just
+      // needs to await its already in-flight members and hand back their
+      // results in order.
+      $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
@@ -88,10 +93,13 @@ describe('desk queue engine — tick failure recovery', () => {
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(getDeskQueueTickHealth().consecutiveTickFailures).toBe(1);
 
-    // By +120s total the backoff has elapsed and the tick retries.
+    // By +120s total the backoff has elapsed and the tick retries. A
+    // successful tick makes 2 $executeRaw calls of its own — claimTickLease,
+    // then orderPracticesByFairness's RLS-bypass set_config inside its
+    // $transaction([...]) — on top of the 1 failed lease-claim attempt above.
     shouldFail = false;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(3);
     expect(getDeskQueueTickHealth().consecutiveTickFailures).toBe(0);
     expect(getDeskQueueTickHealth().lastSuccessfulTickAt).not.toBeNull();
 
@@ -108,7 +116,8 @@ describe('desk queue engine — tick failure recovery', () => {
         throw new Error('DB unreachable');
       }),
       $queryRaw: vi.fn(async () => []),
-      callAttempt: { count: async () => 0 },
+      $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops)),
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
