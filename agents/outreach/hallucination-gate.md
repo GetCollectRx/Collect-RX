@@ -10,6 +10,11 @@ person. Nothing fabricated, nothing overstated, nothing presented as confirmed t
 actually inferred. This agent has veto power — a draft with even one unsourced material claim
 does not pass, no matter how good the rest of the copy is.
 
+Drafts arrive here already through the Text Humanizer Agent — check the humanized wording, not
+an earlier version. That agent is style-only and shouldn't have changed any claim's substance,
+but verify against the claims-and-sources table carried forward from Personalization Agent, not
+against your own read of what the wording now implies.
+
 ---
 
 ## What counts as a hallucination in outreach copy

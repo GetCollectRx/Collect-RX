@@ -31,13 +31,16 @@ sends anything itself — see "Handoff to Approval Agent" below.
 3. Feed the plan into **Persona Classifier Agent** to produce a scored, bucketed, right-person
    contact list with cross-channel history applied.
 4. Feed that list into **Personalization Agent** to produce drafts.
-5. Every draft through **Hallucination Gate Agent**. Anything rejected goes back to
+5. Every draft through **Text Humanizer Agent** — style only, no em/en dashes, can't touch
+   claims or sources. This runs before the fact-checking gates so what gets checked is the
+   exact text that ships, not a pre-polish draft.
+6. Every humanized draft through **Hallucination Gate Agent**. Anything rejected goes back to
    Personalization Agent with the specific unverifiable claim flagged — max 2 revision loops,
    then drop that contact from the batch rather than loop indefinitely.
-6. Every draft that clears the gate goes through **Compliance & Deliverability Gate Agent**.
-7. Assemble what survives into a batch and apply the verification checklist below to every
+7. Every draft that clears the gate goes through **Compliance & Deliverability Gate Agent**.
+8. Assemble what survives into a batch and apply the verification checklist below to every
    contact in it, not just to the copy.
-8. Hand the batch to **Approval Agent**, which releases anything that passed every gate and
+9. Hand the batch to **Approval Agent**, which releases anything that passed every gate and
    auto-excludes anything that didn't — see `approval-agent.md`. This is a fully autonomous
    pipeline: no step here waits on a live human response. The Approval Agent's output is the
    audit trail, not a request.

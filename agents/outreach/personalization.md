@@ -51,7 +51,8 @@ exact pattern the product's own code avoids.
 
 ## Draft Requirements
 
-Every draft submitted to the Hallucination Gate must include, inline or as an attached table:
+Every draft goes to the Text Humanizer Agent next, then the Hallucination Gate — include,
+inline or as an attached table, so both can do their job:
 
 ```
 [Draft message]

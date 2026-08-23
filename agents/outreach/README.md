@@ -62,6 +62,7 @@ resolved as standing policy so the pipeline doesn't stall on them:
 | **GTM Strategist Agent** | `gtm-strategist.md` | Turns research + product direction into a channel/sequencing plan against the existing `sequenceEngine.ts` stages |
 | **Persona Classifier Agent** | `persona-classifier.md` | Buckets contacts by role, judges whether the found person is actually the right one to reach, and enforces cross-channel contact history (e.g. "already LinkedIn-connected, no reply — don't message again there") |
 | **Personalization Agent** | `personalization.md` | Drafts the actual message per persona, ethos/pathos/logos — every specific claim must be sourced |
+| **Text Humanizer Agent** | `text-humanizer.md` | Style-only pass on every draft — no em/en dashes, active voice, varied rhythm — before anything reaches the fact-checking gates |
 | **Hallucination Gate Agent** | `hallucination-gate.md` | Fact-checks every claim in every draft against a real source before it can leave the pipeline |
 | **Compliance & Deliverability Gate** | `compliance-gate.md` | CASL basis, sender identity, unsubscribe handling, batch/rate limits, domain reputation — the last technical/legal check |
 | **Approval Agent** | `approval-agent.md` | Releases or auto-excludes each contact based purely on upstream gate verdicts, under the operator's standing authorization — this is what removed the human bottleneck |
@@ -74,6 +75,10 @@ Backend State Agent ────┼──→ GTM Strategist Agent ──→ Pers
 Product Lead Agent ─────┘                                        │
                                                                    ▼
                                                      Personalization Agent
+                                                                   │
+                                                                   ▼
+                                                     Text Humanizer Agent (style only, no em/en
+                                                     dashes — cannot touch claims or sources)
                                                                    │
                                                                    ▼
                                                      Hallucination Gate Agent ──(reject/revise loop)
@@ -112,9 +117,9 @@ what it's authorized to decide on the operator's behalf and what it explicitly i
 ```
 "Run the CollectRx outreach pipeline for [region/segment]. Start with Market Research and
 Backend State in parallel, feed both into GTM Strategist, run Persona Classifier on the
-resulting contact list, draft with Personalization Agent, and run every draft through the
-Hallucination Gate and Compliance & Deliverability Gate. Hand the result to the Approval
-Agent, which releases anything that passed every gate and auto-excludes anything that didn't,
-per the fixed policies in approval-agent.md. Produce the full batch report — this runs
-end-to-end without a live approval pause."
+resulting contact list, draft with Personalization Agent, run every draft through the Text
+Humanizer Agent, then through the Hallucination Gate and Compliance & Deliverability Gate.
+Hand the result to the Approval Agent, which releases anything that passed every gate and
+auto-excludes anything that didn't, per the fixed policies in approval-agent.md. Produce the
+full batch report — this runs end-to-end without a live approval pause."
 ```
