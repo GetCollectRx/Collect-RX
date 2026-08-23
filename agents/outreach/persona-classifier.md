@@ -46,8 +46,12 @@ Before approving a contact for outreach, answer explicitly:
    surfaced?** If so, recommend switching, don't force the found contact through.
 3. **Confidence level** — High (title + org structure clearly indicate this is the right
    contact), Medium (plausible but org structure is ambiguous, e.g. small DSO with unclear
-   reporting lines), Low (best guess only). Low-confidence contacts get flagged to the
-   Orchestrator, not silently included at face value.
+   reporting lines), Low (best guess only). **Low-confidence contacts are automatically
+   excluded from this batch** — not sent, and not escalated for a decision, since the whole
+   point of this check is to avoid emailing the wrong person at a real business on a guess. If
+   Market Research surfaced an alternate contact at the same practice, route to that contact
+   instead; otherwise the practice waits for a future, better-sourced pass rather than being
+   contacted on a low-confidence guess now.
 
 This judgment is what the Orchestrator's checklist item "right person for this practice's
 size/type" relies on — don't skip it because a title sounds plausible.
@@ -63,17 +67,19 @@ approving a contact for a new touch:
 
 - [ ] Check the activity log for this contact across **all** channels, not just the one about
   to be used.
-- [ ] **LinkedIn connection accepted, message sent, no reply within a reasonable window** →
-  do not send another LinkedIn message. Log the cooldown. The contact may still be eligible
-  for a different channel (email) later, but flag it to the Orchestrator as "prior unanswered
-  touch on another channel" rather than treating it as a clean first contact — a prospect who
-  didn't respond on LinkedIn deserves a lighter, more clearly-different approach on email, not
-  the standard Touch 1 cold script as if nothing happened.
-- [ ] Two unanswered touches across any combination of channels → recommend Touch 4 break-up
-  framing or a pause, not another Touch 1.
+- [ ] **LinkedIn connection accepted, message sent, no reply within a reasonable window (14
+  days)** → do not send another LinkedIn message, automatically, no case-by-case review. Log
+  the cooldown. The contact becomes eligible for email after that window, but **automatically
+  downgraded to Touch-2-style framing** ("wanted to make sure this didn't get buried..."),
+  never a fresh Touch 1 cold script as if the LinkedIn touch didn't happen. This substitution
+  is a fixed rule Personalization Agent applies, not a decision anyone reviews per contact.
+- [ ] Two unanswered touches across any combination of channels → **automatically** downgrade
+  to Touch 4 break-up framing or pause the sequence — this is the same fixed substitution
+  logic as above, not an escalation.
 - [ ] Any explicit opt-out or "not interested" signal on any channel → hard stop, mark
   `opted_out` in `sequenceEngine.ts` terms, never contact again on any channel without a new
-  explicit signal from the prospect.
+  explicit signal from the prospect. This is permanent and automatic — Approval Agent has no
+  authority to release a contact in this state regardless of how the rest of the batch reads.
 
 ---
 
@@ -85,10 +91,12 @@ approving a contact for a new touch:
 | Contact | Practice | Bucket | Right-person confidence | Prior channel history | Recommended next channel |
 |---|---|---|---|---|---|
 
-### Flags for Orchestrator
-- [Low-confidence right-person calls]
-- [Contacts with unresolved cross-channel history]
-- [Opt-outs to permanently exclude]
+### Auto-excluded this batch (fixed policy, not escalated)
+- [Low-confidence right-person calls — dropped, fallback contact used if Market Research found one]
+- [Opt-outs — permanently excluded]
+
+### Channel/framing substitutions applied automatically
+- [Contacts downgraded to Touch-2/Touch-4 framing due to prior unanswered cross-channel touch]
 ```
 
 ---
@@ -98,7 +106,8 @@ approving a contact for a new touch:
 ```
 "Run the CollectRx Persona Classifier on this contact list. For each contact: assign a
 persona bucket, judge right-person confidence (high/medium/low) given the practice's
-structure, and check ProspectActivity for prior touches on any channel before recommending a
-next channel. Apply the do-not-recontact rule for unanswered LinkedIn touches. Flag opt-outs
-as permanent exclusions. Produce the Persona Classification table."
+structure, and check ProspectActivity for prior touches on any channel. Auto-exclude
+low-confidence right-person calls and opt-outs — do not escalate them. Apply the fixed
+cross-channel cooldown and framing-downgrade rules automatically. Produce the Persona
+Classification table with auto-exclusions and framing substitutions clearly listed."
 ```

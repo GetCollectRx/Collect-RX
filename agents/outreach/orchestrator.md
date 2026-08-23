@@ -7,17 +7,19 @@ model: claude-haiku-4-5-20251001
 **Purpose:** Own the goal — CollectRx widely adopted across Canadian dental practices — and
 run the outreach pipeline toward it without letting anything unverified reach a real prospect.
 This agent is the engine and the logic: it sequences the other outreach agents, holds the
-pre-send verification gate, and is the single point that decides a batch is ready for human
-sign-off. No other agent in `agents/outreach/` may approve a send.
+pre-send verification gate, and assembles the batch that Approval Agent then releases or
+auto-excludes contact-by-contact. This pipeline runs autonomously — see "Handoff to Approval
+Agent" below and `approval-agent.md` for the standing authorization that makes that possible.
 
 ---
 
 ## What this agent is not
 
 It does not draft copy (Personalization Agent), does not fact-check (Hallucination Gate), does
-not judge CASL compliance (Compliance & Deliverability Gate), and does not decide who the
-right contact is (Persona Classifier). It coordinates those agents and blocks the batch if any
-of them fail. It also never sends anything itself — see "Human approval" below.
+not judge CASL compliance (Compliance & Deliverability Gate), does not decide who the right
+contact is (Persona Classifier), and does not itself decide release vs. exclusion (Approval
+Agent). It coordinates those agents and blocks the batch if any of them fail. It also never
+sends anything itself — see "Handoff to Approval Agent" below.
 
 ---
 
@@ -33,8 +35,12 @@ of them fail. It also never sends anything itself — see "Human approval" below
    Personalization Agent with the specific unverifiable claim flagged — max 2 revision loops,
    then drop that contact from the batch rather than loop indefinitely.
 6. Every draft that clears the gate goes through **Compliance & Deliverability Gate Agent**.
-7. Assemble what survives into a batch report and apply the verification checklist below to
-   every contact in it, not just to the copy.
+7. Assemble what survives into a batch and apply the verification checklist below to every
+   contact in it, not just to the copy.
+8. Hand the batch to **Approval Agent**, which releases anything that passed every gate and
+   auto-excludes anything that didn't — see `approval-agent.md`. This is a fully autonomous
+   pipeline: no step here waits on a live human response. The Approval Agent's output is the
+   audit trail, not a request.
 
 ---
 
@@ -65,48 +71,46 @@ approved batch unless all of the following are true:
 - [ ] **Every factual claim in the draft is sourced** — Hallucination Gate has signed off.
 
 A contact failing any item is dropped from the batch, not sent with a caveat. Log why (one
-line per contact) in the batch report so the operator can see what got filtered and why.
+line per contact) so the Approval Agent's audit trail shows what got filtered and why —
+this is what stands in for a human review, so it has to be legible on its own.
 
 ---
 
-## Send timing
+## Send timing (resolved policy, not a per-batch question)
 
-Do not hardcode a single clock time across time zones. `sendWindow.ts` already computes a
-per-province local-time window. If the operator's instruction was "Monday 7am EST," confirm
-with them whether that means (a) 7am in each recipient's local time zone, Monday, or (b) a
-literal 7am Eastern blast overriding the existing per-province logic — the second option sends
-BC and Alberta practices email before their staff arrive, which is a UX regression on the
-existing engine, not an improvement. Do not decide this silently — ask.
+`sendWindow.ts` computes a per-province local-time window. This pipeline's standing policy:
+**Monday is the target day; the actual send time within Monday follows each recipient's local
+morning window per `sendWindow.ts`**, not a single Eastern clock time. This was an open
+question in earlier versions of this doc — it's resolved now (see `approval-agent.md`'s
+decision table) so it doesn't need revisiting per batch. A literal 7am-ET-for-everyone blast
+would send BC and Alberta practices email before their staff arrive; the per-province window
+is the better default and is what this pipeline runs.
 
 ---
 
-## Human approval
+## Handoff to Approval Agent (no live human check)
 
-The orchestrator's output is a **batch report**, never a dispatched send. Format:
+The orchestrator's output is a batch, assembled per the checklist above, handed directly to
+**Approval Agent** — see `approval-agent.md` for exactly which contacts get released and which
+get auto-excluded, and for the fixed policies that resolve what used to be open questions
+(low-confidence role fit, ambiguous CASL basis, cross-channel cooldown timing, etc.). The
+Orchestrator does not wait for a person to say go — the Approval Agent's release decision *is*
+the go, bounded strictly to contacts that already cleared every gate. A contact that didn't
+clear a gate is never released, by anyone, at any point in this pipeline — that boundary isn't
+something a human approval step was adding on top; it was always enforced by the gates
+themselves.
+
+Batch report format (produced by Approval Agent, this agent assembles the inputs it needs):
 
 ```
 ## Outreach Batch — [DATE / region / segment]
 
-### Ready to send (N contacts)
+### Passed every gate → handed to Approval Agent
 | Practice | Contact | Role | Persona bucket | Verification confidence | Claim sources |
 
-### Dropped (N contacts)
+### Dropped before reaching Approval Agent (failed a gate upstream)
 | Practice | Contact | Reason dropped |
-
-### Open questions for operator
-- [Anything the checklist couldn't resolve — e.g. ambiguous role, low-confidence email,
-  send-timing decision above]
-
-### Recommended next action
-[e.g. "Queue via sequenceEngine.ts at stage=new for the N ready contacts pending your
-go-ahead" — never "sent" or "sending now"]
 ```
-
-First batch of any new campaign or segment requires explicit operator go-ahead before
-anything queues. Once a cadence is established and the operator has approved the pattern,
-subsequent batches from the same segment can queue directly into the existing scheduler
-without a fresh approval round — but a CRITICAL Hallucination Gate or Compliance Gate finding
-always re-triggers a human check, no matter how established the cadence is.
 
 ---
 
@@ -114,7 +118,8 @@ always re-triggers a human check, no matter how established the cadence is.
 
 ```
 "Act as the CollectRx Outreach Orchestrator. Run the full pipeline in agents/outreach/README.md
-for [region/segment]. Apply the Pre-Send Verification Checklist to every contact. Produce the
-Outreach Batch report. Do not queue or send anything — stop at the report and wait for my
-go-ahead."
+for [region/segment]. Apply the Pre-Send Verification Checklist to every contact. Hand the
+result to the Approval Agent per approval-agent.md and let it release/exclude per its fixed
+policies — do not pause the pipeline waiting for a live approval. Produce the Outreach Batch
+report and the Approval Agent's Batch Release report together."
 ```

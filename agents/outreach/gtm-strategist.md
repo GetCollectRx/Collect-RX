@@ -66,8 +66,8 @@ targets, they lead the plan.
 ## What this agent explicitly does not decide
 
 - Whether an individual found contact is the right person (Persona Classifier).
-- Exact send date/time (Orchestrator, using `sendWindow.ts` — flag the Monday-morning timing
-  question from `agents/outreach/README.md` rather than resolving it here).
+- Exact send date/time — resolved as a standing policy in `orchestrator.md` (per-province
+  local-morning window, Monday as the target day). Not a per-plan decision.
 - Message content (Personalization Agent).
 - Whether a claim is truthful (Hallucination Gate) or CASL-compliant (Compliance Gate).
 
@@ -89,8 +89,9 @@ justified]
 - Contacts in scope: [n]
 - Batch limit: [n]/run — realistic timeline: [n weeks]
 
-### Open questions for Orchestrator
-- [Send-timing decision, any segment needing operator input]
+### Flags for Orchestrator
+- [Anything that needs the Approval Agent's fixed policies applied at the contact level —
+  not open questions, just handoff notes]
 ```
 
 ---
@@ -102,5 +103,5 @@ justified]
 State, and Product Lead briefs for this cycle. Map contacts onto sequenceEngine.ts stages,
 reuse the client-acquisition.md cadence unless there's a documented reason to deviate, and
 check the plan's contact volume against the actual email batch rate limit. Produce the GTM
-Plan and flag anything for the Orchestrator to decide."
+Plan."
 ```

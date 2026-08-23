@@ -24,16 +24,25 @@ prospects, (2) finds contact info, (3) drafts outreach, and (4) sends it — but
 **nothing goes out until every claim about a prospect and every claim about CollectRx has been
 verified**, and the orchestrator is the one enforcing that, not any individual drafting agent.
 
+**This pipeline runs autonomously — no live human sign-off per batch.** The operator gave
+standing authorization for that, on the condition that anything requiring judgment gets
+resolved by an agent with a fixed, fail-closed policy instead of by him personally reviewing
+every batch (see `approval-agent.md` for the exact scope of that authorization and the
+decisions it resolves). The gates themselves — verification checklist, hallucination check,
+CASL/compliance check — are unchanged and still hard-block anything that doesn't clear them;
+what changed is that clearing every gate is now sufficient to release a contact, rather than
+also requiring a person to say go.
+
 ## Two things in the original ask that conflict with what's already built
 
-Flagging these rather than silently overriding either the ask or the code:
+Flagging these rather than silently overriding either the ask or the code — both are now
+resolved as standing policy so the pipeline doesn't stall on them:
 
 1. **"Send at Monday 7am EST"** — `sendWindow.ts` already computes a per-province local-time
    send window (`America/Vancouver`, `America/Edmonton`, `America/Toronto`, etc.) so a BC
-   practice isn't emailed at 4am local. A flat 7am ET blast would defeat that. Recommendation:
+   practice isn't emailed at 4am local. A flat 7am ET blast would defeat that. **Resolved:**
    keep the existing per-province window and treat "Monday morning" as the target day, not a
-   fixed clock time across all time zones. The orchestrator should confirm this with the
-   operator before the first batch, not decide it unilaterally.
+   fixed clock time across all time zones (`orchestrator.md`, `approval-agent.md`).
 2. **AI-personalized cold opener** — `aiPersonalization.ts` deliberately does **not** use an
    LLM to write cold-outreach openers; the comment in the source is explicit: "Gemini is not
    used for openers — avoids fabricated social proof." Cold sends (`ProspectStage: new`) use
@@ -46,7 +55,7 @@ Flagging these rather than silently overriding either the ask or the code:
 
 | Agent | File | Role |
 |---|---|---|
-| **Outreach Orchestrator** | `orchestrator.md` | Owns the goal, runs the pipeline, enforces the pre-send verification gate, is the only agent allowed to approve a batch for human sign-off |
+| **Outreach Orchestrator** | `orchestrator.md` | Owns the goal, runs the pipeline, enforces the pre-send verification gate, assembles the batch Approval Agent acts on |
 | **Backend State Agent** | `backend-state.md` | Ground truth on what CollectRx actually does today — reads the codebase and PATH-TO-DELIVERY, not memory |
 | **Market Research Agent** | `market-researcher.md` | Deep research on the specific ICP cross-section; extends `market-intelligence.md` and `competitive-intelligence.md`, doesn't duplicate them |
 | **Product Lead Agent** | `product-lead.md` | Product direction and "what's next" narrative, bounded to what Backend State confirms is shipped or credible near-term |
@@ -55,6 +64,7 @@ Flagging these rather than silently overriding either the ask or the code:
 | **Personalization Agent** | `personalization.md` | Drafts the actual message per persona, ethos/pathos/logos — every specific claim must be sourced |
 | **Hallucination Gate Agent** | `hallucination-gate.md` | Fact-checks every claim in every draft against a real source before it can leave the pipeline |
 | **Compliance & Deliverability Gate** | `compliance-gate.md` | CASL basis, sender identity, unsubscribe handling, batch/rate limits, domain reputation — the last technical/legal check |
+| **Approval Agent** | `approval-agent.md` | Releases or auto-excludes each contact based purely on upstream gate verdicts, under the operator's standing authorization — this is what removed the human bottleneck |
 
 ## Pipeline Order
 
@@ -72,23 +82,25 @@ Product Lead Agent ─────┘                                        │
                                                      Compliance & Deliverability Gate
                                                                    │
                                                                    ▼
-                                                     Outreach Orchestrator (final review)
+                                                     Outreach Orchestrator (assembles batch)
                                                                    │
                                                                    ▼
-                                                     Human approval (Khalid) ──→ queued in
+                                                     Approval Agent (releases/excludes per fixed
+                                                     policy, no live sign-off) ──→ queued in
                                                      emailCampaignScheduler.ts / sequenceEngine.ts
 ```
 
-Every arrow into the Orchestrator is a report, not a send. **No agent in this directory sends
-a real email or messages a real person.** The Orchestrator's job is to assemble a batch that
-has cleared every gate and hand it to the operator for the go/no-do decision, and only then
-does the existing production scheduler (or the operator, manually) execute it.
+**No agent in this directory sends a real email or messages a real person directly** — release
+means "queued into the existing production scheduler," which is the thing that actually
+dispatches. The Approval Agent's release decision is bounded to contacts that already cleared
+every gate; it cannot override a gate, lower a threshold, or bypass the code-level CASL sender-
+identity check in `emailCampaignScheduler.ts`. See `approval-agent.md` for the exact scope of
+what it's authorized to decide on the operator's behalf and what it explicitly is not.
 
 ## What's explicitly out of scope for these agents
 
-- Actually dispatching LinkedIn messages, cold calls, or emails. That's a production action
-  with legal exposure (CASL) and reputational cost if wrong — it needs a human in the loop
-  every time, per the Orchestrator's gate, not agent autonomy.
+- Overriding any gate's FAIL/CRITICAL verdict, no matter how the batch would look otherwise —
+  see `approval-agent.md`'s standing-authorization boundaries.
 - Rebuilding prospect scoring, email enrichment, or the send scheduler. Those exist in
   `Collect-RX-main/src/server/marketing/`. Agents read and reason about them; they don't fork
   the logic into a prompt.
@@ -101,7 +113,8 @@ does the existing production scheduler (or the operator, manually) execute it.
 "Run the CollectRx outreach pipeline for [region/segment]. Start with Market Research and
 Backend State in parallel, feed both into GTM Strategist, run Persona Classifier on the
 resulting contact list, draft with Personalization Agent, and run every draft through the
-Hallucination Gate and Compliance & Deliverability Gate before handing the batch to the
-Outreach Orchestrator for final review. Stop and report to the operator before anything is
-queued for actual send — do not dispatch."
+Hallucination Gate and Compliance & Deliverability Gate. Hand the result to the Approval
+Agent, which releases anything that passed every gate and auto-excludes anything that didn't,
+per the fixed policies in approval-agent.md. Produce the full batch report — this runs
+end-to-end without a live approval pause."
 ```
