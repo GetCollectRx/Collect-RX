@@ -70,6 +70,7 @@ describe('desk queue engine — tick failure recovery', () => {
       }),
       $queryRaw: vi.fn(async () => []),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
@@ -91,7 +92,10 @@ describe('desk queue engine — tick failure recovery', () => {
     // By +120s total the backoff has elapsed and the tick retries.
     shouldFail = false;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    // 1 (failed lease attempt above) + 2 for this successful tick: the lease
+    // claim itself, then orderPracticesByFairness's own $executeRaw (the
+    // `set_config('app.rls_bypass', ...)` statement inside its $transaction).
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(3);
     expect(getDeskQueueTickHealth().consecutiveTickFailures).toBe(0);
     expect(getDeskQueueTickHealth().lastSuccessfulTickAt).not.toBeNull();
 
@@ -109,6 +113,7 @@ describe('desk queue engine — tick failure recovery', () => {
       }),
       $queryRaw: vi.fn(async () => []),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(

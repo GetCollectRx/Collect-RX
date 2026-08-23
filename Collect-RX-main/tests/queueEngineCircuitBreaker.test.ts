@@ -61,6 +61,7 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
       $executeRaw: async () => 1, // claimTickLease succeeds
       $queryRaw: async () => [{ id: 'practice-1' }], // a practice IS due
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
@@ -92,6 +93,7 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
       $executeRaw: async () => 1,
       $queryRaw: async () => [], // no practices due — nothing to dispatch either way
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
