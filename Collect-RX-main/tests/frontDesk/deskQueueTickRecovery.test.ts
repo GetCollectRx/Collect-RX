@@ -69,7 +69,7 @@ describe('desk queue engine — tick failure recovery', () => {
         return 1;
       }),
       $queryRaw: vi.fn(async () => []),
-      callAttempt: { count: async () => 0 },
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
@@ -108,7 +108,7 @@ describe('desk queue engine — tick failure recovery', () => {
         throw new Error('DB unreachable');
       }),
       $queryRaw: vi.fn(async () => []),
-      callAttempt: { count: async () => 0 },
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
