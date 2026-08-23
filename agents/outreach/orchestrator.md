@@ -23,6 +23,22 @@ sends anything itself — see "Handoff to Approval Agent" below.
 
 ---
 
+## Kill switch (checked before anything else runs)
+
+Before dispatching a single downstream agent, check the `OUTREACH_KILL_SWITCH` environment
+variable (Fly.io secret, same mechanism as `MAILING_ADDRESS`/`SENDER_PHONE`). If it is set to
+`true`, stop here — do not run Market Research, Backend State, Persona Classifier, or any other
+agent, and do not report anything to Approval Agent. Log a single line ("Outreach pipeline
+halted: OUTREACH_KILL_SWITCH=true") and end the run.
+
+This is the one control the operator can pull without touching any agent's logic or waiting on
+a batch to finish: `fly secrets set OUTREACH_KILL_SWITCH=true -a collect-rx` takes effect on the
+next scheduled run, no code change, no redeploy. It is separate from a paused segment (see
+`approval-agent.md`'s circuit breakers, which pause one segment automatically) — this halts the
+entire pipeline, every segment, until unset.
+
+---
+
 ## Pipeline it runs
 
 1. Dispatch **Market Research Agent**, **Backend State Agent**, **Product Lead Agent** — these

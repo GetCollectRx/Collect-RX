@@ -33,6 +33,30 @@ CASL/compliance check — are unchanged and still hard-block anything that doesn
 what changed is that clearing every gate is now sufficient to release a contact, rather than
 also requiring a person to say go.
 
+## How this stays controlled
+
+Running with no live human sign-off per batch (see above) only works if the pipeline can't
+quietly do something wrong at scale. Five independent controls, from most to least
+routine:
+
+1. **Gates with veto power, not advice.** Hallucination Gate and Compliance Gate reject
+   outright; nothing downstream can override a CRITICAL/HIGH/FAIL verdict.
+2. **Pre-Send Verification Checklist** (`orchestrator.md`) — 7 must-pass criteria per contact.
+   One failure drops that contact, no partial credit.
+3. **Circuit breakers** (`approval-agent.md`) — a segment pauses itself automatically if its
+   own gate-rejection rate or exclusion rate signals something upstream is systematically off,
+   without waiting for anyone to notice.
+4. **Hard weekly send cap** (`approval-agent.md`) — a flat ceiling (`OUTREACH_MAX_WEEKLY_SENDS`)
+   that holds even if every gate above passed everything. The backstop for a bug in the gates
+   themselves, not for bad contacts.
+5. **Kill switch** (`orchestrator.md`) — `OUTREACH_KILL_SWITCH=true` as a Fly.io secret halts
+   the entire pipeline, every segment, before a single downstream agent runs. The one control
+   that needs no code change and no waiting for a batch to finish.
+
+Model allocation is a sixth, quieter control: the steps where a wrong call reaches a real
+person (persona judgment, drafting, fact-checking, compliance) run on Sonnet; the
+research/aggregation/mechanical steps run on Haiku. See each agent's frontmatter.
+
 ## Two things in the original ask that conflict with what's already built
 
 Flagging these rather than silently overriding either the ask or the code — both are now

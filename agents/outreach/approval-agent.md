@@ -80,6 +80,23 @@ but the log entry persists so it's visible whenever someone does look.
 
 ---
 
+## Hard send cap (backstop, independent of gate outcomes)
+
+Every control above assumes the gates themselves are working correctly. This one does not —
+it is the check for "what if a bug let too much through anyway."
+
+`MAX_EMAILS_PER_BATCH` (10/scheduler run) already caps a single run. On top of that, this
+agent enforces a **weekly ceiling of `OUTREACH_MAX_WEEKLY_SENDS`** (Fly.io secret/env var,
+operator-set — start conservative, e.g. 50, while validating the pipeline on Ottawa) across
+every batch it releases in a rolling 7-day window, counted from `ProspectActivity` records,
+not from this run's own tally. If a batch's clean-PASS contacts would push the week's total
+past that ceiling, release only enough to hit the ceiling exactly — prioritize by highest
+verification confidence, not batch order — and auto-exclude the rest with reason
+`weekly_cap_reached`. This is not a circuit breaker (nothing paused, nothing wrong upstream) —
+it is a volume ceiling that holds even when every gate is passing everything.
+
+---
+
 ## Output Format
 
 ```
@@ -112,8 +129,10 @@ without the pipeline having waited on that review.
 ```
 "Run the CollectRx Outreach Approval Agent on this batch's gate results (Verification
 Checklist, Persona Classification, Hallucination Gate Review, Compliance & Deliverability
-Gate). Release every contact with a clean PASS on all four into the send queue. Auto-exclude
-anything else per the fixed policies in agents/outreach/approval-agent.md — do not escalate
-individual contacts for a decision. Check circuit-breaker conditions and pause future batches
-for this segment if triggered. Produce the Batch Release report."
+Gate). Release every contact with a clean PASS on all four into the send queue, then check the
+rolling 7-day OUTREACH_MAX_WEEKLY_SENDS ceiling before finalizing — trim to the cap by
+confidence if the batch would exceed it. Auto-exclude anything else per the fixed policies in
+agents/outreach/approval-agent.md — do not escalate individual contacts for a decision. Check
+circuit-breaker conditions and pause future batches for this segment if triggered. Produce the
+Batch Release report."
 ```
