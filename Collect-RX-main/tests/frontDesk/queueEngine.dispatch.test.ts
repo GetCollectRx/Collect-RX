@@ -589,6 +589,13 @@ describe('runDeskQueueTick resilience', () => {
       .mockRejectedValueOnce(new Error('Vapi 500'))
       .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
 
+    // Captured before the tick, not after: scheduledFor is computed inside
+    // runDeskQueueTick from a timestamp at or after this one, so any real
+    // wall-clock time the tick itself takes only widens this margin. Measuring
+    // from a post-tick Date.now() instead systematically undercounts by
+    // however long the tick took to run, which flakes at the exact 15-minute
+    // boundary on a slower CI runner.
+    const beforeTick = Date.now();
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
     const deferCall = prisma.callQueue.update.mock.calls.find(
@@ -598,7 +605,7 @@ describe('runDeskQueueTick resilience', () => {
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     // Jittered, not a fixed 15 minutes — every claim that failed around the
     // same transient outage must not all re-dial on the same exact clock.
-    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - beforeTick;
     expect(deferredInMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
     expect(deferredInMs).toBeLessThan(20 * 60 * 1000);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
