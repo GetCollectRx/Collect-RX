@@ -66,8 +66,9 @@ targets, they lead the plan.
 ## What this agent explicitly does not decide
 
 - Whether an individual found contact is the right person (Persona Classifier).
-- Exact send date/time — resolved as a standing policy in `orchestrator.md` (per-province
-  local-morning window, Monday as the target day). Not a per-plan decision.
+- Exact send date/time — resolved as a standing policy in `orchestrator.md` (Tuesday-Thursday,
+  9-10am local time per province, per `sendWindow.ts`'s `isWithinColdSendWindow()`). Not a
+  per-plan decision.
 - Message content (Personalization Agent).
 - Whether a claim is truthful (Hallucination Gate) or CASL-compliant (Compliance Gate).
 

@@ -97,13 +97,19 @@ this is what stands in for a human review, so it has to be legible on its own.
 
 ## Send timing (resolved policy, not a per-batch question)
 
-`sendWindow.ts` computes a per-province local-time window. This pipeline's standing policy:
-**Monday is the target day; the actual send time within Monday follows each recipient's local
-morning window per `sendWindow.ts`**, not a single Eastern clock time. This was an open
-question in earlier versions of this doc — it's resolved now (see `approval-agent.md`'s
-decision table) so it doesn't need revisiting per batch. A literal 7am-ET-for-everyone blast
-would send BC and Alberta practices email before their staff arrive; the per-province window
-is the better default and is what this pipeline runs.
+`isWithinColdSendWindow()` (`sendWindow.ts:62-80`) is the actual gate on every cold send this
+pipeline's batches produce — checked here, not assumed. It restricts sending to
+**Tuesday-Thursday, 9:00-10:00am local time per recipient's province**
+(`America/Vancouver`, `America/Edmonton`, `America/Toronto`, etc.), enforced by
+`sequenceEngine.ts`'s `runMarketingSequenceTick` on every tick. Monday fails the weekday check
+outright — a contact released Monday just waits for the next Tuesday-Thursday window; there is
+no Monday send, reduced or otherwise. This pipeline's standing policy: **target
+Tuesday-Thursday, not Monday**, matching the code rather than the earlier draft of this
+document, which said "Monday is the target day" without having checked `sendWindow.ts`'s
+weekday logic — that was wrong and is corrected here (see `approval-agent.md`'s decision
+table for the same correction). A literal 7am-ET-for-everyone blast would also have sent BC
+and Alberta practices email before their staff arrive; the per-province window remains the
+right default independent of this correction.
 
 ---
 

@@ -46,7 +46,7 @@ this pipeline. Each now has a fixed, fail-closed default so the pipeline doesn't
 
 | Old open question | Resolved policy |
 |---|---|
-| Send timing: flat Monday 7am ET vs. per-province | **Per-province local-morning window, Monday as the target day** (`sendWindow.ts`'s existing logic). Not revisited per batch — this is now the standing default. |
+| Send timing: flat Monday 7am ET vs. per-province | **Tuesday-Thursday, 9-10am local time per province** — this is what `isWithinColdSendWindow()` (`sendWindow.ts:62-80`) actually enforces on every `sequenceEngine.ts` tick, verified against the code, not assumed. Monday is outside the window entirely, not a reduced version of it — an earlier draft of this table said "Monday as the target day" without having checked that function; wrong, and corrected here. Not revisited per batch — this is now the standing default. |
 | Persona Classifier "low right-person confidence" | **Auto-exclude.** Don't guess on someone's role when the downside is emailing the wrong person at a real business. Log it; if Market Research surfaced an alternate contact at the same practice, that contact goes through the pipeline instead — this one does not get a fallback "send anyway." |
 | Ambiguous CASL consent basis (can't confirm the email is self-published/business-context-relevant) | **Auto-exclude.** This is a legal question, not a style question — when the Compliance Gate can't confirm the basis, the contact doesn't go out, full stop, no escalation needed to make that call. |
 | New sender domain "gradual ramp" | **No separate ramp decision** — `MAX_EMAILS_PER_BATCH` (10/scheduler run) already caps volume; that ceiling *is* the ramp. Nothing further to decide. |

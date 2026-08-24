@@ -62,11 +62,21 @@ research/aggregation/mechanical steps run on Haiku. See each agent's frontmatter
 Flagging these rather than silently overriding either the ask or the code — both are now
 resolved as standing policy so the pipeline doesn't stall on them:
 
-1. **"Send at Monday 7am EST"** — `sendWindow.ts` already computes a per-province local-time
-   send window (`America/Vancouver`, `America/Edmonton`, `America/Toronto`, etc.) so a BC
-   practice isn't emailed at 4am local. A flat 7am ET blast would defeat that. **Resolved:**
-   keep the existing per-province window and treat "Monday morning" as the target day, not a
-   fixed clock time across all time zones (`orchestrator.md`, `approval-agent.md`).
+1. **"Send at Monday 7am EST"** — checked against the actual code, not just `sendWindow.ts`'s
+   existence: `isWithinColdSendWindow()` (`sendWindow.ts:62-80`) gates every cold send (the
+   `stage=new` releases this pipeline produces, sent by `sequenceEngine.ts`'s
+   `runMarketingSequenceTick`) to **Tuesday–Thursday, 9:00-10:00am local time per province**
+   (`America/Vancouver`, `America/Edmonton`, `America/Toronto`, etc.). Monday isn't a reduced
+   version of the target — it's outside the window entirely; a contact released Monday sits
+   until the next Tuesday-Thursday tick. **Resolved:** this pipeline's batches target
+   Tuesday–Thursday as the send window, not Monday, matching the code exactly rather than
+   splitting the difference (`orchestrator.md`, `approval-agent.md`). Earlier versions of this
+   doc said "Monday morning" — that was never checked against `sendWindow.ts`'s actual weekday
+   logic and was wrong; corrected here once verified.
+   (A separate, older path — `emailCampaignScheduler.ts`'s 5-minute cron — has no day/time gate
+   of its own and targets `campaign.active` prospects in `new`/`contacted` stages. This
+   pipeline's releases go through `sequenceEngine.ts`, not that path — worth a standing note in
+   case the two are ever unified.)
 2. **AI-personalized cold opener** — `aiPersonalization.ts` deliberately does **not** use an
    LLM to write cold-outreach openers; the comment in the source is explicit: "Gemini is not
    used for openers — avoids fabricated social proof." Cold sends (`ProspectStage: new`) use
