@@ -5,7 +5,7 @@
  * a practice IS due for dispatch (so there's real work the tick could do),
  * but with the breaker forced OPEN, initiateCall must never be reached.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
 function mockCommonDeps() {
@@ -60,7 +60,11 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
     const prisma = {
       $executeRaw: async () => 1, // claimTickLease succeeds
       $queryRaw: async () => [{ id: 'practice-1' }], // a practice IS due
-      callAttempt: { count: async () => 0 },
+      // orderPracticesByFairness() wraps its $executeRaw/$queryRaw pair in
+      // $transaction([...]) — the array form just needs to await its already
+      // in-flight members and hand back their results in order.
+      $transaction: async (ops: unknown[]) => Promise.all(ops),
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
@@ -91,7 +95,9 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
     const prisma = {
       $executeRaw: async () => 1,
       $queryRaw: async () => [], // no practices due — nothing to dispatch either way
-      callAttempt: { count: async () => 0 },
+      // See the OPEN-breaker test above for why $transaction is needed here too.
+      $transaction: async (ops: unknown[]) => Promise.all(ops),
+      callAttempt: { count: async () => 0, findMany: async () => [] },
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
