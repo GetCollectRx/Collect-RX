@@ -5,7 +5,7 @@ import {
   Badge, Button, Card, CardHeader, DataState, Input, Select,
   Table, TableContainer, Tbody, Td, Th, Thead, Tr, TableEmpty,
 } from '../components/ui'
-import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES, type ProspectListItem, type PipelineColumn } from '../types/partnerships'
+import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES, PERSONA_BUCKETS, type ProspectListItem, type PipelineColumn } from '../types/partnerships'
 
 type Stats = { total: number; byStage: Record<string, number> }
 
@@ -24,6 +24,7 @@ export default function PartnershipsBoard() {
   const [prospects, setProspects] = useState<ProspectListItem[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [stageFilter, setStageFilter] = useState('')
+  const [personaFilter, setPersonaFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [harvestQuery, setHarvestQuery] = useState('dental practice')
@@ -43,7 +44,10 @@ export default function PartnershipsBoard() {
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
-    const q = stageFilter ? `?stage=${stageFilter}` : ''
+    const params = new URLSearchParams()
+    if (stageFilter) params.set('stage', stageFilter)
+    if (personaFilter) params.set('personaBucket', personaFilter)
+    const q = params.toString() ? `?${params.toString()}` : ''
     const loads: Promise<void>[] = [
       apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(`/api/admin/partnerships/prospects${q}`)
         .then((list) => setProspects(list.data)),
@@ -59,7 +63,7 @@ export default function PartnershipsBoard() {
     Promise.all(loads)
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
-  }, [stageFilter, view])
+  }, [stageFilter, personaFilter, view])
 
   useEffect(() => { load() }, [load])
 
@@ -242,6 +246,12 @@ export default function PartnershipsBoard() {
               <option key={s} value={s}>{STAGE_LABELS[s]}</option>
             ))}
           </Select>
+          <Select label="Persona" value={personaFilter} onChange={(e) => setPersonaFilter(e.target.value)}>
+            <option value="">All personas</option>
+            {PERSONA_BUCKETS.map((bucket) => (
+              <option key={bucket} value={bucket}>{bucket}</option>
+            ))}
+          </Select>
           <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
         </div>
 
@@ -313,13 +323,14 @@ export default function PartnershipsBoard() {
                 <Th>Contact</Th>
                 <Th>Score</Th>
                 <Th>Stage</Th>
+                <Th>Persona</Th>
                 <Th>Last activity</Th>
                 <Th />
               </Tr>
             </Thead>
             <Tbody>
               {prospects.length === 0 ? (
-                <TableEmpty colSpan={6} message="No prospects yet. Harvest or add manually." />
+                <TableEmpty colSpan={7} message="No prospects yet. Harvest or add manually." />
               ) : (
                 prospects.map((p) => (
                   <Tr key={p.id}>
@@ -333,6 +344,16 @@ export default function PartnershipsBoard() {
                     </Td>
                     <Td>{p.score}</Td>
                     <Td><Badge>{STAGE_LABELS[p.stage]}</Badge></Td>
+                    <Td className="text-xs">
+                      {p.personaBucket ? (
+                        <>
+                          <div>{p.personaBucket}</div>
+                          <div className="text-gray-500">{p.personaConfidence} confidence</div>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">unclassified</span>
+                      )}
+                    </Td>
                     <Td muted className="text-xs">
                       {p.lastEngagedAt
                         ? new Date(p.lastEngagedAt).toLocaleString('en-CA')

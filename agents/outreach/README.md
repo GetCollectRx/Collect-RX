@@ -94,7 +94,7 @@ resolved as standing policy so the pipeline doesn't stall on them:
 | **Market Research Agent** | `market-researcher.md` | Deep research on the specific ICP cross-section; extends `market-intelligence.md` and `competitive-intelligence.md`, doesn't duplicate them |
 | **Product Lead Agent** | `product-lead.md` | Product direction and "what's next" narrative, bounded to what Backend State confirms is shipped or credible near-term |
 | **GTM Strategist Agent** | `gtm-strategist.md` | Turns research + product direction into a channel/sequencing plan against the existing `sequenceEngine.ts` stages |
-| **Persona Classifier Agent** | `persona-classifier.md` | Buckets contacts by role, judges whether the found person is actually the right one to reach, and enforces cross-channel contact history (e.g. "already LinkedIn-connected, no reply — don't message again there") |
+| **Persona Classifier Agent** | `persona-classifier.md` | Buckets contacts by role, judges whether the found person is actually the right one to reach, and enforces cross-channel contact history (e.g. "already LinkedIn-connected, no reply — don't message again there"). Persists every classification to the `Prospect` record — searchable via `?personaBucket=`, not just reported once and forgotten |
 | **Personalization Agent** | `personalization.md` | Drafts the actual message per persona, ethos/pathos/logos — every specific claim must be sourced |
 | **Text Humanizer Agent** | `text-humanizer.md` | Style-only pass on every draft — no em/en dashes, active voice, varied rhythm — before anything reaches the fact-checking gates |
 | **Hallucination Gate Agent** | `hallucination-gate.md` | Fact-checks every claim in every draft against a real source before it can leave the pipeline |

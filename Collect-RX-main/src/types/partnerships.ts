@@ -34,6 +34,9 @@ export interface ProspectListItem {
   score: number;
   stage: ProspectStage;
   source: ProspectSource;
+  personaBucket: string | null;
+  personaConfidence: string | null;
+  personaAssignedAt: string | null;
   lastEngagedAt: string | null;
   lastEmailSentAt: string | null;
   createdAt: string;
@@ -71,3 +74,18 @@ export const KANBAN_CLOSED_STAGES: ProspectStage[] = [
   'closed_lost',
   'opted_out',
 ];
+
+/** Outreach pipeline's Persona Classifier buckets — see agents/outreach/persona-classifier.md. */
+export const PERSONA_BUCKETS = [
+  'Owner-Dentist',
+  'Office Manager / Practice Administrator',
+  'Billing/AR Staff',
+  'DSO Growth / Special Markets / Partnerships exec',
+  'Regional Ops / Practice Support',
+] as const;
+
+export type PersonaBucket = (typeof PERSONA_BUCKETS)[number];
+
+export const PERSONA_CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
+
+export type PersonaConfidence = (typeof PERSONA_CONFIDENCE_LEVELS)[number];

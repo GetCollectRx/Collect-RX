@@ -21,7 +21,6 @@ import {
   CAPABILITY_CATALOG,
   formatCapabilityCatalogForReview,
 } from '../marketing/outreachVoice.js';
-import { PROSPECT_STAGES } from '../../types/partnerships.js';
 import {
   loadScoreWeights,
 } from '../marketing/prospectScoring.js';
@@ -31,6 +30,14 @@ import {
 import { startTrialOnboarding, runTrialOnboardingTick } from '../marketing/trialOnboarding.js';
 import { sendSuggestedReply } from '../marketing/replyIntelligence.js';
 import { sendPostDemoFollowUp } from '../marketing/postDemoFollowUp.js';
+import { recordPersonaClassification } from '../marketing/personaClassification.js';
+import {
+  PROSPECT_STAGES,
+  PERSONA_BUCKETS,
+  PERSONA_CONFIDENCE_LEVELS,
+  type PersonaBucket,
+  type PersonaConfidence,
+} from '../../types/partnerships.js';
 import { logger } from '../observability/logger.js';
 
 export function createPartnershipsRouter(prisma: PrismaClient): Router {
@@ -125,7 +132,11 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
 
   router.get('/prospects', async (req: Request, res: Response) => {
     const stage = req.query.stage as ProspectStage | undefined;
-    const where = stage && PROSPECT_STAGES.includes(stage) ? { stage } : {};
+    const personaBucket = req.query.personaBucket as PersonaBucket | undefined;
+    const where = {
+      ...(stage && PROSPECT_STAGES.includes(stage) ? { stage } : {}),
+      ...(personaBucket && PERSONA_BUCKETS.includes(personaBucket) ? { personaBucket } : {}),
+    };
     const rows = await prisma.prospect.findMany({
       where,
       orderBy: [{ score: 'desc' }, { updatedAt: 'desc' }],
@@ -143,11 +154,52 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
         score: p.score,
         stage: p.stage,
         source: p.source,
+        personaBucket: p.personaBucket,
+        personaConfidence: p.personaConfidence,
+        personaAssignedAt: p.personaAssignedAt?.toISOString() ?? null,
         lastEngagedAt: p.lastEngagedAt?.toISOString() ?? null,
         lastEmailSentAt: p.lastEmailSentAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
       })),
     });
+  });
+
+  /**
+   * Where the Outreach Persona Classifier Agent's per-contact decision actually
+   * lands — see agents/outreach/persona-classifier.md. Without this, persona
+   * bucketing exists only inside that run's markdown report and can't be
+   * searched or audited afterward.
+   */
+  router.post('/prospects/:id/persona', async (req: Request, res: Response) => {
+    const body = req.body as { bucket?: unknown; confidence?: unknown; reasoning?: unknown };
+    const bucket = typeof body.bucket === 'string' ? (body.bucket as PersonaBucket) : undefined;
+    const confidence =
+      typeof body.confidence === 'string' ? (body.confidence as PersonaConfidence) : undefined;
+
+    if (!bucket || !PERSONA_BUCKETS.includes(bucket)) {
+      return res.status(400).json({
+        success: false,
+        error: `bucket must be one of: ${PERSONA_BUCKETS.join(', ')}`,
+      });
+    }
+    if (!confidence || !PERSONA_CONFIDENCE_LEVELS.includes(confidence)) {
+      return res.status(400).json({
+        success: false,
+        error: `confidence must be one of: ${PERSONA_CONFIDENCE_LEVELS.join(', ')}`,
+      });
+    }
+
+    try {
+      const result = await recordPersonaClassification(prisma, {
+        prospectId: req.params.id,
+        bucket,
+        confidence,
+        reasoning: typeof body.reasoning === 'string' ? body.reasoning : undefined,
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
   });
 
   router.get('/prospects/:id', async (req: Request, res: Response) => {

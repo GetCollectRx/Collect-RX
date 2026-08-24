@@ -45,7 +45,10 @@ entire pipeline, every segment, until unset.
    can run in parallel, none depends on the others.
 2. Feed their three briefs into **GTM Strategist Agent** to produce a sequencing/targeting plan.
 3. Feed the plan into **Persona Classifier Agent** to produce a scored, bucketed, right-person
-   contact list with cross-channel history applied.
+   contact list with cross-channel history applied. Every classification gets persisted to the
+   `Prospect` record (`persona-classifier.md`'s "Persisting the decision" section), not just
+   reported — a bucket that only exists in this run's markdown isn't searchable or auditable
+   later, which defeats the point of classifying at all.
 4. Feed that list into **Personalization Agent** to produce drafts.
 5. Every draft through **Text Humanizer Agent** — style only, no em/en dashes, can't touch
    claims or sources. This runs before the fact-checking gates so what gets checked is the

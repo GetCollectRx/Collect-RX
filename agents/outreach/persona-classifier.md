@@ -101,6 +101,28 @@ approving a contact for a new touch:
 
 ---
 
+## Persisting the decision (not just reporting it)
+
+The table above is a run's report — it is not, by itself, the record. Every classification in
+it must also be written to the actual `Prospect` row via
+`POST /api/admin/partnerships/prospects/:id/persona` (`{ bucket, confidence, reasoning }`),
+backed by `recordPersonaClassification()` in
+`Collect-RX-main/src/server/marketing/personaClassification.ts`. That call does two things a
+markdown table can't: it makes the bucket a real, indexed, filterable field
+(`?personaBucket=` on `GET /api/admin/partnerships/prospects`, and a Persona column/filter in
+the Partnerships admin UI), and it logs a `persona_classified` `ProspectActivity` entry so the
+reasoning behind every past classification — including ones later revised — stays in the audit
+trail rather than being overwritten silently.
+
+**This step is not optional.** A persona classification that only exists in this run's report
+answers "who did we decide to email this week" but not "show me every DSO Growth contact we've
+ever found" or "why was this contact classified this way three batches ago" — both of which are
+the actual point of having a Persona Classifier agent at all, not an afterthought. Classify,
+then persist, for every contact in the batch — including low-confidence auto-excludes, since
+recording *why* something was excluded is exactly what makes the exclusion auditable later.
+
+---
+
 ## How to Run This Agent
 
 ```
@@ -108,6 +130,8 @@ approving a contact for a new touch:
 persona bucket, judge right-person confidence (high/medium/low) given the practice's
 structure, and check ProspectActivity for prior touches on any channel. Auto-exclude
 low-confidence right-person calls and opt-outs — do not escalate them. Apply the fixed
-cross-channel cooldown and framing-downgrade rules automatically. Produce the Persona
-Classification table with auto-exclusions and framing substitutions clearly listed."
+cross-channel cooldown and framing-downgrade rules automatically. For every contact, including
+auto-excludes, persist the classification via POST /api/admin/partnerships/prospects/:id/persona
+— do not stop at producing the report. Produce the Persona Classification table with
+auto-exclusions and framing substitutions clearly listed."
 ```
