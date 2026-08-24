@@ -336,6 +336,18 @@ app.post(
   makeSendgridEventWebhookHandler(prisma),
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo booking (Calendly / Cal.com) — RAW body MUST be mounted before
+// express.json(). Both providers sign the exact raw request bytes; verifying
+// against a re-serialized JSON object would fail even with the right secret.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/demo-booking',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  createDemoBookingWebhookRouter(prisma),
+);
+
 app.use(
   '/api/webhooks/sendgrid-inbound',
   webhookLimiter,
@@ -348,12 +360,6 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(correlationIdMiddleware);
-
-app.use(
-  '/api/webhooks/demo-booking',
-  webhookLimiter,
-  createDemoBookingWebhookRouter(prisma),
-);
 
 
 // ─────────────────────────────────────────────────────────────────────────────
