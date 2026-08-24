@@ -1598,6 +1598,50 @@ model CdcpReconsiderationCase {
   @@map("CdcpReconsiderationCase")
 }
 
+/// Physically exists (migration 20260804000000_dso_organization_onboarding) but
+/// unused by any app code — org invites moved to InviteToken's organizationId/
+/// orgRole fields (see that model's comments) at some point without this table
+/// ever being formally dropped. @@ignore keeps Prisma aware the table exists,
+/// so `prisma migrate dev` stops proposing to silently DROP TABLE it — that
+/// decision belongs to the operator, on real production data this session
+/// cannot inspect, not to an auto-generated migration. Excluded from
+/// PrismaClient; no app code can read or write it as written.
+model OrganizationInviteToken {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  inviteeEmail   String    @map("invitee_email")
+  token          String    @unique
+  expiresAt      DateTime  @map("expires_at")
+  usedAt         DateTime? @map("used_at")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([organizationId])
+  @@map("organization_invite_tokens")
+  @@ignore
+}
+
+/// Restores schema.prisma's record of a table that already exists in every real
+/// database (created by migration 20260719_phase5_kpi_snapshots) — a prior merge
+/// dropped this model from schema.prisma without ever dropping the table, which
+/// left it invisible to Prisma while still live and read/written via raw SQL in
+/// src/server/routes/cdcp.ts (GET/POST /api/cdcp/kpi). Field types, defaults, and
+/// constraint/index names below match the live table exactly — this restoration
+/// is a no-op migration, not a schema change.
+model Phase5KpiSnapshot {
+  id           BigInt   @id @default(autoincrement())
+  practiceId   Int      @map("practice_id")
+  snapshotDate DateTime @map("snapshot_date") @db.Date
+  metrics      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([practiceId, snapshotDate], map: "phase5_kpi_snapshots_practice_id_snapshot_date_key")
+  @@index([practiceId, snapshotDate(sort: Desc)], map: "idx_phase5_kpi_practice_date")
+  @@map("phase5_kpi_snapshots")
+}
+
 model FeeGuideEntry {
   id            String   @id @default(uuid())
   scope         String
@@ -1809,6 +1853,13 @@ model Prospect {
   trialSequenceStep    Int                  @default(0) @map("trial_sequence_step")
   /// Cold outreach email sequence step (0=not sent, 1=initial sent, 2=follow-up sent, 3=follow-up2, etc.)
   emailSequenceStep    Int                  @default(0) @map("email_sequence_step")
+  /// Outreach pipeline's Persona Classifier bucket — see agents/outreach/persona-classifier.md.
+  personaBucket        String?              @map("persona_bucket")
+  /// Right-person confidence for personaBucket: 'high' | 'medium' | 'low'.
+  personaConfidence    String?              @map("persona_confidence")
+  /// Freeform right-person judgment rationale from the Persona Classifier run.
+  personaReasoning     String?              @map("persona_reasoning") @db.Text
+  personaAssignedAt    DateTime?            @map("persona_assigned_at")
   initialEmailSentAt   DateTime?            @map("initial_email_sent_at")
   followUpEmailSentAt  DateTime?            @map("follow_up_email_sent_at")
   followUpScheduledFor DateTime?            @map("follow_up_scheduled_for")
@@ -1825,6 +1876,7 @@ model Prospect {
   @@index([campaignId])
   @@index([emailSequenceStep, stage])
   @@index([followUpScheduledFor])
+  @@index([personaBucket])
   @@map("prospects")
 }
 

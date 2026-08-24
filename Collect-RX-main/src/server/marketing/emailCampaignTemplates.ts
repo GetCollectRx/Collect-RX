@@ -52,9 +52,12 @@ const INITIAL_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 
 <p>Best,<br>
 Khalid Egeh<br>
-Founder, CollectRx<br>
-khalid@collectrx.ca · {{SenderPhone}}<br>
+Founder<br>
+&nbsp;<br>
+CollectRx<br>
 {{MailingAddress}}</p>
+
+<p>khalid@collectrx.ca &middot; {{SenderPhone}}</p>
 
 <p><em>CollectRx sends A/R automation software for Canadian dental practices. If you'd rather not hear from us, reply "unsubscribe" and I won't email again.</em></p>`;
 
@@ -66,9 +69,13 @@ const FOLLOW_UP_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 
 <p>Happy to send a 2-minute demo video instead of a call if that's easier — just say the word.</p>
 
-<p>Khalid<br>
-Founder, CollectRx · khalid@collectrx.ca · {{SenderPhone}}<br>
-{{MailingAddress}} · Reply "unsubscribe" to opt out.</p>`;
+<p>Khalid Egeh<br>
+Founder<br>
+&nbsp;<br>
+CollectRx<br>
+{{MailingAddress}}</p>
+
+<p>khalid@collectrx.ca &middot; {{SenderPhone}} &middot; Reply "unsubscribe" to opt out.</p>`;
 
 function getSubjectVariant(variant: 'a' | 'b' | 'c' = 'a'): string {
   switch (variant) {

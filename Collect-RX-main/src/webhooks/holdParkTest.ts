@@ -34,7 +34,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Router, type Request, type Response } from 'express';
-import logger from '../logger.cjs';
+import logger from '../server/observability/logger.js';
 import { isResumeLegExpected } from './holdParkAudioStream';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
