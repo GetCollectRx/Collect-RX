@@ -7,9 +7,11 @@ model: claude-haiku-4-5-20251001
 **Purpose:** Own the goal — CollectRx widely adopted across Canadian dental practices — and
 run the outreach pipeline toward it without letting anything unverified reach a real prospect.
 This agent is the engine and the logic: it sequences the other outreach agents, holds the
-pre-send verification gate, and assembles the batch that Approval Agent then releases or
-auto-excludes contact-by-contact. This pipeline runs autonomously — see "Handoff to Approval
-Agent" below and `approval-agent.md` for the standing authorization that makes that possible.
+pre-send verification gate, and assembles the batch that Approval Agent then releases,
+holds for review, or auto-excludes contact-by-contact. This pipeline is designed to run
+autonomously — see "Handoff to Approval Agent" below and `approval-agent.md` for the standing
+authorization that makes that possible, and for the temporary `OUTREACH_REQUIRE_HUMAN_APPROVAL`
+gate currently sitting in front of it.
 
 ---
 
@@ -59,10 +61,12 @@ entire pipeline, every segment, until unset.
 7. Every draft that clears the gate goes through **Compliance & Deliverability Gate Agent**.
 8. Assemble what survives into a batch and apply the verification checklist below to every
    contact in it, not just to the copy.
-9. Hand the batch to **Approval Agent**, which releases anything that passed every gate and
-   auto-excludes anything that didn't — see `approval-agent.md`. This is a fully autonomous
-   pipeline: no step here waits on a live human response. The Approval Agent's output is the
-   audit trail, not a request.
+9. Hand the batch to **Approval Agent**, which releases (or, while
+   `OUTREACH_REQUIRE_HUMAN_APPROVAL` is on, holds for operator review) anything that passed
+   every gate, and auto-excludes anything that didn't — see `approval-agent.md`. No step here
+   waits on a live human response mid-run; the Approval Agent's output is the audit trail, not
+   a request. Once the operator batch-approves (or once the gate is off), release itself still
+   happens without a further live check.
 
 ---
 
@@ -116,17 +120,24 @@ right default independent of this correction.
 
 ---
 
-## Handoff to Approval Agent (no live human check)
+## Handoff to Approval Agent
 
 The orchestrator's output is a batch, assembled per the checklist above, handed directly to
 **Approval Agent** — see `approval-agent.md` for exactly which contacts get released and which
 get auto-excluded, and for the fixed policies that resolve what used to be open questions
-(low-confidence role fit, ambiguous CASL basis, cross-channel cooldown timing, etc.). The
-Orchestrator does not wait for a person to say go — the Approval Agent's release decision *is*
-the go, bounded strictly to contacts that already cleared every gate. A contact that didn't
-clear a gate is never released, by anyone, at any point in this pipeline — that boundary isn't
-something a human approval step was adding on top; it was always enforced by the gates
-themselves.
+(low-confidence role fit, ambiguous CASL basis, cross-channel cooldown timing, etc.). A
+contact that didn't clear a gate is never released, by anyone, at any point in this pipeline —
+that boundary isn't something a human approval step was adding on top; it was always enforced
+by the gates themselves.
+
+**As of 2026-08-24, `OUTREACH_REQUIRE_HUMAN_APPROVAL` (unset/true by default) makes this a
+one-more-click handoff, not a no-human one:** Approval Agent holds every gate-cleared contact
+for the operator's batch review instead of releasing it outright — see `approval-agent.md`'s
+"Temporary human review gate" section for the exact mechanism. The Orchestrator's own job here
+is unchanged either way: assemble the checklist-passing batch and hand it to Approval Agent.
+Once the operator sets `OUTREACH_REQUIRE_HUMAN_APPROVAL=false`, this reverts to the originally
+designed fully autonomous handoff, where the Approval Agent's release decision *is* the go and
+the Orchestrator never waits for a person to say so.
 
 Batch report format (produced by Approval Agent, this agent assembles the inputs it needs):
 
@@ -147,7 +158,8 @@ Batch report format (produced by Approval Agent, this agent assembles the inputs
 ```
 "Act as the CollectRx Outreach Orchestrator. Run the full pipeline in agents/outreach/README.md
 for [region/segment]. Apply the Pre-Send Verification Checklist to every contact. Hand the
-result to the Approval Agent per approval-agent.md and let it release/exclude per its fixed
-policies — do not pause the pipeline waiting for a live approval. Produce the Outreach Batch
-report and the Approval Agent's Batch Release report together."
+result to the Approval Agent per approval-agent.md and let it release/hold/exclude per its
+fixed policies (checking OUTREACH_REQUIRE_HUMAN_APPROVAL first) — do not pause the pipeline
+mid-run waiting for a live approval either way. Produce the Outreach Batch report and the
+Approval Agent's Batch Release report together."
 ```

@@ -24,14 +24,21 @@ prospects, (2) finds contact info, (3) drafts outreach, and (4) sends it — but
 **nothing goes out until every claim about a prospect and every claim about CollectRx has been
 verified**, and the orchestrator is the one enforcing that, not any individual drafting agent.
 
-**This pipeline runs autonomously — no live human sign-off per batch.** The operator gave
-standing authorization for that, on the condition that anything requiring judgment gets
-resolved by an agent with a fixed, fail-closed policy instead of by him personally reviewing
-every batch (see `approval-agent.md` for the exact scope of that authorization and the
-decisions it resolves). The gates themselves — verification checklist, hallucination check,
-CASL/compliance check — are unchanged and still hard-block anything that doesn't clear them;
-what changed is that clearing every gate is now sufficient to release a contact, rather than
-also requiring a person to say go.
+**This pipeline is designed to run autonomously — no live human sign-off per batch.** The
+operator gave standing authorization for that, on the condition that anything requiring
+judgment gets resolved by an agent with a fixed, fail-closed policy instead of by him
+personally reviewing every batch (see `approval-agent.md` for the exact scope of that
+authorization and the decisions it resolves). The gates themselves — verification checklist,
+hallucination check, CASL/compliance check — are unchanged and still hard-block anything that
+doesn't clear them; clearing every gate is what makes a contact eligible for release, rather
+than also requiring a person to say go.
+
+**As of 2026-08-24, a temporary gate sits in front of that autonomy.** For the first couple
+of weeks of real Ottawa outreach, the operator wanted direct oversight before handing off —
+`OUTREACH_REQUIRE_HUMAN_APPROVAL` (Fly secret, unset/true by default) makes Approval Agent
+hold every gate-cleared contact for a batch review in the Partnerships admin UI instead of
+releasing it outright. See `approval-agent.md`'s "Temporary human review gate" section for
+the exact mechanism and how to flip it off once the operator is ready for full autonomy.
 
 ## How this stays controlled
 
@@ -52,8 +59,13 @@ routine:
 5. **Kill switch** (`orchestrator.md`) — `OUTREACH_KILL_SWITCH=true` as a Fly.io secret halts
    the entire pipeline, every segment, before a single downstream agent runs. The one control
    that needs no code change and no waiting for a batch to finish.
+6. **Human review gate** (`approval-agent.md`, temporary) — `OUTREACH_REQUIRE_HUMAN_APPROVAL`
+   unset/true holds every gate-cleared contact (`pendingOutreachApproval=true`, enforced by
+   `sequenceEngine.ts` excluding it from every tick) for the operator's batch review before
+   release. Active as of 2026-08-24 for the first weeks of real Ottawa outreach; the operator
+   flips it off once comfortable handing off to full autonomy.
 
-Model allocation is a sixth, quieter control: the steps where a wrong call reaches a real
+Model allocation is a seventh, quieter control: the steps where a wrong call reaches a real
 person (persona judgment, drafting, fact-checking, compliance) run on Sonnet; the
 research/aggregation/mechanical steps run on Haiku. See each agent's frontmatter.
 
@@ -99,7 +111,7 @@ resolved as standing policy so the pipeline doesn't stall on them:
 | **Text Humanizer Agent** | `text-humanizer.md` | Style-only pass on every draft — no em/en dashes, active voice, varied rhythm — before anything reaches the fact-checking gates |
 | **Hallucination Gate Agent** | `hallucination-gate.md` | Fact-checks every claim in every draft against a real source before it can leave the pipeline |
 | **Compliance & Deliverability Gate** | `compliance-gate.md` | CASL basis, sender identity, unsubscribe handling, batch/rate limits, domain reputation — the last technical/legal check |
-| **Approval Agent** | `approval-agent.md` | Releases or auto-excludes each contact based purely on upstream gate verdicts, under the operator's standing authorization — this is what removed the human bottleneck |
+| **Approval Agent** | `approval-agent.md` | Releases, holds for review, or auto-excludes each contact based purely on upstream gate verdicts plus `OUTREACH_REQUIRE_HUMAN_APPROVAL` — full autonomy is the standing-authorized end state, a temporary review gate sits in front of it as of 2026-08-24 |
 
 ## Pipeline Order
 
@@ -124,9 +136,10 @@ Product Lead Agent ─────┘                                        │
                                                      Outreach Orchestrator (assembles batch)
                                                                    │
                                                                    ▼
-                                                     Approval Agent (releases/excludes per fixed
-                                                     policy, no live sign-off) ──→ queued in
-                                                     emailCampaignScheduler.ts / sequenceEngine.ts
+                                                     Approval Agent (release/hold-for-review/
+                                                     exclude per fixed policy and
+                                                     OUTREACH_REQUIRE_HUMAN_APPROVAL) ──→ queued
+                                                     in emailCampaignScheduler.ts / sequenceEngine.ts
 ```
 
 **No agent in this directory sends a real email or messages a real person directly** — release
@@ -153,7 +166,8 @@ what it's authorized to decide on the operator's behalf and what it explicitly i
 Backend State in parallel, feed both into GTM Strategist, run Persona Classifier on the
 resulting contact list, draft with Personalization Agent, run every draft through the Text
 Humanizer Agent, then through the Hallucination Gate and Compliance & Deliverability Gate.
-Hand the result to the Approval Agent, which releases anything that passed every gate and
-auto-excludes anything that didn't, per the fixed policies in approval-agent.md. Produce the
-full batch report — this runs end-to-end without a live approval pause."
+Hand the result to the Approval Agent, which releases (or holds for operator review, while
+OUTREACH_REQUIRE_HUMAN_APPROVAL is on) anything that passed every gate and auto-excludes
+anything that didn't, per the fixed policies in approval-agent.md. Produce the full batch
+report — this runs end-to-end without pausing mid-run for a live approval."
 ```

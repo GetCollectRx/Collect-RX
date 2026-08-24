@@ -40,6 +40,10 @@ export default function PartnershipsBoard() {
   const [pipeline, setPipeline] = useState<PipelineColumn[]>([])
   const [learningMsg, setLearningMsg] = useState<string | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
+  const [pendingApproval, setPendingApproval] = useState<ProspectListItem[]>([])
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -66,6 +70,19 @@ export default function PartnershipsBoard() {
   }, [stageFilter, personaFilter, view])
 
   useEffect(() => { load() }, [load])
+
+  const loadPendingApproval = useCallback(() => {
+    apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(
+      '/api/admin/partnerships/prospects?pendingOutreachApproval=true',
+    )
+      .then((list) => {
+        setPendingApproval(list.data)
+        setApprovedIds(new Set(list.data.map((p) => p.id)))
+      })
+      .catch((e) => setReviewMsg((e as Error).message))
+  }, [])
+
+  useEffect(() => { loadPendingApproval() }, [loadPendingApproval])
 
   const runHarvest = async () => {
     setHarvestBusy(true)
@@ -169,6 +186,38 @@ export default function PartnershipsBoard() {
     }
   }
 
+  const toggleApproved = (id: string) => {
+    setApprovedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const submitOutreachReview = async () => {
+    setReviewBusy(true)
+    setReviewMsg(null)
+    try {
+      const approve = pendingApproval.filter((p) => approvedIds.has(p.id)).map((p) => p.id)
+      const reject = pendingApproval.filter((p) => !approvedIds.has(p.id)).map((p) => p.id)
+      const res = await apiFetch('/api/admin/partnerships/prospects/outreach-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approve, reject }),
+      })
+      const body = await res.json() as { data?: { approved: number; rejected: number }; error?: string }
+      if (!res.ok) throw new Error(body.error || 'Review submit failed')
+      setReviewMsg(`Approved ${body.data?.approved ?? 0}, excluded ${body.data?.rejected ?? 0}`)
+      loadPendingApproval()
+      load()
+    } catch (e) {
+      setReviewMsg((e as Error).message)
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
   const pipelineByStage = Object.fromEntries(pipeline.map((col) => [col.stage, col])) as Record<string, PipelineColumn>
 
   return (
@@ -208,6 +257,48 @@ export default function PartnershipsBoard() {
         </div>
         {tickMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{tickMsg}</p>}
         {learningMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{learningMsg}</p>}
+
+        {pendingApproval.length > 0 && (
+          <Card>
+            <CardHeader
+              title={`Outreach batch review (${pendingApproval.length})`}
+              subtitle="Cleared every pipeline gate — uncheck anyone you don't want contacted, then approve. See agents/outreach/approval-agent.md."
+            />
+            <div className="px-4 pb-2 space-y-2">
+              {pendingApproval.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex items-start gap-3 rounded-md border border-gray-200 dark:border-gray-700 p-3 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    aria-label={`Include ${p.practiceName} in this outreach batch`}
+                    checked={approvedIds.has(p.id)}
+                    onChange={() => toggleApproved(p.id)}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium">{p.practiceName}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {p.contactName || 'Contact TBD'}
+                      {p.city ? ` · ${p.city}` : ''}
+                      {p.personaBucket ? ` · ${p.personaBucket}` : ''}
+                      {p.personaConfidence ? ` (${p.personaConfidence} confidence)` : ''}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="px-4 pb-4 flex flex-wrap gap-3 items-center">
+              <Button onClick={() => void submitOutreachReview()} disabled={reviewBusy}>
+                {reviewBusy
+                  ? 'Submitting…'
+                  : `Approve ${approvedIds.size} of ${pendingApproval.length}`}
+              </Button>
+              {reviewMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{reviewMsg}</p>}
+            </div>
+          </Card>
+        )}
 
         <Card>
           <CardHeader title="Add prospect manually" subtitle="For referrals, inbound leads, or one-off targets" />
