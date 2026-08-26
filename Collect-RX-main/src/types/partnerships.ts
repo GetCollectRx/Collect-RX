@@ -37,6 +37,7 @@ export interface ProspectListItem {
   personaBucket: string | null;
   personaConfidence: string | null;
   personaAssignedAt: string | null;
+  pendingOutreachApproval: boolean;
   lastEngagedAt: string | null;
   lastEmailSentAt: string | null;
   createdAt: string;

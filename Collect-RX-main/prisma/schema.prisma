@@ -1860,6 +1860,11 @@ model Prospect {
   /// Freeform right-person judgment rationale from the Persona Classifier run.
   personaReasoning     String?              @map("persona_reasoning") @db.Text
   personaAssignedAt    DateTime?            @map("persona_assigned_at")
+  /// True while a contact that cleared every outreach-pipeline gate is held for
+  /// the operator's batch review (OUTREACH_REQUIRE_HUMAN_APPROVAL) instead of
+  /// being released — see agents/outreach/approval-agent.md. sequenceEngine.ts
+  /// excludes true from every tick; approving clears it back to false.
+  pendingOutreachApproval Boolean           @default(false) @map("pending_outreach_approval")
   initialEmailSentAt   DateTime?            @map("initial_email_sent_at")
   followUpEmailSentAt  DateTime?            @map("follow_up_email_sent_at")
   followUpScheduledFor DateTime?            @map("follow_up_scheduled_for")

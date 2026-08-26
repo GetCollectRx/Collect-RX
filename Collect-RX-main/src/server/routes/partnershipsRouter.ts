@@ -133,9 +133,13 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
   router.get('/prospects', async (req: Request, res: Response) => {
     const stage = req.query.stage as ProspectStage | undefined;
     const personaBucket = req.query.personaBucket as PersonaBucket | undefined;
+    const pendingOutreachApprovalRaw = req.query.pendingOutreachApproval;
     const where = {
       ...(stage && PROSPECT_STAGES.includes(stage) ? { stage } : {}),
       ...(personaBucket && PERSONA_BUCKETS.includes(personaBucket) ? { personaBucket } : {}),
+      ...(pendingOutreachApprovalRaw === 'true' || pendingOutreachApprovalRaw === 'false'
+        ? { pendingOutreachApproval: pendingOutreachApprovalRaw === 'true' }
+        : {}),
     };
     const rows = await prisma.prospect.findMany({
       where,
@@ -157,11 +161,51 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
         personaBucket: p.personaBucket,
         personaConfidence: p.personaConfidence,
         personaAssignedAt: p.personaAssignedAt?.toISOString() ?? null,
+        pendingOutreachApproval: p.pendingOutreachApproval,
         lastEngagedAt: p.lastEngagedAt?.toISOString() ?? null,
         lastEmailSentAt: p.lastEmailSentAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
       })),
     });
+  });
+
+  /**
+   * Batch review for the outreach pipeline's human-approval gate
+   * (OUTREACH_REQUIRE_HUMAN_APPROVAL — see agents/outreach/approval-agent.md).
+   * Approving clears pendingOutreachApproval so the next scheduler tick can
+   * pick the contact up; rejecting clears it too but routes the contact to
+   * closed_lost so it drops out of the review queue without ever sending.
+   */
+  router.post('/prospects/outreach-review', async (req: Request, res: Response) => {
+    const body = req.body as { approve?: unknown; reject?: unknown };
+    const approve = Array.isArray(body.approve) ? body.approve.filter((id) => typeof id === 'string') : [];
+    const reject = Array.isArray(body.reject) ? body.reject.filter((id) => typeof id === 'string') : [];
+
+    if (approve.length === 0 && reject.length === 0) {
+      return res.status(400).json({ success: false, error: 'approve and/or reject id lists required' });
+    }
+
+    if (approve.length > 0) {
+      await prisma.prospect.updateMany({
+        where: { id: { in: approve } },
+        data: { pendingOutreachApproval: false },
+      });
+      for (const id of approve) {
+        await logProspectActivity(prisma, id, 'outreach_approved', 'Approved in batch review');
+      }
+    }
+
+    if (reject.length > 0) {
+      await prisma.prospect.updateMany({
+        where: { id: { in: reject } },
+        data: { pendingOutreachApproval: false, stage: 'closed_lost' },
+      });
+      for (const id of reject) {
+        await logProspectActivity(prisma, id, 'outreach_rejected', 'Excluded in batch review');
+      }
+    }
+
+    return res.json({ success: true, data: { approved: approve.length, rejected: reject.length } });
   });
 
   /**
@@ -302,9 +346,26 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
       if (typeof body.phone === 'string') data.phone = body.phone.trim();
       if (typeof body.pmsHint === 'string') data.pmsHint = body.pmsHint.trim();
       if (typeof body.score === 'number') data.score = body.score;
+      if (typeof body.pendingOutreachApproval === 'boolean') {
+        data.pendingOutreachApproval = body.pendingOutreachApproval;
+      }
 
       let prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
       if (!prospect) return res.status(404).json({ success: false, error: 'Not found' });
+
+      if (
+        typeof body.pendingOutreachApproval === 'boolean' &&
+        body.pendingOutreachApproval !== prospect.pendingOutreachApproval
+      ) {
+        await logProspectActivity(
+          prisma,
+          prospect.id,
+          body.pendingOutreachApproval ? 'outreach_approval_held' : 'outreach_approved',
+          body.pendingOutreachApproval
+            ? 'Held for outreach batch review'
+            : 'Approved for outreach',
+        );
+      }
 
       if (typeof body.stage === 'string' && PROSPECT_STAGES.includes(body.stage as ProspectStage)) {
         prospect = await advanceProspectStage(prisma, prospect.id, body.stage as ProspectStage);

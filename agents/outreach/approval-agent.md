@@ -13,6 +13,38 @@ verdicts instead of forwarding them to a person.
 
 ---
 
+## Temporary human review gate (`OUTREACH_REQUIRE_HUMAN_APPROVAL`) — active as of 2026-08-24
+
+The operator asked for direct oversight of the first couple of weeks of real Ottawa
+outreach before handing off to the fully autonomous policy below — "at least for now."
+This is enforced in code, not just by convention:
+
+- **`OUTREACH_REQUIRE_HUMAN_APPROVAL` unset or `true` (current default):** when this
+  agent would otherwise release a contact per the policy below, it instead holds it —
+  `PATCH /api/admin/partnerships/prospects/:id { "pendingOutreachApproval": true }` —
+  and does **not** advance it further. `sequenceEngine.ts`'s tick excludes every
+  `pendingOutreachApproval: true` contact, so nothing sends while held, regardless of the
+  gate verdicts. The operator reviews the held batch in the Partnerships admin UI (or via
+  `POST /api/admin/partnerships/prospects/outreach-review` with `{ approve: [...ids],
+  reject: [...ids] }`) and batch-approves; approving clears the flag so the next tick can
+  pick the contact up, rejecting clears it too but routes the contact to `closed_lost` so
+  it drops out of the queue without ever sending. This is the enforcement point for the
+  "Sunday-evening review, batch-approve" behavior — the pipeline still runs every gate
+  exactly as documented below, this only changes what happens after a contact clears them.
+- **`OUTREACH_REQUIRE_HUMAN_APPROVAL=false`:** the gate is off. Every contact that clears
+  every upstream gate is released exactly per the "In scope" policy below — no hold, no
+  live human check. This is the fully autonomous design the operator originally asked
+  for and gave standing authorization for; flipping this Fly secret is the entire
+  handoff once the operator is comfortable with the first weeks' results. No code change
+  needed either direction.
+
+Everything else in this file — the standing authorization, the fixed policies, the
+circuit breakers, the hard weekly cap — is unchanged by this gate. It governs *whether a
+gate-cleared contact needs one more click before it can send*, not what counts as
+gate-cleared.
+
+---
+
 ## Standing authorization (record of scope, not a blank check)
 
 The operator (Khalid) gave blanket forward authorization for this pipeline to run without
@@ -105,6 +137,9 @@ it is a volume ceiling that holds even when every gate is passing everything.
 ### Released to send queue (N contacts)
 | Practice | Contact | Persona bucket | Send window (local) | Gate verdicts |
 
+### Held for operator review (N contacts) — only when OUTREACH_REQUIRE_HUMAN_APPROVAL is on
+| Practice | Contact | Persona bucket | Gate verdicts |
+
 ### Auto-excluded (N contacts)
 | Practice | Contact | Excluding gate | Reason | Fallback contact available? |
 
@@ -129,10 +164,12 @@ without the pipeline having waited on that review.
 ```
 "Run the CollectRx Outreach Approval Agent on this batch's gate results (Verification
 Checklist, Persona Classification, Hallucination Gate Review, Compliance & Deliverability
-Gate). Release every contact with a clean PASS on all four into the send queue, then check the
-rolling 7-day OUTREACH_MAX_WEEKLY_SENDS ceiling before finalizing — trim to the cap by
-confidence if the batch would exceed it. Auto-exclude anything else per the fixed policies in
-agents/outreach/approval-agent.md — do not escalate individual contacts for a decision. Check
-circuit-breaker conditions and pause future batches for this segment if triggered. Produce the
-Batch Release report."
+Gate). Check OUTREACH_REQUIRE_HUMAN_APPROVAL first: if it is unset or true, hold every
+contact with a clean PASS on all four (pendingOutreachApproval=true) for operator review
+instead of releasing it; if it is false, release them into the send queue directly, then
+check the rolling 7-day OUTREACH_MAX_WEEKLY_SENDS ceiling before finalizing — trim to the cap
+by confidence if the batch would exceed it. Auto-exclude anything else per the fixed policies
+in agents/outreach/approval-agent.md — do not escalate individual contacts for a decision.
+Check circuit-breaker conditions and pause future batches for this segment if triggered.
+Produce the Batch Release report."
 ```

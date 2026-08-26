@@ -8,6 +8,7 @@
 export const FOUNDER_SIGNATURE_LINES = [
   'Khalid Egeh',
   'Founder',
+  '+1 (613) 501-8951',
   '',
   'CollectRx',
   '499 Preston St.',
