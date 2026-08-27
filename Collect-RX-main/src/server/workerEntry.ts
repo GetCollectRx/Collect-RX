@@ -22,6 +22,7 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
+import { runProspectHarvesting } from './jobs/prospectHarvestingJob.js';
 import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisitJobs.js';
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
@@ -192,6 +193,12 @@ const worker = new Worker(
         await runMarketingSequenceTick(prisma);
       } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
         await runMarketingLearningCycle(prisma);
+      } else if (job.name === 'PROSPECT_HARVEST') {
+        const results = await runProspectHarvesting(prisma);
+        if (results.length > 0) {
+          const totalImported = results.reduce((sum, r) => sum + r.imported, 0);
+          logger.info('[worker] PROSPECT_HARVEST completed', { campaignsProcessed: results.length, totalImported });
+        }
       } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
         await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
