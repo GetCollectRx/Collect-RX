@@ -79,17 +79,84 @@ export async function harvestProspects(
 
   for (const place of places) {
     const { city, province } = parseCityProvince(place.formatted_address);
-    const existing = place.place_id
-      ? await prisma.prospect.findFirst({ where: { googlePlaceId: place.place_id } })
-      : await prisma.prospect.findFirst({
-          where: { practiceName: { equals: place.name, mode: 'insensitive' }, city: city ?? undefined },
-        });
+
+    // Dedup strategy (in order of precedence):
+    // 1. Email-based dedup (if we have one from Google Places, though unlikely)
+    // 2. Google Place ID (exact match)
+    // 3. Practice name + city (case-insensitive, same discovery session)
+
+    let existing = null;
+
+    // Check by Google Place ID first (most reliable)
+    if (place.place_id) {
+      existing = await prisma.prospect.findFirst({
+        where: { googlePlaceId: place.place_id },
+        include: { activities: { orderBy: { createdAt: 'desc' }, take: 5 } },
+      });
+    }
+
+    // Fall back to practice name + city match if no place_id
+    if (!existing) {
+      existing = await prisma.prospect.findFirst({
+        where: {
+          practiceName: { equals: place.name, mode: 'insensitive' },
+          city: { equals: input.city ?? city ?? undefined, mode: 'insensitive' },
+        },
+        include: { activities: { orderBy: { createdAt: 'desc' }, take: 5 } },
+      });
+    }
 
     if (existing) {
-      skipped++;
+      // Contact already exists — check if re-engagement is allowed
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+      // Skip if recently emailed (< 60 days)
+      if (existing.lastEmailSentAt && existing.lastEmailSentAt > sixtyDaysAgo) {
+        skipped++;
+        continue;
+      }
+
+      // Skip if opted out
+      if (existing.optOutAt) {
+        skipped++;
+        continue;
+      }
+
+      // Check for recent cross-channel engagement (LinkedIn, calls, etc. in ProspectActivity)
+      const recentActivity = existing.activities.find((a) => {
+        const activityDate = new Date(a.createdAt);
+        // 30-day cooldown on cross-channel engagement
+        return activityDate > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      });
+
+      if (recentActivity) {
+        skipped++;
+        continue;
+      }
+
+      // Re-engagement eligible — update existing record instead of skipping
+      // Refresh the record with latest discovery data
+      await prisma.prospect.update({
+        where: { id: existing.id },
+        data: {
+          practiceName: place.name, // Update in case name changed
+          phone: place.formatted_phone_number ?? existing.phone,
+          website: place.website ?? existing.website,
+          googlePlaceId: place.place_id ?? existing.googlePlaceId,
+          score: computeProspectScore(signalsFromHarvestPlace(place), weights),
+          metadata: {
+            ...existing.metadata,
+            harvestQuery: textQuery,
+            rating: place.rating ?? null,
+            reharvestedAt: new Date().toISOString(),
+          },
+        },
+      });
+      imported++;
       continue;
     }
 
+    // New prospect — create record
     await prisma.prospect.create({
       data: {
         id: randomUUID(),
