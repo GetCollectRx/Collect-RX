@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, type VapiCallParams } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -517,6 +517,42 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
+    // TELUS AdjudiCare has no single carrier-wide claims line — it's an
+    // aggregator for many small TPAs (confirmed against TELUS's own FAQ:
+    // "please contact your insurer directly"). carrierConfig.phone is a
+    // last-resort placeholder, not a real per-TPA number. Resolve the
+    // TPA-specific verified number instead; if none is verified yet,
+    // escalate to a human rather than dial a number likely to reach the
+    // wrong company and burn one of only 3 allowed attempts.
+    let dispatchCarrierPhone = carrierConfig.phone;
+    if (next.claim.carrierId === 'telus_adjudicare') {
+      const telusPhone = getTelusDialPhone(phi.subscriberId, phi.groupPolicyNumber ?? '');
+      if (!telusPhone) {
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: { claimId: next.claimId, resolvedAt: null },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId,
+            claimId: next.claimId,
+            claimRef: next.claim.claimNumber,
+            carrierId: next.claim.carrierId,
+            amountClaimedCents: Math.round(Number(next.claim.outstandingAmount) * 100),
+            reason: 'TELUS AdjudiCare TPA could not be resolved to a verified dial number — manual routing required before this claim can be called.',
+          });
+        }
+        await deferQueueEntry(
+          prisma,
+          next.id,
+          DEFER_STAFF_ACTION_MS,
+          'TELUS_TPA_PHONE_UNVERIFIED',
+          'Identify the underlying TPA and confirm its provider claim-status phone number, then clear this gate.',
+        );
+        continue;
+      }
+      dispatchCarrierPhone = telusPhone;
+    }
+
     // Only published, human-approved snapshots may augment the static adapter
     // hints. Proposed discovery output is never exposed to a live call.
     const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
@@ -539,7 +575,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       subscriberName:         phi.subscriberName,
       subscriberDob:          phi.subscriberDateOfBirth,
       // ── Claim fields ──────────────────────────────────────────────────────────
-      carrierPhone:           carrierConfig.phone,
+      carrierPhone:           dispatchCarrierPhone,
       claimNumber:            next.claim.claimNumber,
       billedAmount:           Number(next.claim.billedAmount),
       outstandingAmount:      Number(next.claim.outstandingAmount),
@@ -558,6 +594,10 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
+      // V1: practice staff speak with the rep; CollectRx AI only navigates
+      // IVR / holds / listens. Never dials the fully-autonomous squad for
+      // a human-assisted practice.
+      squadId:                practiceSettings.humanAssistedMode ? getHumanAssistedSquadId() : undefined,
     };
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
@@ -593,6 +633,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           initiatedAt: new Date(),
           liveState: 'dialing',
           activeAgent: 'IVR_Navigator',
+          // Excludes this call from CarrierLesson extraction (learning loop
+          // webhook path) — that pipeline is scoped to the autonomous squad only.
+          isHumanAssisted: practiceSettings.humanAssistedMode ?? false,
         },
       });
 

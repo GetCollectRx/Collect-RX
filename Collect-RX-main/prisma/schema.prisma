@@ -831,6 +831,11 @@ model CallAttempt {
   validationPassed     Boolean?     @map("validation_passed")
   /// Full validator output JSON (violations, safety_score, carrier_block_risk, etc.)
   validationResult     Json?        @map("validation_result")
+  /// True for V1 human-assisted-squad calls (practice staff speak with the rep;
+  /// CollectRx AI only navigates IVR / holds / listens). Gates this call OUT of
+  /// the CarrierLesson learning pipeline, which is scoped to the fully-autonomous
+  /// squad only — see HumanAssistedCallLog for V1's own, separate learning path.
+  isHumanAssisted      Boolean      @default(false) @map("is_human_assisted")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
   guardrailAudits GuardrailAudit[]
@@ -1912,4 +1917,83 @@ model CarrierNavigationProposal {
   @@index([carrierId, status, createdAt(sort: Desc)])
   @@index([discoveryRunId])
   @@map("carrier_navigation_proposals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V1 Human-Assisted squad — isolated from the autonomous CarrierLesson
+// pipeline above. Practice staff conduct the live conversation; Claims_Scribe
+// only listens and logs. Kept as its own tables/pipeline deliberately (see
+// 2026-08-30 planning notes) rather than merged into carrier_lessons, which
+// is scoped to the fully-autonomous squad's own calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One row per Claims_Scribe log_call_outcome call. Written directly from the
+/// Vapi tool-call webhook (src/webhooks/vapi.ts) — not tied to CallAttempt,
+/// since V1 calls are dispatched through a separate squad/path.
+model HumanAssistedCallLog {
+  id                      String    @id @default(uuid())
+  claimId                 String?   @map("claim_id")
+  practiceId              String    @map("practice_id")
+  carrierId               CarrierId @map("carrier_id")
+  vapiCallId              String    @unique @map("vapi_call_id")
+
+  scenario                String
+  repName                 String?   @map("rep_name")
+  referenceNumber         String?   @map("reference_number")
+  deadlineDate            String?   @map("deadline_date")
+  deadlineAction          String?   @map("deadline_action")
+  amountStatedByRep       String?   @map("amount_stated_by_rep")
+  matchesExpectedAmount   Boolean?  @map("matches_expected_amount")
+  shortfallReason         String?   @map("shortfall_reason")
+  documentationRequested  String?   @map("documentation_requested")
+  submissionMethod        String?   @map("submission_method")
+  submissionDestination   String?   @map("submission_destination")
+  denialOrReductionCode   String?   @map("denial_or_reduction_code")
+  eobSentToPatient        Boolean?  @map("eob_sent_to_patient")
+  eobSentDate             String?   @map("eob_sent_date")
+  appealRights            String?   @map("appeal_rights")
+  automationSuspicionFlag Boolean   @default(false) @map("automation_suspicion_flag")
+  callSummary             String    @map("call_summary")
+  unresolvedFields        String?   @map("unresolved_fields")
+
+  /// Set once the profile synthesis job has folded this call into a
+  /// HumanAssistedCarrierProfile. Lets the job pick up only new rows.
+  processedForProfileAt   DateTime? @map("processed_for_profile_at")
+
+  createdAt               DateTime  @default(now()) @map("created_at")
+
+  @@index([carrierId, processedForProfileAt])
+  @@index([practiceId, createdAt(sort: Desc)])
+  @@index([claimId])
+  @@map("human_assisted_call_logs")
+}
+
+enum HumanAssistedProfileCategory {
+  DOCUMENTATION
+  HOLD_BEHAVIOR
+  STAFF_DECISION
+  DENIAL_PATTERN
+  REP_BEHAVIOR
+
+  @@map("human_assisted_profile_category")
+}
+
+/// Carrier-keyed, empirically-derived playbook entries synthesized from
+/// HumanAssistedCallLog rows. This is the "moat" table: what staff actually
+/// encountered and did, per carrier, per situation — distinct from
+/// CarrierLesson (which is scoped to the autonomous squad's own calls).
+model HumanAssistedCarrierProfile {
+  id             String                        @id @default(uuid())
+  carrierId      CarrierId                     @map("carrier_id")
+  category       HumanAssistedProfileCategory
+  observation    String
+  recommendation String
+  sampleSize     Int                           @default(1) @map("sample_size")
+  confidence     Float                         @default(0)
+  lastCallLogId  String?                       @map("last_call_log_id")
+  createdAt      DateTime                      @default(now()) @map("created_at")
+  updatedAt      DateTime                      @updatedAt @map("updated_at")
+
+  @@index([carrierId, category])
+  @@map("human_assisted_carrier_profiles")
 }

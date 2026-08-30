@@ -47,6 +47,7 @@ export function defaultPracticeSettings(): PracticeSettings {
     callWindowEnd: '17:00',
     escalationPhoneNumber: '',
     telusTpaMappings: {},
+    humanAssistedMode: false,
   };
 }
 
@@ -85,6 +86,9 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.billingPhone === 'string' ? { billingPhone: o.billingPhone } : {}),
     ...(o.telusTpaMappings && typeof o.telusTpaMappings === 'object'
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
+      : {}),
+    ...(typeof o.humanAssistedMode === 'boolean'
+      ? { humanAssistedMode: o.humanAssistedMode }
       : {}),
     ...(Array.isArray(o.carrierConfigs)
       ? {

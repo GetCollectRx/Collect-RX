@@ -10,6 +10,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
+import { resolveOutcomeFromHumanAssistedLog } from '../../outcome/humanAssistedOutcomeResolver';
 import {
   applyRecoveryAfterCall,
   emitRecoveryTerminalEmrEvent,
@@ -368,8 +369,32 @@ async function processCallEnded(
     payload.transcript = scrubTranscriptPhi(payload.transcript);
   }
 
-  const processed = resolveOutcomeFromWebhookPayload(payload);
-  const structuredStatus = extractStructuredClaimStatus(payload);
+  // V1 human-assisted squad: practice staff spoke with the rep directly and
+  // Claims_Scribe's log_call_outcome tool captured what staff heard into
+  // HumanAssistedCallLog — a human-witnessed, structured record. That is
+  // strictly higher-trust than classifyOutcome()'s regex guess over
+  // Vapi-generated transcript/summary text, so it is used in place of
+  // resolveOutcomeFromWebhookPayload() whenever a log exists for this call.
+  // Falls through to the normal payload-based resolution if the tool never
+  // fired (e.g. the call dropped before Claims_Scribe could log it).
+  let processed = resolveOutcomeFromWebhookPayload(payload);
+  let structuredStatus = extractStructuredClaimStatus(payload);
+  if (attempt.isHumanAssisted) {
+    const humanLog = await prisma.humanAssistedCallLog.findUnique({ where: { vapiCallId } });
+    if (humanLog) {
+      const resolution = resolveOutcomeFromHumanAssistedLog(humanLog, {
+        transcriptUrl: payload.recordingUrl ?? null,
+        durationSeconds: payload.call.durationSeconds ?? null,
+      });
+      processed = resolution.processed;
+      structuredStatus = resolution.structuredClaimStatus;
+    } else {
+      console.warn(
+        `[vapi-webhook] isHumanAssisted call ${vapiCallId} has no HumanAssistedCallLog — ` +
+        `falling back to payload-based outcome resolution.`,
+      );
+    }
+  }
   const outstandingCents = Math.round(Number(claim.outstandingAmount) * 100);
   const { proposedClaimStatus, gatedClaimStatus, paymentCorroborated } = resolveGatedClaimStatus(
     processed,

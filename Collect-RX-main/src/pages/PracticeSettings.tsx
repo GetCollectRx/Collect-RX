@@ -296,6 +296,30 @@ export default function PracticeSettings() {
           </Card>
 
           <Card>
+            <CardHeader
+              title="Human-assisted mode (V1)"
+              subtitle="Practice staff speak with the carrier rep directly — CollectRx AI navigates the IVR, holds the line, and silently listens/logs. It never speaks to a rep. Requires an escalation phone below for the warm transfer."
+            />
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={!!settings.humanAssistedMode}
+                  disabled={isReadOnly}
+                  onChange={(e) => setSettings({ ...settings, humanAssistedMode: e.target.checked })}
+                  className="rounded border-gray-300 text-crx-600 focus:ring-crx-500"
+                />
+                Human-assisted mode enabled
+              </label>
+              {settings.humanAssistedMode && !settings.escalationPhoneNumber && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Set an escalation phone below — that's where calls transfer to staff once a rep answers.
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card>
             <CardHeader title="Call window" subtitle="Practice-wide calling hours (ET)" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input

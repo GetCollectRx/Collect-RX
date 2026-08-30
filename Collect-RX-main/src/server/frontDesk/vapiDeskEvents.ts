@@ -239,7 +239,7 @@ async function processCallEndedDesk(
 
   const attemptAfter = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    select: { id: true, outcome: true },
+    select: { id: true, outcome: true, outcomeDetail: true },
   });
 
   // H-5a: CRTC ADAD — always write a resolution log entry, even when there is
@@ -278,12 +278,17 @@ async function processCallEndedDesk(
     }
   }
 
+  // Prefer the outcome actually persisted by processRecoveryCallEnded() over
+  // the locally-recomputed `processed` above: for a V1 human-assisted call,
+  // that persisted value reflects HumanAssistedCallLog ground truth, while
+  // `processed` here is only ever the payload-based (transcript-regex) guess
+  // — the two can genuinely disagree for human-assisted calls.
   broadcastDesk(claim.practiceId, {
     type: 'call.ended',
     data: {
       callId: attemptAfter?.id ?? existing?.id ?? vapiCallId,
-      outcome: processed.outcome,
-      notes: processed.outcomeDetail,
+      outcome: attemptAfter?.outcome ?? processed.outcome,
+      notes: attemptAfter?.outcomeDetail ?? processed.outcomeDetail,
     },
   });
 

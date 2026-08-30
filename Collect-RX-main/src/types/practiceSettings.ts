@@ -62,6 +62,14 @@ export interface PracticeSettings {
    */
   billingPhone?: string;
   telusTpaMappings: Record<string, string>;
+  /**
+   * V1 human-assisted mode: practice staff make the call and speak with the
+   * rep directly (IVR_Navigator -> Hold_Sentinel -> Claims_Scribe squad).
+   * CollectRx's AI only navigates the IVR, holds the line, and silently
+   * listens/logs — it never speaks to a carrier rep. Distinct from the
+   * fully-autonomous squad and its CarrierLesson learning pipeline.
+   */
+  humanAssistedMode?: boolean;
 }
 
 export interface QueueStats {

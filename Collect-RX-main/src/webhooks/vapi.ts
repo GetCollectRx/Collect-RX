@@ -22,6 +22,10 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
+import { transferVapiCall } from '../vapi/client';
+import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
+import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
+import { sendPracticeSms } from '../services/alerts.js';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import {
   claimVapiWebhookForProcessing,
@@ -115,6 +119,164 @@ function validateSignature(rawBody: Buffer, signature: string): boolean {
 // Webhook handler
 // ---------------------------------------------------------------------------
 
+/**
+ * V1 human-assisted handoff: called by Hold_Sentinel the instant a live human
+ * (not IVR, not hold music) picks up. Warm-transfers the call to the
+ * practice's escalation phone — Vapi keeps the call alive so Claims_Scribe
+ * keeps listening — and fires a dashboard notification with the claim
+ * context, since staff otherwise have no way to know which claim an
+ * incoming transfer is about.
+ */
+function coerceString(v: unknown): string | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function coerceBoolean(v: unknown): boolean | undefined {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') {
+    if (v.toLowerCase() === 'true') return true;
+    if (v.toLowerCase() === 'false') return false;
+  }
+  return undefined;
+}
+
+/**
+ * V1 human-assisted call logging: Claims_Scribe calls this exactly once,
+ * mid-call, right before the call ends. Persists directly to
+ * HumanAssistedCallLog — deliberately NOT call_attempts/carrier_lessons,
+ * which belong to the fully-autonomous squad's own pipeline. vapiCallId is
+ * unique, so a duplicate webhook delivery (Vapi retries on non-2xx) is
+ * idempotent rather than a hard failure.
+ */
+async function handleLogCallOutcome(
+  vapiCallId: string | undefined,
+  claimId: string | undefined,
+  claim: { practiceId: string; carrierId: string } | null,
+  metadataPracticeId: string | undefined,
+  metadataCarrierId: string | undefined,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const practiceId = claim?.practiceId ?? metadataPracticeId;
+  const carrierId = claim?.carrierId ?? metadataCarrierId;
+  if (!vapiCallId || !practiceId || !carrierId) {
+    console.error('[vapi-webhook] log_call_outcome missing vapiCallId/practiceId/carrierId');
+    return 'LOG FAILED — missing call context.';
+  }
+
+  const scenario = coerceString(args.scenario);
+  const callSummary = coerceString(args.callSummary);
+  if (!scenario || !callSummary) {
+    console.error('[vapi-webhook] log_call_outcome missing required scenario/callSummary');
+    return 'LOG FAILED — scenario and callSummary are required fields.';
+  }
+
+  try {
+    await runWithRlsBypass(() =>
+      prisma.humanAssistedCallLog.create({
+        data: {
+          claimId: claimId ?? null,
+          practiceId,
+          carrierId: carrierId as import('@prisma/client').CarrierId,
+          vapiCallId,
+          scenario,
+          repName: coerceString(args.repName),
+          referenceNumber: coerceString(args.referenceNumber),
+          deadlineDate: coerceString(args.deadlineDate),
+          deadlineAction: coerceString(args.deadlineAction),
+          amountStatedByRep: coerceString(args.amountStatedByRep),
+          matchesExpectedAmount: coerceBoolean(args.matchesExpectedAmount),
+          shortfallReason: coerceString(args.shortfallReason),
+          documentationRequested: coerceString(args.documentationRequested),
+          submissionMethod: coerceString(args.submissionMethod),
+          submissionDestination: coerceString(args.submissionDestination),
+          denialOrReductionCode: coerceString(args.denialOrReductionCode),
+          eobSentToPatient: coerceBoolean(args.eobSentToPatient),
+          eobSentDate: coerceString(args.eobSentDate),
+          appealRights: coerceString(args.appealRights),
+          automationSuspicionFlag: coerceBoolean(args.automationSuspicionFlag) ?? false,
+          callSummary,
+          unresolvedFields: coerceString(args.unresolvedFields),
+        },
+      }),
+    );
+    return 'Logged.';
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === 'P2002') {
+      // Duplicate vapiCallId — already logged from a prior delivery of this
+      // same webhook event. Not a failure.
+      return 'Logged.';
+    }
+    console.error('[vapi-webhook] log_call_outcome failed:', err);
+    return 'LOG FAILED — an error occurred.';
+  }
+}
+
+async function handleStaffHandoffRequest(
+  vapiCallId: string | undefined,
+  claimId: string | undefined,
+  claim: {
+    claimNumber: string | null;
+    practiceId: string;
+    carrierId: string;
+    outstandingAmount: unknown;
+  } | null,
+  metadataPracticeId: string | undefined,
+): Promise<string> {
+  const practiceId = claim?.practiceId ?? metadataPracticeId;
+  if (!vapiCallId || !practiceId) {
+    console.error('[vapi-webhook] request_staff_handoff missing vapiCallId or practiceId');
+    return 'HANDOFF FAILED — missing call or practice context. Stay silent and keep listening.';
+  }
+  try {
+    const settings = await runWithRlsBypass(() => getPracticeSettings(prisma, practiceId));
+    const escalationPhone = settings.escalationPhoneNumber?.trim();
+    if (!escalationPhone) {
+      console.error(
+        `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
+      );
+      return 'HANDOFF FAILED — no staff phone number on file. Stay silent and keep listening.';
+    }
+
+    await transferVapiCall(vapiCallId, escalationPhone);
+
+    const amt = Number(claim?.outstandingAmount);
+    const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
+    const claimLabel = claim?.claimNumber ?? 'unknown';
+    const carrierLabel = claim?.carrierId ? ` (${claim.carrierId})` : '';
+
+    await runWithRlsBypass(() =>
+      sendPracticeNotification(prisma, {
+        practiceId,
+        type: 'LIVE_CALL_NEEDS_STAFF',
+        subject: `Rep on the line — claim ${claimLabel}`,
+        message: `A live representative just picked up on claim ${claimLabel}${carrierLabel}${amountText}. The call is transferring to your escalation line now — pick up.`,
+        claimId,
+        severity: 'warning',
+      }),
+    );
+
+    // Dashboard polling alone is not real-time enough for a 'pick up now'
+    // signal, so also SMS the escalation number directly. Non-fatal if
+    // Twilio env vars are unset (sendPracticeSms no-ops with a warning).
+    void sendPracticeSms(
+      escalationPhone,
+      `CollectRx: rep on the line for claim ${claimLabel}${carrierLabel}${amountText}. Transferring now — pick up.`,
+    );
+
+    return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
+  } catch (err) {
+    console.error('[vapi-webhook] request_staff_handoff failed:', err);
+    return 'HANDOFF FAILED — an error occurred. Stay silent and keep listening.';
+  }
+}
+
 router.post('/', async (req: Request, res: Response) => {
   // ── 1. Signature validation ──────────────────────────────────────────────
   // Two auth paths: HMAC x-vapi-signature (assistant-level server credential)
@@ -154,7 +316,12 @@ router.post('/', async (req: Request, res: Response) => {
     const peek = JSON.parse(rawBody.toString('utf-8')) as {
       message?: {
         type?: string;
-        call?: { assistantOverrides?: { metadata?: { claimId?: string } } };
+        call?: {
+          id?: string;
+          assistantOverrides?: {
+            metadata?: { claimId?: string; practiceId?: string; carrierId?: string };
+          };
+        };
         toolWithToolCallList?: Array<{
           name?: string;
           toolCall?: { id?: string; function?: { name?: string; arguments?: unknown } };
@@ -162,38 +329,85 @@ router.post('/', async (req: Request, res: Response) => {
       };
     };
     if (peek?.message?.type === 'tool-calls' && peek.message.toolWithToolCallList?.length) {
-      const claimId = peek.message.call?.assistantOverrides?.metadata?.claimId;
+      const vapiCallId = peek.message.call?.id;
+      const callMetadata = peek.message.call?.assistantOverrides?.metadata;
+      const claimId = callMetadata?.claimId;
       let dbExpected: string | null = null;
+      let claimContext: {
+        claimNumber: string | null;
+        practiceId: string;
+        carrierId: string;
+        outstandingAmount: unknown;
+      } | null = null;
       if (claimId) {
-        const claim = await runWithRlsBypass(async () =>
+        claimContext = await runWithRlsBypass(async () =>
           prisma.insuranceClaim.findUnique({
             where: { id: claimId },
-            select: { outstandingAmount: true, billedAmount: true },
+            select: {
+              claimNumber: true,
+              practiceId: true,
+              carrierId: true,
+              outstandingAmount: true,
+              billedAmount: true,
+            },
           }),
         );
-        const amt = Number(claim?.outstandingAmount ?? claim?.billedAmount);
+        const amt = Number(claimContext?.outstandingAmount ?? claimContext?.billedAmount);
         if (Number.isFinite(amt) && amt > 0) dbExpected = amt.toFixed(2);
       }
-      const results = peek.message.toolWithToolCallList.map((t) => {
-        const fnName = t.name || t.toolCall?.function?.name;
-        if (fnName === 'verify_payment_amount') {
-          let args: Record<string, unknown> = {};
-          try {
-            const rawArgs = t.toolCall?.function?.arguments;
-            args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
-          } catch { /* fall through with empty args */ }
+      const results = await Promise.all(
+        peek.message.toolWithToolCallList.map(async (t) => {
+          const fnName = t.name || t.toolCall?.function?.name;
+          if (fnName === 'verify_payment_amount') {
+            let args: Record<string, unknown> = {};
+            try {
+              const rawArgs = t.toolCall?.function?.arguments;
+              args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
+            } catch { /* fall through with empty args */ }
+            return {
+              name: 'verify_payment_amount',
+              toolCallId: t.toolCall?.id,
+              result: verifyPaymentToolResult(args.statedAmount, dbExpected ?? args.expectedAmount),
+            };
+          }
+          if (fnName === 'request_staff_handoff') {
+            return {
+              name: 'request_staff_handoff',
+              toolCallId: t.toolCall?.id,
+              result: await handleStaffHandoffRequest(
+                vapiCallId,
+                claimId,
+                claimContext,
+                callMetadata?.practiceId,
+              ),
+            };
+          }
+          if (fnName === 'log_call_outcome') {
+            let args: Record<string, unknown> = {};
+            try {
+              const rawArgs = t.toolCall?.function?.arguments;
+              args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs as Record<string, unknown>) ?? {};
+            } catch { /* fall through with empty args */ }
+            return {
+              name: 'log_call_outcome',
+              toolCallId: t.toolCall?.id,
+              result: await handleLogCallOutcome(
+                vapiCallId,
+                claimId,
+                claimContext,
+                callMetadata?.practiceId,
+                callMetadata?.carrierId,
+                args,
+              ),
+            };
+          }
           return {
-            name: 'verify_payment_amount',
+            name: fnName,
             toolCallId: t.toolCall?.id,
-            result: verifyPaymentToolResult(args.statedAmount, dbExpected ?? args.expectedAmount),
+            result: 'No handler for this tool.',
           };
-        }
-        return {
-          name: fnName,
-          toolCallId: t.toolCall?.id,
-          result: 'No handler for this tool.',
-        };
-      });
+        }),
+      );
       return res.status(200).json({ results });
     }
   } catch {
@@ -296,7 +510,7 @@ router.post('/', async (req: Request, res: Response) => {
       await runWithRlsBypass(async () => {
       const callAttempt = await prisma.callAttempt.findUnique({
         where: { vapiCallId },
-        select: { id: true, claim: { select: { carrierId: true } } },
+        select: { id: true, isHumanAssisted: true, claim: { select: { carrierId: true } } },
       });
       if (callAttempt) {
         const metadataResult = await webhookGuardScanMetadata(payload);
@@ -338,7 +552,7 @@ router.post('/', async (req: Request, res: Response) => {
         // ── Learning loop: propose carrier lessons from this transcript ──
         // Lessons land as PROPOSED for human review; nothing here changes
         // live behavior without approval.
-        if (shouldProposeLessons(payload)) {
+        if (shouldProposeLessons(payload) && !callAttempt.isHumanAssisted) {
           try {
             const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
             const stored = await extractLessonsFromCall(prisma, callAttempt.id);
@@ -353,7 +567,7 @@ router.post('/', async (req: Request, res: Response) => {
         // A deterministic IVR failure can contribute only PHI-safe menu steps.
         // Carrier blocks are deliberately excluded and remain under the existing
         // suspension-and-human-review protocol.
-        if (payload.type === 'call.ended' && payload.transcript) {
+        if (payload.type === 'call.ended' && payload.transcript && !callAttempt.isHumanAssisted) {
           try {
             const outcome = resolveOutcomeFromWebhookPayload(payload);
             await recordIvrFailureRelearningObservation(
