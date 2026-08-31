@@ -145,7 +145,7 @@ export async function harvestProspects(
           googlePlaceId: place.place_id ?? existing.googlePlaceId,
           score: computeProspectScore(signalsFromHarvestPlace(place), weights),
           metadata: {
-            ...existing.metadata,
+            ...((existing.metadata as Record<string, unknown>) || {}),
             harvestQuery: textQuery,
             rating: place.rating ?? null,
             reharvestedAt: new Date().toISOString(),
