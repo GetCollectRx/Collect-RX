@@ -20,6 +20,7 @@ import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
+import { DEMO_VAPI_CALL_ID_PREFIX } from '../../lib/recoveryDisplay.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
@@ -549,12 +550,22 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // lock forever and this practice never dials again. Close attempts older
     // than any plausible call and release their claims back to the queue —
     // the attempt was already counted at dispatch, so max-3 still holds.
+    // Demo/seed data plants a permanently-"in-progress" CallAttempt (vapiCallId
+    // prefixed `demo-`, see isDemoVapiCall) purely so the dashboard's Live
+    // Activity strip has something to show — it was never a real Vapi call.
+    // Every watchdog below must leave it alone: ending it hits Vapi's real API
+    // and 404s (tripping the circuit breaker fleet-wide), and closing it the
+    // way a real stale/over-ceiling attempt is closed re-queues its claim for
+    // genuine carrier dispatch — i.e. a fake claim could place a real call.
+    const notDemoAttempt = { NOT: { vapiCallId: { startsWith: DEMO_VAPI_CALL_ID_PREFIX } } };
+
     const staleBefore = new Date(Date.now() - STALE_ATTEMPT_MS);
     const staleAttempts = await prisma.callAttempt.findMany({
       where: {
         completedAt: null,
         initiatedAt: { lt: staleBefore },
         claim: { practiceId, deletedAt: null },
+        ...notDemoAttempt,
       },
       select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
@@ -569,6 +580,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         completedAt: null,
         initiatedAt: { lt: ceilingBefore },
         claim: { practiceId, deletedAt: null },
+        ...notDemoAttempt,
       },
       select: { id: true, vapiCallId: true, initiatedAt: true },
     });
@@ -614,7 +626,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     const inProgress = await prisma.callQueue.count({
-      where: { practiceId, status: 'IN_PROGRESS' },
+      where: {
+        practiceId,
+        status: 'IN_PROGRESS',
+        // A queue row parked IN_PROGRESS behind only a demo call attempt (see
+        // notDemoAttempt above) must not count — it would otherwise stall this
+        // practice's dispatch forever behind a call that was never real.
+        claim: {
+          callAttempts: {
+            none: { completedAt: null, vapiCallId: { startsWith: DEMO_VAPI_CALL_ID_PREFIX } },
+          },
+        },
+      },
     });
     if (inProgress > 0) return;
 
@@ -627,6 +650,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       where: {
         completedAt: null,
         claim: { practiceId, deletedAt: null },
+        ...notDemoAttempt,
       },
     });
     if (activeAttempt) return;

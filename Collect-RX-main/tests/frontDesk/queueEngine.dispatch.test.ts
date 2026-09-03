@@ -534,6 +534,42 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
   });
 });
 
+describe('runDeskQueueTick demo attempt exclusion', () => {
+  it('excludes demo-prefixed call attempts from the stale watchdog, over-ceiling terminator, and M-7 active-attempt gate', async () => {
+    // Seed data plants a permanently-open CallAttempt (vapiCallId prefixed
+    // `demo-`) purely so the dashboard has something to show as "in progress".
+    // It was never a real Vapi call — every query that could end it via the
+    // real Vapi API, or treat it as blocking real dispatch, must filter it out
+    // at the database level rather than relying on JS-side special-casing.
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const demoExclusion = { NOT: { vapiCallId: { startsWith: 'demo-' } } };
+
+    expect(prisma.callAttempt.findMany).toHaveBeenCalled();
+    for (const [args] of prisma.callAttempt.findMany.mock.calls as [{ where: Record<string, unknown> }][]) {
+      expect(args.where).toMatchObject(demoExclusion);
+    }
+
+    expect(prisma.callAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining(demoExclusion) }),
+    );
+
+    expect(prisma.callQueue.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          claim: expect.objectContaining({
+            callAttempts: { none: { completedAt: null, vapiCallId: { startsWith: 'demo-' } } },
+          }),
+        }),
+      }),
+    );
+  });
+});
+
 describe('runDeskQueueTick resilience', () => {
   it('closes a stale call attempt whose webhook never arrived and releases its claim', async () => {
     const eligible = queueEntry('1');

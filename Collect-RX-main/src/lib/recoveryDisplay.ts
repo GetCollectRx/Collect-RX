@@ -83,8 +83,10 @@ export function lastOutcomeLine(
 }
 
 /** Demo / seed calls use vapiCallId prefix `demo-`. */
+export const DEMO_VAPI_CALL_ID_PREFIX = 'demo-';
+
 export function isDemoVapiCall(vapiCallId: string | null | undefined): boolean {
-  return Boolean(vapiCallId?.startsWith('demo-'));
+  return Boolean(vapiCallId?.startsWith(DEMO_VAPI_CALL_ID_PREFIX));
 }
 
 export const RECOVERY_ROUTE_LABELS: Record<string, string> = {

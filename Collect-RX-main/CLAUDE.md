@@ -80,15 +80,27 @@ SEED_PRACTICE_PASSWORD="custom_password" npm run demo:seed
 
 **Test call (Vapi agent test script):**
 ```bash
-node test-call.js
-# Dials your phone with a dummy claim, using "CollectRx Demo Practice" as the practice name
+node test-call.cjs
+# Dials your phone with a dummy claim, using "CollectRx Demo Practice" as the practice name.
+# .cjs extension is required: this package is "type": "module", so a plain
+# .js file here would fail on require() at startup.
 ```
 
 Customize practice info for test calls:
 ```bash
-VAPI_PRACTICE_NAME="My Clinic" node test-call.js
-VAPI_PRACTICE_ADDRESS="123 Main St, Toronto" node test-call.js
-VAPI_PRACTICE_PHONE="416-555-0100" node test-call.js
+VAPI_PRACTICE_NAME="My Clinic" node test-call.cjs
+VAPI_PRACTICE_ADDRESS="123 Main St, Toronto" node test-call.cjs
+VAPI_PRACTICE_PHONE="416-555-0100" node test-call.cjs
+```
+
+**Live demo call (real Claims_Agent, not a stand-in):**
+```bash
+TEST_PHONE_NUMBER=+1XXXXXXXXXX node demo-agent-call.cjs [processing|xray|coverage_maxed|not_covered|resubmit]
+# Dials your phone using the actual Claims_Agent → Escalation_Closer /
+# Resolution_Closer prompts read live from vapi-squad-config.json — the same
+# agent that runs against real carriers. IVR_Navigator and Hold_Sentinel are
+# left out on purpose: they're silent/DTMF-only, built to navigate an
+# automated phone tree, and have no fallback if a human just answers directly.
 ```
 
 ---
