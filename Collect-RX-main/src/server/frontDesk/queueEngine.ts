@@ -570,7 +570,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         initiatedAt: { lt: ceilingBefore },
         claim: { practiceId, deletedAt: null },
       },
-      select: { id: true, vapiCallId: true, initiatedAt: true },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
     for (const attempt of overCeiling) {
       if (!attempt.vapiCallId) continue;
@@ -583,10 +583,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       try {
         await endVapiCall(attempt.vapiCallId);
       } catch (endErr) {
-        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+        // endVapiCall failing (e.g. Vapi already has no record of this call)
+        // must not leave the attempt open — the same tick would retry it every
+        // 60s indefinitely, repeatedly failing and tripping the Vapi circuit
+        // breaker. Close it now with the same compensation the stale-attempt
+        // watchdog below uses, instead of waiting up to STALE_ATTEMPT_MS.
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call — closing attempt directly', {
           vapiCallId: attempt.vapiCallId,
           error: endErr,
         });
+        await prisma.$transaction([
+          prisma.callAttempt.update({
+            where: { id: attempt.id },
+            data: { completedAt: new Date(), liveState: 'ceiling_terminated_no_webhook' },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId: attempt.claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+          }),
+          prisma.insuranceClaim.updateMany({
+            where: { id: attempt.claimId, status: 'CALLING' },
+            data: { status: 'IN_QUEUE' },
+          }),
+        ]);
       }
     }
 
