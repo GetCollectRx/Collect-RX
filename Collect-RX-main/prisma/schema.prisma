@@ -78,6 +78,8 @@ model Practice {
   padMandate                     PadMandate?
   padTransactions                PadTransaction[]
   csvImportLogs                  CsvImportLog[] @relation("csvImportLogs")
+  dentists                       Dentist[]
+  cdcpCoverages                  CdcpCoverage[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -562,6 +564,22 @@ enum CarrierId {
   @@map("carrier_id")
 }
 
+/// Classifies the funding source behind a claim's payer, independent of
+/// which carrier company administers it (carrierId). Sun Life, for example,
+/// can appear as either a PRIVATE benefits plan or the federal CDCP contract
+/// vehicle (CDCP) — same carrierId, different payer classification.
+enum PayerType {
+  /// Private employer/group benefits (Sun Life, Manulife, Canada Life, etc.)
+  PRIVATE
+  /// Federal Canadian Dental Care Plan, administered via Sun Life
+  CDCP
+  /// Provincial social program secondary coverage (ODSP, Ontario Works,
+  /// Healthy Smiles Ontario) — routed through Accerta in Ontario.
+  PROVINCIAL
+
+  @@map("payer_type")
+}
+
 enum ClaimStatus {
   PENDING
   IN_QUEUE
@@ -687,6 +705,16 @@ model InsuranceClaim {
   recoveryRoute     RecoveryRoute? @map("recovery_route")
   /// When carrier confirmed payment but PMS sync has not yet verified balance drop.
   paymentExpectedBy DateTime?      @map("payment_expected_by")
+  /// Funding-source classification, independent of carrierId — see PayerType.
+  /// Nullable: backfilled for Ontario dual-coverage claims going forward,
+  /// not required for the five other carriers' existing claim history.
+  payerType         PayerType?     @map("payer_type")
+  /// Treating dentist for this claim — enforced 1:1 per claim at the service
+  /// layer (see validateProviderNumbers) to prevent multi-dentist bulk-billing
+  /// aggregation under one clinic identity. Nullable for pre-existing claims
+  /// predating dentist-level tracking; required for new Ontario claims.
+  treatingDentistId String?        @map("treating_dentist_id")
+  treatingDentist   Dentist?       @relation(fields: [treatingDentistId], references: [id])
   /// Soft deletion preserves the claim's immutable recovery and call history.
   /// Application reads and dispatch paths must always exclude deleted claims.
   deletedAt         DateTime?      @map("deleted_at")
@@ -703,6 +731,7 @@ model InsuranceClaim {
   evidencePacks     EvidencePackExport[]
   underpaymentCases UnderpaymentCase[]
   notifications     PracticeNotification[]
+  cobRoute          CobRoute?
 
   @@unique([practiceId, claimNumber])
   @@index([practiceId, carrierId])
@@ -711,7 +740,86 @@ model InsuranceClaim {
   @@index([carrierId, daysOutstanding])
   @@index([practiceId, status, updatedAt])
   @@index([practiceId, status, resolvedAt])
+  @@index([treatingDentistId])
   @@map("insurance_claims")
+}
+
+/// Treating dentist, uniquely identified by their 9-digit CDA provider
+/// number. Claims must map 1:1 to a single treating dentist — never grouped
+/// under Practice alone — to avoid corporate bulk-billing audit exposure.
+model Dentist {
+  id             String   @id @default(uuid())
+  practiceId     String   @map("practice_id")
+  practice       Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  firstName      String   @map("first_name")
+  lastName       String   @map("last_name")
+  /// Unique 9-digit CDA provider number (UIN) — the audit-facing identity
+  /// carriers and CDAnet transactions key on. Never shared across dentists.
+  providerNumber String   @unique @map("provider_number")
+  licenseNumber  String   @unique @map("license_number")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  claims InsuranceClaim[]
+
+  @@index([practiceId])
+  @@map("dentists")
+}
+
+/// Patient-level CDCP coverage state, keyed by the same patientToken used
+/// throughout InsuranceClaim/CdcpReconsiderationCase — never a plaintext
+/// patient identity table. lastVerifiedAt anchors the federal Member
+/// Eligibility Review (MER) re-verification cycle.
+model CdcpCoverage {
+  id             String   @id @default(uuid())
+  practiceId     String   @map("practice_id")
+  practice       Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  /// UUID issued by PIIVault — same indirection as InsuranceClaim.patientToken.
+  patientToken   String   @unique @map("patient_token")
+  /// Income-based co-pay percentage: 0 (under $70k), 40 ($70k-$79k), 60 ($80k-$89k).
+  coPayTier      Int      @map("co_pay_tier")
+  /// True when this patient has active provincial secondary coverage (ODSP,
+  /// Ontario Works, Healthy Smiles Ontario) coordinated through Accerta.
+  /// Drives both the split-billing calculator's balance-billing prohibition
+  /// and the A/R aging sweep's automatic CobRoute creation on adjudication.
+  hasProvincialSecondary Boolean @default(false) @map("has_provincial_secondary")
+  lastVerifiedAt DateTime @default(now()) @map("last_verified_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([practiceId])
+  @@index([lastVerifiedAt])
+  @@map("cdcp_coverage")
+}
+
+/// Secondary COB routing for a primary claim — e.g. CDCP (Sun Life) claim
+/// with a provincial social-program secondary (Accerta: ODSP, Ontario Works,
+/// Healthy Smiles Ontario). One row per primary claim; secondaryFilingDeadline
+/// is set to primary adjudication date + 30 days to meet Accerta's statutory
+/// filing window.
+model CobRoute {
+  id                      String    @id @default(uuid())
+  claimId                 String    @unique @map("claim_id")
+  claim                   InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  secondaryPayerType      PayerType @map("secondary_payer_type")
+  /// Carrier company administering the secondary claim — "Accerta" for
+  /// Ontario provincial programs. String, not CarrierId, so non-Canadian or
+  /// future secondary administrators don't require an enum migration.
+  secondaryCarrierName    String    @map("secondary_carrier_name")
+  secondaryFilingDeadline DateTime  @map("secondary_filing_deadline")
+  autoSubmitted           Boolean   @default(false) @map("auto_submitted")
+  submittedAt             DateTime? @map("submitted_at")
+  /// Set once the Day-45 aging sweep has escalated an Accerta secondary that
+  /// went unpaid past its filing window — prevents repeat escalations across
+  /// sweep ticks, mirroring ClaimRecoveryAction.escalatedAt.
+  escalatedAt             DateTime? @map("escalated_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([secondaryFilingDeadline])
+  @@index([escalatedAt])
+  @@map("cob_routes")
 }
 
 /// Open recovery work item — gates re-calls until cleared (resubmit, docs, etc.).

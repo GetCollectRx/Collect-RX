@@ -35,6 +35,21 @@ describe('normalizePmsClaimRow — denialReasonCode column mapping', () => {
   });
 });
 
+describe('normalizePmsClaimRow — treatingDentistProviderNumber column mapping', () => {
+  it('reads the provider number when the export includes one', () => {
+    expect(
+      normalizePmsClaimRow(
+        { id: 'CLM-010', 'CDA Provider Number': '123456789' },
+        'generic',
+      ).treatingDentistProviderNumber,
+    ).toBe('123456789');
+  });
+
+  it('is null when the export has no dentist column — most practices predate this field', () => {
+    expect(normalizePmsClaimRow({ id: 'CLM-011' }, 'generic').treatingDentistProviderNumber).toBeNull();
+  });
+});
+
 describe('normalizePmsClaimRow — non-numeric amount cells', () => {
   it('throws (does not silently become a $0 balance) when amount_billed/amount_outstanding are garbage text', () => {
     // Regression: parseMoney's NaN-fallback-to-0 meant a row with a corrupted
