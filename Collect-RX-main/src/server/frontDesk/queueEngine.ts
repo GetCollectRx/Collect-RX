@@ -14,6 +14,7 @@ import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './pat
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getKnownSubmissionChannel } from '../learning/submissionChannelMemory.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
@@ -833,6 +834,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       ...publishedNavigation,
       ...(learnedNotes ? [learnedNotes] : []),
     ].join(' | ');
+    // What a rep has actually stated before about where resubmissions/docs go
+    // for this carrier — lets Claims_Agent confirm a known channel instead of
+    // asking cold on every call. Empty string when nothing is on file yet.
+    const knownResubmissionChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'CLAIM_RESUBMISSION',
+    );
+    const knownDocumentationChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'DOCUMENTATION',
+    );
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
@@ -865,6 +879,8 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
+      knownResubmissionChannel,
+      knownDocumentationChannel,
       // Stable for this attempt — a retry of the same attempt (after an
       // ambiguous timeout) reuses it; the next real attempt gets a new one.
       idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,

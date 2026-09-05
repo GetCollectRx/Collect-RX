@@ -81,6 +81,10 @@ vi.mock('../../src/server/learning/carrierLessons.js', () => ({
   getApprovedNavigationNotes: vi.fn(async () => ''),
 }));
 
+vi.mock('../../src/server/learning/submissionChannelMemory.js', () => ({
+  getKnownSubmissionChannel: vi.fn(async () => ''),
+}));
+
 vi.mock('../../src/server/discovery/carrierDiscoveryService.js', () => ({
   getPublishedNavigationSteps: vi.fn(async () => []),
 }));

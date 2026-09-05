@@ -2170,6 +2170,38 @@ model CarrierLesson {
   @@map("carrier_lessons")
 }
 
+enum CarrierChannelType {
+  /// Scenario A — carrier has no record of the claim, needs resubmission.
+  CLAIM_RESUBMISSION
+  /// Scenario D / Escalation_Closer — carrier requests clinical/radiographic documentation.
+  DOCUMENTATION
+
+  @@map("carrier_channel_type")
+}
+
+/// Per-carrier memory of where a rep said to send resubmissions or
+/// documentation. Populated automatically from validator-extracted call
+/// facts (submissionMethod/submissionDestination), never asserted by the
+/// AI itself — only what a rep has actually stated on a real call.
+/// Platform-wide (keyed by carrier only), same PHI-free posture as
+/// CarrierLesson: method/destination are carrier logistics, never patient data.
+model CarrierSubmissionChannel {
+  id                     String             @id @default(uuid())
+  carrierId              CarrierId          @map("carrier_id")
+  channelType            CarrierChannelType @map("channel_type")
+  submissionMethod       String             @map("submission_method")
+  submissionDestination  String             @map("submission_destination")
+  /// Number of calls where a rep has confirmed this exact method+destination.
+  timesConfirmed         Int                @default(1) @map("times_confirmed")
+  lastConfirmedAt        DateTime           @map("last_confirmed_at")
+  sourceCallAttemptId    String?            @map("source_call_attempt_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  @@unique([carrierId, channelType])
+  @@map("carrier_submission_channels")
+}
+
 /// Discovery requests are operator work items only. They never dispatch a call.
 enum CarrierDiscoveryTrigger {
   MONTHLY
