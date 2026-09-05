@@ -27,7 +27,9 @@ export type Action =
   | 'list_escalations'
   | 'resolve_escalation'
   | 'get_aging_report'
-  | 'get_carrier_stats';
+  | 'get_carrier_stats'
+  | 'list_dispatch_approvals'
+  | 'decide_dispatch_approval';
 
 export type AccessLevel = 'none' | 'own' | 'all' | 'read_all' | 'write_all' | 'grant' | 'break_glass';
 
@@ -96,6 +98,28 @@ const MATRIX: Record<Action, Record<UserRole, AccessLevel>> = {
     auditor: 'none',
   },
   manage_claims: {
+    front_desk: 'own',
+    practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
+    billing_ops_manager: 'write_all',
+    platform_admin: 'grant',
+    auditor: 'none',
+  },
+  // Same access shape as manage_claims — approving a claim for outbound calling
+  // is a claim-management decision, not a distinct resource. Split from
+  // manage_claims (rather than reusing it) so the RDC-SO/PHIPA-required human
+  // checkpoint has its own auditable action name in AuditLog/DispatchApproval.
+  list_dispatch_approvals: {
+    front_desk: 'own',
+    practice_owner: 'own',
+    office_manager: 'own',
+    billing_coordinator: 'own',
+    billing_ops_manager: 'read_all',
+    platform_admin: 'grant',
+    auditor: 'none',
+  },
+  decide_dispatch_approval: {
     front_desk: 'own',
     practice_owner: 'own',
     office_manager: 'own',

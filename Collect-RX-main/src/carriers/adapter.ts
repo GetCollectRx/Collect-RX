@@ -387,17 +387,49 @@ export async function checkCarrierAuthorizationGate(
 }
 
 /**
+ * Human-in-the-loop gate (RDC-SO accountability / PHIPA checkpoint requirement):
+ * a claim's CallQueue row must be explicitly APPROVED by practice staff before
+ * the first automated carrier call. See DispatchApprovalStatus in schema.prisma
+ * and docs/operations/HUMAN-DECISIONS-PENDING.md. Fails open to "not allowed" —
+ * a missing CallQueue row (should not happen at this point in the pipeline) or
+ * a lookup error must never be treated as implicit approval.
+ */
+export async function checkDispatchApprovalGate(
+  prisma: PrismaClient,
+  claimId: string,
+): Promise<DispatchGuard> {
+  const queueEntry = await prisma.callQueue.findUnique({
+    where: { claimId },
+    select: { approvalStatus: true },
+  });
+
+  if (queueEntry?.approvalStatus === 'APPROVED') {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    code: 'PENDING_DISPATCH_APPROVAL',
+    reason:
+      queueEntry?.approvalStatus === 'SKIPPED'
+        ? 'Claim was skipped in the last approval batch — re-approve it in Dispatch Approvals before calling.'
+        : 'Claim has not been approved for outbound calling yet — review it in Dispatch Approvals.',
+  };
+}
+
+/**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
- *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` -> no carrier dial)
+*   3. Human dispatch approval (RDC-SO / PHIPA checkpoint - must be APPROVED)
+*   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   5. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
  *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
  *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
  *      of this flat 30 is a pending product decision, not an engineering gap —
  *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
- *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   6. Max attempts (>= 3 → reject)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern)
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
@@ -442,31 +474,36 @@ export async function validateDispatch(
     return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
+  // 3. Human dispatch approval — RDC-SO / PHIPA checkpoint. Must run before any
+  // carrier-facing gate below so an unapproved claim never leaks "would otherwise
+  // be dispatchable" information, and so approval is the first thing staff sees
+  // reflected back if they check why a claim isn't calling yet.
+  const approvalGate = await checkDispatchApprovalGate(prisma, claimId);
+  if (!approvalGate.allowed) {
+    return approvalGate;
+  }
+
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
   if (!authGate.allowed) {
     return authGate;
   }
 
-  // 4. Claims under 30 days old — do not queue. This is a flat floor for every
-  // carrier: CARRIER_CONFIGS.minWaitDays documents per-carrier SLAs (21 days
-  // for TELUS, 32 for the rest) but nothing in dispatch consults that field —
-  // see docs/operations/HUMAN-DECISIONS-PENDING.md item 1 for the decision on
-  // whether to enforce those per-carrier numbers instead of this flat one.
+  // 5. Claims under 30 days old — do not queue
   if (daysOutstanding < 30) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 5. Claims over 90 days — escalate to human, skip AI
+  // 6. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 6. Max 3 attempts
+  // 7. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

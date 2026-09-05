@@ -1156,6 +1156,19 @@ model CarrierBlockEvent {
   @@map("carrier_block_events")
 }
 
+/// Human-in-the-loop gate on first dispatch (RDC-SO accountability / PHIPA human-checkpoint
+/// requirement). A new CallQueue row starts PENDING_REVIEW; validateDispatch() in
+/// carriers/adapter.ts refuses to dispatch anything not APPROVED. Recalls/retries on an
+/// already-APPROVED row do not require re-approval — see docs/operations/HUMAN-DECISIONS-PENDING.md
+/// for the product framing (batch reviewed once before a claim starts being called, not per attempt).
+enum DispatchApprovalStatus {
+  PENDING_REVIEW
+  APPROVED
+  SKIPPED
+
+  @@map("dispatch_approval_status")
+}
+
 /// One row per claim in the call queue. Tracks scheduling, retry count, state.
 model CallQueue {
   id                         String        @id @default(uuid())
@@ -1171,11 +1184,18 @@ model CallQueue {
   /// Safe, structured reason for the latest dispatch deferral. Never stores PHI or vendor errors.
   dispatchDeferralCode       String?       @map("dispatch_deferral_code")
   /// Staff-facing next step for the latest dispatch deferral. Never stores PHI.
-  dispatchDeferralNextAction String?       @map("dispatch_deferral_next_action")
-  dispatchDeferredAt         DateTime?     @map("dispatch_deferred_at")
-  status                     QueueStatus   @default(PENDING)
-  createdAt                  DateTime      @default(now()) @map("created_at")
-  updatedAt                  DateTime      @updatedAt @map("updated_at")
+  dispatchDeferralNextAction String? @map("dispatch_deferral_next_action")
+  dispatchDeferredAt DateTime? @map("dispatch_deferred_at")
+  status        QueueStatus   @default(PENDING)
+  /// Human approval gate — see DispatchApprovalStatus doc comment. Checked by validateDispatch().
+  approvalStatus DispatchApprovalStatus @default(PENDING_REVIEW) @map("approval_status")
+  /// Denormalized convenience pointer to the acting user for the current approvalStatus.
+  /// The immutable, queryable record of every decision (including prior ones) lives in
+  /// DispatchApproval — this field is not itself an audit trail.
+  approvalDecidedBy String? @map("approval_decided_by")
+  approvalDecidedAt DateTime? @map("approval_decided_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
 
@@ -1183,7 +1203,35 @@ model CallQueue {
   @@index([scheduledFor])
   @@index([practiceId, priority, scheduledFor])
   @@index([practiceId, status, updatedAt])
+  @@index([practiceId, approvalStatus])
   @@map("call_queue")
+}
+
+/// Immutable, append-only record of every dispatch-approval decision (PHIPA audit trail:
+/// WHO / WHAT / WHEN / ACTION). One row per claim per decision — never updated or deleted;
+/// re-deciding a claim (e.g. re-approving after a skip) appends a new row rather than
+/// mutating an old one. `batchId` groups the rows a reviewer acted on together in one sitting
+/// so a practice can produce "show me the batch approved on [date]" for an RDC-SO/IPC audit.
+model DispatchApproval {
+  id                        String                 @id @default(uuid())
+  batchId                   String                 @map("batch_id")
+  practiceId                String                 @map("practice_id")
+  claimId                   String                 @map("claim_id")
+  callQueueId                String                 @map("call_queue_id")
+  /// Snapshot of carrier/amount/flag reason at decision time — claim rows can change later,
+  /// the audit record of what was shown to the reviewer at the time must not.
+  carrierId                 CarrierId              @map("carrier_id")
+  flagReasonSnapshot        String?                @map("flag_reason_snapshot")
+  outstandingAmountSnapshot Decimal                @map("outstanding_amount_snapshot") @db.Decimal(10, 2)
+  decision                  DispatchApprovalStatus @map("decision")
+  decidedByUserId           String                 @map("decided_by_user_id")
+  decidedAt                 DateTime               @default(now()) @map("decided_at")
+  notes                     String?
+
+  @@index([practiceId, batchId])
+  @@index([practiceId, decidedAt])
+  @@index([claimId, decidedAt])
+  @@map("dispatch_approvals")
 }
 
 /// Outbound events for practice EMR / PMS connectors (AbelDent, etc.). Worker drains `processedAt IS NULL`.
