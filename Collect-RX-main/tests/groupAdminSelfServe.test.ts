@@ -99,6 +99,8 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
       password: 'fixture-dso-owner-pw',
       organizationName: `Fixture Self-Serve DSO ${suffix}`,
       additionalPractices: [{ practiceName: `Fixture Location B ${suffix}` }],
+      carriers: [{ carrierId: 'sun_life', providerNumber: 'ON-FIXTURE-1' }],
+      privacyPolicyAccepted: true,
     });
 
     expect(registerRes.status).toBe(201);
@@ -125,6 +127,8 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
       displayName: 'Solo Owner',
       email: `solo-owner-${suffix}@fixture.test`,
       password: 'fixture-solo-owner-pw',
+      carriers: [{ carrierId: 'manulife', providerNumber: 'ON-FIXTURE-2' }],
+      privacyPolicyAccepted: true,
     });
 
     expect(registerRes.status).toBe(201);
@@ -133,6 +137,62 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
 
     await prisma.user.deleteMany({ where: { id: registerRes.body.user.id } });
     await prisma.practice.delete({ where: { id: registerRes.body.practiceId } }).catch(() => undefined);
+  });
+
+  it('registration requires at least one carrier and Privacy Policy acceptance', async () => {
+    const base = {
+      practiceName: `Fixture Rejects ${suffix}`,
+      displayName: 'Rejected Owner',
+      password: 'fixture-rejected-owner-pw',
+    };
+
+    const noCarriers = await request(app).post('/api/auth/register').send({
+      ...base,
+      email: `no-carriers-${suffix}@fixture.test`,
+      carriers: [],
+      privacyPolicyAccepted: true,
+    });
+    expect(noCarriers.status).toBe(400);
+
+    const noConsent = await request(app).post('/api/auth/register').send({
+      ...base,
+      email: `no-consent-${suffix}@fixture.test`,
+      carriers: [{ carrierId: 'sun_life', providerNumber: 'ON-FIXTURE-3' }],
+      privacyPolicyAccepted: false,
+    });
+    expect(noConsent.status).toBe(400);
+  });
+
+  it('registration records selected carriers as authorized and stamps privacy policy consent', async () => {
+    const email = `carrier-consent-${suffix}@fixture.test`;
+    const registerRes = await request(app).post('/api/auth/register').send({
+      practiceName: `Fixture Carrier Consent ${suffix}`,
+      displayName: 'Carrier Consent Owner',
+      email,
+      password: 'fixture-carrier-consent-pw',
+      carriers: [
+        { carrierId: 'sun_life', providerNumber: 'ON-FIXTURE-4' },
+        { carrierId: 'manulife', providerNumber: 'ON-FIXTURE-5' },
+      ],
+      privacyPolicyAccepted: true,
+    });
+    expect(registerRes.status).toBe(201);
+
+    const practiceId = registerRes.body.practiceId as string;
+    const practice = await prisma.practice.findUniqueOrThrow({ where: { id: practiceId } });
+    expect(practice.privacyPolicyAcceptedAt).not.toBeNull();
+    expect(practice.privacyPolicyVersion).toBeTruthy();
+
+    const settings = practice.settings as { carrierConfigs: Array<{ carrierId: string; enabled: boolean; providerNumber: string }> };
+    const sunLife = settings.carrierConfigs.find((c) => c.carrierId === 'sun_life');
+    const manulife = settings.carrierConfigs.find((c) => c.carrierId === 'manulife');
+    const greenShield = settings.carrierConfigs.find((c) => c.carrierId === 'green_shield');
+    expect(sunLife).toMatchObject({ enabled: true, providerNumber: 'ON-FIXTURE-4' });
+    expect(manulife).toMatchObject({ enabled: true, providerNumber: 'ON-FIXTURE-5' });
+    expect(greenShield?.enabled).toBe(false);
+
+    await prisma.user.deleteMany({ where: { id: registerRes.body.user.id } });
+    await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);
   });
 
   it('the group_admin owner invites a co-admin who joins the same organization on accept', async () => {
