@@ -84,7 +84,9 @@ describe('harvestProspects', () => {
       }),
     );
 
-    const prisma = mockPrisma({ existing: { id: 'already-there' } });
+    const prisma = mockPrisma({
+      existing: { id: 'already-there', lastEmailSentAt: new Date(), activities: [] },
+    });
     const result = await harvestProspects(prisma, { query: 'dentist' });
 
     expect(result.imported).toBe(0);

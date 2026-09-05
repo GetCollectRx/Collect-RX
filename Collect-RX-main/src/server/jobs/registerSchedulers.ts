@@ -105,6 +105,24 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
+  const prospectHarvestPattern = (process.env.PROSPECT_HARVEST_CRON || '0 2 * * *').trim();
+  const prospectHarvestOn = ['1', 'true', 'yes'].includes(
+    (process.env.PROSPECT_HARVEST_ENABLED ?? '0').trim().toLowerCase(),
+  );
+  if (prospectHarvestOn) {
+    if (!cron.validate(prospectHarvestPattern)) {
+      logger.error('[registerSchedulers] Invalid PROSPECT_HARVEST_CRON — PROSPECT_HARVEST not registered', {
+        pattern: prospectHarvestPattern,
+      });
+    } else {
+      await q.add(
+        'PROSPECT_HARVEST',
+        {},
+        { repeat: { pattern: prospectHarvestPattern }, ...JOB_RETRY_OPTS },
+      );
+    }
+  }
+
   logger.info('[registerSchedulers] Bull repeatables registered', {
     rulesEveryMs: RULES_EVERY_MS,
     triageCredentialHealth: 'daily',
@@ -117,6 +135,7 @@ export async function registerArJobSchedulers(): Promise<void> {
       process.env.MARKETING_LOOP_ENABLED !== '0' && marketingLearningOn
         ? marketingLearningPattern
         : null,
+    prospectHarvestCron: prospectHarvestOn ? prospectHarvestPattern : null,
   });
 }
 

@@ -1919,7 +1919,7 @@ model Prospect {
   id                   String               @id @default(uuid())
   practiceName         String               @map("practice_name")
   contactName          String?              @map("contact_name")
-  email                String?
+  email                String?              @unique
   phone                String?
   city                 String?
   province             String?
