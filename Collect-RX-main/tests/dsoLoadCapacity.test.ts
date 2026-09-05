@@ -50,24 +50,32 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
   };
 });
 
-// The only other override: skip the Mon-Fri 8am-5pm ET gate so this test is
-// not flaky depending on when CI happens to run it. validateDispatch and
-// CARRIER_CONFIGS stay real — this test's whole point is exercising the real
-// dispatch guard chain, not bypassing it.
+// when CI happens to run it. validateDispatch and CARRIER_CONFIGS stay
+// real — this test's whole point is exercising the real dispatch guard
+// chain, not bypassing it.
 //
-// This used to be `vi.mock('../src/carriers/adapter.js', ...)` overriding the
-// exported isWithinCallWindow — but validateDispatch calls isWithinCallWindow
-// as a same-module local reference (both live in adapter.ts), and ES module
-// self-calls are bound at the local scope, not through the export object, so
-// vi.mock's replacement never actually intercepted it. That made this test
-// genuinely flaky for 15 of 24 hours a day — reproduced directly: it fails
-// with 0/20 dispatched and an OUTSIDE_CALL_WINDOW rejection whenever run
-// outside 08:00-17:00 Eastern, exactly the flakiness this comment claimed to
-// prevent. adapter.ts ships a purpose-built, non-production-only escape hatch
-// for this (callWindowForced() / COLLECTRX_FORCE_CALL_WINDOW) — use that
-// instead, which works because isWithinCallWindow reads it on every call
-// rather than being swapped out at the module-export boundary.
-process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
+// Mocking the exported isWithinCallWindow() does NOT work for this: it and
+// validateDispatch() are defined in the same module (carriers/adapter.ts),
+// and validateDispatch() calls isWithinCallWindow() as a bare local
+// reference, not through the module's export binding — vi.mock()'s
+// factory-replacement object is never consulted for that internal call, so
+// the override was silently a no-op. Confirmed directly: this test failed
+// for real, reproducibly, whenever it happened to run outside real
+// business hours, despite the mock "in place." Faking only `Date` (not all
+// timers, so real setTimeout/I-O in Prisma etc. still runs on real time)
+// pins what `new Date()` returns everywhere, including inside
+// validateDispatch's own internal call — the one seam that actually
+// controls this check.
+const FIXED_BUSINESS_HOURS_INSTANT = new Date('2026-08-05T14:00:00.000Z'); // Wed 10:00 EDT
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_BUSINESS_HOURS_INSTANT);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 process.env.VAPI_MAX_CONCURRENT_CALLS = '500';
 process.env.VAPI_CONCURRENCY_RESERVE = '0';
@@ -79,7 +87,7 @@ const { defaultPracticeSettings, updatePracticeSettings } = await import(
   '../src/server/services/practiceSettingsService.js'
 );
 const { piiVault } = await import('../src/pii-vault.js');
-const { default: logger } = await import('../src/logger.cjs');
+const { default: logger } = await import('../src/server/observability/logger.js');
 
 let dbReady = false;
 try {
@@ -173,6 +181,12 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
 
   beforeAll(async () => {
     if (!dbReady) return;
+    // Date is already pinned to FIXED_BUSINESS_HOURS_INSTANT by the file-level
+    // beforeAll above, which runs before this one — required here too since
+    // seedDispatchablePractice() below stamps callQueue.scheduledFor from
+    // Date.now(), and it needs to land inside the same pinned window the
+    // dispatch checks will later evaluate against.
+
     // queue_engine_lease is a global singleton row (by design — one lease
     // for the whole fleet). A previous test process can leave it live for up
     // to LEASE_TTL_MS under ITS OWN instance ID; a fresh `vitest run` is a
@@ -196,36 +210,20 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
   afterAll(async () => {
     await cleanupFleet(fleet);
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
+    vi.useRealTimers();
   });
 
   it('dispatches every practice through the real pipeline with no errors, in bounded wall-clock time', async () => {
     initiateCallMock.mockClear();
 
-    // validateDispatch's call-window guard only allows Mon–Fri 8am–5pm Eastern —
-    // correct production behavior, but it means this test depends on real
-    // wall-clock time unless pinned. Freeze to a known weekday business hour
-    // (2026-08-03 is a Monday) so this test's result doesn't depend on when it
-    // runs — shouldAdvanceTime keeps the clock ticking forward in real time from
-    // that point, so the elapsed-time measurement below stays meaningful.
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date('2026-08-03T14:00:00.000Z')); // 10:00 EDT, Monday
-
-    // validateDispatch prefers each queue entry's own `scheduledFor` over the
-    // system clock — those rows were stamped with real (pre-freeze) time in
-    // beforeAll, so they need bumping to the frozen business hour too.
-    await prisma.callQueue.updateMany({
-      where: { practiceId: { in: fleet.map((p) => p.id) } },
-      data: { scheduledFor: new Date() },
-    });
-
-    const start = Date.now();
-    let elapsedMs: number;
-    try {
-      await runDeskQueueTick(prisma);
-      elapsedMs = Date.now() - start; // measured under the still-advancing fake clock
-    } finally {
-      vi.useRealTimers();
-    }
+    // performance.now() rather than Date.now(): Date is pinned by the
+    // file-level beforeAll above (so isWithinCallWindow() sees real business
+    // hours without a separate COLLECTRX_FORCE_CALL_WINDOW escape hatch), and
+    // a pinned Date.now() would always read ~0ms elapsed, making the bound
+    // below assert nothing.
+    const start = performance.now();
+    await runDeskQueueTick(prisma);
+    const elapsedMs = performance.now() - start;
 
     // Every one of the 20 real, independently-tokenized, fully-authorized
     // claims made it all the way through: RLS-scoped candidate fetch, PHI

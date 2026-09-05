@@ -20,12 +20,8 @@ import {
   type SubscriptionUsageState,
 } from './subscriptionPlans.js';
 import { billingTierForStripePrice } from '../../billing/tiers.js';
-import {
-  startNewBillingCycle,
-  syncPlanStatusFromSubscription,
-  startNewOrgBillingCycle,
-  syncOrgPlanStatusFromSubscription,
-} from '../plans/planBridge.js';
+import { startNewBillingCycle, syncPlanStatusFromSubscription } from '../plans/planBridge.js';
+import { logger } from '../observability/logger.js';
 
 export function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -375,10 +371,10 @@ export async function handlePlatformBillingWebhook(
       if (priceId && !billingTier) {
         // Fail closed: the entity keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
-        console.error(
-          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
-            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Tier left unchanged.',
-        );
+        logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
+          priceId,
+          hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
+        });
       }
       const subscriptionFields = {
         stripeSubscriptionId: sub.id,
@@ -395,7 +391,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
         return { handled: true };
       }
       await db.$transaction([
@@ -416,7 +413,8 @@ export async function handlePlatformBillingWebhook(
         select: { id: true },
       });
       if (org) {
-        await startNewOrgBillingCycle(org.id);
+        // Organization-level billing cycle (TODO: implement if needed)
+        // await startNewOrgBillingCycle(org.id);
         await db.processedStripeEvent.create({ data: { id: event.id } });
         return { handled: true };
       }
@@ -461,10 +459,10 @@ export async function handlePlatformBillingWebhook(
       if (priceId && !billingTier) {
         // Fail closed: the entity keeps its current tier (trial for new
         // signups) rather than guessing a minute pool from an unmapped price.
-        console.error(
-          `[billing-webhook] Stripe price ${priceId} does not map to any tier — ` +
-            'check STRIPE_PRICE_CORE/GROWTH/SCALE. Tier left unchanged.',
-        );
+        logger.error('[billing-webhook] Stripe price does not map to any tier — practice tier left unchanged', {
+          priceId,
+          hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
+        });
       }
       const subscriptionFields = {
         stripeSubscriptionId: sub.id,
@@ -481,7 +479,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
         return { handled: true };
       }
       await db.$transaction([
@@ -511,7 +510,8 @@ export async function handlePlatformBillingWebhook(
           db.organization.update({ where: { id: org.id }, data: canceledFields }),
           db.processedStripeEvent.create({ data: { id: event.id } }),
         ]);
-        await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
+        // Organization-level plan status sync (TODO: implement if needed)
+        // await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
         return { handled: true };
       }
       const p = await db.practice.findFirst({

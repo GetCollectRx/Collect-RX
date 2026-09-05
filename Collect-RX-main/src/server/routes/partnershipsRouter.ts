@@ -21,7 +21,6 @@ import {
   CAPABILITY_CATALOG,
   formatCapabilityCatalogForReview,
 } from '../marketing/outreachVoice.js';
-import { PROSPECT_STAGES } from '../../types/partnerships.js';
 import {
   loadScoreWeights,
 } from '../marketing/prospectScoring.js';
@@ -31,6 +30,15 @@ import {
 import { startTrialOnboarding, runTrialOnboardingTick } from '../marketing/trialOnboarding.js';
 import { sendSuggestedReply } from '../marketing/replyIntelligence.js';
 import { sendPostDemoFollowUp } from '../marketing/postDemoFollowUp.js';
+import { recordPersonaClassification } from '../marketing/personaClassification.js';
+import {
+  PROSPECT_STAGES,
+  PERSONA_BUCKETS,
+  PERSONA_CONFIDENCE_LEVELS,
+  type PersonaBucket,
+  type PersonaConfidence,
+} from '../../types/partnerships.js';
+import { logger } from '../observability/logger.js';
 
 export function createPartnershipsRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -124,7 +132,15 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
 
   router.get('/prospects', async (req: Request, res: Response) => {
     const stage = req.query.stage as ProspectStage | undefined;
-    const where = stage && PROSPECT_STAGES.includes(stage) ? { stage } : {};
+    const personaBucket = req.query.personaBucket as PersonaBucket | undefined;
+    const pendingOutreachApprovalRaw = req.query.pendingOutreachApproval;
+    const where = {
+      ...(stage && PROSPECT_STAGES.includes(stage) ? { stage } : {}),
+      ...(personaBucket && PERSONA_BUCKETS.includes(personaBucket) ? { personaBucket } : {}),
+      ...(pendingOutreachApprovalRaw === 'true' || pendingOutreachApprovalRaw === 'false'
+        ? { pendingOutreachApproval: pendingOutreachApprovalRaw === 'true' }
+        : {}),
+    };
     const rows = await prisma.prospect.findMany({
       where,
       orderBy: [{ score: 'desc' }, { updatedAt: 'desc' }],
@@ -142,11 +158,92 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
         score: p.score,
         stage: p.stage,
         source: p.source,
+        personaBucket: p.personaBucket,
+        personaConfidence: p.personaConfidence,
+        personaAssignedAt: p.personaAssignedAt?.toISOString() ?? null,
+        pendingOutreachApproval: p.pendingOutreachApproval,
         lastEngagedAt: p.lastEngagedAt?.toISOString() ?? null,
         lastEmailSentAt: p.lastEmailSentAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
       })),
     });
+  });
+
+  /**
+   * Batch review for the outreach pipeline's human-approval gate
+   * (OUTREACH_REQUIRE_HUMAN_APPROVAL — see agents/outreach/approval-agent.md).
+   * Approving clears pendingOutreachApproval so the next scheduler tick can
+   * pick the contact up; rejecting clears it too but routes the contact to
+   * closed_lost so it drops out of the review queue without ever sending.
+   */
+  router.post('/prospects/outreach-review', async (req: Request, res: Response) => {
+    const body = req.body as { approve?: unknown; reject?: unknown };
+    const approve = Array.isArray(body.approve) ? body.approve.filter((id) => typeof id === 'string') : [];
+    const reject = Array.isArray(body.reject) ? body.reject.filter((id) => typeof id === 'string') : [];
+
+    if (approve.length === 0 && reject.length === 0) {
+      return res.status(400).json({ success: false, error: 'approve and/or reject id lists required' });
+    }
+
+    if (approve.length > 0) {
+      await prisma.prospect.updateMany({
+        where: { id: { in: approve } },
+        data: { pendingOutreachApproval: false },
+      });
+      for (const id of approve) {
+        await logProspectActivity(prisma, id, 'outreach_approved', 'Approved in batch review');
+      }
+    }
+
+    if (reject.length > 0) {
+      await prisma.prospect.updateMany({
+        where: { id: { in: reject } },
+        data: { pendingOutreachApproval: false, stage: 'closed_lost' },
+      });
+      for (const id of reject) {
+        await logProspectActivity(prisma, id, 'outreach_rejected', 'Excluded in batch review');
+      }
+    }
+
+    return res.json({ success: true, data: { approved: approve.length, rejected: reject.length } });
+  });
+
+  /**
+   * Where the Outreach Persona Classifier Agent's per-contact decision actually
+   * lands — see agents/outreach/persona-classifier.md. Without this, persona
+   * bucketing exists only inside that run's markdown report and can't be
+   * searched or audited afterward.
+   */
+  router.post('/prospects/:id/persona', async (req: Request, res: Response) => {
+    const body = req.body as { bucket?: unknown; confidence?: unknown; reasoning?: unknown };
+    const bucket = typeof body.bucket === 'string' ? (body.bucket as PersonaBucket) : undefined;
+    const confidence =
+      typeof body.confidence === 'string' ? (body.confidence as PersonaConfidence) : undefined;
+
+    if (!bucket || !PERSONA_BUCKETS.includes(bucket)) {
+      return res.status(400).json({
+        success: false,
+        error: `bucket must be one of: ${PERSONA_BUCKETS.join(', ')}`,
+      });
+    }
+    if (!confidence || !PERSONA_CONFIDENCE_LEVELS.includes(confidence)) {
+      return res.status(400).json({
+        success: false,
+        error: `confidence must be one of: ${PERSONA_CONFIDENCE_LEVELS.join(', ')}`,
+      });
+    }
+
+    try {
+      const result = await recordPersonaClassification(prisma, {
+        prospectId: req.params.id,
+        bucket,
+        confidence,
+        reasoning: typeof body.reasoning === 'string' ? body.reasoning : undefined,
+      });
+      return res.json({ success: true, data: result });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
   });
 
   router.get('/prospects/:id', async (req: Request, res: Response) => {
@@ -249,9 +346,26 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
       if (typeof body.phone === 'string') data.phone = body.phone.trim();
       if (typeof body.pmsHint === 'string') data.pmsHint = body.pmsHint.trim();
       if (typeof body.score === 'number') data.score = body.score;
+      if (typeof body.pendingOutreachApproval === 'boolean') {
+        data.pendingOutreachApproval = body.pendingOutreachApproval;
+      }
 
       let prospect = await prisma.prospect.findUnique({ where: { id: req.params.id } });
       if (!prospect) return res.status(404).json({ success: false, error: 'Not found' });
+
+      if (
+        typeof body.pendingOutreachApproval === 'boolean' &&
+        body.pendingOutreachApproval !== prospect.pendingOutreachApproval
+      ) {
+        await logProspectActivity(
+          prisma,
+          prospect.id,
+          body.pendingOutreachApproval ? 'outreach_approval_held' : 'outreach_approved',
+          body.pendingOutreachApproval
+            ? 'Held for outreach batch review'
+            : 'Approved for outreach',
+        );
+      }
 
       if (typeof body.stage === 'string' && PROSPECT_STAGES.includes(body.stage as ProspectStage)) {
         prospect = await advanceProspectStage(prisma, prospect.id, body.stage as ProspectStage);
@@ -268,7 +382,7 @@ export function createPartnershipsRouter(prisma: PrismaClient): Router {
             prospect.id,
             body.stage as ProspectStage,
           ).catch((err) => {
-            console.warn('[hubspot] stage sync failed', (err as Error).message);
+            logger.warn('[hubspot] stage sync failed', { error: err });
           });
         }
       }

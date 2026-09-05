@@ -6,12 +6,12 @@ import { authenticate } from '../middleware/authenticate.js';
 import { requirePlatformAdmin } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
-import { CSV_AR_FEATURES, setCsvArFeaturePaused, type CsvArFeature } from '../featureFlags/csvArFeatures.js';
 import { computeQueueStats } from '../services/platformReports.js';
 import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
 import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
 import { TIERS } from '../../billing/tiers.js';
+import { appendAuditLog } from '../audit/auditLog.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
@@ -27,7 +27,7 @@ export function createPlatformPersonaAdminRouter(): Router {
   });
   router.use(requirePlatformAdmin);
 
-  router.get('/practices', async (_req, res) => {
+  router.get('/practices', async (req, res) => {
     const rows = await prisma.practice.findMany({
       select: {
         id: true,
@@ -40,6 +40,16 @@ export function createPlatformPersonaAdminRouter(): Router {
       },
       orderBy: { name: 'asc' },
     });
+    for (const p of rows) {
+      void appendAuditLog(prisma, {
+        practiceId: p.id,
+        action: 'platform_admin.practice.read',
+        subjectType: 'Practice',
+        subjectId: p.id,
+        details: { via: 'practices_list' },
+        req,
+      });
+    }
     const data = await Promise.all(
       rows.map(async (p) => {
         const settings = await getPracticeSettings(prisma, p.id);
@@ -87,6 +97,13 @@ export function createPlatformPersonaAdminRouter(): Router {
     if (!practice) return res.status(404).json({ success: false, error: 'Not found' });
     const queueStats = await computeQueueStats(prisma, practice.id);
     const settings = await getPracticeSettings(prisma, practice.id);
+    void appendAuditLog(prisma, {
+      practiceId: practice.id,
+      action: 'platform_admin.practice.read',
+      subjectType: 'Practice',
+      subjectId: practice.id,
+      req,
+    });
     return res.json({ success: true, data: { practice, settings, queueStats } });
   });
 
@@ -102,6 +119,13 @@ export function createPlatformPersonaAdminRouter(): Router {
   router.get('/practices/:practiceId/grants', async (req, res) => {
     const grants = await prisma.platformAdminPracticeGrant.findMany({
       where: { practiceId: req.params.practiceId },
+    });
+    void appendAuditLog(prisma, {
+      practiceId: req.params.practiceId,
+      action: 'platform_admin.practice_grants.read',
+      subjectType: 'Practice',
+      subjectId: req.params.practiceId,
+      req,
     });
     return res.json({ success: true, data: grants });
   });
@@ -131,36 +155,18 @@ export function createPlatformPersonaAdminRouter(): Router {
     return res.json({ success: true });
   });
 
-  /** Global (practiceId: null) state of every staged CSV-AR rollout flag — the kill switch for csv_ar.* features. */
-  router.get('/feature-flags', async (_req, res) => {
-    const features = Object.values(CSV_AR_FEATURES);
-    const flags = await prisma.featureFlag.findMany({ where: { feature: { in: features }, practiceId: null } });
-    const byFeature = new Map(flags.map((f) => [f.feature, f]));
-    const data = features.map((feature) => {
-      const row = byFeature.get(feature);
-      return {
-        feature,
-        paused: row?.paused ?? false,
-        pauseReason: row?.pauseReason ?? null,
-        pausedAt: row?.pausedAt?.toISOString() ?? null,
-      };
-    });
-    return res.json({ success: true, data });
-  });
-
-  router.patch('/feature-flags/:feature', async (req, res) => {
-    const feature = req.params.feature as CsvArFeature;
-    if (!Object.values(CSV_AR_FEATURES).includes(feature)) {
-      return res.status(404).json({ success: false, error: `Unknown feature "${feature}"` });
-    }
-    const paused = Boolean(req.body?.paused);
-    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
-    await setCsvArFeaturePaused(prisma, null, feature, paused, reason);
-    return res.json({ success: true });
-  });
-
-  router.get('/queue/stats', async (_req, res) => {
+  router.get('/queue/stats', async (req, res) => {
     const practices = await prisma.practice.findMany({ select: { id: true, name: true } });
+    for (const p of practices) {
+      void appendAuditLog(prisma, {
+        practiceId: p.id,
+        action: 'platform_admin.practice.read',
+        subjectType: 'Practice',
+        subjectId: p.id,
+        details: { via: 'queue_stats' },
+        req,
+      });
+    }
     const platformRecovery = await computePlatformRecoveryMetrics(prisma);
     const stats = await Promise.all(
       practices.map(async (p) => {

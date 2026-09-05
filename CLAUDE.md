@@ -8,6 +8,16 @@ This repo has more than one doc claiming to describe "current state." When they 
 
 1. **This file** — repo-root overview, monorepo layout, standing rules that apply everywhere.
 2. **[`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md)** — authoritative for anything under `Collect-RX-main/` (commands run from that directory, PRD coding/merge-gate standards, CRTC disclosure rule). If you're working inside `Collect-RX-main/`, that file's rules apply in addition to this one.
+
+   **Agents — three trees, three consumers, no single "canonical".** Do not delete any of them; each is read by something different.
+
+   | Tree | Read by | Notes |
+   |---|---|---|
+   | [`Collect-RX-main/agents/`](Collect-RX-main/agents/) | **The server runtime.** `agentRunner.ts:loadAgentPrompt()` reads `$AGENTS_DIR` — `/app/agents` in production, `./agents` from `Collect-RX-main/` in dev. This is the copy inside the Docker build context (`COPY . .`), so **this is the copy that ships**. Runs on Gemini (`gemini-2.0-flash`); frontmatter is not parsed. | Deleting it breaks the scheduled agent runner |
+   | [`agents/`](agents/) (repo root) | Claude Code / Cowork tooling | Carries `model:` frontmatter (added by `2d22558`). **Not** in the Docker build context |
+   | [`.claude/agents/`](.claude/agents/) | Claude Code subagents | Orchestration pipeline: orchestrator, investigator, engineering, simulator, integration-tester, vapi-configurator, rollout-manager, escalation-manager, pre-launch-audit, weekly-health-reporter |
+
+   The first two hold the same 29 prompts and **drift**, with no sync check — the root copy has the model frontmatter, the shipped copy does not, and their READMEs have contradicted each other on compliance status. Until one is generated from the other or CI enforces parity, edit both and diff them before trusting either.
 3. **[`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md)** — the single live launch-readiness tracker. It is kept current. `OUTSTANDING-FIXES-PRODUCT-READY.md` is a **ticket backlog for reference**, not a status source — its phase-status stamps are historical snapshots and may lag reality; PATH-TO-DELIVERY wins on anything both describe.
 4. **Dated documents** (filenames or headers with a specific date, e.g. `*-2026-05-29.md`, `ENGINEERING-AUDIT-*`, `EMAIL_VALIDATION_REPORT.md`) are **point-in-time records**, not living docs. Treat them as history, not instructions — don't follow setup/deploy steps from them without checking they still match this file and PATH-TO-DELIVERY.
 5. `EXECUTION_STATE.md` and `ACTIVATION_CHECKLIST.md` are **retired/archived** (see notices at the top of each) — they described a specific July 2026 campaign push that is over. Do not follow their deploy targets or "ready" claims.
@@ -88,7 +98,7 @@ Express backend  Collect-RX-main/src/server/index.ts  (Fly.io app `collect-rx`, 
     ↓
 Prisma ORM → PostgreSQL (Fly.io)  +  Redis-backed worker queue (BullMQ) for background jobs
     ↓
-Vapi.ai voice agents (4-agent squad via Vapi API)
+Vapi.ai voice agents (5-agent squad via Vapi API)
     ↓
 Twilio (telephony — calls to carriers)
 ```
@@ -131,7 +141,7 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 **Estimate math:** Insurer pays `coverage% × (fee − deductible)`. Deductible is the patient's first-dollar responsibility and reduces the insured base, not the patient total directly. Patient pays `fee − netInsurancePays`.
 
-**TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. TELUS minimum claim wait is day 21 (vs. day 32 for all other carriers).
+**TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. Carrier-configs.json documents a per-carrier minimum claim wait (day 21 for TELUS, day 32 for all other carriers), but `validateDispatch()` (`Collect-RX-main/src/carriers/adapter.ts`) does not currently enforce those per-carrier numbers — every carrier, TELUS included, is gated by one flat 30-day floor. See [`docs/operations/HUMAN-DECISIONS-PENDING.md`](docs/operations/HUMAN-DECISIONS-PENDING.md) item 1 for the options on whether to start enforcing the documented per-carrier minimums.
 
 ### Abeldent Connector (Phase 4)
 
@@ -166,7 +176,7 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time
 - Maximum 3 call attempts per claim
-- Claims under 30 days old: do not enter queue
+- Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
 - Claims over 90 days old: skip AI, escalate to human immediately
 - Billing/usage limits (trial caps, overage-pending, payment failure) also pause calling — see the Billing lifecycle section in `docs/operations/PATH-TO-DELIVERY.md`
 

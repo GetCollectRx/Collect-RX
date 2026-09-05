@@ -12,10 +12,11 @@ import { implementRankedItem } from './implementer.js';
 import { sendLearningCycleSms, sendLearningCycleCompleteNotification } from './notify.js';
 import { runEmailScheduler } from './emailScheduler.js';
 import type { CycleSummary } from './types.js';
+import { logger } from '../observability/logger.js';
 
 export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSummary> {
   if (!isLearningLoopEnabled()) {
-    console.log('[learning] LEARNING_LOOP_ENABLED is off — skipping cycle');
+    logger.info('[learning] LEARNING_LOOP_ENABLED is off — skipping cycle', {});
     return {
       pulled: 0,
       researched: 0,
@@ -140,12 +141,12 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
 
     // Run email scheduler (prospect outreach)
     await runEmailScheduler(prisma).catch((err) => {
-      console.error('[learning] email scheduler error:', err);
+      logger.error('[learning] email scheduler error', { error: err });
     });
 
     // Send comprehensive notifications (email, Slack)
     void sendLearningCycleCompleteNotification(summary).catch((err) =>
-      console.error('[learning] notification error:', err),
+      logger.error('[learning] notification error', { error: err }),
     );
 
     await prisma.learningCycleRun.update({
@@ -163,7 +164,7 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
       },
     });
 
-    console.log('[learning] cycle complete', summary);
+    logger.info('[learning] cycle complete', { summary });
     return summary;
   } catch (err) {
     const message = (err as Error).message;

@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/authenticate.js';
+import { logger } from '../observability/logger.js';
 
 function requirePlatformAdmin(req: Request, res: Response, next: () => void): void {
   const auth = req.auth;
@@ -43,7 +44,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         where: { campaignId: campaign.id },
       });
 
-      console.warn(`[campaignRoutes] Created campaign: ${campaign.id} (${campaign.name})`);
+      logger.warn('[campaignRoutes] Created campaign', { id: campaign.id, name: campaign.name });
 
       res.status(201).json({
         id: campaign.id,
@@ -54,7 +55,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         createdAt: campaign.createdAt.toISOString(),
       });
     } catch (err) {
-      console.error('[campaignRoutes] POST /api/campaigns failed:', (err as Error).message);
+      logger.error('[campaignRoutes] POST /api/campaigns failed', { error: err });
       res.status(500).json({ error: 'Failed to create campaign' });
     }
   });
@@ -107,7 +108,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
 
       res.json(campaignStats);
     } catch (err) {
-      console.error('[campaignRoutes] GET /api/campaigns failed:', (err as Error).message);
+      logger.error('[campaignRoutes] GET /api/campaigns failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch campaigns' });
     }
   });
@@ -155,7 +156,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         eventCounts.map((group) => [group.eventType, group._count.id]),
       );
 
-      console.warn(`[campaignRoutes] Retrieved stats for campaign: ${id}`);
+      logger.warn('[campaignRoutes] Retrieved stats for campaign', { id });
 
       res.json({
         campaignId: campaign.id,
@@ -179,7 +180,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         updatedAt: campaign.updatedAt.toISOString(),
       });
     } catch (err) {
-      console.error('[campaignRoutes] GET /api/campaigns/:id/stats failed:', (err as Error).message);
+      logger.error('[campaignRoutes] GET /api/campaigns/:id/stats failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch campaign stats' });
     }
   });
@@ -266,9 +267,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
           );
         }
 
-        console.warn(
-          `[campaignRoutes] Queued ${processedCount} prospects for sending in campaign: ${id}`,
-        );
+        logger.warn('[campaignRoutes] Queued prospects for sending', { processedCount, campaignId: id });
 
         res.json({
           campaignId: id,
@@ -277,7 +276,7 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
           timestamp: new Date().toISOString(),
         });
       } catch (err) {
-        console.error('[campaignRoutes] POST /api/campaigns/:id/send-batch failed:', (err as Error).message);
+        logger.error('[campaignRoutes] POST /api/campaigns/:id/send-batch failed', { error: err });
         res.status(500).json({ error: 'Failed to queue batch for sending' });
       }
     },
@@ -312,11 +311,11 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
             : [{ createdAt: 'desc' }],
       });
 
-      console.warn(`[campaignRoutes] Retrieved ${prospects.length} prospects for campaign: ${id}`);
+      logger.warn('[campaignRoutes] Retrieved prospects for campaign', { count: prospects.length, campaignId: id });
 
       res.json(prospects);
     } catch (err) {
-      console.error('[campaignRoutes] GET /api/campaigns/:id/prospects failed:', (err as Error).message);
+      logger.error('[campaignRoutes] GET /api/campaigns/:id/prospects failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch prospects' });
     }
   });
@@ -343,11 +342,11 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         },
       });
 
-      console.warn(`[campaignRoutes] Emails sent today in campaign ${id}: ${count}`);
+      logger.warn('[campaignRoutes] Emails sent today', { campaignId: id, count });
 
       res.json({ count });
     } catch (err) {
-      console.error('[campaignRoutes] GET /api/campaigns/:id/emails-sent-today failed:', (err as Error).message);
+      logger.error('[campaignRoutes] GET /api/campaigns/:id/emails-sent-today failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch emails sent today' });
     }
   });
@@ -372,11 +371,11 @@ export function registerCampaignRoutes(app: Express, prisma: PrismaClient): void
         take: 100,
       });
 
-      console.warn(`[campaignRoutes] Retrieved history for prospect: ${id} (${history.length} events)`);
+      logger.warn('[campaignRoutes] Retrieved history for prospect', { id, eventCount: history.length });
 
       res.json(history);
     } catch (err) {
-      console.error('[campaignRoutes] GET /api/campaigns/prospects/:id/history failed:', (err as Error).message);
+      logger.error('[campaignRoutes] GET /api/campaigns/prospects/:id/history failed', { error: err });
       res.status(500).json({ error: 'Failed to fetch prospect history' });
     }
   });

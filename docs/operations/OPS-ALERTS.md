@@ -23,10 +23,11 @@ STARTUP_ALERT_EMAIL_TO=khalid@collectrx.ca
 
 ## Enable alerts (ongoing ops)
 
-In host secrets (or `.env`), set at minimum:
+`OPS_ALERTS_ENABLED` and `OPS_MONITOR_ENABLED` **default to on in production** (`NODE_ENV=production`) and off everywhere else — you no longer need to set either explicitly on a production host just to activate the pipe. Set `OPS_ALERTS_ENABLED=0` / `OPS_MONITOR_ENABLED=0` explicitly if you genuinely want them off in production (not recommended for a live pilot: with alerting off, a queue stall, a DB outage, or a DLQ pile-up pages no one). The startup digest scan's `ops_alerting_disabled` check reports the *effective* state (after this default), not just whether the env var was literally set, so a production boot with no channel configured still shows up as failing that check even though the flags themselves are on by default.
+
+What still requires an explicit host secret either way is a **delivery channel** — enabling the pipe without a channel means alerts are computed and logged but never delivered:
 
 ```bash
-OPS_ALERTS_ENABLED=1
 ALERT_SMS_TO=+1XXXXXXXXXX          # existing Twilio on-call number(s), comma-separated
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
@@ -42,10 +43,9 @@ SENDGRID_FROM_EMAIL=ops@collectrx.ca
 OPS_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/...   # Slack incoming webhook
 ```
 
-Optional runtime monitoring (while API is running):
+Runtime monitoring interval (while API is running):
 
 ```bash
-OPS_MONITOR_ENABLED=1
 OPS_MONITOR_INTERVAL_MS=300000     # default 5 minutes
 ```
 

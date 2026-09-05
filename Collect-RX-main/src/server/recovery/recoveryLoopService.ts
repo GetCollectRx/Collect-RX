@@ -16,6 +16,7 @@ import {
 import { shouldSupersedeBlockingGate, shouldSupersedeOpenAction, isPracticeGateHoldDecision } from './gateSupersession.js';
 import { getCarrierHoldStats } from './holdLedger.js';
 import type { RecoveryDecision } from './types.js';
+import { logger } from '../observability/logger.js';
 
 export interface ApplyRecoveryAfterCallParams {
   claim: {
@@ -306,7 +307,7 @@ export async function applyRecoveryAfterCall(
       title: gateToNotify.title,
       detail: gateToNotify.detail,
     }).catch((e) => {
-      console.error('[recoveryLoop] gate alert failed (non-fatal):', e);
+      logger.error('[recoveryLoop] gate alert failed (non-fatal)', { error: e });
     });
   }
 
@@ -371,7 +372,7 @@ export async function emitRecoveryTerminalEmrEvent(
       },
     });
   } catch (e) {
-    console.error('[recoveryLoop] EMR outbox enqueue failed (non-fatal):', e);
+    logger.error('[recoveryLoop] EMR outbox enqueue failed (non-fatal)', { error: e });
   }
 }
 

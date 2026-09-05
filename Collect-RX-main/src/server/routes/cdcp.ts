@@ -29,6 +29,7 @@ import {
   apply2026FeeGuide,
 } from '../services/carrierRules.js';
 import type { CdcpDeniedClaim } from '../services/cdcp/types.js';
+import { logger } from '../observability/logger.js';
 
 export function createCdcpRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -65,7 +66,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         urgentClaimIds: result.urgentClaimIds,
       });
     } catch (err) {
-      console.error('[CDCP] /denied-claims error:', err);
+      logger.error('[CDCP] /denied-claims error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -87,7 +88,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const result = await listCdcpQueueFromPrisma(prisma, practiceId);
       res.json(result);
     } catch (err) {
-      console.error('[CDCP] /queue error:', err);
+      logger.error('[CDCP] /queue error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -111,7 +112,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json(gap);
     } catch (err) {
-      console.error('[CDCP] /evidence-gap error:', err);
+      logger.error('[CDCP] /evidence-gap error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -128,7 +129,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const strategy = selectSubmissionStrategy(pmsCapability);
       res.json(strategy);
     } catch (err) {
-      console.error('[CDCP] /submission-strategy error:', err);
+      logger.error('[CDCP] /submission-strategy error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -158,7 +159,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ success: true });
     } catch (err) {
-      console.error('[CDCP] PATCH /reconsiderations error:', err);
+      logger.error('[CDCP] PATCH /reconsiderations error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -188,7 +189,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         balanceBillingProhibitedAbove: Math.round(ceiling * 100) / 100,
       });
     } catch (err) {
-      console.error('[CDCP] /fee-ceiling error:', err);
+      logger.error('[CDCP] /fee-ceiling error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -222,7 +223,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ total, cases, limit: take, offset: skip });
     } catch (err) {
-      console.error('[CDCP] GET /reconsiderations error:', err);
+      logger.error('[CDCP] GET /reconsiderations error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -246,7 +247,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ case: caseRecord });
     } catch (err) {
-      console.error('[CDCP] GET /reconsiderations/:id error:', err);
+      logger.error('[CDCP] GET /reconsiderations/:id error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -289,7 +290,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.status(201).json({ case: caseRecord });
     } catch (err) {
-      console.error('[CDCP] POST /reconsiderations error:', err);
+      logger.error('[CDCP] POST /reconsiderations error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -311,7 +312,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ snapshots: rows });
     } catch (err) {
-      console.error('[CDCP] GET /kpi error:', err);
+      logger.error('[CDCP] GET /kpi error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -342,7 +343,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ ok: true, result });
     } catch (err) {
-      console.error('[CDCP] POST /kpi error:', err);
+      logger.error('[CDCP] POST /kpi error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

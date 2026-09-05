@@ -9,6 +9,7 @@ import {
   signalsFromProspect,
   type ScoreWeights,
 } from './prospectScoring.js';
+import { logger } from '../observability/logger.js';
 
 const MIN_CLOSED_OUTCOMES = 8;
 const MIN_PER_BUCKET = 3;
@@ -220,7 +221,7 @@ export async function runMarketingLearningCycle(
     },
   });
 
-  console.log('[marketing-learning] cycle complete', stats);
+  logger.info('[marketing-learning] cycle complete', { stats });
 
   return {
     skipped: false,

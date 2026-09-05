@@ -347,14 +347,8 @@
       "Bash(/usr/local/opt/postgresql@16/bin/psql \"postgresql://collectrx_audit:audit_local_only@127.0.0.1:5544/collectrx_audit\" -t -A -c \"SELECT ic.claim_number, ic.status, ca.outcome::text, \\(ca.completed_at IS NOT NULL\\) AS closed, ca.vapi_call_id FROM call_attempts ca JOIN insurance_claims ic ON ic.id=ca.claim_id WHERE ic.claim_number LIKE 'AUD-B%' ORDER BY 1,5\")",
       "Bash(/usr/local/opt/postgresql@16/bin/psql \"postgresql://collectrx_audit:audit_local_only@127.0.0.1:5544/collectrx_audit\" -t -A -c \"SELECT ic.status, ca.outcome::text, \\(ca.completed_at IS NOT NULL\\) FROM call_attempts ca JOIN insurance_claims ic ON ic.id=ca.claim_id WHERE ca.vapi_call_id='mock-call-bed627ca-38b4-4e5b-8947-2d1af3ec80cd'\")",
       "Bash(/usr/local/opt/postgresql@16/bin/psql \"postgresql://collectrx_audit:audit_local_only@127.0.0.1:5544/collectrx_audit\" -t -A -c \"SELECT count\\(*\\) FROM \\\\\"ProcessedVapiWebhook\\\\\"\")",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(pipx install *)",
-      "Bash(agent-reach install *)",
-      "Bash(agent-reach doctor *)",
-      "Bash(cat)",
-      "Bash(chmod +x /tmp/collectrx_research.sh)",
-      "Bash(/tmp/collectrx_research.sh)",
-      "Bash(grep -E \"error|^$\")"
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__subscribe_pr_activity",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later"
     ]
   }
 }

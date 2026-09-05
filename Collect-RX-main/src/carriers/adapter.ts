@@ -27,7 +27,12 @@ export interface CarrierConfig {
   displayName: string;
   /** Direct-dial number for claims department */
   phone: string;
-  /** Minimum days outstanding before calling — day 21 for TELUS, day 32 others */
+  /**
+   * Documented carrier SLA for minimum days outstanding before calling — day
+   * 21 for TELUS, day 32 for others. Not currently enforced by
+   * `validateDispatch`, which applies a flat 30-day floor to every carrier
+   * instead (see docs/operations/HUMAN-DECISIONS-PENDING.md item 1).
+   */
   minWaitDays: number;
   /** Expected hold time in minutes (for analytics time-saved calc) */
   avgHoldMinutes: number;
@@ -384,14 +389,17 @@ export async function checkCarrierAuthorizationGate(
 /**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
- *   2. Fleet-wide per-carrier concurrency ceiling (when a snapshot is supplied)
- *   3. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
- *   4. Practice carrier authorization (BAAL, provider number, voice agent enabled)
- *   5. Days outstanding (< 30 → reject, > 90 → escalate)
- *   6. TELUS-specific minimum days (when applicable)
- *   7. Max attempts (>= 3 → reject)
- *   8. Subscription monthly claim limit
- *   9. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
+ *   3. Practice carrier authorization (BAAL, provider number, voice agent enabled)
+ *   4. Days outstanding (< 30 → reject for every carrier, > 90 → escalate). Flat
+ *      floor for every carrier today — CARRIER_CONFIGS.minWaitDays documents
+ *      per-carrier SLAs (21 days TELUS, 32 others) but enforcing those instead
+ *      of this flat 30 is a pending product decision, not an engineering gap —
+ *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
+ *   5. Max attempts (>= 3 → reject)
+ *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ * Subscription/usage capacity (canMakeCall()) is enforced by the caller
+ * (queueEngine.ts) before this function runs, not here.
  */
 export async function validateDispatch(
   prisma: PrismaClient,
@@ -439,28 +447,26 @@ export async function validateDispatch(
     return authGate;
   }
 
-  // 5. Claims under 30 days old — do not queue
-  const config = CARRIER_CONFIGS[carrierId];
+  // 4. Claims under 30 days old — do not queue. This is a flat floor for every
+  // carrier: CARRIER_CONFIGS.minWaitDays documents per-carrier SLAs (21 days
+  // for TELUS, 32 for the rest) but nothing in dispatch consults that field —
+  // see docs/operations/HUMAN-DECISIONS-PENDING.md item 1 for the decision on
+  // whether to enforce those per-carrier numbers instead of this flat one.
   if (daysOutstanding < 30) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 6. TELUS minimum day 21 — but our global minimum is 30, so this is informational only
-  if (carrierId === 'telus_adjudicare' && daysOutstanding < config.minWaitDays) {
-    return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `TELUS requires minimum ${config.minWaitDays} days (currently ${daysOutstanding})` };
-  }
-
-  // 7. Claims over 90 days — escalate to human, skip AI
+  // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
-  // 8. Max 3 attempts
+  // 6. Max 3 attempts
   if (attemptsSoFar >= 3) {
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 9. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
     const easternHour = getEasternHour(callTime);

@@ -18,6 +18,17 @@
 # consumer on the same Redis instance) per
 # docs/adr/0002-background-jobs-bullmq-redis.md. There is no separate
 # dedicated worker Redis, and none is needed here.
+#
+# Log volumes: logs/app-YYYY-MM-DD.log (Winston, src/logger.cjs) previously
+# lived only on the container's ephemeral filesystem and was lost on every
+# redeploy/restart. Each process group gets its own volume — a Fly volume
+# attaches to exactly one machine, and app/worker are separate machines.
+# Before first deploy with this config, provision both volumes:
+#   fly volumes create collectrx_app_logs -a collect-rx -r yyz --size 1
+#   fly volumes create collectrx_worker_logs -a collect-rx -r yyz --size 1
+# Caveat: a volume-backed machine can't be freely multi-region/multi-instance
+# scaled without a volume per instance — fine at current min_machines_running
+# = 1, revisit if the app process group ever scales beyond one machine.
 
 app = 'collect-rx'
 primary_region = 'yyz'
@@ -59,3 +70,13 @@ processes = ['worker']
 memory = '512mb'
 cpu_kind = 'shared'
 cpus = 1
+
+[[mounts]]
+source = 'collectrx_app_logs'
+destination = '/app/logs'
+processes = ['app']
+
+[[mounts]]
+source = 'collectrx_worker_logs'
+destination = '/app/logs'
+processes = ['worker']

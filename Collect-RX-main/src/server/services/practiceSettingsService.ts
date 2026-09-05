@@ -33,6 +33,15 @@ function normalizeCarrierConfig(raw: unknown): CarrierConfig | undefined {
   return { ...fallback, ...c };
 }
 
+export function defaultRetentionSettings(): PracticeSettings['retention'] {
+  return {
+    purgeEnabled: false,
+    claimRetentionMonths: 12,
+    auditLogRetentionMonths: 18,
+    phiAccessEventRetentionMonths: 18,
+  };
+}
+
 export function defaultPracticeSettings(): PracticeSettings {
   return {
     emailsEnabled: true,
@@ -47,6 +56,7 @@ export function defaultPracticeSettings(): PracticeSettings {
     callWindowEnd: '17:00',
     escalationPhoneNumber: '',
     telusTpaMappings: {},
+    retention: defaultRetentionSettings(),
   };
 }
 
@@ -104,6 +114,27 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     o.pmsIngestMode === 'unknown'
       ? { pmsIngestMode: o.pmsIngestMode }
       : {}),
+    ...(o.retention && typeof o.retention === 'object'
+      ? { retention: normalizeRetentionSettings(o.retention) }
+      : {}),
+  };
+}
+
+/** Backfill/clamp retention fields added after a practice's settings were first saved. */
+function normalizeRetentionSettings(raw: unknown): PracticeSettings['retention'] {
+  const base = defaultRetentionSettings();
+  if (!raw || typeof raw !== 'object') return base;
+  const o = raw as Partial<PracticeSettings['retention']>;
+  const positiveInt = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : fallback;
+  return {
+    purgeEnabled: typeof o.purgeEnabled === 'boolean' ? o.purgeEnabled : base.purgeEnabled,
+    claimRetentionMonths: positiveInt(o.claimRetentionMonths, base.claimRetentionMonths),
+    auditLogRetentionMonths: positiveInt(o.auditLogRetentionMonths, base.auditLogRetentionMonths),
+    phiAccessEventRetentionMonths: positiveInt(
+      o.phiAccessEventRetentionMonths,
+      base.phiAccessEventRetentionMonths,
+    ),
   };
 }
 

@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { logProspectActivity } from './prospectActivity.js';
 import { maybeStartReferralSequence } from './referralEngine.js';
 import { syncProspectStageToHubspot } from './hubspotSync.js';
+import { logger } from '../observability/logger.js';
 
 function defaultTimezone(province: string | null): string {
   const p = (province || '').toUpperCase();
@@ -95,7 +96,7 @@ export async function handleProspectClosedWon(
   await maybeStartReferralSequence(prisma, prospect);
   const handoff = await createPracticeFromProspect(prisma, prospectId);
   void syncProspectStageToHubspot(prisma, prospectId, 'closed_won').catch((err) => {
-    console.warn('[hubspot] closed_won sync failed', (err as Error).message);
+    logger.warn('[hubspot] closed_won sync failed', { error: err });
   });
   return handoff;
 }
