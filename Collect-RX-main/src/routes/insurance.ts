@@ -547,67 +547,99 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // attempt count under lock, set status to CALLING, and increment attempts.
     // This eliminates the TOCTOU gap where two concurrent triggers could both
     // pass the < 3 check and both dispatch.
-    const reserved = await prisma.$transaction(async (tx) => {
-      await tx.$queryRawUnsafe(
-        `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
-        claimId,
-      );
+    const reserveDispatchSlot = () =>
+      prisma.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
+          claimId,
+        );
 
-      const lockedQueue = await tx.callQueue.findUnique({
-        where: { claimId },
-        select: {
-          attempts: true,
-          status: true,
-          lastAttemptAt: true,
-          dispatchDeferralCode: true,
-          dispatchDeferralNextAction: true,
-          dispatchDeferredAt: true,
-        },
+        const lockedQueue = await tx.callQueue.findUnique({
+          where: { claimId },
+          select: {
+            attempts: true,
+            status: true,
+            lastAttemptAt: true,
+            dispatchDeferralCode: true,
+            dispatchDeferralNextAction: true,
+            dispatchDeferredAt: true,
+          },
+        });
+        const lockedClaim = await tx.insuranceClaim.findUnique({
+          where: { id: claimId },
+          select: { status: true },
+        });
+
+        const lockedAttempts = lockedQueue?.attempts ?? claim.callAttempts.length;
+        if (lockedAttempts >= 3) {
+          return { ok: false as const, reason: `Maximum 3 call attempts reached (${lockedAttempts} so far)` };
+        }
+        if (lockedClaim?.status === 'CALLING' || lockedQueue?.status === 'IN_PROGRESS') {
+          return { ok: false as const, reason: 'A call is already in progress for this claim' };
+        }
+
+        await tx.insuranceClaim.update({
+          where: { id: claimId },
+          data: { status: 'CALLING' },
+        });
+
+        await tx.callQueue.upsert({
+          where: { claimId },
+          create: {
+            practiceId,
+            claimId,
+            scheduledFor: new Date(),
+            priority: claim.priority,
+            attempts: 1,
+            lastAttemptAt: new Date(),
+            status: 'IN_PROGRESS',
+          },
+          update: {
+            status: 'IN_PROGRESS',
+            attempts: { increment: 1 },
+            lastAttemptAt: new Date(),
+          },
+        });
+
+        return {
+          ok: true as const,
+          reservation: {
+            claimStatus: lockedClaim?.status ?? claim.status,
+            queue: lockedQueue,
+          },
+        };
+      }, { timeout: 15000, maxWait: 10000 });
+
+    let reserved: Awaited<ReturnType<typeof reserveDispatchSlot>>;
+    try {
+      reserved = await reserveDispatchSlot();
+    } catch (reservationErr) {
+      logger.error('[POST /insurance/queue/trigger/:claimId] reservation transaction failed', {
+        claimId,
+        error: reservationErr,
       });
-      const lockedClaim = await tx.insuranceClaim.findUnique({
+      // The transaction may have partially committed despite the client-side
+      // throw (e.g. an interactive-transaction timeout that fires after the
+      // underlying commit already succeeded). Check actual DB state and self-heal
+      // rather than leaving the claim stuck in CALLING with no automatic recovery.
+      const postFailureClaim = await prisma.insuranceClaim.findUnique({
         where: { id: claimId },
         select: { status: true },
       });
-
-      const lockedAttempts = lockedQueue?.attempts ?? claim.callAttempts.length;
-      if (lockedAttempts >= 3) {
-        return { ok: false as const, reason: `Maximum 3 call attempts reached (${lockedAttempts} so far)` };
+      if (postFailureClaim?.status === 'CALLING') {
+        await prisma.$transaction([
+          prisma.insuranceClaim.update({
+            where: { id: claimId },
+            data: { status: claim.status },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING' },
+          }),
+        ]);
       }
-      if (lockedClaim?.status === 'CALLING' || lockedQueue?.status === 'IN_PROGRESS') {
-        return { ok: false as const, reason: 'A call is already in progress for this claim' };
-      }
-
-      await tx.insuranceClaim.update({
-        where: { id: claimId },
-        data: { status: 'CALLING' },
-      });
-
-      await tx.callQueue.upsert({
-        where: { claimId },
-        create: {
-          practiceId,
-          claimId,
-          scheduledFor: new Date(),
-          priority: claim.priority,
-          attempts: 1,
-          lastAttemptAt: new Date(),
-          status: 'IN_PROGRESS',
-        },
-        update: {
-          status: 'IN_PROGRESS',
-          attempts: { increment: 1 },
-          lastAttemptAt: new Date(),
-        },
-      });
-
-      return {
-        ok: true as const,
-        reservation: {
-          claimStatus: lockedClaim?.status ?? claim.status,
-          queue: lockedQueue,
-        },
-      };
-    });
+      throw reservationErr;
+    }
 
     if (!reserved.ok) {
       return res.status(422).json({ success: false, error: reserved.reason });

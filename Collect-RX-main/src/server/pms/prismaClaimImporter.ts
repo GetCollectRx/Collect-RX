@@ -13,6 +13,7 @@ import { detectUnderpayment, upsertUnderpaymentCase } from '../reconciliation/un
 import { evaluateSubmissionQuality } from '../reconciliation/submissionQualityGate.js';
 import { buildPmsT11DenialSignal, linkRecoveryActionToCdcpCase } from '../recovery/cdcpRecoveryBridge.js';
 import { upsertReconsiderationFromSignal } from '../canadianExpansion/autoReconsideration.js';
+import { validateTreatingDentistForClaim } from '../services/billing/validateTreatingDentist.js';
 
 export interface PrismaImportResult {
   imported: number;
@@ -53,6 +54,7 @@ async function upsertInsuranceClaim(
   practiceId: string,
   row: NormalizedPmsClaimRow,
   carrierId: CarrierId,
+  treatingDentistId: string | undefined,
 ): Promise<
   | { outcome: 'imported'; claimId: string; previousOutstanding: number; newOutstanding: number }
   | { outcome: 'skipped' }
@@ -111,6 +113,7 @@ async function upsertInsuranceClaim(
       servicedAt: row.servicedAt,
       submittedAt: row.submittedAt,
       treatmentCodes: row.treatmentCodes ?? undefined,
+      treatingDentistId,
       status: 'PENDING',
       priority: daysOutstanding > 90 ? 'URGENT' : daysOutstanding > 60 ? 'HIGH' : 'NORMAL',
     },
@@ -124,6 +127,10 @@ async function upsertInsuranceClaim(
       // the claim points at the newly tokenized entry.
       patientToken,
       servicedAt: row.servicedAt ?? undefined,
+      // Only overwrite an already-set treatingDentistId when this import row
+      // actually carries one — a later re-import without the column must not
+      // erase a dentist assignment made by an earlier one that had it.
+      ...(treatingDentistId ? { treatingDentistId } : {}),
       // Update submittedAt and treatmentCodes if the new import has them and current row doesn't
       ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
       ...(row.treatmentCodes ? { treatmentCodes: row.treatmentCodes } : {}),
@@ -179,7 +186,22 @@ export async function importPmsClaimsToPrisma(
         });
         continue;
       }
-      const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId);
+      let treatingDentistId: string | undefined;
+      if (row.treatingDentistProviderNumber) {
+        const dentistCheck = await validateTreatingDentistForClaim(
+          prisma,
+          practiceId,
+          row.treatingDentistProviderNumber,
+        );
+        if (!dentistCheck.ok) {
+          result.failed += 1;
+          result.errors.push({ claimNumber: row.claimNumber, error: dentistCheck.error });
+          continue;
+        }
+        treatingDentistId = dentistCheck.dentistId;
+      }
+
+      const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId, treatingDentistId);
       if (outcome.outcome === 'skipped') {
         result.skipped += 1;
       } else {
