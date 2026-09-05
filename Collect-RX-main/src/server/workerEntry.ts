@@ -34,6 +34,7 @@ import {
   resolveJobCorrelationId,
 } from './jobs/jobFailureAlert.js';
 import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { runOntarioArAgingSweep } from './jobs/ontarioArAgingSweep.js';
 import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
 import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
@@ -204,6 +205,8 @@ const worker = new Worker(
       } else if (job.name === 'DLQ_RETENTION_SWEEP') {
         const pruned = await pruneOldDeadLetters(prisma);
         if (pruned > 0) logger.info('[worker] DLQ_RETENTION_SWEEP pruned dead letters', { pruned });
+      } else if (job.name === 'ONTARIO_AR_AGING_SWEEP') {
+        await runOntarioArAgingSweep(prisma);
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
