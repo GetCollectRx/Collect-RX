@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import type { PrismaClient, Prospect } from '@prisma/client';
 import type { VapiWebhookPayload } from '../../vapi/client.js';
 import {
@@ -10,6 +11,10 @@ export interface InitiateProspectCallResult {
   vapiCallId: string;
   status: string;
 }
+
+// Sales calls use a shorter timeout ceiling than claims recovery (10 min vs 30+ min).
+// This is enforced in the Vapi HTTP request deadline below.
+const SALES_CALL_VAPI_TIMEOUT_MS = 10_000;
 
 export async function initiateProspectSalesCall(
   prisma: PrismaClient,
@@ -26,6 +31,11 @@ export async function initiateProspectSalesCall(
 
   const { assertProspectCallable } = await import('./dnclCheck.js');
   await assertProspectCallable(prisma, prospect);
+
+  // Generate ephemeral token for this prospect in this call context.
+  // This token links the Vapi call back to the prospect row; the real
+  // prospect name (business identifier) stays out of the webhook payload.
+  const prospectToken = randomUUID();
 
   const payload = {
     assistantId,
@@ -44,12 +54,18 @@ export async function initiateProspectSalesCall(
           },
         ],
       },
-      variableValues: buildSalesQualifierVariableValues(prospect),
+      variableValues: {
+        ...buildSalesQualifierVariableValues(prospect),
+        // Practice name injected as ephemeral variable (available during call only),
+        // not in public webhook metadata (which carries UUID token only).
+        prospect_name: prospect.practiceName,
+      },
     },
+    // metadata: UUID primary key only — no business identifiers or PHI in metadata
     metadata: {
       prospectId: prospect.id,
+      prospectToken,
       callType: 'sales_qualifier',
-      practiceName: prospect.practiceName,
     },
   };
 
@@ -60,6 +76,7 @@ export async function initiateProspectSalesCall(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(SALES_CALL_VAPI_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -89,7 +106,7 @@ export async function tryProcessProspectVapiWebhook(
   prisma: PrismaClient,
   payload: VapiWebhookPayload,
 ): Promise<boolean> {
-  const meta = payload.metadata as { prospectId?: string; callType?: string } | undefined;
+  const meta = payload.metadata as { prospectId?: string; prospectToken?: string; callType?: string } | undefined;
   const prospectId = meta?.prospectId;
   const callType = meta?.callType;
   if (!prospectId || callType !== 'sales_qualifier') return false;
