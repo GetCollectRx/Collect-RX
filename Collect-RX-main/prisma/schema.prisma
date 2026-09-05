@@ -779,6 +779,11 @@ model CdcpCoverage {
   patientToken   String   @unique @map("patient_token")
   /// Income-based co-pay percentage: 0 (under $70k), 40 ($70k-$79k), 60 ($80k-$89k).
   coPayTier      Int      @map("co_pay_tier")
+  /// True when this patient has active provincial secondary coverage (ODSP,
+  /// Ontario Works, Healthy Smiles Ontario) coordinated through Accerta.
+  /// Drives both the split-billing calculator's balance-billing prohibition
+  /// and the A/R aging sweep's automatic CobRoute creation on adjudication.
+  hasProvincialSecondary Boolean @default(false) @map("has_provincial_secondary")
   lastVerifiedAt DateTime @default(now()) @map("last_verified_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -805,10 +810,15 @@ model CobRoute {
   secondaryFilingDeadline DateTime  @map("secondary_filing_deadline")
   autoSubmitted           Boolean   @default(false) @map("auto_submitted")
   submittedAt             DateTime? @map("submitted_at")
+  /// Set once the Day-45 aging sweep has escalated an Accerta secondary that
+  /// went unpaid past its filing window — prevents repeat escalations across
+  /// sweep ticks, mirroring ClaimRecoveryAction.escalatedAt.
+  escalatedAt             DateTime? @map("escalated_at")
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
   @@index([secondaryFilingDeadline])
+  @@index([escalatedAt])
   @@map("cob_routes")
 }
 

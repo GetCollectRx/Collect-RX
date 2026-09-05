@@ -18,11 +18,9 @@ import type { PrismaClient } from '@prisma/client';
  * failure into the same result.errors array the importer already uses for
  * unrecognized carriers.
  */
-export interface TreatingDentistValidationResult {
-  ok: boolean;
-  dentistId?: string;
-  error?: string;
-}
+export type TreatingDentistValidationResult =
+  | { ok: true; dentistId: string }
+  | { ok: false; error: string };
 
 export async function validateTreatingDentistForClaim(
   prisma: PrismaClient,
