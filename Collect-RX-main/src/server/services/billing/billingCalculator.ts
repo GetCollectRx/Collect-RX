@@ -73,13 +73,20 @@ export function calculateOntarioSplitBilling(input: SplitBillingInput): SplitBil
   const patientCoPayCents = Math.round(cdcpFeeCents * (coPayTier / 100));
   const cdcpApprovedCoverageCents = cdcpFeeCents - patientCoPayCents;
 
-  const balanceBillingCents = isProvincialSecondary ? 0 : Math.max(0, odaFeeCents - cdcpFeeCents);
+  // Computed unconditionally: even when a provincial secondary means the
+  // patient is never billed this gap, the gap itself still exists and must
+  // be routed to Accerta, not discarded. Zeroing this before computing the
+  // secondary route (the bug this replaced) silently lost the ODA/CDCP
+  // differential whenever isProvincialSecondary was true — Accerta was
+  // never billed for it, and the practice ate the loss.
+  const grossBalanceBillingCents = Math.max(0, odaFeeCents - cdcpFeeCents);
+  const balanceBillingCents = isProvincialSecondary ? 0 : grossBalanceBillingCents;
 
   let totalPatientResponsibilityCents = patientCoPayCents + balanceBillingCents;
   let secondaryRouteAmountCents = 0;
 
   if (isProvincialSecondary) {
-    secondaryRouteAmountCents = totalPatientResponsibilityCents;
+    secondaryRouteAmountCents = patientCoPayCents + grossBalanceBillingCents;
     totalPatientResponsibilityCents = 0;
   }
 
