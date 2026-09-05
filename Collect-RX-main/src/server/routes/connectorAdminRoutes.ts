@@ -13,6 +13,7 @@ import {
   revokeConnectorAgent,
 } from '../services/desktopConnectorService.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -47,7 +48,7 @@ router.get('/agents', async (req: Request, res: Response) => {
       data: agents.map((a) => ({ ...a, health: connectorHealth(a) })),
     });
   } catch (err) {
-    console.error('[GET /admin/connector/agents]', err);
+    logger.error('[GET /admin/connector/agents]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -77,7 +78,7 @@ router.post('/agents', blockAuditorWrites, async (req: Request, res: Response) =
       message: 'Copy the token now — it will not be shown again.',
     });
   } catch (err) {
-    console.error('[POST /admin/connector/agents]', err);
+    logger.error('[POST /admin/connector/agents]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -97,7 +98,7 @@ router.delete('/agents/:id', blockAuditorWrites, async (req: Request, res: Respo
     });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[DELETE /admin/connector/agents/:id]', err);
+    logger.error('[DELETE /admin/connector/agents/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

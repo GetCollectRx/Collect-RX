@@ -32,6 +32,7 @@ vi.mock('../../src/carriers/adapter.js', () => ({
 vi.mock('../../src/vapi/client.js', () => ({
   initiateCall: (...args: unknown[]) => initiateCallMock(...args),
   endVapiCall: vi.fn(),
+  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
 }));
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
@@ -89,11 +90,16 @@ vi.mock('../../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: (fn: () => Promise<unknown>) => fn(),
 }));
 
-vi.mock('../../src/logger.cjs', () => ({
+vi.mock('../../src/server/audit/auditLog.js', () => ({
+  appendPhiAccessEvent: vi.fn(),
+}));
+
+vi.mock('../../src/server/observability/logger.js', () => ({
   default: { warn: vi.fn(), error: vi.fn(), audit: vi.fn() },
 }));
 
 import { runDeskQueueTick } from '../../src/server/frontDesk/queueEngine.js';
+import { VapiAmbiguousOutcomeError } from '../../src/vapi/client.js';
 
 interface QueueEntryFixture {
   id: string;
@@ -399,11 +405,16 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     );
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
-    // Fleet-wide congestion is a short, jittered wait (3–5 min) — not the same
+    // Fleet-wide congestion is a short, jittered wait — not the same
     // multi-hour class of defer as a staff-action or claim-age gate, and not
     // an exact round number either (see the dispatch-failure jitter test).
-    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
-    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
+    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (2min) + up to
+    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (1min) in queueEngine.ts, i.e. a
+    // true range of [2min, 3min) — the bounds below add ~10s of slack on
+    // each side for real wall-clock time elapsed between the code computing
+    // `scheduledFor` and this assertion's own `Date.now()` call.
+    expect(deferredInMs).toBeGreaterThan(110 * 1000);
+    expect(deferredInMs).toBeLessThan(185 * 1000);
     // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
     // tick must not stop, unlike a practice-wide rejection.
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
@@ -578,6 +589,13 @@ describe('runDeskQueueTick resilience', () => {
       .mockRejectedValueOnce(new Error('Vapi 500'))
       .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
 
+    // Captured before the tick, not after: scheduledFor is computed inside
+    // runDeskQueueTick from a timestamp at or after this one, so any real
+    // wall-clock time the tick itself takes only widens this margin. Measuring
+    // from a post-tick Date.now() instead systematically undercounts by
+    // however long the tick took to run, which flakes at the exact 15-minute
+    // boundary on a slower CI runner.
+    const beforeTick = Date.now();
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
     const deferCall = prisma.callQueue.update.mock.calls.find(
@@ -587,9 +605,35 @@ describe('runDeskQueueTick resilience', () => {
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     // Jittered, not a fixed 15 minutes — every claim that failed around the
     // same transient outage must not all re-dial on the same exact clock.
-    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - beforeTick;
     expect(deferredInMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
     expect(deferredInMs).toBeLessThan(20 * 60 * 1000);
+    expect(initiateCallMock).toHaveBeenCalledTimes(2);
+    expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('defers a claim with a longer cooldown and a distinct code when the Vapi outcome is ambiguous (timeout/network)', async () => {
+    const failing = queueEntry('1');
+    const eligible = queueEntry('2');
+    const prisma = tickPrisma([failing, eligible]);
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    initiateCallMock
+      .mockRejectedValueOnce(new VapiAmbiguousOutcomeError('POST', '/call', new Error('timeout')))
+      .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    const deferCall = prisma.callQueue.update.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
+        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+    );
+    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
+    const [{ data }] = deferCall as [{ data: { dispatchDeferralCode: string; scheduledFor: Date } }];
+    expect(data.dispatchDeferralCode).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
+    // Ambiguous cooldown (60min) must be longer than the confirmed-failure cooldown (15min).
+    const deferredMinutes = (data.scheduledFor.getTime() - Date.now()) / 60_000;
+    expect(deferredMinutes).toBeGreaterThan(45);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });

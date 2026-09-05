@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Database Health Agent
 
 **Purpose:** Monitor Fly Postgres for migration drift, orphaned records, data integrity issues, and capacity concerns. Run weekly. A database problem that isn't caught early will corrupt claim state or lose PHI audit trail data.

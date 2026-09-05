@@ -5,7 +5,7 @@ import {
   Badge, Button, Card, CardHeader, DataState, Input, Select,
   Table, TableContainer, Tbody, Td, Th, Thead, Tr, TableEmpty,
 } from '../components/ui'
-import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES, type ProspectListItem, type PipelineColumn } from '../types/partnerships'
+import { STAGE_LABELS, KANBAN_ACTIVE_STAGES, KANBAN_CLOSED_STAGES, PERSONA_BUCKETS, type ProspectListItem, type PipelineColumn } from '../types/partnerships'
 
 type Stats = { total: number; byStage: Record<string, number> }
 
@@ -24,6 +24,7 @@ export default function PartnershipsBoard() {
   const [prospects, setProspects] = useState<ProspectListItem[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [stageFilter, setStageFilter] = useState('')
+  const [personaFilter, setPersonaFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [harvestQuery, setHarvestQuery] = useState('dental practice')
@@ -39,11 +40,18 @@ export default function PartnershipsBoard() {
   const [pipeline, setPipeline] = useState<PipelineColumn[]>([])
   const [learningMsg, setLearningMsg] = useState<string | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
+  const [pendingApproval, setPendingApproval] = useState<ProspectListItem[]>([])
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
-    const q = stageFilter ? `?stage=${stageFilter}` : ''
+    const params = new URLSearchParams()
+    if (stageFilter) params.set('stage', stageFilter)
+    if (personaFilter) params.set('personaBucket', personaFilter)
+    const q = params.toString() ? `?${params.toString()}` : ''
     const loads: Promise<void>[] = [
       apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(`/api/admin/partnerships/prospects${q}`)
         .then((list) => setProspects(list.data)),
@@ -59,9 +67,22 @@ export default function PartnershipsBoard() {
     Promise.all(loads)
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
-  }, [stageFilter, view])
+  }, [stageFilter, personaFilter, view])
 
   useEffect(() => { load() }, [load])
+
+  const loadPendingApproval = useCallback(() => {
+    apiFetchJson<{ success: boolean; data: ProspectListItem[] }>(
+      '/api/admin/partnerships/prospects?pendingOutreachApproval=true',
+    )
+      .then((list) => {
+        setPendingApproval(list.data)
+        setApprovedIds(new Set(list.data.map((p) => p.id)))
+      })
+      .catch((e) => setReviewMsg((e as Error).message))
+  }, [])
+
+  useEffect(() => { loadPendingApproval() }, [loadPendingApproval])
 
   const runHarvest = async () => {
     setHarvestBusy(true)
@@ -165,6 +186,38 @@ export default function PartnershipsBoard() {
     }
   }
 
+  const toggleApproved = (id: string) => {
+    setApprovedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const submitOutreachReview = async () => {
+    setReviewBusy(true)
+    setReviewMsg(null)
+    try {
+      const approve = pendingApproval.filter((p) => approvedIds.has(p.id)).map((p) => p.id)
+      const reject = pendingApproval.filter((p) => !approvedIds.has(p.id)).map((p) => p.id)
+      const res = await apiFetch('/api/admin/partnerships/prospects/outreach-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approve, reject }),
+      })
+      const body = await res.json() as { data?: { approved: number; rejected: number }; error?: string }
+      if (!res.ok) throw new Error(body.error || 'Review submit failed')
+      setReviewMsg(`Approved ${body.data?.approved ?? 0}, excluded ${body.data?.rejected ?? 0}`)
+      loadPendingApproval()
+      load()
+    } catch (e) {
+      setReviewMsg((e as Error).message)
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
   const pipelineByStage = Object.fromEntries(pipeline.map((col) => [col.stage, col])) as Record<string, PipelineColumn>
 
   return (
@@ -205,6 +258,48 @@ export default function PartnershipsBoard() {
         {tickMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{tickMsg}</p>}
         {learningMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{learningMsg}</p>}
 
+        {pendingApproval.length > 0 && (
+          <Card>
+            <CardHeader
+              title={`Outreach batch review (${pendingApproval.length})`}
+              subtitle="Cleared every pipeline gate — uncheck anyone you don't want contacted, then approve. See agents/outreach/approval-agent.md."
+            />
+            <div className="px-4 pb-2 space-y-2">
+              {pendingApproval.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex items-start gap-3 rounded-md border border-gray-200 dark:border-gray-700 p-3 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    aria-label={`Include ${p.practiceName} in this outreach batch`}
+                    checked={approvedIds.has(p.id)}
+                    onChange={() => toggleApproved(p.id)}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium">{p.practiceName}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {p.contactName || 'Contact TBD'}
+                      {p.city ? ` · ${p.city}` : ''}
+                      {p.personaBucket ? ` · ${p.personaBucket}` : ''}
+                      {p.personaConfidence ? ` (${p.personaConfidence} confidence)` : ''}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="px-4 pb-4 flex flex-wrap gap-3 items-center">
+              <Button onClick={() => void submitOutreachReview()} disabled={reviewBusy}>
+                {reviewBusy
+                  ? 'Submitting…'
+                  : `Approve ${approvedIds.size} of ${pendingApproval.length}`}
+              </Button>
+              {reviewMsg && <p className="text-sm text-gray-600 dark:text-gray-400">{reviewMsg}</p>}
+            </div>
+          </Card>
+        )}
+
         <Card>
           <CardHeader title="Add prospect manually" subtitle="For referrals, inbound leads, or one-off targets" />
           <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -240,6 +335,12 @@ export default function PartnershipsBoard() {
             <option value="">All stages</option>
             {STAGES.map((s) => (
               <option key={s} value={s}>{STAGE_LABELS[s]}</option>
+            ))}
+          </Select>
+          <Select label="Persona" value={personaFilter} onChange={(e) => setPersonaFilter(e.target.value)}>
+            <option value="">All personas</option>
+            {PERSONA_BUCKETS.map((bucket) => (
+              <option key={bucket} value={bucket}>{bucket}</option>
             ))}
           </Select>
           <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
@@ -313,13 +414,14 @@ export default function PartnershipsBoard() {
                 <Th>Contact</Th>
                 <Th>Score</Th>
                 <Th>Stage</Th>
+                <Th>Persona</Th>
                 <Th>Last activity</Th>
                 <Th />
               </Tr>
             </Thead>
             <Tbody>
               {prospects.length === 0 ? (
-                <TableEmpty colSpan={6} message="No prospects yet. Harvest or add manually." />
+                <TableEmpty colSpan={7} message="No prospects yet. Harvest or add manually." />
               ) : (
                 prospects.map((p) => (
                   <Tr key={p.id}>
@@ -333,6 +435,16 @@ export default function PartnershipsBoard() {
                     </Td>
                     <Td>{p.score}</Td>
                     <Td><Badge>{STAGE_LABELS[p.stage]}</Badge></Td>
+                    <Td className="text-xs">
+                      {p.personaBucket ? (
+                        <>
+                          <div>{p.personaBucket}</div>
+                          <div className="text-gray-500">{p.personaConfidence} confidence</div>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">unclassified</span>
+                      )}
+                    </Td>
                     <Td muted className="text-xs">
                       {p.lastEngagedAt
                         ? new Date(p.lastEngagedAt).toLocaleString('en-CA')

@@ -23,6 +23,7 @@ import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
+import { logger } from '../server/observability/logger.js';
 import {
   claimVapiWebhookForProcessing,
   hashWebhookBody,
@@ -99,7 +100,7 @@ export async function appendVapiWebhookAudit(
 function validateSignature(rawBody: Buffer, signature: string): boolean {
   const secret = process.env.VAPI_WEBHOOK_SECRET;
   if (!secret) {
-    console.error('[vapi-webhook] VAPI_WEBHOOK_SECRET not set — rejecting all webhooks');
+    logger.error('[vapi-webhook] VAPI_WEBHOOK_SECRET not set — rejecting all webhooks', {});
     return false;
   }
 
@@ -125,7 +126,7 @@ router.post('/', async (req: Request, res: Response) => {
 
   const rawBody = req.body as Buffer;  // Raw body provided by express.raw()
   if (!Buffer.isBuffer(rawBody)) {
-    console.error('[vapi-webhook] Expected raw Buffer body — check middleware order');
+    logger.error('[vapi-webhook] Expected raw Buffer body — check middleware order', {});
     return res.status(400).json({ error: 'Invalid body format' });
   }
 
@@ -135,12 +136,12 @@ router.post('/', async (req: Request, res: Response) => {
     toolSecret === process.env.VAPI_WEBHOOK_SECRET;
 
   if (!signature && !secretOk) {
-    console.warn('[vapi-webhook] Missing x-vapi-signature header');
+    logger.warn('[vapi-webhook] Missing x-vapi-signature header', {});
     return res.status(401).json({ error: 'Missing signature' });
   }
 
   if (signature && !validateSignature(rawBody, signature)) {
-    console.warn('[vapi-webhook] HMAC signature mismatch — rejecting request');
+    logger.warn('[vapi-webhook] HMAC signature mismatch — rejecting request', {});
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
@@ -233,11 +234,10 @@ router.post('/', async (req: Request, res: Response) => {
     validateWebhookMetadata(prisma, payload),
   );
   if (!metadataValidation.valid) {
-    console.warn(
-      '[vapi-webhook] METADATA TAMPERING DETECTED:',
-      formatValidationError(metadataValidation),
-      { vapiCallId: payload.call?.id }
-    );
+    logger.warn('[vapi-webhook] METADATA TAMPERING DETECTED', {
+      detail: formatValidationError(metadataValidation),
+      vapiCallId: payload.call?.id,
+    });
     await appendVapiWebhookAudit('VAPI_WEBHOOK_REJECTED', payload);
     return res.status(403).json({
       error: 'Metadata validation failed',
@@ -254,7 +254,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     claim = await runWithRlsBypass(() => claimVapiWebhookForProcessing(prisma, bodyHash));
   } catch (claimErr) {
-    console.error('[vapi-webhook] Failed to claim webhook delivery:', claimErr);
+    logger.error('[vapi-webhook] Failed to claim webhook delivery', { error: claimErr });
     return res.status(500).json({ error: 'Internal error' });
   }
 
@@ -277,14 +277,14 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
   } catch (err) {
-    console.error('[vapi-webhook] Processing error:', err);
+    logger.error('[vapi-webhook] Processing error', { error: err });
     try {
       await runWithRlsBypass(() => markVapiWebhookFailed(prisma, bodyHash));
     } catch (markFailedErr) {
-      console.error('[vapi-webhook] Failed to record webhook processing failure:', markFailedErr);
+      logger.error('[vapi-webhook] Failed to record webhook processing failure', { error: markFailedErr });
     }
     await appendVapiWebhookAudit('VAPI_WEBHOOK_REJECTED', payload).catch((auditErr: unknown) => {
-      console.error('[vapi-webhook] Failed to write rejection audit event:', auditErr);
+      logger.error('[vapi-webhook] Failed to write rejection audit event', { error: auditErr });
     });
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
@@ -301,22 +301,22 @@ router.post('/', async (req: Request, res: Response) => {
       if (callAttempt) {
         const metadataResult = await webhookGuardScanMetadata(payload);
         if (metadataResult.hasPhi) {
-          console.warn('[guardrails] Metadata contains PHI patterns:', metadataResult.findings);
+          logger.warn('[guardrails] Metadata contains PHI patterns', { findings: metadataResult.findings });
         }
 
         const payloadResult = await webhookGuardScanPayload(payload);
         if (payloadResult.hasPhi) {
-          console.warn('[guardrails] Payload contains PHI-like patterns:', payloadResult.findings);
+          logger.warn('[guardrails] Payload contains PHI-like patterns', { findings: payloadResult.findings });
         }
 
         const transcriptResult = await persistFromVapiPayload(payload);
         if (!transcriptResult.persisted) {
-          console.warn('[guardrails] Failed to persist transcript:', transcriptResult.error);
+          logger.warn('[guardrails] Failed to persist transcript', { error: transcriptResult.error });
         }
 
         const auditResult = await enqueueForAudit(callAttempt.id);
         if (!auditResult.enqueued) {
-          console.warn('[guardrails] Failed to enqueue audit job:', auditResult.error);
+          logger.warn('[guardrails] Failed to enqueue audit job', { error: auditResult.error });
         }
 
         // ── Async claims validation — runs off-call on end-of-call-report ──
@@ -331,7 +331,7 @@ router.post('/', async (req: Request, res: Response) => {
             extractedFacts: coerceExtractedFacts(payload.analysis.structuredData),
           });
           if (validation.status === 'escalated') {
-            console.warn('[vapi-webhook] Validation escalated:', validation.result.escalationReason);
+            logger.warn('[vapi-webhook] Validation escalated', { escalationReason: validation.result.escalationReason });
           }
         }
 
@@ -343,10 +343,10 @@ router.post('/', async (req: Request, res: Response) => {
             const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
             const stored = await extractLessonsFromCall(prisma, callAttempt.id);
             if (stored > 0) {
-              console.warn(`[vapi-webhook] learning loop proposed ${stored} carrier lesson(s)`);
+              logger.warn('[vapi-webhook] learning loop proposed carrier lessons', { stored });
             }
           } catch (lessonErr) {
-            console.error('[vapi-webhook] lesson extraction failed (non-fatal):', lessonErr);
+            logger.error('[vapi-webhook] lesson extraction failed (non-fatal)', { error: lessonErr });
           }
         }
 
@@ -363,13 +363,13 @@ router.post('/', async (req: Request, res: Response) => {
               outcome.carrierBlockDetected,
             );
           } catch (relearningErr) {
-            console.error('[vapi-webhook] IVR failure relearning failed (non-fatal):', relearningErr);
+            logger.error('[vapi-webhook] IVR failure relearning failed (non-fatal)', { error: relearningErr });
           }
         }
       }
       });
     } catch (guardrailsErr) {
-      console.error('[vapi-webhook] Guardrails error (non-fatal):', guardrailsErr);
+      logger.error('[vapi-webhook] Guardrails error (non-fatal)', { error: guardrailsErr });
       // Continue processing — guardrails failures should not block the webhook
     }
   }
@@ -377,16 +377,16 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     await runWithRlsBypass(() => markWebhookProcessed(prisma, bodyHash));
   } catch (markProcessedErr) {
-    console.error('[vapi-webhook] Failed to mark webhook processed:', markProcessedErr);
+    logger.error('[vapi-webhook] Failed to mark webhook processed', { error: markProcessedErr });
     try {
       await runWithRlsBypass(() => markVapiWebhookFailed(prisma, bodyHash));
     } catch (markFailedErr) {
-      console.error('[vapi-webhook] Failed to record webhook processing failure:', markFailedErr);
+      logger.error('[vapi-webhook] Failed to record webhook processing failure', { error: markFailedErr });
     }
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
   await appendVapiWebhookAudit('VAPI_WEBHOOK_PROCESSED', payload).catch((auditErr: unknown) => {
-    console.error('[vapi-webhook] Failed to write processed audit event:', auditErr);
+    logger.error('[vapi-webhook] Failed to write processed audit event', { error: auditErr });
   });
   return res.status(200).json({ received: true });
 });

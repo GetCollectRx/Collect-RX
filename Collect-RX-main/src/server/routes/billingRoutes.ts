@@ -9,6 +9,7 @@ import { apiClientErrorMessage } from '../apiErrorMessage.js';
 import { confirmOverage, getPlanSummary } from '../plans/planBridge.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import type { PracticeSettings } from '../../types/practiceSettings.js';
+import { logger } from '../observability/logger.js';
 
 export function createBillingRouter(prisma: PrismaClient): Router {
   const r = Router();
@@ -21,7 +22,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
       const { url } = await createBillingCheckoutSession(practiceId, prisma, requestedPlanId);
       res.json({ url });
     } catch (e) {
-      console.error('[billing/checkout]', e);
+      logger.error('[billing/checkout]', { error: e });
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   });
@@ -32,7 +33,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
       const subscription = await getSubscriptionGateState(prisma, practiceId);
       res.json({ subscription });
     } catch (e) {
-      console.error('[billing/usage]', e);
+      logger.error('[billing/usage]', { error: e });
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   });
@@ -43,7 +44,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
       const { url } = await createBillingPortalSession(practiceId, prisma);
       res.json({ url });
     } catch (e) {
-      console.error('[billing/portal]', e);
+      logger.error('[billing/portal]', { error: e });
       res.status(400).json({ error: apiClientErrorMessage(e) });
     }
   });
@@ -71,7 +72,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
         },
       });
     } catch (e) {
-      console.error('[billing/plan]', e);
+      logger.error('[billing/plan]', { error: e });
       res.status(500).json({ success: false, error: apiClientErrorMessage(e) });
     }
   });
@@ -91,7 +92,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
       }
       res.json({ success: true, ...result });
     } catch (e) {
-      console.error('[billing/usage/confirm-overage]', e);
+      logger.error('[billing/usage/confirm-overage]', { error: e });
       res.status(400).json({ success: false, error: apiClientErrorMessage(e) });
     }
   });
@@ -126,7 +127,7 @@ export function createBillingRouter(prisma: PrismaClient): Router {
         },
       });
     } catch (e) {
-      console.error('[billing/plan/visibility]', e);
+      logger.error('[billing/plan/visibility]', { error: e });
       res.status(400).json({ success: false, error: apiClientErrorMessage(e) });
     }
   });

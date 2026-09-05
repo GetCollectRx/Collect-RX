@@ -13,8 +13,9 @@ import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { pmsImportBodySchema, formatZodError } from '../validation/zodSchemas.js';
-import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
 import { blockAuditorWrites } from '../middleware/requireUserRole.js';
+import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 // Configure multer with enhanced security limits
 // 100MB max file size as per security audit requirements
@@ -52,7 +53,7 @@ router.get('/runs', async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: runs });
   } catch (err) {
-    console.error('[GET /admin/sync/runs]', err);
+    logger.error('[GET /admin/sync/runs]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -140,7 +141,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
 
     return res.json({ success: true, ...result });
   } catch (err) {
-    console.error('[POST /admin/sync/import]', err);
+    logger.error('[POST /admin/sync/import]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -170,7 +171,7 @@ router.post('/import/eob', blockAuditorWrites, preserveRlsAcrossMiddleware(uploa
     const result = await importEobRowsToPrisma(prisma, practiceId, rows);
     return res.json({ success: true, data: result });
   } catch (err) {
-    console.error('[POST /admin/sync/import/eob]', err);
+    logger.error('[POST /admin/sync/import/eob]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

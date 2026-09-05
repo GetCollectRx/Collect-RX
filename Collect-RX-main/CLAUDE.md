@@ -165,7 +165,7 @@ Express backend  src/server/index.ts  (Fly.io app `collect-rx`, port 3000)
     ↓
 Prisma ORM → PostgreSQL (Fly.io)
     ↓
-Vapi.ai voice agents (4-agent squad via Vapi API)
+Vapi.ai voice agents (5-agent squad via Vapi API)
     ↓
 Twilio (telephony — calls to carriers)
 ```
@@ -204,7 +204,7 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 **Estimate math:** Insurer pays `coverage% × (fee − deductible)`. Deductible is the patient's first-dollar responsibility and reduces the insured base, not the patient total directly. Patient pays `fee − netInsurancePays`.
 
-**TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. TELUS minimum claim wait is day 21 (vs. day 32 for all other carriers).
+**TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. Carrier-configs.json documents a per-carrier minimum claim wait (day 21 for TELUS, day 32 for all other carriers), but `validateDispatch()` (`src/carriers/adapter.ts`) does not currently enforce those per-carrier numbers — every carrier, TELUS included, is gated by one flat 30-day floor. See [`docs/operations/HUMAN-DECISIONS-PENDING.md`](../docs/operations/HUMAN-DECISIONS-PENDING.md) item 1 for the options on whether to start enforcing the documented per-carrier minimums.
 
 ### Abeldent Connector (Phase 4)
 
@@ -228,7 +228,7 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time
 - Maximum 3 call attempts per claim
-- Claims under 30 days old: do not enter queue
+- Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
 - Claims over 90 days old: skip AI, escalate to human immediately
 
 ### CRTC Compliance — AI Disclosure

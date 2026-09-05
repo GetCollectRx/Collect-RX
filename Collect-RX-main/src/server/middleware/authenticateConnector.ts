@@ -2,6 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { findActiveAgentByToken } from '../services/desktopConnectorService.js';
 import { runWithRlsBypass, runWithRlsContext } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 declare global {
   namespace Express {
@@ -38,7 +39,7 @@ export async function authenticateConnector(
     // write zero rows under enforced RLS.
     runWithRlsContext({ practiceId: agent.practiceId }, () => next());
   } catch (err) {
-    console.error('[authenticateConnector]', err);
+    logger.error('[authenticateConnector]', { error: err });
     res.status(500).json({ success: false, error: 'Connector authentication failed' });
   }
 }

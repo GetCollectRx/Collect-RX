@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Tier & Billing Health Agent
 
 **Purpose:** Monitor Stripe subscriptions, tier usage, overage accumulation, trial conversion pipeline, and unit economics per practice. Run weekly. This is the revenue health check.

@@ -31,6 +31,7 @@ import type { EscalationResolution } from '../../types/practiceSettings.js';
 import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
 import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -96,7 +97,7 @@ router.get('/:practiceId/active', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[desk/active]', err);
+    logger.error('[desk/active]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -123,7 +124,7 @@ router.get('/:practiceId/queue', async (req: Request, res: Response) => {
       data: { queue: rows.map(mapQueueEntry), paused },
     });
   } catch (err) {
-    console.error('[desk/queue]', err);
+    logger.error('[desk/queue]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -136,7 +137,7 @@ router.get('/:practiceId/queue/reviews', async (req: Request, res: Response) => 
     const data = await listMaxAttemptFailureReviews(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/queue/reviews]', err);
+    logger.error('[desk/queue/reviews]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -149,7 +150,7 @@ router.get('/:practiceId/hold-ledger', async (req: Request, res: Response) => {
     const data = await getPracticeHoldLedger(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/hold-ledger]', err);
+    logger.error('[desk/hold-ledger]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -203,7 +204,7 @@ router.get('/:practiceId/history', async (req: Request, res: Response) => {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error('[desk/history]', err);
+    logger.error('[desk/history]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

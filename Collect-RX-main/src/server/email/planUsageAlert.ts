@@ -1,6 +1,8 @@
 /**
  * Email practice owners (and opted-in staff) when plan usage crosses thresholds.
  */
+import { logger } from '../observability/logger.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -29,14 +31,15 @@ export async function sendPlanUsageAlertEmail(opts: {
     '',
     `View plan & usage: ${billingUrl}`,
     '',
-    '— CollectRx',
+    FOUNDER_SIGNATURE_TEXT,
   ].join('\n');
 
   if (!sg) {
-    console.log(
-      `[plan-usage-alert] SENDGRID_API_KEY not set — skipping email.\n` +
-        `  To: ${opts.toEmail}\n  Subject: ${opts.subject}\n  ${opts.bodyLines.join(' ')}`,
-    );
+    logger.info('[plan-usage-alert] SENDGRID_API_KEY not set — skipping email', {
+      to: opts.toEmail,
+      subject: opts.subject,
+      body: opts.bodyLines.join(' '),
+    });
     return;
   }
 
@@ -60,6 +63,7 @@ export async function sendPlanUsageAlertEmail(opts: {
           View plan &amp; usage
         </a>
         <p style="color:#888;font-size:13px">${opts.practiceName}</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
       </div>
     `,
   });

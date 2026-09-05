@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Backend Reviewer Agent
 
 **Purpose:** Review the backend logic in `Collect-RX-main/src/server/` for correctness, PHI safety, CARRIER_BLOCK integrity, queue engine behavior, tier enforcement, and AbelDent isolation. Run before merging any PR that touches server code.

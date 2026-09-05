@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, type VapiCallParams } from '../../vapi/client.js';
+import { initiateCall, endVapiCall, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -17,36 +18,134 @@ import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryServic
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
-import logger from '../../logger.cjs';
+import { dispatchOpsAlert } from '../observability/opsAlerts.js';
+import logger from '../observability/logger.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
 // If a tick takes longer than 60 seconds (slow DB, slow Vapi), the next tick
 // fires but immediately returns rather than running a parallel dispatch loop.
 let isTickRunning = false;
+// Tracked so a graceful shutdown can await the in-flight tick instead of
+// exiting mid-dispatch (which would leave a claim in an ambiguous state).
+let currentTick: Promise<void> | null = null;
+let acceptingNewTicks = true;
+
+// P0.5 — tick-level failure tracking (in-process; matches the existing
+// isTickRunning/vapiCircuitBreaker precedent of single-instance state exposed
+// via getMetrics()). A thrown tick previously just logged and waited for the
+// next fixed 60s fire — under a sustained outage (DB down, etc.) that means
+// hammering the same failure every 60s forever with no backoff and no alert.
+let consecutiveTickFailures = 0;
+let lastSuccessfulTickAt: Date | null = null;
+let lastTickFailureAt: Date | null = null;
+// Epoch ms before which fire() should skip — 0 means no backoff in effect.
+let nextTickEarliestAt = 0;
+
+const TICK_BACKOFF_BASE_MS = 60_000;
+const TICK_BACKOFF_MAX_MS = 15 * 60_000;
+const TICK_FAILURE_ALERT_THRESHOLD = 3;
+
+/** Exposed for /api/health/metrics via queueHealth.ts — single-instance signal. */
+export function getDeskQueueTickHealth(): {
+  lastSuccessfulTickAt: string | null;
+  consecutiveTickFailures: number;
+  lastTickFailureAt: string | null;
+} {
+  return {
+    lastSuccessfulTickAt: lastSuccessfulTickAt?.toISOString() ?? null,
+    consecutiveTickFailures,
+    lastTickFailureAt: lastTickFailureAt?.toISOString() ?? null,
+  };
+}
 
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
-  tickTimer = setInterval(() => {
+  acceptingNewTicks = true;
+  const fire = () => {
+    if (!acceptingNewTicks) return;
     if (isTickRunning) {
       logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
       return;
     }
+    if (Date.now() < nextTickEarliestAt) {
+      return;
+    }
     isTickRunning = true;
-    void runDeskQueueTick(prisma)
-      .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
-      .finally(() => { isTickRunning = false; });
-  }, 60_000);
-  isTickRunning = true;
-  void runDeskQueueTick(prisma)
-    .catch((err) => { console.error('[deskQueueEngine] initial tick error:', err); })
-    .finally(() => { isTickRunning = false; });
+    currentTick = runDeskQueueTick(prisma)
+      .then(() => {
+        if (consecutiveTickFailures > 0) {
+          logger.info('[deskQueueEngine] tick recovered after previous failures', {
+            previousConsecutiveFailures: consecutiveTickFailures,
+          });
+        }
+        consecutiveTickFailures = 0;
+        nextTickEarliestAt = 0;
+        lastSuccessfulTickAt = new Date();
+      })
+      .catch((err) => {
+        consecutiveTickFailures += 1;
+        lastTickFailureAt = new Date();
+        // 2^N (not 2^(N-1)): the fixed 60s tick interval means a backoff equal
+        // to exactly one interval would coincide with the next scheduled fire
+        // and skip nothing — this must exceed one interval to actually defer
+        // the next attempt instead of retrying on the very next tick.
+        const backoffMs = Math.min(
+          TICK_BACKOFF_MAX_MS,
+          TICK_BACKOFF_BASE_MS * 2 ** consecutiveTickFailures,
+        );
+        nextTickEarliestAt = Date.now() + backoffMs;
+        logger.error('[deskQueueEngine] tick error', {
+          error: err,
+          consecutiveTickFailures,
+          nextRetryInMs: backoffMs,
+        });
+        if (consecutiveTickFailures >= TICK_FAILURE_ALERT_THRESHOLD) {
+          void dispatchOpsAlert({
+            alertId: 'desk_queue_tick_failing',
+            detail: `${consecutiveTickFailures} consecutive tick failures. Latest error: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            source: 'desk-queue-engine',
+          }).catch((alertErr) => {
+            logger.error('[deskQueueEngine] failed to dispatch tick-failure alert (non-fatal)', {
+              error: alertErr,
+            });
+          });
+        }
+      })
+      .finally(() => { isTickRunning = false; currentTick = null; });
+  };
+  tickTimer = setInterval(fire, 60_000);
+  fire();
 }
 
 export function stopDeskQueueEngine(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+}
+
+/**
+ * Graceful-shutdown hook: stop scheduling new ticks and wait for any
+ * in-flight tick to finish (up to timeoutMs) before the process exits, so a
+ * claim mid-dispatch isn't abandoned by a hard exit. Does not throw on
+ * timeout — shutdown must proceed either way, just logs so it's visible.
+ */
+export async function drainDeskQueueEngine(timeoutMs: number): Promise<void> {
+  acceptingNewTicks = false;
+  stopDeskQueueEngine();
+  const inFlight = currentTick;
+  if (!inFlight) return;
+
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => { timedOut = true; resolve(); }, timeoutMs);
+  });
+  await Promise.race([inFlight, timeout]);
+  if (timedOut) {
+    logger.error('[deskQueueEngine] shutdown: in-flight tick did not finish — proceeding anyway', { timeoutMs });
   }
 }
 
@@ -81,102 +180,16 @@ const CANDIDATE_BATCH_SIZE = 10;
 const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is automatic
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
+const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+// Ambiguous outcome (request timed out / network failure — Vapi may or may not
+// have created the call) gets a longer cooldown than a confirmed rejection:
+// retrying too soon risks dialing the carrier twice for the same attempt.
+const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
-// Retry-after-failure/congestion delays are jittered rather than fixed:
-// every claim that failed around the same moment (a carrier line down, a
-// carrier saturated at its concurrency ceiling) would otherwise re-dial in
-// lockstep on the same clock — a synchronized retry burst reads as
-// coordinated automation to carrier IVR security, not organic backoff.
-const DEFER_DISPATCH_FAILURE_BASE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
-const DEFER_DISPATCH_FAILURE_JITTER_MS = 5 * 60 * 1000;
-const DEFER_CARRIER_CONCURRENCY_BASE_MS = 3 * 60 * 1000; // just waiting on a fleet-wide slot, not a failure
-const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 2 * 60 * 1000;
-// Shorter than the per-carrier ceiling's window: a single carrier line stays
-// busy for one call's whole duration, but the fleet-wide slot pool is shared
-// across every carrier and every practice — any one of many concurrent calls
-// completing anywhere frees a slot, so it churns much faster and is worth
-// rechecking sooner.
-const DEFER_VAPI_CAPACITY_BASE_MS = 30 * 1000;
-const DEFER_VAPI_CAPACITY_JITTER_MS = 30 * 1000;
-
-function withJitter(baseMs: number, jitterMs: number): number {
-  return baseMs + Math.floor(Math.random() * jitterMs);
-}
-
-// A practice skipped because the fleet-wide Vapi slot budget is exhausted
-// this tick would otherwise sit PENDING with no dispatchDeferralCode — same
-// failure mode as the per-carrier concurrency ceiling, but for the whole
-// fleet. One bulk update per skipped practice (not a per-candidate guard
-// pass) since we already know the outcome: there's no slot regardless of
-// what the candidate is — EXCEPT a candidate whose carrier is already under
-// an active CARRIER_BLOCK (this practice's own, or inherited from an org
-// sibling): that one must still resolve to BLOCKED once actually evaluated,
-// not get mislabeled as merely waiting on capacity, so those are excluded
-// here and left for validateDispatch to catch on this practice's next turn.
-async function deferForFleetCapacity(prisma: PrismaClient, practiceIds: string[]): Promise<void> {
-  if (practiceIds.length === 0) return;
-
-  const [ownBlocks, orgMemberships] = await Promise.all([
-    prisma.carrierBlockEvent.findMany({
-      where: { resumedAt: null },
-      select: { practiceId: true, carrierId: true },
-    }),
-    prisma.organizationPractice.findMany({
-      where: { practiceId: { in: practiceIds } },
-      select: { practiceId: true, organizationId: true },
-    }),
-  ]);
-
-  const blockedPairs = new Set(ownBlocks.map((b) => `${b.practiceId}:${b.carrierId}`));
-  if (orgMemberships.length > 0) {
-    const orgIds = [...new Set(orgMemberships.map((m) => m.organizationId))];
-    const allOrgMemberships = await prisma.organizationPractice.findMany({
-      where: { organizationId: { in: orgIds } },
-      select: { practiceId: true, organizationId: true },
-    });
-    const orgOfPractice = new Map(orgMemberships.map((m) => [m.practiceId, m.organizationId]));
-    const practicesByOrg = new Map<string, string[]>();
-    for (const m of allOrgMemberships) {
-      const list = practicesByOrg.get(m.organizationId) ?? [];
-      list.push(m.practiceId);
-      practicesByOrg.set(m.organizationId, list);
-    }
-    for (const practiceId of practiceIds) {
-      const orgId = orgOfPractice.get(practiceId);
-      if (!orgId) continue;
-      const siblingIds = practicesByOrg.get(orgId) ?? [];
-      for (const block of ownBlocks) {
-        if (siblingIds.includes(block.practiceId)) {
-          blockedPairs.add(`${practiceId}:${block.carrierId}`);
-        }
-      }
-    }
-  }
-
-  const candidates = await prisma.callQueue.findMany({
-    where: {
-      practiceId: { in: practiceIds },
-      status: 'PENDING',
-      scheduledFor: { lte: new Date() },
-      dispatchDeferralCode: null,
-    },
-    select: { id: true, practiceId: true, claim: { select: { carrierId: true } } },
-  });
-  const idsToDefer = candidates
-    .filter((c) => !blockedPairs.has(`${c.practiceId}:${c.claim.carrierId}`))
-    .map((c) => c.id);
-  if (idsToDefer.length === 0) return;
-
-  await prisma.callQueue.updateMany({
-    where: { id: { in: idsToDefer } },
-    data: {
-      scheduledFor: new Date(Date.now() + withJitter(DEFER_VAPI_CAPACITY_BASE_MS, DEFER_VAPI_CAPACITY_JITTER_MS)),
-      dispatchDeferralCode: 'VAPI_FLEET_CONCURRENCY_LIMIT',
-      dispatchDeferralNextAction: 'Waiting for an open fleet-wide Vapi calling slot; retries automatically.',
-      dispatchDeferredAt: new Date(),
-    },
-  });
-}
+// Fleet-wide carrier concurrency limiting — when a carrier's active call
+// count hits its per-carrier ceiling, defer new attempts for the carrier.
+const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
+const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
@@ -192,6 +205,30 @@ function vapiSlotBudget(): number {
   const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
   if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
   return Math.max(0, limit - Math.max(0, reserve));
+}
+
+/** Add random jitter to a base defer window to spread retries across time. */
+function withJitter(baseMs: number, jitterMs: number): number {
+  const random = Math.random() * jitterMs;
+  return baseMs + random;
+}
+
+/** Defer all pending candidates for a practice when fleet-wide slot budget exhausted. */
+async function deferForFleetCapacity(
+  prisma: PrismaClient,
+  practiceIds: string[],
+): Promise<void> {
+  for (const practiceId of practiceIds) {
+    await prisma.callQueue.updateMany({
+      where: { practiceId, status: 'PENDING' },
+      data: {
+        scheduledFor: new Date(Date.now() + DEFER_DISPATCH_FAILURE_MS),
+        dispatchDeferralCode: 'VAPI_CAPACITY_EXHAUSTED',
+        dispatchDeferralNextAction: 'Waiting for available Vapi slots; retries automatically.',
+        dispatchDeferredAt: new Date(),
+      },
+    });
+  }
 }
 
 // This process's identity for the QueueEngineLease row — diagnostic only,
@@ -476,25 +513,21 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
   }
 
-  // Postgres returns findMany rows in a stable order absent an ORDER BY —
-  // without shuffling, the same practices early in that order would win the
-  // fleet-wide Vapi slot budget every single tick, starving everyone after
-  // them whenever the fleet is at or above budget. Shuffling rotates who
-  // gets first crack at scarce slots tick over tick.
-  const shuffledPractices = [...practices];
-  for (let i = shuffledPractices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledPractices[i], shuffledPractices[j]] = [shuffledPractices[j], shuffledPractices[i]];
+  // Additive to the guards above — does not replace the isTickRunning latch,
+  // the lease, or the slot budget. Skipping the whole tick here (rather than
+  // letting every candidate claim fail into its own per-claim deferral) is
+  // deliberate: if Vapi is down, there is no point spending a claim's
+  // dispatch attempt (and its 15-minute defer window) finding that out
+  // again for every practice in the loop.
+  if (vapiCircuitBreaker.getState() === 'OPEN') {
+    logger.warn('[deskQueueEngine] Vapi circuit breaker OPEN — skipping dispatch this tick', {
+      metrics: vapiCircuitBreaker.getMetrics(),
+    });
+    return;
   }
 
-  for (let i = 0; i < shuffledPractices.length; i++) {
-    const { id: practiceId } = shuffledPractices[i];
-    if (slotsRemaining <= 0) {
-      await runWithRlsBypass(() =>
-        deferForFleetCapacity(prisma, shuffledPractices.slice(i).map((p) => p.id)),
-      );
-      return;
-    }
+  for (const { id: practiceId } of practices) {
+    if (slotsRemaining <= 0) return;
     // One practice's failure must never starve the practices after it in the
     // loop — isolate each practice's tick.
     try {
@@ -616,7 +649,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
-      console.warn('[deskQueueEngine] plan gate blocked dispatch', {
+      logger.warn('[deskQueueEngine] plan gate blocked dispatch', {
         practiceId,
         reason: planGate.reason,
       });
@@ -832,6 +865,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
+      // Stable for this attempt — a retry of the same attempt (after an
+      // ambiguous timeout) reuses it; the next real attempt gets a new one.
+      idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
@@ -843,17 +879,25 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     try {
       vapiResult = await initiateCall(callParams);
     } catch (dispatchErr) {
-      logger.error('[deskQueueEngine] Vapi dispatch failed — deferring claim', {
-        claimId: next.claimId,
-        carrierId: next.claim.carrierId,
-        error: dispatchErr,
-      });
+      const ambiguous = dispatchErr instanceof VapiAmbiguousOutcomeError;
+      logger.error(
+        ambiguous
+          ? '[deskQueueEngine] Vapi dispatch outcome unknown (timeout/network) — deferring with a longer cooldown'
+          : '[deskQueueEngine] Vapi dispatch failed — deferring claim',
+        {
+          claimId: next.claimId,
+          carrierId: next.claim.carrierId,
+          error: dispatchErr,
+        },
+      );
       await deferQueueEntry(
         prisma,
         next.id,
-        withJitter(DEFER_DISPATCH_FAILURE_BASE_MS, DEFER_DISPATCH_FAILURE_JITTER_MS),
-        'TRANSIENT_DISPATCH_FAILURE',
-        'The system will retry during the next scheduled dispatch window.',
+        ambiguous ? DEFER_AMBIGUOUS_DISPATCH_MS : DEFER_DISPATCH_FAILURE_MS,
+        ambiguous ? 'VAPI_DISPATCH_OUTCOME_UNKNOWN' : 'TRANSIENT_DISPATCH_FAILURE',
+        ambiguous
+          ? 'Vapi did not confirm whether the call was created before timing out. Verify in the Vapi dashboard before the next automatic retry.'
+          : 'The system will retry during the next scheduled dispatch window.',
       );
       continue;
     }

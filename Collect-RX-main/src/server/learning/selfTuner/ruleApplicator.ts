@@ -26,6 +26,7 @@ import type {
   ConfidenceWeightPayload,
 } from './types.js';
 import { recordProposal, markApplied, markRejected } from './adaptationLedger.js';
+import { logger } from '../../observability/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LEARNED_RULES_DIR = join(__dirname, 'learned-rules');
@@ -93,6 +94,18 @@ function writeLearnedConfidenceWeights(data: LearnedConfidenceWeights): void {
  * Returns true if all tests pass.
  */
 export function runValidationTests(): boolean {
+  const testEnv = {
+    ...process.env,
+  };
+
+  // Use environment variables for test secrets, with fallback to safe test defaults
+  if (!testEnv.STRIPE_SECRET_KEY) {
+    testEnv.STRIPE_SECRET_KEY = process.env.TEST_STRIPE_SECRET_KEY || 'sk_test_4eC39HqLyjWDarjtT1zdp7dc';
+  }
+  if (!testEnv.STRIPE_WEBHOOK_SECRET) {
+    testEnv.STRIPE_WEBHOOK_SECRET = process.env.TEST_STRIPE_WEBHOOK_SECRET || 'whsec_test_00000000000000000000000000000000';
+  }
+
   const result = spawnSync(
     'npx',
     ['vitest', 'run', AGENT_TEST_DIR],
@@ -100,11 +113,7 @@ export function runValidationTests(): boolean {
       cwd: REPO_ROOT,
       stdio: 'pipe',
       encoding: 'utf-8',
-      env: {
-        ...process.env,
-        STRIPE_SECRET_KEY: 'sk_test_4eC39HqLyjWDarjtT1zdp7dc',
-        STRIPE_WEBHOOK_SECRET: 'whsec_test_00000000000000000000000000000000',
-      },
+      env: testEnv,
     },
   );
   return result.status === 0;
@@ -243,7 +252,9 @@ export async function applyProposal(
       // Tests failed — roll back
       rollbackPayload(proposal);
       markApplied(record.recordId, false);
-      console.warn(`[selfTuner] Tests failed after applying "${proposal.ruleType}" — rolled back`);
+      logger.warn('[selfTuner] Tests failed after applying rule — rolled back', {
+        ruleType: proposal.ruleType,
+      });
       return { applied: false, testsPassed: false, rolledBack: true, reason: 'Validation test suite failed — change rolled back' };
     }
   } catch (err) {

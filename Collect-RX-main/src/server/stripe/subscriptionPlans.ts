@@ -1,5 +1,6 @@
 import type { BillingTier, PrismaClient } from '@prisma/client';
 import { TIERS } from '../../billing/tiers.js';
+import { logger } from '../observability/logger.js';
 
 export type SubscriptionPlanSnapshot = {
   id: string;
@@ -64,9 +65,7 @@ let warnedLegacyPlanConfig = false;
 export function subscriptionPlanCatalog(): SubscriptionPlanSnapshot[] {
   if (process.env.SUBSCRIPTION_PLAN_CONFIG?.trim() && !warnedLegacyPlanConfig) {
     warnedLegacyPlanConfig = true;
-    console.warn(
-      '[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).',
-    );
+    logger.warn('[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).', {});
   }
   return PAID_TIER_IDS.flatMap((id) => {
     const tier = TIERS[id];

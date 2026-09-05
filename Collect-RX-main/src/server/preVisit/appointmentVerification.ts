@@ -23,6 +23,7 @@ import {
   checkTelusTx23Support,
 } from './electronicPreVisit.js';
 import { enqueueEmrPreVisitEvent } from '../emrSyncOutbox.js';
+import { appendPhiAccessEvent } from '../audit/auditLog.js';
 
 export interface PreVisitParams {
   practiceId: string;
@@ -250,6 +251,13 @@ export async function verifyBeforeAppointment(
     // (PRE_VISIT_TELUS_TX23 job), the same pattern PRE_VISIT_ELIGIBILITY uses.
     if (carrierId === 'telus_adjudicare') {
       const tx23Support = checkTelusTx23Support(carrierId, patientToken, practiceId);
+      await appendPhiAccessEvent(prisma, {
+        practiceId,
+        operation: 'detokenize_for_carrier_call',
+        recordType: 'AppointmentVerification',
+        recordId: row.id,
+        purpose: 'telus_tx23_identification_check',
+      });
       if (tx23Support.supported) {
         result.tx23CheckRequired = true;
         result.enqueuedJobId = await enqueuePreVisitJob(
