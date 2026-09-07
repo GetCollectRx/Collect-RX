@@ -1053,6 +1053,9 @@ model CallAttempt {
   validationPassed     Boolean?     @map("validation_passed")
   /// Full validator output JSON (violations, safety_score, carrier_block_risk, etc.)
   validationResult     Json?        @map("validation_result")
+  /// Parsed claim outcome from LLM transcript analysis — contains structured extraction of
+  /// claim status, amounts, actions, and pre-formatted ledger note for receptionist copy-paste.
+  parsedClaimOutcome   Json?        @map("parsed_claim_outcome")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
   guardrailAudits GuardrailAudit[]

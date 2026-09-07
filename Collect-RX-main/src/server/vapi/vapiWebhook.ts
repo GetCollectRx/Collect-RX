@@ -10,6 +10,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
+import { parseTranscriptAndStore } from '../services/transcriptParserService.js';
 import {
   applyRecoveryAfterCall,
   emitRecoveryTerminalEmrEvent,
@@ -428,6 +429,27 @@ async function processCallEnded(
         }),
       },
     });
+  }
+
+  // ── LLM TRANSCRIPT PARSING (Phase 2) ────────────────────────────────────────
+  // Parse the call transcript to extract structured claim outcome and generate
+  // a pre-formatted ledger note for the receptionist workflow. This enables
+  // one-click copy-to-clipboard note generation without manual documentation.
+  if (payload.transcript && claim.claimNumber) {
+    try {
+      await parseTranscriptAndStore(
+        prisma,
+        attempt.id,
+        payload.transcript,
+        claim.carrierId,
+        claim.claimNumber,
+      );
+    } catch (parseErr) {
+      logger.error('[vapi-webhook] Transcript parsing failed (non-fatal)', {
+        vapiCallId,
+        error: parseErr,
+      });
+    }
   }
 
   const decision = await applyRecoveryAfterCall(prisma, {
