@@ -5,13 +5,41 @@ import { apiFetch } from '../lib/apiFetch'
 import { HOME_ROUTE } from '../types/userRole'
 import { usePractice } from '../context/PracticeContext'
 
+// Mirrors the CarrierId enum in prisma/schema.prisma (see CLAUDE.md's carrier list).
+const CARRIERS = [
+  { id: 'sun_life', label: 'Sun Life' },
+  { id: 'canada_life', label: 'Canada Life' },
+  { id: 'manulife', label: 'Manulife' },
+  { id: 'green_shield', label: 'Green Shield' },
+  { id: 'rbc', label: 'RBC Insurance' },
+  { id: 'telus_adjudicare', label: 'TELUS AdjudiCare' },
+] as const
+
+type CarrierSelection = { selected: boolean; providerNumber: string }
+
 export default function SignupPage() {
   const navigate = useNavigate()
   const { refreshSession } = usePractice()
   const [form, setForm] = useState({ practiceName: '', displayName: '', email: '', password: '', organizationName: '' })
   const [additionalLocations, setAdditionalLocations] = useState<string[]>([])
+  const [carrierSelections, setCarrierSelections] = useState<Record<string, CarrierSelection>>(
+    () => Object.fromEntries(CARRIERS.map((c) => [c.id, { selected: false, providerNumber: '' }])),
+  )
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  function toggleCarrier(carrierId: string, selected: boolean) {
+    setCarrierSelections((s) => ({ ...s, [carrierId]: { ...s[carrierId], selected } }))
+  }
+
+  function updateCarrierProviderNumber(carrierId: string, providerNumber: string) {
+    setCarrierSelections((s) => ({ ...s, [carrierId]: { ...s[carrierId], providerNumber } }))
+  }
+
+  const selectedCarriers = CARRIERS.filter((c) => carrierSelections[c.id]?.selected)
+  const carriersReady = selectedCarriers.every((c) => carrierSelections[c.id]?.providerNumber.trim())
+  const canSubmit = selectedCarriers.length > 0 && carriersReady && privacyAccepted
 
   function addLocation() {
     setAdditionalLocations(locs => [...locs, ''])
@@ -28,6 +56,20 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    if (selectedCarriers.length === 0) {
+      setError('Select at least one insurance carrier your practice works with.')
+      return
+    }
+    if (!carriersReady) {
+      setError('Enter a provider number for each carrier you selected.')
+      return
+    }
+    if (!privacyAccepted) {
+      setError('You must accept the Privacy Policy to create an account.')
+      return
+    }
+
     setBusy(true)
     try {
       const additionalPractices = additionalLocations
@@ -43,6 +85,11 @@ export default function SignupPage() {
           displayName: form.displayName,
           email: form.email,
           password: form.password,
+          carriers: selectedCarriers.map(c => ({
+            carrierId: c.id,
+            providerNumber: carrierSelections[c.id].providerNumber.trim(),
+          })),
+          privacyPolicyAccepted: privacyAccepted,
           ...(additionalPractices.length > 0
             ? { organizationName: form.organizationName, additionalPractices }
             : {}),
@@ -171,11 +218,63 @@ export default function SignupPage() {
             />
           </div>
 
+          <div className="crx-portal-field">
+            <span className="crx-portal-label" role="heading" aria-level={2}>Which insurance carriers do you work with?</span>
+            <p className="crx-portal-note" style={{ marginTop: 0, marginBottom: '8px' }}>
+              We need your practice's provider number for each one — carriers won't authorize automated
+              claim-status calls without it, so calls to any carrier you skip here will stay off until you add it later.
+            </p>
+            {CARRIERS.map((carrier) => {
+              const selection = carrierSelections[carrier.id]
+              return (
+                <div key={carrier.id} style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={selection.selected}
+                      onChange={e => toggleCarrier(carrier.id, e.target.checked)}
+                    />
+                    {carrier.label}
+                  </label>
+                  {selection.selected && (
+                    <input
+                      type="text"
+                      className="crx-portal-input"
+                      placeholder={`${carrier.label} provider number`}
+                      value={selection.providerNumber}
+                      onChange={e => updateCarrierProviderNumber(carrier.id, e.target.value)}
+                      maxLength={50}
+                      required
+                      style={{ marginTop: '6px' }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="crx-portal-field">
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={privacyAccepted}
+                onChange={e => setPrivacyAccepted(e.target.checked)}
+                style={{ marginTop: '3px' }}
+              />
+              <span>
+                I have read and accept the{' '}
+                <Link to="/legal/privacy" target="_blank" rel="noopener noreferrer" className="crx-portal-link">
+                  Privacy Policy
+                </Link>
+              </span>
+            </label>
+          </div>
+
           {error && (
             <div className="crx-portal-alert error" role="alert">{error}</div>
           )}
 
-          <button type="submit" disabled={busy} className="crx-portal-btn">
+          <button type="submit" disabled={busy || !canSubmit} className="crx-portal-btn">
             {busy ? 'Creating account…' : 'Create account'}
           </button>
         </form>

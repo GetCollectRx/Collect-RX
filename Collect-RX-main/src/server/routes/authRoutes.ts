@@ -42,6 +42,8 @@ import {
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
 import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
 import { createOrgPractice } from '../organizations/practiceProvisioning.js';
+import { defaultPracticeSettings } from '../services/practiceSettingsService.js';
+import { PRIVACY_POLICY_VERSION } from '../../legal/privacyPolicyVersion.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
@@ -881,7 +883,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     try {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { practiceName, displayName, email, password, organizationName, additionalPractices } = parsed.data;
+      const { practiceName, displayName, email, password, organizationName, additionalPractices, carriers } = parsed.data;
 
       if (additionalPractices && additionalPractices.length > 0 && !organizationName) {
         return res.status(400).json({ error: 'organizationName is required when adding additional locations' });
@@ -892,6 +894,20 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       const isOrgSignup = Boolean(additionalPractices && additionalPractices.length > 0);
+
+      // Every location in this signup starts with the same carrier lineup the
+      // owner just told us about — a carrier not selected here stays disabled,
+      // so validateDispatch()'s CARRIER_NOT_AUTHORIZED gate matches what the
+      // owner actually confirmed instead of a silently-blank default.
+      const selectedProviderNumbers = new Map(carriers.map((c) => [c.carrierId, c.providerNumber]));
+      const initialSettings = defaultPracticeSettings();
+      initialSettings.carrierConfigs = initialSettings.carrierConfigs.map((c) => {
+        const providerNumber = selectedProviderNumbers.get(c.carrierId);
+        return providerNumber !== undefined
+          ? { ...c, enabled: true, providerNumber }
+          : { ...c, enabled: false };
+      });
+      const privacyPolicyAcceptedAt = new Date();
 
       const { practice, user, organizationId } = await prisma.$transaction(async (tx) => {
         const allPractices = [{ practiceName, timezone: undefined as string | undefined }, ...(additionalPractices ?? [])];
@@ -905,7 +921,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         const createdPractices = [];
         for (const p of allPractices) {
           const created = organization
-            ? await createOrgPractice(tx, organization.id, { practiceName: p.practiceName, timezone: p.timezone, passwordHash })
+            ? await createOrgPractice(tx, organization.id, {
+                practiceName: p.practiceName,
+                timezone: p.timezone,
+                passwordHash,
+                settings: initialSettings as object,
+                privacyPolicyAcceptedAt,
+                privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+              })
             : await tx.practice.create({
                 data: {
                   name: p.practiceName,
@@ -913,6 +936,9 @@ export function createAuthRouter(prisma: PrismaClient): Router {
                   timezone: p.timezone ?? 'America/Toronto',
                   billingTier: 'trial',
                   trialEndsAt: trialEndDate(),
+                  settings: initialSettings as object,
+                  privacyPolicyAcceptedAt,
+                  privacyPolicyVersion: PRIVACY_POLICY_VERSION,
                 },
               });
           createdPractices.push(created);
