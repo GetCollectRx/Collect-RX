@@ -7,6 +7,11 @@ const isCi = Boolean(process.env.CI)
 config({ path: '.env.local' })
 config({ path: '.env' })
 
+// Ensure DATABASE_URL is available in process.env for Prisma schema validation
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://collectrx:collectrx_local_dev_only@localhost:5433/collectrx'
+}
+
 export default defineConfig({
   test: {
     environment: 'node',
