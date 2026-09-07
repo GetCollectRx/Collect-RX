@@ -22,7 +22,7 @@ describe('Transcript Parser Integration', () => {
     const claim = await prisma.insuranceClaim.create({
       data: {
         practiceId,
-        carrierId: 'SUN_LIFE' as CarrierId,
+        carrierId: 'sun_life' as CarrierId,
         claimNumber: 'CLM-001',
         patientToken: 'token-001',
         billedAmount: 500,
