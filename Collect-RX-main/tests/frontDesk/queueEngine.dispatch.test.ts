@@ -409,13 +409,16 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     // Fleet-wide congestion is a short, jittered wait — not the same
     // multi-hour class of defer as a staff-action or claim-age gate, and not
     // an exact round number either (see the dispatch-failure jitter test).
-    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (2min) + up to
-    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (1min) in queueEngine.ts, i.e. a
-    // true range of [2min, 3min) — the bounds below add ~10s of slack on
+    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (3min) + up to
+    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (2min) in queueEngine.ts, i.e. a
+    // true range of [3min, 5min) — the bounds below add 30s of slack on
     // each side for real wall-clock time elapsed between the code computing
-    // `scheduledFor` and this assertion's own `Date.now()` call.
-    expect(deferredInMs).toBeGreaterThan(110 * 1000);
-    expect(deferredInMs).toBeLessThan(185 * 1000);
+    // `scheduledFor` and this assertion's own `Date.now()` call. Do not
+    // lower these to match a regressed constant instead of fixing the
+    // constant — see queueEngine.ts's comment on these two constants for
+    // why 3min/2min (not 2min/1min) is the correct value.
+    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
     // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
     // tick must not stop, unlike a practice-wide rejection.
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
