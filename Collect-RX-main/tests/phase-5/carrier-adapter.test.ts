@@ -44,6 +44,11 @@ function makePrisma(settings = authorizedSettings()) {
         queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
       }),
     },
+    // These tests exercise the carrier/recovery gates in validateDispatch(), not
+    // the human dispatch-approval checkpoint — pre-approve so that gate is a no-op.
+    callQueue: {
+      findUnique: async () => ({ approvalStatus: 'APPROVED' }),
+    },
     claimRecoveryAction: { findFirst: async () => null },
     practice: {
       findUnique: async () => ({ settings }),
@@ -246,6 +251,9 @@ describe('CarrierAdapter', () => {
             status: 'IN_QUEUE',
             queueEntry: { scheduledFor: new Date('2020-01-01'), status: 'PENDING' },
           }),
+        },
+        callQueue: {
+          findUnique: async () => ({ approvalStatus: 'APPROVED' }),
         },
         claimRecoveryAction: { findFirst: async () => null },
         practice: {
