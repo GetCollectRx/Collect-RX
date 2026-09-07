@@ -569,11 +569,15 @@ describe('runDeskQueueTick resilience', () => {
   it('closes an over-ceiling attempt immediately when ending its Vapi call fails, instead of leaving it open for the stale watchdog', async () => {
     const eligible = queueEntry('1');
     const prisma = tickPrisma([eligible]);
-    // No stale attempts (first callAttempt.findMany call); one over-ceiling
+    // runDeskQueueTick issues three callAttempt.findMany calls per tick with
+    // one practice: (1) the fleet-wide carrier-concurrency snapshot at the top
+    // of the tick, (2) the stale-attempt watchdog, (3) the over-ceiling
+    // terminator below, in that order. No stale attempts; one over-ceiling
     // attempt whose age is past the absolute duration ceiling but well under
     // STALE_ATTEMPT_MS, so only the over-ceiling terminator should touch it.
     prisma.callAttempt.findMany
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]) // fleet-wide carrier snapshot
+      .mockResolvedValueOnce([]) // stale-attempt watchdog
       .mockResolvedValueOnce([
         {
           id: 'attempt-ceiling',
