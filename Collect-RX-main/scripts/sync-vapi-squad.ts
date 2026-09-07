@@ -122,6 +122,7 @@ function diffValues(path: string, repoVal: unknown, liveVal: unknown, out: strin
     return;
   }
   const truncate = (v: unknown) => {
+    if (v === undefined) return '(missing)';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
     return s.length > 120 ? `${s.slice(0, 117)}...` : s;
   };
@@ -203,6 +204,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exitCode = 1;
 });
