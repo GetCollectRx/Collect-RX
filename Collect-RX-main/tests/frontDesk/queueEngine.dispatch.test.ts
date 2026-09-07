@@ -409,13 +409,16 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     // Fleet-wide congestion is a short, jittered wait — not the same
     // multi-hour class of defer as a staff-action or claim-age gate, and not
     // an exact round number either (see the dispatch-failure jitter test).
-    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (2min) + up to
-    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (1min) in queueEngine.ts, i.e. a
-    // true range of [2min, 3min) — the bounds below add ~10s of slack on
+    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (3min) + up to
+    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (2min) in queueEngine.ts, i.e. a
+    // true range of [3min, 5min) — the bounds below add 30s of slack on
     // each side for real wall-clock time elapsed between the code computing
-    // `scheduledFor` and this assertion's own `Date.now()` call.
-    expect(deferredInMs).toBeGreaterThan(110 * 1000);
-    expect(deferredInMs).toBeLessThan(185 * 1000);
+    // `scheduledFor` and this assertion's own `Date.now()` call. Do not
+    // lower these to match a regressed constant instead of fixing the
+    // constant — see queueEngine.ts's comment on these two constants for
+    // why 3min/2min (not 2min/1min) is the correct value.
+    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
+    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
     // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
     // tick must not stop, unlike a practice-wide rejection.
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
@@ -631,12 +634,10 @@ describe('runDeskQueueTick resilience', () => {
       .mockRejectedValueOnce(new Error('Vapi 500'))
       .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
 
-    // Captured before the tick, not after: scheduledFor is computed inside
-    // runDeskQueueTick from a timestamp at or after this one, so any real
-    // wall-clock time the tick itself takes only widens this margin. Measuring
-    // from a post-tick Date.now() instead systematically undercounts by
-    // however long the tick took to run, which flakes at the exact 15-minute
-    // boundary on a slower CI runner.
+    // Captured before the tick runs, not after: the lower bound below is the
+    // exact base (0 jitter is a legal draw), so measuring from Date.now()
+    // after the await lets any real elapsed tick time push a near-zero-jitter
+    // result a few ms under the floor — a real, if rare, flake this avoids.
     const beforeTick = Date.now();
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 

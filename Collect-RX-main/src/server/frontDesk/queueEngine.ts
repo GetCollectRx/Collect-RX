@@ -188,8 +188,13 @@ const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
 // Fleet-wide carrier concurrency limiting — when a carrier's active call
 // count hits its per-carrier ceiling, defer new attempts for the carrier.
-const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
-const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
+// Base+jitter must land in the 3-5 min window
+// tests/frontDesk/queueEngine.dispatch.test.ts asserts on (with a 30s margin
+// on each side) — these two constants were dropped during a dev-branch merge
+// and reconstructed from a guess in 238dfe7, which used 2min/1min instead of
+// the original 3min/2min and silently broke that assertion's premise.
+const DEFER_CARRIER_CONCURRENCY_BASE_MS = 3 * 60 * 1000; // just waiting on a fleet-wide slot, not a failure
+const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 2 * 60 * 1000;
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
@@ -526,8 +531,21 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
   }
 
-  for (const { id: practiceId } of practices) {
-    if (slotsRemaining <= 0) return;
+  for (let practiceIndex = 0; practiceIndex < practices.length; practiceIndex++) {
+    const { id: practiceId } = practices[practiceIndex];
+    if (slotsRemaining <= 0) {
+      // Same fleet-wide-capacity handling as the start-of-tick check above —
+      // a practice the loop never reaches this tick must still get a
+      // deferral code recorded on its due claims, or they look identical to
+      // claims the engine never considered at all (the "no starvation"
+      // invariant in tests/loadtest/queueEngine.scale.test.ts). Returning
+      // bare here previously left every remaining practice's PENDING
+      // entries with dispatchDeferralCode: null.
+      await runWithRlsBypass(() =>
+        deferForFleetCapacity(prisma, practices.slice(practiceIndex).map((p) => p.id)),
+      );
+      return;
+    }
     // One practice's failure must never starve the practices after it in the
     // loop — isolate each practice's tick.
     try {
