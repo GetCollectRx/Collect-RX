@@ -15,7 +15,7 @@ import {
 } from '../lib/recoveryDisplay'
 import { ClaimStatusStrip } from '../components/claims/ClaimStatusStrip'
 import { SimulatedCallBadge } from '../components/claims/SimulatedCallBadge'
-import { LedgerNoteCard } from '../components/claims/LedgerNoteCard'
+import { LedgerNoteCard, type ParsedClaimOutcome } from '../components/claims/LedgerNoteCard'
 import { useAppToast } from '../context/ToastContext'
 import { useRoleAccess } from '../lib/useRoleAccess'
 
@@ -32,15 +32,7 @@ interface CallAttempt {
   transcriptUrl: string | null
   validationPassed?: boolean | null
   validationResult?: { escalationReason?: string; safetyScore?: number } | null
-  parsedClaimOutcome?: {
-    carrierName: string
-    claimStatus: 'APPROVED' | 'DENIED' | 'HELD_AT_CARRIER' | 'RECONSIDERATION_REQUIRED'
-    approvedAmount: number | null
-    remainingPatientResponsibility: number | null
-    nextActionRequired: string
-    ledgerNote: string
-    denialReasonCode?: string
-  } | null
+  parsedClaimOutcome?: ParsedClaimOutcome | null
 }
 
 interface ClaimDetail {
