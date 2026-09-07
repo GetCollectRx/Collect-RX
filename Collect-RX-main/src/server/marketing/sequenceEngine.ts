@@ -56,6 +56,7 @@ export async function runMarketingSequenceTick(prisma: PrismaClient): Promise<{
       sequenceCompleted: false,
       email: { not: null },
       stage: { in: ['new', 'contacted', 'engaged'] },
+      pendingOutreachApproval: false,
       OR: [{ sequencePausedUntil: null }, { sequencePausedUntil: { lte: now } }],
     },
     take: 50,

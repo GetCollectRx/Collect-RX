@@ -12,13 +12,14 @@
  * - FAIL: Create escalation, notify practice via email/dashboard
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { createHash } from 'crypto';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { runWithRlsBypass } from '../db/rlsContext.js';
 import { logger } from '../observability/logger.js';
+import { recordSubmissionChannelObservation } from '../learning/submissionChannelMemory.js';
 
 export interface ValidatorExtractedFacts {
   claimNumber: string;
@@ -440,6 +441,36 @@ async function applyDeadlineFromFacts(
 }
 
 /**
+ * Maps a validated call's outcome to the submission-channel memory bucket
+ * it feeds, then records what the rep said. Scenario A (claim not on file)
+ * and Scenario D / Escalation_Closer (documentation requested) are the only
+ * outcomes that carry a submission method + destination worth remembering.
+ */
+export async function recordSubmissionChannelFromFacts(
+  prisma: PrismaClient,
+  carrierId: CarrierId,
+  callAttemptId: string,
+  facts: ValidatorExtractedFacts,
+): Promise<void> {
+  const channelType =
+    facts.outcome === 'CLAIM_NOT_RECEIVED'
+      ? 'CLAIM_RESUBMISSION'
+      : facts.outcome === 'NEED_INFORMATION'
+        ? 'DOCUMENTATION'
+        : null;
+  if (!channelType) return;
+  if (typeof facts.submissionMethod !== 'string' || typeof facts.submissionDestination !== 'string') return;
+
+  await recordSubmissionChannelObservation(prisma, {
+    carrierId,
+    channelType,
+    submissionMethod: facts.submissionMethod,
+    submissionDestination: facts.submissionDestination,
+    sourceCallAttemptId: callAttemptId,
+  });
+}
+
+/**
  * Core async validation — callable from the webhook route and directly from
  * the end-of-call-report path in src/webhooks/vapi.ts. Stores the result on
  * the CallAttempt; on failure creates an escalation and notifies the practice.
@@ -482,6 +513,18 @@ export async function runClaimsValidation(
     await applyDeadlineFromFacts(prisma, attempt.claim.id, input.extractedFacts);
   } catch (deadlineErr) {
     logger.error('[validator] deadline stamping failed (non-fatal)', { error: deadlineErr });
+  }
+
+  // Only a validated call's facts are trustworthy enough to feed shared,
+  // carrier-wide memory — a hallucinated fax number recorded here would be
+  // read back to a future rep with false confidence, which is worse than
+  // asking cold. Gated on result.passed, unlike deadline stamping above.
+  if (result.passed) {
+    try {
+      await recordSubmissionChannelFromFacts(prisma, attempt.claim.carrierId, attempt.id, input.extractedFacts);
+    } catch (channelErr) {
+      logger.error('[validator] submission channel memory write failed (non-fatal)', { error: channelErr });
+    }
   }
 
   if (!result.passed) {
