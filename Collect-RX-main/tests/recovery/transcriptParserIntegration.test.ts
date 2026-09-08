@@ -1,6 +1,72 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { PrismaClient, CarrierId } from '@prisma/client';
 import { parseCallTranscript, parseTranscriptAndStore } from '../../src/server/services/transcriptParserService';
+
+// The real Anthropic API requires ANTHROPIC_API_KEY, which CI does not provision.
+// Mock the SDK boundary so this test exercises the request/response plumbing
+// (prompt construction, JSON parsing, DB persistence) without a live network call.
+interface FakeAnthropicMessageRequest {
+  system: string;
+  messages: Array<{ role: string; content: string }>;
+}
+
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    messages: {
+      create: vi.fn((request: FakeAnthropicMessageRequest) => {
+        const transcript = request.messages[0]?.content ?? '';
+        const carrierMatch = request.system.match(/insurance carrier \((.+?)\)/);
+        const carrierName = carrierMatch ? carrierMatch[1] : 'Unknown Carrier';
+        const today = new Date().toISOString().split('T')[0];
+
+        let claimStatus: 'APPROVED' | 'DENIED' | 'HELD_AT_CARRIER' = 'HELD_AT_CARRIER';
+        let approvedAmount: number | null = null;
+        let remainingPatientResponsibility: number | null = null;
+        let nextActionRequired = 'Await carrier follow-up';
+        let denialReasonCode: string | undefined;
+
+        if (/denied|denial|not covered/i.test(transcript)) {
+          claimStatus = 'DENIED';
+          nextActionRequired = 'File an appeal with supporting clinical documentation';
+          const reasonMatch = transcript.match(/reason code is (\d+)/i);
+          if (reasonMatch) denialReasonCode = reasonMatch[1];
+        } else if (/approved/i.test(transcript)) {
+          claimStatus = 'APPROVED';
+          const approvedMatch = transcript.match(/approved (?:it )?for \$(\d+(?:\.\d+)?)/i);
+          const billedMatch = transcript.match(/\$(\d+(?:\.\d+)?) billed/i);
+          if (approvedMatch) {
+            approvedAmount = parseFloat(approvedMatch[1]);
+            if (billedMatch) {
+              remainingPatientResponsibility = parseFloat(billedMatch[1]) - approvedAmount;
+            }
+          }
+          nextActionRequired = 'None — payment confirmed';
+        } else if (/under review/i.test(transcript)) {
+          nextActionRequired = 'Submit requested documentation to carrier';
+        }
+
+        const statusLabel = claimStatus === 'APPROVED' ? 'Approved' : claimStatus === 'DENIED' ? 'Denied' : 'Pending';
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                carrierName,
+                claimStatus,
+                approvedAmount,
+                remainingPatientResponsibility,
+                nextActionRequired,
+                ledgerNote: `[${carrierName}] ${today} - ${statusLabel} - CollectRx`,
+                denialReasonCode,
+              }),
+            },
+          ],
+        };
+      }),
+    },
+  })),
+}));
 
 const prisma = new PrismaClient();
 
