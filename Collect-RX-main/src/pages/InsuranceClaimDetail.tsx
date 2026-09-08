@@ -15,6 +15,7 @@ import {
 } from '../lib/recoveryDisplay'
 import { ClaimStatusStrip } from '../components/claims/ClaimStatusStrip'
 import { SimulatedCallBadge } from '../components/claims/SimulatedCallBadge'
+import { LedgerNoteCard, type ParsedClaimOutcome } from '../components/claims/LedgerNoteCard'
 import { useAppToast } from '../context/ToastContext'
 import { useRoleAccess } from '../lib/useRoleAccess'
 
@@ -31,6 +32,7 @@ interface CallAttempt {
   transcriptUrl: string | null
   validationPassed?: boolean | null
   validationResult?: { escalationReason?: string; safetyScore?: number } | null
+  parsedClaimOutcome?: ParsedClaimOutcome | null
 }
 
 interface ClaimDetail {
@@ -693,6 +695,13 @@ export default function InsuranceClaimDetail() {
                         >
                           View full call transcript →
                         </a>
+                      )}
+
+                      {/* Parsed claim outcome (ledger note) */}
+                      {a.parsedClaimOutcome && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                          <LedgerNoteCard parsed={a.parsedClaimOutcome} />
+                        </div>
                       )}
                     </div>
                   )
