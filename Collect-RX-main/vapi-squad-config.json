@@ -48,6 +48,7 @@
             "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
           },
           "serverMessages": [
+            "call.started",
             "end-of-call-report",
             "status-update"
           ],
@@ -192,7 +193,7 @@
             "messages": [
               {
                 "role": "system",
-                "content": "You are a silent hold sentinel on a phone call to an insurance carrier, waiting for a live representative.\n\nYou will hear hold music, recorded messages ('please continue to hold', 'your call is important to us'), menu fragments, and silence.\n\nRULES:\n- Stay completely silent. Output nothing, ever. No acknowledgements, no narration.\n- The ONLY action you take: when a LIVE HUMAN speaks - a conversational greeting or introduction ('thanks for holding, this is Sarah', 'provider services, how can I help you') - immediately invoke the handoff tool to Claims_Agent. Say nothing yourself.\n- Recorded messages are not humans. If uncertain, wait for one more utterance - recordings repeat, humans ask questions.\n- However long the hold lasts, keep waiting silently. Waiting is your entire job."
+                "content": "You are a silent hold sentinel on a phone call to an insurance carrier, waiting for a live representative.\n\nYou will hear hold music, recorded messages ('please continue to hold', 'your call is important to us'), menu fragments, and silence.\n\nRULES:\n- Stay completely silent. Output nothing, ever. No acknowledgements, no narration.\n- The ONLY action you take: when a LIVE HUMAN speaks - a conversational greeting or introduction ('thanks for holding, this is Sarah', 'provider services, how can I help you') - immediately invoke the handoff tool to Claims_Agent. Say nothing yourself.\n- Recorded messages are not humans. If uncertain, wait for one more utterance - recordings repeat, humans ask questions.\n\nSOFT TIMEOUT (25 MINUTES):\nAfter approximately 25 minutes of silent hold (1500 seconds), if no human has yet answered:\n- Assume the line has been abandoned or the carrier is not responding\n- End the call with: 'We will try again shortly.'\n- Invoke the endCall tool immediately\n- CollectRx will retry this call on the next queue cycle\n\nNote: The 25-minute soft timeout prevents wasteful holds while preserving the 30-minute hard ceiling (maxDurationSeconds) as a safety backstop for system failures."
               }
             ]
           },
@@ -205,7 +206,7 @@
             "model": "nova-2",
             "language": "en"
           },
-          "maxDurationSeconds": 2700,
+          "maxDurationSeconds": 1800,
           "endCallPhrases": [
             "we will try again shortly"
           ]
@@ -475,6 +476,7 @@
             "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
           },
           "serverMessages": [
+            "call.started",
             "end-of-call-report",
             "status-update"
           ],
@@ -637,6 +639,7 @@
             "credentialId": "a5d57ad4-0384-4e80-8cc6-d7033292edec"
           },
           "serverMessages": [
+            "call.started",
             "end-of-call-report",
             "status-update"
           ],

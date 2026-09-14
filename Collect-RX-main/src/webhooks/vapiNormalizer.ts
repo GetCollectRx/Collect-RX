@@ -122,6 +122,22 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
     };
   }
 
+  // ── call.started: fired when the call connects to a live carrier representative ──
+  // This is when hold ends and real engagement begins. We extract this to calculate
+  // actual hold duration (time from initiateCall to when rep picks up).
+  if (msgType === 'call.started') {
+    const startedAt = asString(msg.startedAt) ?? asString(msg.call?.startedAt);
+    return {
+      type: 'call.started',
+      call: {
+        id: callId,
+        status: 'started',
+        startedAt,
+      },
+      metadata,
+    };
+  }
+
   // Message types the backend does not consume (speech-update, conversation-update, ...).
   return null;
 }

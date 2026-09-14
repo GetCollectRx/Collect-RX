@@ -39,6 +39,7 @@ import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
 import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
+import { processHoldAndTransitions } from './holdTransitionProcessor.js';
 
 const router = Router();
 
@@ -299,6 +300,24 @@ router.post('/', async (req: Request, res: Response) => {
         select: { id: true, claim: { select: { carrierId: true } } },
       });
       if (callAttempt) {
+        // ── Process hold duration and agent transitions ──
+        // call.started triggers hold duration recording, agent transitions are
+        // extracted from analysis payload. This enables real-time hold monitoring
+        // on the front desk and accurate hold_duration tracking for holdLedger.
+        try {
+          await processHoldAndTransitions(payload, {
+            callAttemptId: callAttempt.id,
+            vapiCallId: vapiCallId,
+            initiatedAt: new Date(), // Will be read from CallAttempt in processor
+          });
+        } catch (holdProcessingErr) {
+          logger.warn('[hold-processor] Hold/transition processing failed (non-fatal)', {
+            error: holdProcessingErr,
+            vapiCallId,
+          });
+          // Non-fatal: continue webhook processing even if hold tracking fails
+        }
+
         const metadataResult = await webhookGuardScanMetadata(payload);
         if (metadataResult.hasPhi) {
           logger.warn('[guardrails] Metadata contains PHI patterns', { findings: metadataResult.findings });
