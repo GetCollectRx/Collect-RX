@@ -38,6 +38,11 @@ model Practice {
   npi                            String?
   /// HST/GST business registration number — some carriers require for payment processing.
   taxId                          String?                   @map("tax_id")
+  // ─── Signup consent ────────────────────────────────────────────────────────
+  /// When the account owner accepted the Privacy Policy at signup (or later, if backfilled).
+  privacyPolicyAcceptedAt        DateTime?                 @map("privacy_policy_accepted_at")
+  /// Which policy version they agreed to — see src/legal/privacyPolicyVersion.ts.
+  privacyPolicyVersion           String?                   @map("privacy_policy_version")
   // ─── Stripe Billing (platform) ────────────────────────────────────────────
   /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
   stripeCustomerId               String?                   @unique
