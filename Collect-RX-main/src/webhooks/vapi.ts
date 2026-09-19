@@ -338,6 +338,7 @@ router.post('/', async (req: Request, res: Response) => {
         practiceId: string;
         carrierId: string;
         outstandingAmount: unknown;
+        billedAmount: unknown;
       } | null = null;
       if (claimId) {
         claimContext = await runWithRlsBypass(async () =>
