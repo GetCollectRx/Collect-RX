@@ -7,7 +7,7 @@ import type { PrismaClient } from '@prisma/client';
 
 export interface PracticeNotification {
   practiceId: string;
-  type: 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE';
+  type: 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'LIVE_CALL_NEEDS_STAFF';
   subject: string;
   message: string;
   claimId?: string;
