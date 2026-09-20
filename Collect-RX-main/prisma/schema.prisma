@@ -2380,6 +2380,8 @@ model HumanAssistedCarrierProfile {
 
   @@index([carrierId, category])
   @@map("human_assisted_carrier_profiles")
+}
+
 model Escalation {
   id             String   @id @default(uuid())
   claimId        String   @map("claim_id")
