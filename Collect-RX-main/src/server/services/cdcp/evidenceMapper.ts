@@ -36,13 +36,16 @@ const CDT_TO_SECTION: Record<string, string> = {
   D4341: '6.5.1', D4342: '6.5.1',
 };
 
-function getProcedureSection(cdtCode: string): string | null {
+export function getProcedureSection(cdtCode: string): string | null {
   return CDT_TO_SECTION[cdtCode] ?? null;
 }
 
 // ─── Evidence Requirements by Section ────────────────────────────────────────
+// Exported so preSubmissionAudit.ts can build the same checklists *before*
+// submission (no denial code exists yet at that point) rather than
+// duplicating the per-procedure evidence lists.
 
-function crownEvidenceChecklist(available: Set<string>): EvidenceChecklistItem[] {
+export function crownEvidenceChecklist(available: Set<string>): EvidenceChecklistItem[] {
   return [
     {
       evidenceType: 'perio_chart_6_site',
@@ -82,7 +85,7 @@ function crownEvidenceChecklist(available: Set<string>): EvidenceChecklistItem[]
   ];
 }
 
-function rootCanalEvidenceChecklist(available: Set<string>): EvidenceChecklistItem[] {
+export function rootCanalEvidenceChecklist(available: Set<string>): EvidenceChecklistItem[] {
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
 
@@ -118,7 +121,7 @@ function rootCanalEvidenceChecklist(available: Set<string>): EvidenceChecklistIt
   ];
 }
 
-function scalingEvidenceChecklist(
+export function scalingEvidenceChecklist(
   available: Set<string>,
   unitsRequested: number
 ): EvidenceChecklistItem[] {
@@ -163,7 +166,7 @@ function scalingEvidenceChecklist(
 
 // ─── General F-010 (Missing Documentation) Checklist ────────────────────────
 
-function generalDocumentationChecklist(available: Set<string>): EvidenceChecklistItem[] {
+export function generalDocumentationChecklist(available: Set<string>): EvidenceChecklistItem[] {
   return [
     {
       evidenceType: 'clinical_notes',

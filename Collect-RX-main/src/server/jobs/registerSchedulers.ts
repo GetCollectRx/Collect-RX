@@ -9,6 +9,7 @@ const RULES_EVERY_MS = 60_000;
 const TRIAGE_CREDENTIAL_HEALTH_CRON = '0 5 * * *';
 const DATA_RETENTION_CRON = '0 4 * * *';
 const DLQ_RETENTION_SWEEP_CRON = '0 4 * * *';
+const ONTARIO_AR_AGING_SWEEP_CRON = '0 6 * * *';
 
 /**
  * These repeatables previously had no attempts/backoff — a single transient
@@ -53,6 +54,11 @@ export async function registerArJobSchedulers(): Promise<void> {
     'DLQ_RETENTION_SWEEP',
     {},
     { repeat: { pattern: DLQ_RETENTION_SWEEP_CRON }, ...JOB_RETRY_OPTS },
+  );
+  await q.add(
+    'ONTARIO_AR_AGING_SWEEP',
+    {},
+    { repeat: { pattern: ONTARIO_AR_AGING_SWEEP_CRON }, ...JOB_RETRY_OPTS },
   );
 
   // DATA_RETENTION_ENABLED is a second, global gate on top of this repeatable —
@@ -99,10 +105,29 @@ export async function registerArJobSchedulers(): Promise<void> {
     }
   }
 
+  const prospectHarvestPattern = (process.env.PROSPECT_HARVEST_CRON || '0 2 * * *').trim();
+  const prospectHarvestOn = ['1', 'true', 'yes'].includes(
+    (process.env.PROSPECT_HARVEST_ENABLED ?? '0').trim().toLowerCase(),
+  );
+  if (prospectHarvestOn) {
+    if (!cron.validate(prospectHarvestPattern)) {
+      logger.error('[registerSchedulers] Invalid PROSPECT_HARVEST_CRON — PROSPECT_HARVEST not registered', {
+        pattern: prospectHarvestPattern,
+      });
+    } else {
+      await q.add(
+        'PROSPECT_HARVEST',
+        {},
+        { repeat: { pattern: prospectHarvestPattern }, ...JOB_RETRY_OPTS },
+      );
+    }
+  }
+
   logger.info('[registerSchedulers] Bull repeatables registered', {
     rulesEveryMs: RULES_EVERY_MS,
     triageCredentialHealth: 'daily',
     dlqRetentionSweep: 'daily',
+    ontarioArAgingSweep: 'daily',
     dataRetentionEnabled: process.env.DATA_RETENTION_ENABLED === '1',
     learningCron: learningOn ? learningPattern : null,
     marketingEveryMs: process.env.MARKETING_LOOP_ENABLED !== '0' ? marketingEveryMs : null,
@@ -110,6 +135,7 @@ export async function registerArJobSchedulers(): Promise<void> {
       process.env.MARKETING_LOOP_ENABLED !== '0' && marketingLearningOn
         ? marketingLearningPattern
         : null,
+    prospectHarvestCron: prospectHarvestOn ? prospectHarvestPattern : null,
   });
 }
 

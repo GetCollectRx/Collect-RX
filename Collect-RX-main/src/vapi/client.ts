@@ -98,6 +98,12 @@ export interface VapiCallParams {
   /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
   languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
+  /** Overrides the default squad — used to dial the V1 human-assisted squad instead of the fully-autonomous one. Defaults to VAPI_SQUAD_ID. */
+  squadId?: string;
+  /** Known resubmission channel from prior confirmed calls (Scenario A) — see submissionChannelMemory.ts. */
+  knownResubmissionChannel?: string;
+  /** Known documentation-submission channel from prior confirmed calls (Scenario D) — see submissionChannelMemory.ts. */
+  knownDocumentationChannel?: string;
   /**
    * Stable per-attempt key (e.g. `${claimId}:${attemptNumber}`) — sent as the
    * Idempotency-Key header so a retry of the *same* attempt (after a timeout
@@ -105,8 +111,7 @@ export interface VapiCallParams {
    * carrier for that attempt. Optional so existing callers don't break;
    * callers that dispatch real carrier calls should always pass one.
    */
-  idempotencyKey?: string;
-}
+  idempotencyKey?: string;}
 
 export interface VapiCallResult {
   vapiCallId: string;
@@ -175,6 +180,20 @@ export interface VapiCallMetadata {
 // ---------------------------------------------------------------------------
 // CARRIER_PHONE_MAP — direct-dial numbers for each carrier's claims line.
 // Update if carriers change their numbers.
+//
+// telus_adjudicare is a DEPRECATED LAST-RESORT PLACEHOLDER, not a real
+// claims line. TELUS AdjudiCare is an aggregator for many small TPAs with
+// no single carrier-wide number (confirmed 2026-08-01 against TELUS's own
+// FAQ: "please contact your insurer directly"). This entry only exists so
+// buildCarrierConfigs() in adapter.ts (which iterates every CARRIER_PHONE_MAP
+// key) doesn't throw for telus_adjudicare, and so the allowlist guard below
+// has *a* value to compare against pre-verification. Real TELUS dispatch is
+// gated in queueEngine.ts via getTelusDialPhone() and never reaches this
+// number — it escalates to a human when no per-TPA number is verified.
+// If/when an operator verifies a TPA's provider phone (promoting a
+// candidate in carrier-configs.json telusTpaProfiles.tpa_research_leads to
+// verified_provider_phone), that number must ALSO be added to the allowlist
+// this file builds below, or initiateCall() will reject the outbound call.
 // ---------------------------------------------------------------------------
 
 export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
@@ -183,7 +202,7 @@ export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
   manulife:          '+18662122333',
   green_shield:      '+18882110644',
   rbc:               '+18003613311',
-  telus_adjudicare:  '+18772893343',
+  telus_adjudicare:  '+18772893343', // DEPRECATED — see note above. Not a real TELUS line.
 };
 
 /** CDCP Contact Centre — separate from Sun Life group benefits line. */
@@ -211,6 +230,11 @@ function getSquadId(): string {
 
 function getPreVisitSquadId(): string {
   return process.env.VAPI_PREVISIT_SQUAD_ID?.trim() || getSquadId();
+}
+
+/** V1 human-assisted squad (IVR_Navigator -> Hold_Sentinel -> Claims_Scribe). Practice staff, not the AI, speak with the rep. */
+export function getHumanAssistedSquadId(): string {
+  return process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID?.trim() || 'bbe41279-5301-4b5d-aa43-d7b23eaab5e7';
 }
 
 function getPhoneNumberId(): string {
@@ -339,6 +363,9 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practicePhone,
     languagePreference,
     carrierIvrInstructions,
+    squadId,
+    knownResubmissionChannel,
+    knownDocumentationChannel,
     idempotencyKey,
   } = params;
 
@@ -362,7 +389,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
   };
 
   const payload = {
-    squadId: getSquadId(),
+    squadId: squadId || getSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: {
       number: carrierPhone,
@@ -416,6 +443,8 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',
+      known_resubmission_channel: knownResubmissionChannel ?? '',
+      known_documentation_channel: knownDocumentationChannel ?? '',
       },
     },
   };
