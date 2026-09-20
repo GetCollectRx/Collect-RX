@@ -14,6 +14,7 @@ import {
 } from '../server/middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../server/middleware/ownerPracticeApi.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -92,7 +93,7 @@ router.get('/', async (req: Request, res: Response) => {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error('[GET /calls]', err);
+    logger.error('[GET /calls]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -127,7 +128,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: attempt });
   } catch (err) {
-    console.error('[GET /calls/:id]', err);
+    logger.error('[GET /calls/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

@@ -21,3 +21,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy -c fly.staging.toml -a collect-rx-staging --remote-only
+
+      # P2.2 — automatic post-deploy gate (previously a manual step per
+      # docs/operations/STAGING-SMOKE.md). See collectrx-prod-deploy.yml's
+      # equivalent step for why this doesn't replace Fly's own health-check
+      # rollout gate, and docs/runbooks/deploy-rollback.md for what to do on failure.
+      - name: Post-deploy smoke (staging)
+        working-directory: Collect-RX-main
+        env:
+          STAGING_API_BASE: https://collect-rx-staging.fly.dev
+        run: bash scripts/staging-smoke.sh

@@ -11,6 +11,7 @@ import { computePlatformRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import type { UserRole } from '../../types/userRole.js';
 import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
 import { TIERS } from '../../billing/tiers.js';
+import { appendAuditLog } from '../audit/auditLog.js';
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
@@ -26,7 +27,7 @@ export function createPlatformPersonaAdminRouter(): Router {
   });
   router.use(requirePlatformAdmin);
 
-  router.get('/practices', async (_req, res) => {
+  router.get('/practices', async (req, res) => {
     const rows = await prisma.practice.findMany({
       select: {
         id: true,
@@ -39,6 +40,16 @@ export function createPlatformPersonaAdminRouter(): Router {
       },
       orderBy: { name: 'asc' },
     });
+    for (const p of rows) {
+      void appendAuditLog(prisma, {
+        practiceId: p.id,
+        action: 'platform_admin.practice.read',
+        subjectType: 'Practice',
+        subjectId: p.id,
+        details: { via: 'practices_list' },
+        req,
+      });
+    }
     const data = await Promise.all(
       rows.map(async (p) => {
         const settings = await getPracticeSettings(prisma, p.id);
@@ -86,6 +97,13 @@ export function createPlatformPersonaAdminRouter(): Router {
     if (!practice) return res.status(404).json({ success: false, error: 'Not found' });
     const queueStats = await computeQueueStats(prisma, practice.id);
     const settings = await getPracticeSettings(prisma, practice.id);
+    void appendAuditLog(prisma, {
+      practiceId: practice.id,
+      action: 'platform_admin.practice.read',
+      subjectType: 'Practice',
+      subjectId: practice.id,
+      req,
+    });
     return res.json({ success: true, data: { practice, settings, queueStats } });
   });
 
@@ -101,6 +119,13 @@ export function createPlatformPersonaAdminRouter(): Router {
   router.get('/practices/:practiceId/grants', async (req, res) => {
     const grants = await prisma.platformAdminPracticeGrant.findMany({
       where: { practiceId: req.params.practiceId },
+    });
+    void appendAuditLog(prisma, {
+      practiceId: req.params.practiceId,
+      action: 'platform_admin.practice_grants.read',
+      subjectType: 'Practice',
+      subjectId: req.params.practiceId,
+      req,
     });
     return res.json({ success: true, data: grants });
   });
@@ -130,8 +155,18 @@ export function createPlatformPersonaAdminRouter(): Router {
     return res.json({ success: true });
   });
 
-  router.get('/queue/stats', async (_req, res) => {
+  router.get('/queue/stats', async (req, res) => {
     const practices = await prisma.practice.findMany({ select: { id: true, name: true } });
+    for (const p of practices) {
+      void appendAuditLog(prisma, {
+        practiceId: p.id,
+        action: 'platform_admin.practice.read',
+        subjectType: 'Practice',
+        subjectId: p.id,
+        details: { via: 'queue_stats' },
+        req,
+      });
+    }
     const platformRecovery = await computePlatformRecoveryMetrics(prisma);
     const stats = await Promise.all(
       practices.map(async (p) => {
@@ -159,6 +194,12 @@ export function createPlatformPersonaAdminRouter(): Router {
     return res.json({ success: true, data: stats, platformRecovery });
   });
 
+  // These break-glass endpoints record an auditable request only — they do not
+  // build or dispatch the AR call queue themselves (dispatch runs on its own
+  // schedule via runDeskQueueTick in src/server/frontDesk/queueEngine.ts, gated
+  // by CARRIER_BLOCK, plan limits, and the call window) and they do not notify
+  // practice owners. The response copy must never claim otherwise — see
+  // OUTSTANDING-FIXES-PRODUCT-READY.md for the audit finding.
   router.post('/queue/build', async (req, res) => {
     const reason = (req.body as { reason?: string }).reason?.trim();
     if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
@@ -167,7 +208,12 @@ export function createPlatformPersonaAdminRouter(): Router {
     await prisma.breakGlassAuditLog.create({
       data: { adminUserId, action: 'build_queue', reason },
     });
-    return res.json({ success: true, message: 'Queue build logged. Practice owners will be notified.' });
+    return res.json({
+      success: true,
+      message:
+        'Break-glass request recorded in the audit log. This does not build or dispatch the AR queue — ' +
+        'dispatch runs automatically on its own schedule — and no notification is sent to practice owners.',
+    });
   });
 
   router.post('/queue/run', async (req, res) => {
@@ -178,7 +224,12 @@ export function createPlatformPersonaAdminRouter(): Router {
     await prisma.breakGlassAuditLog.create({
       data: { adminUserId, action: 'run_queue', reason },
     });
-    return res.json({ success: true, message: 'Queue run logged. Practice owners will be notified.' });
+    return res.json({
+      success: true,
+      message:
+        'Break-glass request recorded in the audit log. This does not run or dispatch the AR queue — ' +
+        'dispatch runs automatically on its own schedule — and no notification is sent to practice owners.',
+    });
   });
 
   router.get('/users', async (_req, res) => {

@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import type { PrismaClient } from '@prisma/client';
 import { connectorMonitorEnabled, sweepConnectorHealth } from '../services/connectorSyncMonitor.js';
+import { logger } from '../observability/logger.js';
 
 let started = false;
 
@@ -13,13 +14,13 @@ export function startConnectorMonitorScheduler(prisma: PrismaClient): void {
     return;
   }
   if (!connectorMonitorEnabled()) {
-    console.log('[connectorMonitor] Disabled (set CONNECTOR_MONITOR_ENABLED=1 to enable)');
+    logger.info('[connectorMonitor] Disabled (set CONNECTOR_MONITOR_ENABLED=1 to enable)', {});
     return;
   }
 
   const pattern = (process.env.CONNECTOR_MONITOR_CRON || '*/15 * * * *').trim();
   if (!cron.validate(pattern)) {
-    console.error(`[connectorMonitor] Invalid CONNECTOR_MONITOR_CRON "${pattern}"`);
+    logger.error('[connectorMonitor] Invalid CONNECTOR_MONITOR_CRON', { pattern });
     return;
   }
 
@@ -28,15 +29,16 @@ export function startConnectorMonitorScheduler(prisma: PrismaClient): void {
     void sweepConnectorHealth(prisma)
       .then((r) => {
         if (r.alerts.length > 0) {
-          console.warn(
-            `[connectorMonitor] ${r.alerts.length} alert(s) from ${r.checked} active connector(s)`,
-          );
+          logger.warn('[connectorMonitor] alerts from active connectors', {
+            alertCount: r.alerts.length,
+            checked: r.checked,
+          });
         }
       })
       .catch((err) => {
-        console.error('[connectorMonitor] sweep failed:', (err as Error).message);
+        logger.error('[connectorMonitor] sweep failed', { error: err });
       });
   });
 
-  console.log(`[connectorMonitor] Scheduled connector health sweep: cron "${pattern}"`);
+  logger.info('[connectorMonitor] Scheduled connector health sweep', { pattern });
 }

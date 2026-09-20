@@ -1,6 +1,9 @@
-function getSendGrid() {
+import { logger } from '../observability/logger.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
+
+async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
   return sg;
 }
@@ -10,6 +13,7 @@ function appBaseUrl(): string {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  practice_owner: 'Practice Owner',
   office_manager: 'Office Manager',
   billing_coordinator: 'Billing Coordinator',
   front_desk: 'Front Desk',
@@ -25,13 +29,13 @@ export async function sendInviteEmail(opts: {
 }): Promise<void> {
   const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
-  const sg = getSendGrid();
+  const sg = await getSendGrid();
 
   if (!sg) {
-    console.log(
-      `[invite] SENDGRID_API_KEY not set — skipping email.\n` +
-      `  To: ${opts.toEmail}\n  Accept URL: ${acceptUrl}`,
-    );
+    logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {
+      to: opts.toEmail,
+      acceptUrl,
+    });
     return;
   }
 
@@ -50,7 +54,7 @@ export async function sendInviteEmail(opts: {
       `Set up your account here (link expires in 72 hours):`,
       acceptUrl,
       '',
-      '— CollectRx',
+      FOUNDER_SIGNATURE_TEXT,
     ].join('\n'),
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -62,6 +66,7 @@ export async function sendInviteEmail(opts: {
           Set up my account
         </a>
         <p style="color:#888;font-size:13px">If you weren't expecting this, you can safely ignore it.</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
       </div>
     `,
   });

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Runs the same checks CI's `verify` job runs, before code ever reaches GitHub.
+# Installed automatically via `npm install` (see package.json's `prepare` script,
+# which sets `core.hooksPath` to this directory). Bypass in a genuine emergency
+# with `git push --no-verify` — that's git's own escape hatch, nothing custom here.
+#
+# Deliberately NOT run here (CI still catches these): Prisma migrate deploy and
+# the RLS-bypass grant (both need a live Postgres service container — DB-dependent
+# tests already skip gracefully without one, per tests/README conventions), and
+# Semgrep SAST (needs Docker). Treat CI as still authoritative for those two.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Match CI's placeholder env (.github/workflows/collectrx-ci.yml `verify` job env
+# block) so local runs test the same auth paths CI does. Without these, tests like
+# tests/vapiToolCalls.test.ts fail locally on missing VAPI_WEBHOOK_SECRET — a false
+# negative CI never hits, since its workflow sets these job-wide. Only override if
+# unset, so a developer's real .env values (if any) still take precedence.
+export JWT_SECRET="${JWT_SECRET:-github-actions-ci-placeholder-not-for-production}"
+export VAPI_WEBHOOK_SECRET="${VAPI_WEBHOOK_SECRET:-github-actions-ci-placeholder}"
+
+step() { printf '\n\033[1m[pre-push] %s\033[0m\n' "$1"; }
+
+step "npm audit --omit=dev --audit-level=high"
+npm audit --omit=dev --audit-level=high
+
+step "prisma generate"
+npm run db:generate:collectrx
+
+step "typecheck"
+npm run typecheck:collectrx
+
+step "lint"
+npm run lint:collectrx
+
+step "test"
+npm run test:collectrx
+
+step "build"
+NODE_ENV=production npm run build:collectrx
+
+step "all checks passed — pushing"

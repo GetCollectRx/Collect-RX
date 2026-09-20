@@ -190,12 +190,19 @@ export async function ensureCdcpCaseForClaim(
 export async function tryCdcpFromVapiPayload(
   prisma: PrismaClient,
   body: unknown,
+  authority?: { practiceId: string; patientToken: string },
 ): Promise<CdcpCaseLinkResult | null> {
   const message = (body as { message?: unknown })?.message;
   if (!message || typeof message !== 'object') return null;
   const signal = detectDenialFromEndOfCall(message as Parameters<typeof detectDenialFromEndOfCall>[0]);
   if (!signal) return null;
-  const upsert = await upsertReconsiderationFromSignal(prisma, signal);
+  // The detected practice/patient identity originates from LLM structured
+  // output; when the caller already resolved the claim server-side, its
+  // identity wins so the case row cannot land in the wrong tenant.
+  const upsert = await upsertReconsiderationFromSignal(
+    prisma,
+    authority ? { ...signal, ...authority } : signal,
+  );
   return { caseId: upsert.id, created: upsert.created };
 }
 

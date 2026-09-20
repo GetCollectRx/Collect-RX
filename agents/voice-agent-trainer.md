@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Voice Agent Trainer Agent
 
 **Purpose:** Take lessons learned from real calls and convert them into concrete improvements to the Vapi squad configuration — prompt updates, IVR path corrections, new test cases, and escalation logic refinements. This is the mechanism by which CollectRx gets better over time. Run weekly (or on-demand after any P0 incident or confirmed hallucination). Feeds into: Vapi Squad Auditor (for review before publishing changes).

@@ -67,7 +67,7 @@ export function getComplianceDisclosures(): ComplianceBundle {
           'Recording notice — disclosure that the call may be recorded for quality purposes.',
         ],
         enforcementNote:
-          'CollectRx satisfies the 10-second rule by configuring the Vapi IVR_Navigator firstMessage and Claims_Agent firstMessage as the mandatory ADAD disclosure. The disclosure_message variable is populated server-side in initiateCall() before any audio plays. ADAD delivery is verified post-call via transcript analysis and logged to the audit trail (action: ADAD_DISCLOSURE_VERIFIED / ADAD_DISCLOSURE_UNVERIFIED).',
+          'CollectRx satisfies the 10-second rule with a hardcoded, CRTC-compliant opening line configured as Claims_Agent.firstMessage in vapi-squad-config.json (spoken only after IVR navigation completes and a live representative answers — IVR_Navigator and Hold_Sentinel have empty firstMessage and never speak to a machine or hold queue). ADAD delivery is verified post-call via transcript analysis and logged to the audit trail (action: ADAD_DISCLOSURE_VERIFIED / ADAD_DISCLOSURE_UNVERIFIED).',
       },
       dnclExemption: {
         applies: true,

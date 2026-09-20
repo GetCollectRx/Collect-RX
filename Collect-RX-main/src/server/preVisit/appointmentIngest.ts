@@ -95,7 +95,14 @@ export async function ingestScheduledAppointments(
 
 const SWEEP_HORIZON_MS = 48 * 60 * 60 * 1000;
 
-export async function sweepUpcomingAppointments(prisma: PrismaClient): Promise<number> {
+/**
+ * Global cron dispatcher (called from the hourly rules-engine tick and the
+ * worker's APPOINTMENT_VERIFICATION_SWEEP job) — intentionally queries across
+ * all practices in one batch rather than per-tenant, mirroring
+ * `runDailyArCloseAllPractices`. Not tenant-facing; do not call this from a
+ * per-practice request path.
+ */
+export async function sweepUpcomingAppointmentsAcrossPractices(prisma: PrismaClient): Promise<number> {
   const now = new Date();
   const horizon = new Date(now.getTime() + SWEEP_HORIZON_MS);
 

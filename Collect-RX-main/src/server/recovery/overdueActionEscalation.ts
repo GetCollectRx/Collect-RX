@@ -11,6 +11,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { createEscalation } from '../services/escalationService.js';
 import { sendPracticeNotification } from '../services/practiceNotificationService.js';
+import { logger } from '../observability/logger.js';
 
 export async function escalateOverdueRecoveryActions(prisma: PrismaClient): Promise<number> {
   const overdue = await prisma.claimRecoveryAction.findMany({
@@ -59,7 +60,7 @@ export async function escalateOverdueRecoveryActions(prisma: PrismaClient): Prom
           severity: 'warning',
         });
       } catch (notifErr) {
-        console.error('[overdue-actions] notification failed (non-fatal):', notifErr);
+        logger.error('[overdue-actions] notification failed (non-fatal)', { error: notifErr });
       }
 
       await prisma.claimRecoveryAction.update({
@@ -68,10 +69,11 @@ export async function escalateOverdueRecoveryActions(prisma: PrismaClient): Prom
       });
       escalated += 1;
     } catch (err) {
-      console.error(
-        `[overdue-actions] escalation failed for action ${action.id} (claim ${action.claim.id}):`,
-        err,
-      );
+      logger.error('[overdue-actions] escalation failed', {
+        actionId: action.id,
+        claimId: action.claim.id,
+        error: err,
+      });
     }
   }
 

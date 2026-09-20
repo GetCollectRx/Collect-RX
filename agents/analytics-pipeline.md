@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Analytics Pipeline Agent
 
 **Purpose:** Ensure the data that flows into every analytics agent is accurate, complete, and trustworthy. A practice time savings report built on bad data is worse than no report — it destroys trust. This agent is the data quality gate for the entire analytics stack. Run daily. Flag any data integrity issues before they propagate into customer-facing reports.

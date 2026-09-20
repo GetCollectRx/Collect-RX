@@ -21,6 +21,7 @@ import {
 import { patientTokenBelongsToPractice } from '../accessControl/patientTokenScope.js';
 import { getAdjudicationGraph } from '../adjudication/adjudicationGraph.js';
 import { parseSimpleCsv } from '../csv/parseSimple.js';
+import { logger } from '../observability/logger.js';
 
 const CARRIER_IDS = Object.keys(CARRIER_CONFIGS) as [CarrierId, ...CarrierId[]];
 
@@ -98,7 +99,7 @@ router.post('/verify', requirePermission('manage_claims'), async (req: Request, 
 
     res.json(result);
   } catch (err) {
-    console.error('[pre-visit] /verify error:', err);
+    logger.error('[pre-visit] /verify error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -134,7 +135,7 @@ router.post('/appointments/ingest', requirePermission('manage_claims'), async (r
 
     res.json(result);
   } catch (err) {
-    console.error('[pre-visit] /appointments/ingest error:', err);
+    logger.error('[pre-visit] /appointments/ingest error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -146,6 +147,10 @@ router.post(
   async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.PREVISIT_CSV))) {
+      return res.status(403).json({ error: 'Pre-visit CSV import is paused for this practice' });
+    }
     const contentType = String(req.headers['content-type'] ?? '').toLowerCase();
     let rows: CdcpPredetImportRow[] = [];
     const parseErrors: Array<{ row: number; claimRef?: string; error: string }> = [];
@@ -184,7 +189,7 @@ router.post(
     const result = await importCdcpPredetCases(prisma, practiceId, rows);
     res.json({ ...result, parseErrors });
   } catch (err) {
-    console.error('[pre-visit] /cdcp-predets/import error:', err);
+    logger.error('[pre-visit] /cdcp-predets/import error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -206,7 +211,7 @@ router.get('/cdcp-deadlines', requirePermission('manage_claims'), async (req: Re
 
     res.json({ cases: enriched });
   } catch (err) {
-    console.error('[pre-visit] /cdcp-deadlines error:', err);
+    logger.error('[pre-visit] /cdcp-deadlines error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -221,7 +226,7 @@ router.get('/verifications', requirePermission('manage_claims'), async (req: Req
     });
     res.json({ verifications: rows });
   } catch (err) {
-    console.error('[pre-visit] /verifications error:', err);
+    logger.error('[pre-visit] /verifications error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -236,7 +241,7 @@ router.get('/adjudication-events', requirePermission('manage_claims'), async (re
     });
     res.json({ events: rows });
   } catch (err) {
-    console.error('[pre-visit] /adjudication-events error:', err);
+    logger.error('[pre-visit] /adjudication-events error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -248,7 +253,7 @@ router.get('/adjudication-graph', requirePermission('manage_claims'), async (req
     const graph = await getAdjudicationGraph(prisma, practiceId, days);
     res.json({ graph });
   } catch (err) {
-    console.error('[pre-visit] /adjudication-graph error:', err);
+    logger.error('[pre-visit] /adjudication-graph error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -269,7 +274,7 @@ router.post(
       const result = await importAppointmentCsvRows(prisma, practiceId, records);
       res.json(result);
     } catch (err) {
-      console.error('[pre-visit] /appointments/import-csv error:', err);
+      logger.error('[pre-visit] /appointments/import-csv error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   },

@@ -4,6 +4,7 @@ import { endVapiCall } from '../../vapi/client.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapCarrierBlock } from './deskMappers.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
+import { logger } from '../observability/logger.js';
 import {
   isCarrierDiscoveryEnabled,
   requestCarrierRediscovery,
@@ -83,7 +84,7 @@ export async function applyCarrierBlock(
   );
   for (const result of terminationResults) {
     if (result.status === 'rejected') {
-      console.error('[carrierBlock] Vapi hang failed:', result.reason);
+      logger.error('[carrierBlock] Vapi hang failed', { error: result.reason });
     }
   }
 
@@ -95,7 +96,7 @@ export async function applyCarrierBlock(
       outcomeDetail: reason,
     });
   } catch (err) {
-    console.error('[carrierBlock] alert failed:', err);
+    logger.error('[carrierBlock] alert failed', { error: err });
   }
 
   const block = await prisma.carrierBlockEvent.findFirst({
@@ -118,7 +119,7 @@ export async function applyCarrierBlock(
     try {
       await requestCarrierRediscovery(prisma, carrierId, 'CARRIER_ISSUE', `CARRIER_BLOCK: ${reason}`);
     } catch (err) {
-      console.error('[carrierBlock] discovery request failed:', err);
+      logger.error('[carrierBlock] discovery request failed', { error: err });
     }
   }
 

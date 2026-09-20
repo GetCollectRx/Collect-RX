@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Carrier IVR Health Monitor Agent
 
 **Purpose:** Detect when a carrier's IVR changes and call success rates degrade. An IVR menu change at Sun Life, for example, can silently break every call to that carrier until the navigation prompt is updated. This agent catches that before it costs revenue.

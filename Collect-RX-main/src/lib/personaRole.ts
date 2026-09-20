@@ -25,3 +25,13 @@ export function practiceRoleToBriefPersona(role: PracticeRole): UserRole {
       return 'practice_owner'
   }
 }
+
+/**
+ * Practice-user group admins (sessionUser present) home on the PHI-free
+ * GroupDashboard. Platform billing-ops/admin sessions also carry the legacy
+ * shim role 'group_admin' but have no sessionUser — they keep the
+ * billing-ops persona home (/portfolio), whose APIs accept their JWT.
+ */
+export function isPracticeGroupAdmin(role: string | null, sessionUser: unknown): boolean {
+  return role === 'group_admin' && sessionUser != null
+}

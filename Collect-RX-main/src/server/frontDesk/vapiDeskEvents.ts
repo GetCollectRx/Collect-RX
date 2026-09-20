@@ -16,6 +16,8 @@ import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js
 import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
+import { logger } from '../observability/logger.js';
 
 type PayloadWithTools = VapiWebhookPayload & {
   message?: { toolCalls?: Array<{ function?: { name?: string } }> };
@@ -119,6 +121,13 @@ export async function processVapiDeskWebhook(
         reason: `Transcript signal: "${phrase}"`,
       });
     }
+
+    try {
+      await checkAndTriggerEscalation(prisma, attempt.id, payload.transcript);
+    } catch (err) {
+      console.error('[vapiDeskEvents] sentiment escalation check failed:', err);
+    }
+
     return;
   }
 
@@ -193,7 +202,7 @@ async function processCallEndedDesk(
   }
 
   if (!metadata?.claimId) {
-    console.error(`[vapi-webhook] No claimId for call ${vapiCallId}`);
+    logger.error('[vapi-webhook] No claimId for call', { vapiCallId });
     return;
   }
 
@@ -222,7 +231,7 @@ async function processCallEndedDesk(
           carrierBlockDetected: true,
         },
       }).catch((err: unknown) => {
-        console.error('[vapi-webhook] failed to complete callAttempt on carrier block:', err);
+        logger.error('[vapi-webhook] failed to complete callAttempt on carrier block', { error: err });
       });
     }
     await applyCarrierBlock(prisma, {
@@ -249,8 +258,8 @@ async function processCallEndedDesk(
     const subjectId = attemptAfter?.id ?? existing?.id ?? vapiCallId;
     if (payload.transcript) {
       // Check the opening utterance (first ~300 chars ≈ 20 seconds of speech).
-      // Match the actual disclosure message phrases from client.ts
-      // disclosure_message — use multi-phrase match to avoid false positives
+      // Match the actual disclosure phrases from Claims_Agent.firstMessage in
+      // vapi-squad-config.json — use multi-phrase match to avoid false positives
       // (e.g. carrier saying "this call appears to be automated" should NOT verify).
       // Require 'automated calling' or 'automated calling system' — the canonical phrase.
       const opening = payload.transcript.slice(0, 300).toLowerCase();
@@ -298,7 +307,7 @@ async function processCallEndedDesk(
       await maybeSendPlanUsageAlertEmails(prisma, claim.practiceId);
     }
   } catch (usageErr) {
-    console.error('[vapi-webhook] usage recording failed (non-fatal):', usageErr);
+    logger.error('[vapi-webhook] usage recording failed (non-fatal)', { error: usageErr });
   }
 
   await refreshDeskQueueBroadcast(prisma, claim.practiceId);

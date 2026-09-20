@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client';
 import { connectorHealth } from './desktopConnectorService.js';
 import { dispatchOpsAlert, type OpsAlertPayload } from '../observability/opsAlerts.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const STALE_MS = 30 * 60 * 1000;
 
@@ -61,7 +62,7 @@ export async function sweepConnectorHealth(prisma: PrismaClient): Promise<Connec
 
   for (const payload of alerts) {
     await dispatchOpsAlert(payload).catch((err) => {
-      console.error('[connectorSyncMonitor] alert dispatch failed:', (err as Error).message);
+      logger.error('[connectorSyncMonitor] alert dispatch failed', { error: err });
     });
   }
 

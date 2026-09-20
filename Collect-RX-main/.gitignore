@@ -17,6 +17,9 @@ prisma/dev.db-journal
 *.db
 *.db-journal
 
+# Local Redis snapshot (written to whatever cwd redis-server was launched from)
+dump.rdb
+
 # Environment
 .env
 .env.local

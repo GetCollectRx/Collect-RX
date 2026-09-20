@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import type { PrismaClient } from '@prisma/client';
 import { reconcilePendingAuthorizations, reconcilePendingPadTransactions } from '../gocardless/padService.js';
+import { logger } from '../observability/logger.js';
 
 let started = false;
 
@@ -21,13 +22,13 @@ export function startPadReconciliationScheduler(prisma: PrismaClient): void {
     return;
   }
   if (!padReconcileEnabled()) {
-    console.log('[padReconcile] Disabled (set PAD_RECONCILE_ENABLED=1 to enable)');
+    logger.info('[padReconcile] Disabled (set PAD_RECONCILE_ENABLED=1 to enable)', {});
     return;
   }
 
   const pattern = (process.env.PAD_RECONCILE_CRON || '*/15 * * * *').trim();
   if (!cron.validate(pattern)) {
-    console.error(`[padReconcile] Invalid PAD_RECONCILE_CRON "${pattern}"`);
+    logger.error('[padReconcile] Invalid PAD_RECONCILE_CRON', { pattern });
     return;
   }
 
@@ -36,15 +37,18 @@ export function startPadReconciliationScheduler(prisma: PrismaClient): void {
     void Promise.all([reconcilePendingAuthorizations(prisma), reconcilePendingPadTransactions(prisma)])
       .then(([authorizations, transactions]) => {
         if (authorizations.activated > 0 || transactions.updated > 0) {
-          console.log(
-            `[padReconcile] activated ${authorizations.activated}/${authorizations.checked} mandate(s), updated ${transactions.updated}/${transactions.checked} transaction(s)`,
-          );
+          logger.info('[padReconcile] sweep results', {
+            activated: authorizations.activated,
+            authorizationsChecked: authorizations.checked,
+            updated: transactions.updated,
+            transactionsChecked: transactions.checked,
+          });
         }
       })
       .catch((err) => {
-        console.error('[padReconcile] sweep failed:', (err as Error).message);
+        logger.error('[padReconcile] sweep failed', { error: err });
       });
   });
 
-  console.log(`[padReconcile] Scheduled PAD reconciliation sweep: cron "${pattern}"`);
+  logger.info('[padReconcile] Scheduled PAD reconciliation sweep', { pattern });
 }

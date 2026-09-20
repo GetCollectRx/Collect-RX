@@ -7,6 +7,7 @@ import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
 import { recordConnectorHeartbeat } from '../services/desktopConnectorService.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[POST /connector/heartbeat]', err);
+    logger.error('[POST /connector/heartbeat]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -89,7 +90,7 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
       runId: result.runId,
     });
   } catch (err) {
-    console.error('[POST /connector/claims/import]', err);
+    logger.error('[POST /connector/claims/import]', { error: err });
     const auth = req.connectorAuth;
     if (auth) {
       await recordConnectorHeartbeat(auth.agentId, auth.practiceId, {
@@ -117,7 +118,7 @@ router.get('/writeback-pending', async (req: Request, res: Response) => {
     });
     return res.json({ success: true, entries: rows });
   } catch (err) {
-    console.error('[GET /connector/writeback-pending]', err);
+    logger.error('[GET /connector/writeback-pending]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -149,7 +150,7 @@ router.post('/writeback-ack', strictLimiter, async (req: Request, res: Response)
     });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[POST /connector/writeback-ack]', err);
+    logger.error('[POST /connector/writeback-ack]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

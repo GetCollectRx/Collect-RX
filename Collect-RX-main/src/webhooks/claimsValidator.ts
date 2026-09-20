@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { handleClaimsValidatorWebhook } from '../server/vapi/claimsValidatorWebhook.js';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     await handleClaimsValidatorWebhook(req, res, prisma);
   } catch (err) {
-    console.error('[claims-validator-webhook] Unhandled error:', err);
+    logger.error('[claims-validator-webhook] Unhandled error', { error: err });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

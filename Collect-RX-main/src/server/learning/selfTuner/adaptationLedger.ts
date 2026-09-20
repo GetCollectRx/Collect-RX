@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
 import type { AdaptationLedger, AdaptationRecord, RuleProposal } from './types.js';
+import { logger } from '../../observability/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LEARNED_RULES_DIR = join(__dirname, 'learned-rules');
@@ -38,7 +39,7 @@ export function readLedger(): AdaptationLedger {
     const raw = readFileSync(LEDGER_PATH, 'utf-8');
     return JSON.parse(raw) as AdaptationLedger;
   } catch {
-    console.warn('[selfTuner] Ledger parse error — starting fresh');
+    logger.warn('[selfTuner] Ledger parse error — starting fresh', {});
     return { version: '1.0', lastUpdated: new Date().toISOString(), records: [] };
   }
 }

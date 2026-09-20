@@ -5,6 +5,7 @@ import {
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import {
   connectorHealth,
@@ -12,6 +13,7 @@ import {
   revokeConnectorAgent,
 } from '../services/desktopConnectorService.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -46,12 +48,12 @@ router.get('/agents', async (req: Request, res: Response) => {
       data: agents.map((a) => ({ ...a, health: connectorHealth(a) })),
     });
   } catch (err) {
-    console.error('[GET /admin/connector/agents]', err);
+    logger.error('[GET /admin/connector/agents]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
-router.post('/agents', async (req: Request, res: Response) => {
+router.post('/agents', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const label = typeof req.body?.label === 'string' && req.body.label.trim()
@@ -76,12 +78,12 @@ router.post('/agents', async (req: Request, res: Response) => {
       message: 'Copy the token now — it will not be shown again.',
     });
   } catch (err) {
-    console.error('[POST /admin/connector/agents]', err);
+    logger.error('[POST /admin/connector/agents]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
 
-router.delete('/agents/:id', async (req: Request, res: Response) => {
+router.delete('/agents/:id', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const ok = await revokeConnectorAgent(req.params.id, practiceId);
@@ -96,7 +98,7 @@ router.delete('/agents/:id', async (req: Request, res: Response) => {
     });
     return res.json({ success: true });
   } catch (err) {
-    console.error('[DELETE /admin/connector/agents/:id]', err);
+    logger.error('[DELETE /admin/connector/agents/:id]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

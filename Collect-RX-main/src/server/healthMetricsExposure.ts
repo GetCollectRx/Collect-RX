@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { getMetrics } from './observability/metrics.js';
 
-function timingSafeStringEqual(a: string, b: string): boolean {
+export function timingSafeStringEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   try {
     return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
@@ -11,11 +11,22 @@ function timingSafeStringEqual(a: string, b: string): boolean {
   }
 }
 
-function bearerToken(req: Request): string {
+export function bearerToken(req: Request): string {
   const h = req.headers.authorization;
   if (!h || typeof h !== 'string') return '';
   const m = /^Bearer\s+(.+)$/i.exec(h.trim());
   return m?.[1]?.trim() ?? '';
+}
+
+/**
+ * Shared by /api/health/metrics (redacts one field without this) and
+ * /api/diagnostics (P1.2 — requires this always in production, since it
+ * exposes more operational detail than the metrics endpoint).
+ */
+export function hasValidHealthMetricsToken(req: Request): boolean {
+  const secret = (process.env.HEALTH_METRICS_TOKEN || '').trim();
+  const token = bearerToken(req);
+  return Boolean(secret) && Boolean(token) && timingSafeStringEqual(secret, token);
 }
 
 /**
@@ -27,9 +38,7 @@ export function buildPublicHealthMetricsBody(req: Request): { success: true; met
   if (process.env.NODE_ENV !== 'production') {
     return { success: true, metrics };
   }
-  const secret = (process.env.HEALTH_METRICS_TOKEN || '').trim();
-  const token = bearerToken(req);
-  if (secret && token && timingSafeStringEqual(secret, token)) {
+  if (hasValidHealthMetricsToken(req)) {
     return { success: true, metrics };
   }
   const { deployment: _omit, ...rest } = metrics;

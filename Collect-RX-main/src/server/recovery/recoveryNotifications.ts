@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { dispatchOpsAlert, opsAlertsEnabled } from '../observability/opsAlerts.js';
+import { logger } from '../observability/logger.js';
 
 export interface RecoveryNotificationItem {
   id: string;
@@ -180,9 +181,10 @@ export async function notifyPracticeOnBlockingGate(
 
   if (channels.length > 0) {
     lastGateAlertSent.set(key, Date.now());
-    console.log(
-      `[recoveryNotifications] Gate alert for ${params.claimNumber} via ${channels.join(', ')}`,
-    );
+    logger.info('[recoveryNotifications] Gate alert sent', {
+      claimNumber: params.claimNumber,
+      channels,
+    });
   }
 }
 

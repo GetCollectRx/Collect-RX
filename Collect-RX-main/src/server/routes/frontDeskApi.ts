@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getUserRole, authUserId, isAuditor } from '../accessControl/types.js'
+import { authUserId, isAuditor, type PracticeRole } from '../accessControl/types.js'
 import type { CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -30,6 +30,8 @@ import { listEscalations, resolveEscalation } from '../services/escalationServic
 import type { EscalationResolution } from '../../types/practiceSettings.js';
 import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
 import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
+import { appendAuditLog } from '../audit/auditLog.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -95,7 +97,7 @@ router.get('/:practiceId/active', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[desk/active]', err);
+    logger.error('[desk/active]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -122,7 +124,7 @@ router.get('/:practiceId/queue', async (req: Request, res: Response) => {
       data: { queue: rows.map(mapQueueEntry), paused },
     });
   } catch (err) {
-    console.error('[desk/queue]', err);
+    logger.error('[desk/queue]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -135,7 +137,7 @@ router.get('/:practiceId/queue/reviews', async (req: Request, res: Response) => 
     const data = await listMaxAttemptFailureReviews(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/queue/reviews]', err);
+    logger.error('[desk/queue/reviews]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -148,7 +150,7 @@ router.get('/:practiceId/hold-ledger', async (req: Request, res: Response) => {
     const data = await getPracticeHoldLedger(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
-    console.error('[desk/hold-ledger]', err);
+    logger.error('[desk/hold-ledger]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -202,7 +204,7 @@ router.get('/:practiceId/history', async (req: Request, res: Response) => {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error('[desk/history]', err);
+    logger.error('[desk/history]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
@@ -212,6 +214,7 @@ router.post('/:practiceId/queue/pause', blockAuditorWrites, async (req: Request,
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     await setPracticeQueuePaused(prisma, practiceId, true);
+    void appendAuditLog(prisma, { practiceId, action: 'frontdesk.queue.pause', req });
     return res.json({ success: true, paused: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -223,6 +226,7 @@ router.post('/:practiceId/queue/resume', async (req: Request, res: Response) => 
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     await setPracticeQueuePaused(prisma, practiceId, false);
+    void appendAuditLog(prisma, { practiceId, action: 'frontdesk.queue.resume', req });
     return res.json({ success: true, paused: false });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -283,6 +287,14 @@ router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req:
         liveState: 'paused_by_staff',
       },
     });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.pause',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: { staffId },
+      req,
+    });
 
     broadcastDesk(practiceId, {
       type: 'call.state_changed',
@@ -309,6 +321,13 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
     if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
 
     await endVapiCall(attempt.vapiCallId);
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.end',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      req,
+    });
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -336,6 +355,14 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
         takenOverByStaffId: staffId ?? 'front_desk',
         liveState: 'resolving',
       },
+    });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.takeover',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: { staffId: staffId ?? 'front_desk' },
+      req,
     });
 
     return res.json({ success: true });
@@ -405,12 +432,33 @@ router.get('/:practiceId/escalations', async (req: Request, res: Response) => {
   }
 });
 
+// Raw PracticeRole values allowed to resolve escalations — mirrors
+// canResolveEscalations in src/lib/useRoleAccess.ts. Checked against the raw
+// role (auth.role), not getUserRole()'s brief UserRole persona:
+// practiceRoleToBrief() collapses office_manager, billing_coordinator, AND
+// associate_dentist into the same brief 'practice_owner' bucket for coarse
+// routing, so a brief-persona check here let associate_dentist (a clinical
+// role useRoleAccess.ts marks isReadOnly: true / canResolveEscalations:
+// false) resolve escalations by accident — including 'written_off', which
+// flips the claim to DENIED and drops it from the call queue. Reproduced
+// live via a direct PUT as an associate_dentist session before this fix.
+// group_admin covers both the raw PracticeRole and real billing_ops_manager
+// PlatformUser sessions (their JWT's `role` field is set to 'group_admin'
+// for PracticeRole-shaped compatibility — see respondPlatformUserLogin).
+const ESCALATION_RESOLVER_ROLES: PracticeRole[] = [
+  'front_desk',
+  'practice_owner',
+  'office_manager',
+  'billing_coordinator',
+  'group_admin',
+];
+
 router.put('/:practiceId/escalations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const role = getUserRole(req.auth ?? req.practiceAuth);
-    if (!role || !['front_desk', 'practice_owner', 'billing_ops_manager'].includes(role)) {
+    const rawRole = (req.auth ?? req.practiceAuth)?.role;
+    if (!rawRole || rawRole === 'platform_dev' || !ESCALATION_RESOLVER_ROLES.includes(rawRole)) {
       return res.status(403).json({ success: false, error: 'Cannot resolve escalations with this role' });
     }
   const { resolution, notes } = req.body as { resolution?: EscalationResolution; notes?: string };
@@ -424,6 +472,14 @@ router.put('/:practiceId/escalations/:id', blockAuditorWrites, async (req: Reque
       staffId,
     });
     if (!data) return res.status(404).json({ success: false, error: 'Escalation not found' });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.escalation.resolve',
+      subjectType: 'CallEscalation',
+      subjectId: req.params.id,
+      details: { resolution },
+      req,
+    });
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -478,6 +534,14 @@ router.post('/:practiceId/carriers/:carrierId/unblock', requireFrontDeskOnly, as
     if (!ok) {
       return res.status(404).json({ success: false, error: 'No active block for carrier' });
     }
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.carrier.unblock',
+      subjectType: 'Carrier',
+      subjectId: carrierId,
+      details: { staffId },
+      req,
+    });
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
@@ -488,6 +552,10 @@ router.get('/:practiceId/ar-inbox', async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.AR_COMMAND_CENTER))) {
+      return res.status(403).json({ success: false, error: 'AR command center is paused for this practice' });
+    }
     const { buildArCommandCenterInbox } = await import('../arCommandCenter/inboxService.js');
     const data = await buildArCommandCenterInbox(prisma, practiceId);
     return res.json({ success: true, data });
@@ -500,10 +568,44 @@ router.get('/:practiceId/managed-recovery', async (req: Request, res: Response) 
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
+    const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+    if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.AR_COMMAND_CENTER))) {
+      return res.status(403).json({ success: false, error: 'AR command center is paused for this practice' });
+    }
     const { listManagedRecoveryQueue } = await import('../arCommandCenter/inboxService.js');
     const data = await listManagedRecoveryQueue(prisma, practiceId);
     return res.json({ success: true, data });
   } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/:practiceId/batch-status', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { claimIds } = req.body as { claimIds?: string[] };
+    if (!Array.isArray(claimIds) || claimIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'claimIds array is required and must not be empty' });
+    }
+    const { getBatchClaimStatus } = await import('../frontDesk/batchClaimStatusService.js');
+    const data = await getBatchClaimStatus(prisma, practiceId, claimIds);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[batch-status]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:practiceId/queue-summary', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const { getQueueSummary } = await import('../frontDesk/batchClaimStatusService.js');
+    const data = await getQueueSummary(prisma, practiceId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[queue-summary]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

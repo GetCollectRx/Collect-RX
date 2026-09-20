@@ -13,6 +13,7 @@ import {
   getPendingClaimsTotal,
 } from '../benefits/schema';
 import { calculateEstimate } from '../benefits/calculator';
+import { logger } from '../observability/logger.js';
 
 function practiceId(req: Request): string {
   return practiceIdFromSession(req);
@@ -66,7 +67,7 @@ export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
         _meta: { paidFromClaims: paid },
       });
     } catch (e) {
-      console.error('GET /benefits error', e);
+      logger.error('GET /benefits error', { error: e });
       return res.status(500).json({ error: 'Failed to load benefits' });
     }
   });
@@ -131,7 +132,7 @@ export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
         warnings: result.warnings,
       });
     } catch (e) {
-      console.error('POST /benefits/estimate error', e);
+      logger.error('POST /benefits/estimate error', { error: e });
       return res.status(500).json({ error: 'Failed to calculate estimate' });
     }
   });

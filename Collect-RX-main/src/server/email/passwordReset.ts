@@ -2,10 +2,12 @@
  * Send a password reset email via SendGrid.
  * Falls back to console logging when SENDGRID_API_KEY is not configured.
  */
+import { logger } from '../observability/logger.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
-function getSendGrid() {
+async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = require('@sendgrid/mail') as { setApiKey: (k: string) => void; send: (msg: unknown) => Promise<unknown> };
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
   return sg;
 }
@@ -14,19 +16,35 @@ function appBaseUrl(): string {
   return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
 }
 
+/**
+ * Call once at process startup in production. Without SENDGRID_API_KEY,
+ * sendPasswordResetEmail() silently falls back to console-logging the reset
+ * URL instead of emailing it — safe for local dev, dangerous in production
+ * (an operator would believe reset emails are going out when they are not).
+ * Mirrors assertJwtConfigAtStartup() in ../authToken.ts.
+ */
+export function assertPasswordResetEmailConfigAtStartup(): void {
+  if (process.env.NODE_ENV === 'production' && !process.env.SENDGRID_API_KEY) {
+    throw new Error(
+      'SENDGRID_API_KEY is required in production (password reset emails would otherwise ' +
+      'silently log the reset URL to the console instead of sending it)',
+    );
+  }
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   displayName: string,
   token: string,
 ): Promise<void> {
   const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
-  const sg = getSendGrid();
+  const sg = await getSendGrid();
 
   if (!sg) {
-    console.log(
-      `[password-reset] SENDGRID_API_KEY not set — skipping email.\n` +
-      `  Recipient: ${toEmail}\n  Reset URL: ${resetUrl}`,
-    );
+    logger.info('[password-reset] SENDGRID_API_KEY not set — skipping email', {
+      recipient: toEmail,
+      resetUrl,
+    });
     return;
   }
 
@@ -49,7 +67,7 @@ export async function sendPasswordResetEmail(
       '',
       'If you did not request this, you can safely ignore this email.',
       '',
-      '— CollectRx',
+      FOUNDER_SIGNATURE_TEXT,
     ].join('\n'),
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -61,6 +79,7 @@ export async function sendPasswordResetEmail(
           Reset password
         </a>
         <p style="color:#888;font-size:13px">Link expires in 1 hour. If you did not request this, ignore this email.</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
       </div>
     `,
   });

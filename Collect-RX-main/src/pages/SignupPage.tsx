@@ -3,18 +3,38 @@ import { useNavigate, Link } from 'react-router-dom'
 import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 import { apiFetch } from '../lib/apiFetch'
 import { HOME_ROUTE } from '../types/userRole'
+import { usePractice } from '../context/PracticeContext'
 
 export default function SignupPage() {
   const navigate = useNavigate()
-  const [form, setForm] = useState({ practiceName: '', displayName: '', email: '', password: '' })
+  const { refreshSession } = usePractice()
+  const [form, setForm] = useState({ practiceName: '', displayName: '', email: '', password: '', organizationName: '' })
+  const [additionalLocations, setAdditionalLocations] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  function addLocation() {
+    setAdditionalLocations(locs => [...locs, ''])
+  }
+
+  function updateLocation(index: number, value: string) {
+    setAdditionalLocations(locs => locs.map((l, i) => i === index ? value : l))
+  }
+
+  function removeLocation(index: number) {
+    setAdditionalLocations(locs => locs.filter((_, i) => i !== index))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setBusy(true)
     try {
+      const additionalPractices = additionalLocations
+        .map(name => name.trim())
+        .filter(Boolean)
+        .map(practiceName => ({ practiceName }))
+
       const res = await apiFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -23,14 +43,18 @@ export default function SignupPage() {
           displayName: form.displayName,
           email: form.email,
           password: form.password,
+          ...(additionalPractices.length > 0
+            ? { organizationName: form.organizationName, additionalPractices }
+            : {}),
         }),
       })
-      const data = await res.json() as { error?: string }
+      const data = await res.json() as { error?: string; role?: string }
       if (!res.ok) {
         setError(data.error ?? 'Registration failed')
         return
       }
-      navigate(HOME_ROUTE.practice_owner, { replace: true })
+      await refreshSession()
+      navigate(data.role === 'group_admin' ? '/group-dashboard' : HOME_ROUTE.practice_owner, { replace: true })
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {
@@ -61,6 +85,52 @@ export default function SignupPage() {
               required
             />
           </div>
+
+          {additionalLocations.map((location, index) => (
+            <div className="crx-portal-field" key={index}>
+              <label htmlFor={`crx-location-${index}`} className="crx-portal-label">Additional location</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  id={`crx-location-${index}`}
+                  type="text"
+                  className="crx-portal-input"
+                  placeholder="Another practice location name"
+                  value={location}
+                  onChange={e => updateLocation(index, e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => removeLocation(index)}
+                  aria-label="Remove location"
+                  className="crx-portal-link"
+                  style={{ flexShrink: 0 }}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <button type="button" onClick={addLocation} className="crx-portal-link" style={{ marginBottom: '12px' }}>
+            + Add another location
+          </button>
+
+          {additionalLocations.length > 0 && (
+            <div className="crx-portal-field">
+              <label htmlFor="crx-org-name" className="crx-portal-label">Organization name</label>
+              <input
+                id="crx-org-name"
+                type="text"
+                className="crx-portal-input"
+                placeholder="Your DSO or group name"
+                value={form.organizationName}
+                onChange={e => setForm(f => ({ ...f, organizationName: e.target.value }))}
+                required
+              />
+            </div>
+          )}
+
           <div className="crx-portal-field">
             <label htmlFor="crx-name" className="crx-portal-label">Your name</label>
             <input

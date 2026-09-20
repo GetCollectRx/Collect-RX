@@ -110,7 +110,7 @@ function padStatusLabel(status: PadMandate['status']): string {
   }
 }
 
-function PlanPicker({
+export function PlanPicker({
   currentTier,
   busy,
   onSelect,

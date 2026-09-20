@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { recordEmrOutbox } from './observability/metrics.js';
 import { assertEmrSyncWebhookUrlAllowed } from './emrWebhookUrl.js';
+import { logger } from './observability/logger.js';
 
 export async function enqueueEmrClaimEvent(
   prisma: PrismaClient,
@@ -109,15 +110,15 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
     try {
       assertEmrSyncWebhookUrlAllowed(webhookUrl);
     } catch (e) {
-      console.error('[emrOutbox] invalid EMR_SYNC_WEBHOOK_URL — skipping batch:', (e as Error).message);
+      logger.error('[emrOutbox] invalid EMR_SYNC_WEBHOOK_URL — skipping batch', { error: e });
       return { pulled: rows.length, markedProcessed: 0, deliveryFailed: rows.length };
     }
   }
 
   if (!webhookUrl && !devAck) {
-    console.warn(
-      `[emrOutbox] ${rows.length}+ pending row(s) — set EMR_SYNC_WEBHOOK_URL (production) or EMR_OUTBOX_DEV_ACK=1 (local)`,
-    );
+    logger.warn('[emrOutbox] pending row(s) — set EMR_SYNC_WEBHOOK_URL (production) or EMR_OUTBOX_DEV_ACK=1 (local)', {
+      pendingCount: rows.length,
+    });
     return { pulled: rows.length, markedProcessed: 0, deliveryFailed: 0 };
   }
 
@@ -133,9 +134,7 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
         });
         markedProcessed += 1;
         recordEmrOutbox('dev_ack');
-        console.log(
-          `[emrOutbox] dev_ack id=${row.id} event=${row.eventType} claimId=${row.claimId}`,
-        );
+        logger.info('[emrOutbox] dev_ack', { id: row.id, eventType: row.eventType, claimId: row.claimId });
         continue;
       }
 
@@ -180,9 +179,11 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
         deliveryFailed += 1;
         recordEmrOutbox('failed');
         const snippet = (await res.text()).slice(0, 200);
-        console.error(
-          `[emrOutbox] webhook ${res.status} for id=${row.id}: ${snippet || res.statusText}`,
-        );
+        logger.error('[emrOutbox] webhook delivery failed', {
+          status: res.status,
+          id: row.id,
+          detail: snippet || res.statusText,
+        });
       }
     } catch (err) {
       // Network/timeout error — reset for retry next tick.
@@ -192,7 +193,7 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
       }).catch(() => {});
       deliveryFailed += 1;
       recordEmrOutbox('failed');
-      console.error(`[emrOutbox] delivery error id=${row.id}:`, (err as Error).message);
+      logger.error('[emrOutbox] delivery error', { id: row.id, error: err });
     }
   }
 

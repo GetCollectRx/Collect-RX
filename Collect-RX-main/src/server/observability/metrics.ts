@@ -2,6 +2,7 @@
  * P6-03: in-process golden-signal style counters (single instance).
  * For multi-instance / p95 in prod, use your APM (Sentry) or a metrics backend.
  */
+import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 
 let requestCount = 0;
 let error5xx = 0;
@@ -83,6 +84,7 @@ export function getMetrics() {
       failed: emrOutboxFailed,
       devAck: emrOutboxDevAck,
     },
+    vapiCircuitBreaker: vapiCircuitBreaker.getMetrics(),
     deployment: deploymentSnapshot(),
     bootedAt,
     processUptimeSec: Math.floor(process.uptime()),

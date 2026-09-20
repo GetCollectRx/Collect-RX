@@ -14,6 +14,7 @@ import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import type { PracticeRole } from '@prisma/client';
+import { ROLE_LEVEL } from '../src/server/accessControl/types.js';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers, FIXTURE_PRACTICE_PASSWORD } from './factories/practice.js';
 
@@ -30,16 +31,11 @@ afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);
 });
 
-const ROLE_LEVELS: Record<PracticeRole, number> = {
-  platform_dev: 100,
-  group_admin: 70,
-  practice_owner: 60,
-  office_manager: 50,
-  billing_coordinator: 30,
-  front_desk: 20,
-  associate_dentist: 20,
-  accountant: 20,
-} as const;
+// Imported rather than restated: a local copy silently drifts from the table the
+// app actually gates on, and this suite exists to verify the gate is *wired into*
+// every route — not to re-assert the levels. The values themselves are pinned by
+// tests/roleEscalation.test.ts against canManageRole directly.
+const ROLE_LEVELS = ROLE_LEVEL;
 
 // Roles available in this practice (excluding platform_dev)
 const PRACTICE_ROLES: PracticeRole[] = [

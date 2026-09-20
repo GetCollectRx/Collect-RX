@@ -2,6 +2,7 @@ import type { ResearchSource } from '../types.js';
 import type { ResearchProvider } from './types.js';
 import { learningResearchTimeoutMs } from '../config.js';
 import { buildNotebooklmQuery } from './util.js';
+import { logger } from '../../observability/logger.js';
 
 function mapResearchSources(raw: unknown): ResearchSource[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
@@ -86,7 +87,7 @@ export function createNotebooklmResearchProvider(): ResearchProvider {
         }
 
         if (result.status !== 'completed') {
-          console.warn('[learning] NotebookLM research incomplete', result.status);
+          logger.warn('[learning] NotebookLM research incomplete', { status: result.status });
           return null;
         }
 
@@ -97,7 +98,7 @@ export function createNotebooklmResearchProvider(): ResearchProvider {
 
         return { summary, sources: mapResearchSources(result.sources) };
       } catch (err) {
-        console.warn('[learning] NotebookLM research failed', (err as Error).message);
+        logger.warn('[learning] NotebookLM research failed', { error: err });
         return null;
       }
     },

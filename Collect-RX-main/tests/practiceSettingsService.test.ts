@@ -16,6 +16,16 @@ describe('practiceSettingsService', () => {
         expect(c.authorizationSubmittedAt).toBeNull();
       }
     });
+
+    it('defaults retention purging to disabled with 12/18/18-month windows', () => {
+      const settings = defaultPracticeSettings();
+      expect(settings.retention).toEqual({
+        purgeEnabled: false,
+        claimRetentionMonths: 12,
+        auditLogRetentionMonths: 18,
+        phiAccessEventRetentionMonths: 18,
+      });
+    });
   });
 
   describe('parsePracticeSettings', () => {
@@ -77,6 +87,34 @@ describe('practiceSettingsService', () => {
       };
       const settings = parsePracticeSettings(saved);
       expect(settings.carrierConfigs.find((c) => c.carrierId === ('not_a_real_carrier' as never))).toBeUndefined();
+    });
+
+    it('backfills default retention settings for practices saved before retention existed', () => {
+      const settings = parsePracticeSettings({});
+      expect(settings.retention).toEqual({
+        purgeEnabled: false,
+        claimRetentionMonths: 12,
+        auditLogRetentionMonths: 18,
+        phiAccessEventRetentionMonths: 18,
+      });
+    });
+
+    it('honours a saved retention override', () => {
+      const saved = { retention: { purgeEnabled: true, claimRetentionMonths: 24 } };
+      const settings = parsePracticeSettings(saved);
+      expect(settings.retention).toEqual({
+        purgeEnabled: true,
+        claimRetentionMonths: 24,
+        auditLogRetentionMonths: 18,
+        phiAccessEventRetentionMonths: 18,
+      });
+    });
+
+    it('clamps a corrupt/non-positive retention value back to the default rather than persisting it', () => {
+      const saved = { retention: { claimRetentionMonths: -5, auditLogRetentionMonths: 'forever' } };
+      const settings = parsePracticeSettings(saved);
+      expect(settings.retention.claimRetentionMonths).toBe(12);
+      expect(settings.retention.auditLogRetentionMonths).toBe(18);
     });
   });
 

@@ -5,7 +5,6 @@
 // CALL_CARRIER | WAIT_SYNC | OPEN_CDCP | PRACTICE_GATE | STOP.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { CallOutcome, ClaimStatus, QueueStatus } from '@prisma/client';
 import type {
   ClaimRouterDecisionRow,
   ClaimRouterInput,
@@ -551,38 +550,4 @@ export function routeForPaymentTraceRecall(now: Date = new Date()): RecoveryDeci
     stopCalling: false,
     reason: 'Payment trace — sync did not confirm carrier payment.',
   };
-}
-
-export function mapOutcomeToQueueStatus(outcome: CallOutcome): QueueStatus {
-  switch (outcome) {
-    case 'RESOLVED':
-      return 'COMPLETED';
-    case 'DENIED':
-      return 'COMPLETED';
-    case 'ESCALATED':
-      return 'ESCALATED';
-    case 'BLOCK_DETECTED':
-      return 'BLOCKED';
-    default:
-      return 'PENDING';
-  }
-}
-
-export function mapOutcomeToClaimStatus(outcome: CallOutcome): ClaimStatus {
-  switch (outcome) {
-    case 'RESOLVED':
-      return 'RESOLVED';
-    case 'DENIED':
-      return 'DENIED';
-    case 'ESCALATED':
-      return 'ESCALATED';
-    case 'BLOCK_DETECTED':
-      return 'BLOCKED';
-    case 'FAILED':
-    case 'NO_ANSWER':
-    case 'HUNG_UP':
-    case 'PENDING':
-    default:
-      return 'IN_QUEUE';
-  }
 }

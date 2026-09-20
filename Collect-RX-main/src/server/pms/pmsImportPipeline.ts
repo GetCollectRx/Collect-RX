@@ -6,6 +6,7 @@ import { syncWorkItemsForPractice } from '../services/workQueueService.js';
 import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
 import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
 import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
+import { logger } from '../observability/logger.js';
 
 /** @deprecated Use PmsVendorId — kept for callers passing legacy slugs. */
 export type PmsSource = PmsVendorId;
@@ -51,11 +52,10 @@ export async function runPmsImportPipeline(
   if (profile.supportsEdiVersionGuard) {
     ediGuardResult = checkAbeldentEdiVersion(options.rows);
     if (ediGuardResult.migrationRequired) {
-      console.warn(
-        '[PmsImportPipeline] AbelDent EDI migration required for practice',
-        options.practiceId,
-        ediGuardResult.message,
-      );
+      logger.warn('[PmsImportPipeline] AbelDent EDI migration required', {
+        practiceId: options.practiceId,
+        message: ediGuardResult.message,
+      });
     }
   }
 

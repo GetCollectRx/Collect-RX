@@ -11,6 +11,8 @@
 // See docs/operations/DATA-ENCRYPTION.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { logger } from './observability/logger.js';
+
 const ALLOWED_SSLMODES = new Set(['require', 'verify-ca', 'verify-full']);
 
 /**
@@ -89,7 +91,7 @@ export function applyPostgresTlsToProcessEnv(): void {
   if (next === url) return;
   process.env.DATABASE_URL = next;
   if (process.env.NODE_ENV === 'production') {
-    console.log('[server] DATABASE_URL: auto-enabled TLS (sslmode=require)');
+    logger.info('[server] DATABASE_URL: auto-enabled TLS (sslmode=require)', {});
   }
 }
 
@@ -102,10 +104,11 @@ export function assertPostgresTlsInProduction(): void {
   if (postgresUrlUsesStrictSsl(url)) return;
   if (isFlyPrivateNetworkHost(url)) return;
 
-  console.error(
+  logger.error(
     '[server] FATAL: DATABASE_URL must require TLS to PostgreSQL in production. ' +
       'Append ?sslmode=require (or verify-full / verify-ca) to the connection string, ' +
       'or add ssl=true to the query string. See docs/operations/DATA-ENCRYPTION.md.',
+    {},
   );
   process.exit(1);
 }

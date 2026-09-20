@@ -1,4 +1,5 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 export type AdjudicationCallType =
   | 'claim_recovery'
@@ -57,7 +58,7 @@ export async function writeAdjudicationEvent(
     });
     return row.id;
   } catch (err) {
-    console.error('[adjudication] writeAdjudicationEvent failed (non-fatal):', (err as Error).message);
+    logger.error('[adjudication] writeAdjudicationEvent failed (non-fatal)', { error: err });
     return null;
   }
 }

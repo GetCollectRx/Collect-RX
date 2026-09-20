@@ -40,3 +40,15 @@ export function installSentryExpressErrorHandler(app: Express): void {
   }
   Sentry.setupExpressErrorHandler(app);
 }
+
+/**
+ * For uncaughtException/unhandledRejection only: the process exits right
+ * after these fire, so the error must be flushed to Sentry's network client
+ * before that happens, not just queued. Bounded to 2s so a Sentry outage
+ * never delays the crash-and-restart the platform is waiting on.
+ */
+export async function captureFatal(err: unknown): Promise<void> {
+  if (!enabled) return;
+  Sentry.captureException(err);
+  await Sentry.flush(2000).catch(() => undefined);
+}

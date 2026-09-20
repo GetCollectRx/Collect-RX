@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 const VARIANCE_THRESHOLD = 0.005;
 
@@ -86,12 +87,13 @@ export async function runDailyArCloseAllPractices(prisma: PrismaClient): Promise
     try {
       const result = await runDailyArCloseForPractice(prisma, p.id);
       if (!result.validationPassed) {
-        console.warn(
-          `[arClose] practice ${p.id} variance ${(result.variancePct * 100).toFixed(2)}% exceeds threshold`,
-        );
+        logger.warn('[arClose] practice variance exceeds threshold', {
+          practiceId: p.id,
+          variancePct: result.variancePct,
+        });
       }
     } catch (err) {
-      console.error(`[arClose] practice ${p.id} failed:`, (err as Error).message);
+      logger.error('[arClose] practice failed', { practiceId: p.id, error: err });
     }
   }
 }

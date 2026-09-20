@@ -15,7 +15,7 @@ Work is grouped A→G. Complete in order. Engineering can finish A–C in-repo; 
 | **F** Ops hardening | Ops | **Checklist ready** — [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) |
 | **G** Pilot cutover | Ops + Eng | **Runbook ready** — [PILOT-CUTOVER.md](PILOT-CUTOVER.md) |
 
-Related: [OUTSTANDING-FIXES-PRODUCT-READY.md](../../OUTSTANDING-FIXES-PRODUCT-READY.md), [MVP-SCOPE.md](../product/MVP-SCOPE.md), [ENVIRONMENT-MATRIX.md](../ENVIRONMENT-MATRIX.md).
+Related: [OUTSTANDING-FIXES-PRODUCT-READY.md](../../OUTSTANDING-FIXES-PRODUCT-READY.md), [MVP-SCOPE.md](../product/MVP-SCOPE.md), [ENVIRONMENT-MATRIX.md](../ENVIRONMENT-MATRIX.md), [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md) (TELUS call timing, PHIPA deletion/breach scope, production RLS role verification — decision-ready options, not code work).
 
 ---
 
@@ -89,15 +89,17 @@ Execute on staging, then prod:
 - [ ] PIPEDA / breach contact owned
 - [ ] Pen test scheduled **or** written pilot exception
 - [ ] Encryption at rest confirmed on prod DB
+- [x] PHIPA deletion/breach: interim manual runbook shipped (`docs/compliance/PHIPA-MANUAL-PROCESS-RUNBOOK.md`) — [ ] real automated workflow still needs legal/privacy sign-off before engineering builds it; see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 2
+- [x] Runtime guard shipped — prod refuses to boot against a superuser/`BYPASSRLS` DB role (`src/server/db/rlsRoleGuard.ts`) — [ ] actual production role still needs a one-time manual check (or a prod deploy, which now exercises the guard); see [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md), item 3
 
 ---
 
 ## F — Ops hardening
 
-**Eng prepared:** [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) + [PHASE6-OPS.md](PHASE6-OPS.md).
+**Eng prepared:** [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) + [PHASE6-OPS.md](PHASE6-OPS.md). Detailed implementation backlog (graceful shutdown, Vapi circuit breaker, logging consolidation, queue retry/DLQ, diagnostics, deploy/rollback): [PRODUCTION-SAFETY-BACKLOG.md](PRODUCTION-SAFETY-BACKLOG.md) — backlog only, nothing in it is built yet.
 
-- [ ] Sentry DSNs + alerts
-- [ ] Uptime on `/api/health/ready`
+- [ ] Sentry DSNs + alerts — **code-level blocker fixed 2026-08-06** (see `OUTSTANDING-FIXES-PRODUCT-READY.md` P11-01): server-side Sentry was fully implemented but never called from `index.ts`/`workerEntry.ts`, only the frontend was wired up. Now called from both Node entry points; still needs an operator to create the Sentry project and set `SENTRY_DSN` on Fly.
+- [ ] Uptime on `/api/health/ready` — **verified correct in-repo**: real DB ping (`SELECT 1`), returns 503 on failure. No code gap; just needs an operator-side uptime monitor pointed at it.
 - [ ] Backups + tested restore + RPO/RTO
 - [ ] Deploy/rollback practiced
 - [ ] On-call **or** “no 24/7” in Terms

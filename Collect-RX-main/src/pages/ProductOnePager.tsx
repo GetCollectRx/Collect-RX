@@ -106,7 +106,7 @@ const OUTCOMES = [
   { id: 'resubmit',   label: 'Resubmit',    icon: '↩', color: G.purple,    bg: G.purpleLt,
     headline: 'Resubmission required',
     description: 'The carrier could not process the claim due to missing or incorrect information on the original submission.',
-    nextStep: 'Specific correction identified. Staff corrects and resubmits through Abeldent.',
+    nextStep: 'Specific correction identified. Staff corrects and resubmits through their PMS.',
     example: 'Manulife: missing NPI number on submission. Correct and resubmit.' },
   { id: 'no_answer',  label: 'No answer',   icon: '○', color: G.textMuted, bg: '#F5F5F5',
     headline: 'Could not reach carrier',
@@ -125,7 +125,7 @@ const CARRIERS = [
 ]
 
 const WORKFLOW = [
-  { n: '01', title: 'Claims sync from Abeldent',         detail: 'A lightweight service on your Windows machine reads new claims from your Abeldent database every hour. Claims under 30 days old are held. Anything 31 days and older enters the queue automatically.' },
+  { n: '01', title: 'Claims sync from your PMS',         detail: 'Import claims via CSV from any practice management system, or connect the AbelDent desktop sync for automatic hourly updates if that’s your PMS. Claims under 30 days old are held. Anything 31 days and older enters the queue automatically.' },
   { n: '02', title: 'Priority engine scores each claim',  detail: 'Every eligible claim is scored daily across four dimensions: days outstanding, dollar amount, carrier-specific appeal deadlines, and call history. Highest-priority claims are called first.' },
   { n: '03', title: 'Agent squad calls Mon-Fri 8am-5pm',  detail: 'Four specialized AI agents work as a team. The Phone Navigator handles the IVR, the Claims Specialist speaks with the rep, and the Resolution Agent records the structured outcome. Max 3 attempts per claim.' },
   { n: '04', title: 'Outcomes extracted, dashboard live', detail: 'After every call, structured data is extracted: payment amount, EFT date, reference number, denial code, or required next action. Your dashboard updates in real time. Escalations are flagged immediately.' },
@@ -203,7 +203,7 @@ export default function ProductOnePager() {
             { value: 78,  suffix: '%',    label: 'of Canadian private dental market covered by our 6 carriers' },
             { value: 60,  suffix: '%+',   label: 'target claim resolution rate in the first 30 days' },
             { value: 95,  suffix: '%',    label: 'carrier acceptance rate target (calls not blocked)' },
-            { value: 3700,suffix: '',     label: 'Canadian dental practices on Abeldent in our target market' },
+            { value: 1,   suffix: '',     label: 'business day from CSV import to your first carrier calls — any PMS' },
           ].map((s, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 'clamp(28px,4vw,44px)', fontWeight: 900, color: '#6EE7B7', fontFamily: G.mono, letterSpacing: '-1px', lineHeight: 1 }}>
@@ -219,7 +219,7 @@ export default function ProductOnePager() {
       <Section id="how-it-works" bg={G.cream}>
         <Label text="End-to-end workflow" />
         <H2>Four steps. Zero calls from your staff.</H2>
-        <Lead>From your Abeldent database to resolved claims, CollectRx handles the entire AR follow-up cycle automatically.</Lead>
+        <Lead>From your PMS to resolved claims, CollectRx handles the entire AR follow-up cycle automatically — CSV import for any practice management system, or a native hourly sync for AbelDent-connected practices.</Lead>
 
         <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {WORKFLOW.map((step, i) => (

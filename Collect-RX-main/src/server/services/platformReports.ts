@@ -33,18 +33,26 @@ function isWithinCallWindow(): boolean {
 export async function computeAgingReport(
   prisma: PrismaClient,
   practiceId: string,
-  timeframe: '30d' | '90d' | 'all' = '30d',
 ): Promise<{ buckets: AgingBucket[]; carrierRows: CarrierAgingRow[] }> {
-  const since =
-    timeframe === 'all'
-      ? null
-      : new Date(Date.now() - (timeframe === '90d' ? 90 : 30) * 86400000);
-
+  // Deliberately no createdAt/date-range filter: the aging buckets already
+  // ARE a time dimension (daysOutstanding), and this report's whole purpose
+  // is "how old is our currently outstanding AR." A previous version
+  // filtered claims by `createdAt >= since` under a '30d'/'90d'/'all'
+  // toggle that defaulted to '30d' — since daysOutstanding is frequently
+  // backfilled from the practice's prior PMS data at CSV import time (see
+  // prismaClaimImporter.ts), a claim's createdAt (when it entered
+  // CollectRx) has no relationship to its actual age. Reproduced live: a
+  // claim created 45 days ago with daysOutstanding=95 vanished from every
+  // bucket except when timeframe=all was explicitly selected — the default
+  // '30d' view (also this report's own accountant-role home route, and the
+  // hardcoded timeframe used by both the dashboard summary and the
+  // PDF/HTML export, regardless of what a user had selected in the UI)
+  // showed $0 across all three overdue buckets even though $58,690 (in the
+  // repro practice) was sitting at 31-90+ days outstanding.
   const claims = await prisma.insuranceClaim.findMany({
     where: {
       practiceId,
       status: { notIn: ['RESOLVED'] },
-      ...(since ? { createdAt: { gte: since } } : {}),
     },
     select: {
       carrierId: true,
@@ -236,7 +244,7 @@ export async function computePortfolioSummary(prisma: PrismaClient) {
 
   const results = [];
   for (const p of practices) {
-    const { buckets } = await computeAgingReport(prisma, p.id, 'all');
+    const { buckets } = await computeAgingReport(prisma, p.id);
     const queueStats = await computeQueueStats(prisma, p.id);
     const openEsc = await prisma.callEscalation.count({
       where: { practiceId: p.id, status: 'open' },

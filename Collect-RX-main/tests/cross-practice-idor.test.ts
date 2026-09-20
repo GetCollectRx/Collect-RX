@@ -195,29 +195,23 @@ describe.skipIf(!dbReady)('Cross-Practice IDOR Access Validation', () => {
   });
 
   describe('Attempt 7: Forged token claiming Practice B access', () => {
-    it('VULNERABILITY FOUND: grants cross-practice access with forged token', async () => {
-      // SECURITY FINDING: The API trusts practiceId in JWT without validating
-      // that the userId actually belongs to that practice in the database.
-      // This allows forged tokens to bypass practice isolation.
+    it('rejects a token whose practiceId claim does not match the userId\'s real practice', async () => {
+      // src/server/middleware/authenticate.ts cross-checks the JWT's practiceId
+      // claim against the user's actual practiceId on record (User.practiceId) for
+      // every practice-scoped request — a mismatched claim is rejected before any
+      // route handler runs, however the mismatched token was produced.
       const forgedToken = signUserToken({
         userId: practiceA.user.id,
         practiceId: practiceB.practice.id,
         role: 'practice_owner',
       });
-      // This token says user from A claims to be in practice B
-      // The API currently does NOT validate that userId belongs to practiceB
+      // This token says user from A claims to be in practice B.
 
       const res = await request(app)
         .get(`/api/insurance/claims/${claimInB.id}`)
         .set('Authorization', `Bearer ${forgedToken}`);
 
-      // EXPECTED BUG BEHAVIOR: The API returns 200 and allows access
-      // SHOULD BE: Return 401/403 because userId's actual practice (A) != claimed practice (B)
-      expect(res.status).toBe(200);
-      expect(res.body.data.id).toBe(claimInB.id);
-      console.log(
-        '[SECURITY] Forged token accepted: user from Practice A accessed Practice B claim via forged token'
-      );
+      expect(res.status).toBe(401);
     });
   });
 

@@ -11,8 +11,11 @@ import { computeRecoveryMetrics } from '../recovery/recoveryMetrics.js';
 import { computeCarrierStats } from '../services/platformReports.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import { getPracticePmsContext } from '../pms/practicePmsContext.js';
+import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { normalizePmsVendorId, vendorDisplayName } from '../pms/pmsRegistry.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -40,7 +43,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       try {
         await syncWorkItemsForPractice(prisma, practiceId);
       } catch (syncErr) {
-        console.warn('[GET /dashboard/stats] work queue bootstrap failed:', (syncErr as Error).message);
+        logger.warn('[GET /dashboard/stats] work queue bootstrap failed', { error: syncErr });
       }
     }
 
@@ -153,7 +156,7 @@ router.get('/stats', async (req: Request, res: Response) => {
         .filter((c) => c.trend === 'declining' && c.totalClaims >= 3)
         .map((c) => ({ code: c.carrierId, name: c.carrierName, successRate: c.successRate }));
     } catch (carrierStatsErr) {
-      console.warn('[GET /dashboard/stats] carrier trend check failed:', (carrierStatsErr as Error).message);
+      logger.warn('[GET /dashboard/stats] carrier trend check failed', { error: carrierStatsErr });
     }
 
     const unifiedOpenAR = Number(workAgg._sum.dollarsAtRisk ?? 0);
@@ -163,7 +166,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       recoveryMetrics = await computeRecoveryMetrics(prisma, practiceId);
       revenueThisWeek = recoveryMetrics?.dollarsRecoveredSyncVerifiedLast30Days ?? 0;
     } catch (recoveryErr) {
-      console.warn('[GET /dashboard/stats] recovery metrics failed:', (recoveryErr as Error).message);
+      logger.warn('[GET /dashboard/stats] recovery metrics failed', { error: recoveryErr });
     }
 
     return res.json({
@@ -200,7 +203,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /dashboard/stats]', err);
+    logger.error('[GET /dashboard/stats]', { error: err });
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021') {
       return res.status(503).json({
         error:
@@ -235,19 +238,19 @@ router.get('/ar-close', async (req: Request, res: Response) => {
       })),
     });
   } catch (err) {
-    console.error('[GET /dashboard/ar-close]', err);
+    logger.error('[GET /dashboard/ar-close]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
-router.post('/ar-close/run', async (req: Request, res: Response) => {
+router.post('/ar-close/run', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const { runDailyArCloseForPractice } = await import('../jobs/dailyArClose.js');
     const result = await runDailyArCloseForPractice(prisma, practiceId);
     return res.json({ success: true, data: result });
   } catch (err) {
-    console.error('[POST /dashboard/ar-close/run]', err);
+    logger.error('[POST /dashboard/ar-close/run]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -256,7 +259,7 @@ router.post('/ar-close/run', async (req: Request, res: Response) => {
 router.get('/setup-status', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
-    const [practice, lastImport, claimCount, callCount, pms] = await Promise.all([
+    const [practice, lastImport, claimCount, callCount, pms, settings] = await Promise.all([
       prisma.practice.findUnique({
         where: { id: practiceId },
         select: { name: true, billingPhone: true, npi: true, settings: true },
@@ -269,11 +272,15 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       prisma.insuranceClaim.count({ where: { practiceId, deletedAt: null } }),
       prisma.callAttempt.count({ where: { claim: { practiceId } } }),
       getPracticePmsContext(prisma, practiceId),
+      getPracticeSettings(prisma, practiceId),
     ]);
 
     const pmsVendorSet = Boolean(pms.vendorId && pms.vendorId !== 'other');
     const identitySet = Boolean(practice?.name && practice?.billingPhone && practice?.npi);
-    const vapiReady = Boolean(process.env.VAPI_API_KEY?.trim());
+    // Practice-level toggle the owner/office_manager actually control on
+    // /admin/integrations — not the platform-wide VAPI_API_KEY presence,
+    // which every practice would see as "done" with no way to act on it.
+    const vapiReady = settings.voiceAgentEnabled === true;
 
     const steps = [
       {
@@ -302,21 +309,21 @@ router.get('/setup-status', async (req: Request, res: Response) => {
         title: 'Practice identity for carrier calls',
         detail: 'Name, callback number, and NPI are spoken on every carrier call.',
         done: identitySet,
-        href: '/settings',
+        href: '/admin/integrations',
       },
       {
         id: 'integrations',
         title: 'Voice agent configured',
-        detail: 'Vapi must be connected before CollectRx can dial carriers.',
+        detail: 'Turn on the voice agent for this practice before CollectRx can dial carriers.',
         done: vapiReady,
-        href: '/admin/integrations',
+        href: '/settings',
       },
       {
         id: 'first_call',
         title: 'First carrier call placed',
         detail: 'Optional — confirms the full loop is working end-to-end.',
         done: callCount > 0,
-        href: '/console',
+        href: '/insurance?tab=queue',
       },
     ];
 
@@ -335,7 +342,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    console.error('[GET /dashboard/setup-status]', err);
+    logger.error('[GET /dashboard/setup-status]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

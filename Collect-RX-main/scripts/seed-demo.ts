@@ -15,13 +15,12 @@
  */
 
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
+import { prisma } from '../src/lib/prisma.js';
+import { runWithRlsBypass } from '../src/server/db/rlsContext.js';
 import { syncWorkItemsForPractice } from '../src/server/services/workQueueService.js';
 import { computeWorkQueueRankScore } from '../src/lib/workQueuePriority.js';
-
-const prisma = new PrismaClient();
 
 const DEMO_PRACTICE_NAME = 'CollectRx Demo Practice';
 const DEMO_EMAIL = 'demo@collectrx-test.local';
@@ -738,7 +737,7 @@ async function main() {
       },
     });
 
-    await prisma.callAttempt.create({
+    const callAttempt = await prisma.callAttempt.create({
       data: {
         claimId: claim.id,
         vapiCallId: randomUUID(),
@@ -747,6 +746,23 @@ async function main() {
         durationSeconds: 660,
         outcome: 'ESCALATED',
         outcomeDetail: ESCALATED_OUTCOMES[i % ESCALATED_OUTCOMES.length].outcomeDetail,
+      },
+    });
+
+    // The dedicated Escalations page (front-desk queue) reads call_escalations, not
+    // insurance_claims.status — without this row a claim shows ESCALATED everywhere
+    // except the one screen built to work it.
+    await prisma.callEscalation.create({
+      data: {
+        practiceId: practice.id,
+        claimId: claim.id,
+        claimRef: claim.claimNumber,
+        carrierId: d.carrier,
+        amountClaimedCents: Math.round(d.amount * 100),
+        reason: ESCALATED_OUTCOMES[i % ESCALATED_OUTCOMES.length].outcomeDetail,
+        callAttemptId: callAttempt.id,
+        attemptNumber: 1,
+        status: 'open',
       },
     });
   }
@@ -1060,6 +1076,6 @@ async function main() {
   console.log('\n✨  Seed complete. Log in as ' + DEMO_EMAIL + ' → /work-queue or /pre-visit\n');
 }
 
-main()
+runWithRlsBypass(main)
   .catch((e) => { console.error('❌', e); process.exit(1); })
   .finally(() => prisma.$disconnect());

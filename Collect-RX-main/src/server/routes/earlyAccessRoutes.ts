@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { strictLimiter } from '../middleware/rateLimiter';
+import { logger } from '../observability/logger.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,9 +20,8 @@ interface EarlyAccessLead {
  */
 export function createEarlyAccessRouter(prisma: PrismaClient): Router {
   const r = Router();
-  r.use(strictLimiter);
 
-  r.post('/early-access', async (req: Request, res: Response) => {
+  r.post('/early-access', strictLimiter, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const email = typeof body.email === 'string' ? body.email.trim() : '';
@@ -52,12 +52,12 @@ export function createEarlyAccessRouter(prisma: PrismaClient): Router {
         },
       });
     } catch (e) {
-      console.error('[POST /api/early-access] db error', e);
+      logger.error('[POST /api/early-access] db error', { error: e });
       return res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
     }
 
     notifyEarlyAccessRequest({ name, email, practiceName, phone, intent, message }).catch((e) => {
-      console.error('[POST /api/early-access] notify error', e);
+      logger.error('[POST /api/early-access] notify error', { error: e });
     });
 
     res.status(201).json({ success: true });
@@ -71,7 +71,7 @@ async function notifyEarlyAccessRequest(lead: EarlyAccessLead): Promise<void> {
   if (!process.env.SENDGRID_API_KEY) return;
 
   const to = process.env.EARLY_ACCESS_NOTIFY_EMAIL || process.env.SENDGRID_FROM_EMAIL || 'billing@collectrx.ca';
-  const sg = require('@sendgrid/mail');
+  const sg = (await import('@sendgrid/mail')).default;
   sg.setApiKey(process.env.SENDGRID_API_KEY);
 
   const subject = lead.intent === 'demo'

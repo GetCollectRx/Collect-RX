@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../../src/server/authToken.js';
-import { createPracticeForTests } from '../factories/practice.js';
+import { createPracticeForTests, createUserForTests, cleanupPracticeWithUsers } from '../factories/practice.js';
 
 let dbReady = false;
 try {
@@ -20,19 +20,17 @@ afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);
 });
 
-function deskCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signUserToken({ userId: `desk-${practiceId}`, practiceId, role: 'front_desk' })}`;
-}
-
-function ownerCookie(practiceId: string): string {
-  return `${COOKIE_NAME}=${signUserToken({ userId: `owner-${practiceId}`, practiceId, role: 'practice_owner' })}`;
+function cookieFor(userId: string, practiceId: string, role: 'front_desk' | 'practice_owner'): string {
+  return `${COOKIE_NAME}=${signUserToken({ userId, practiceId, role })}`;
 }
 
 describe.skipIf(!dbReady)('front_desk API gate', () => {
   it('returns 403 on owner routes and 200 on desk routes', async () => {
     const practice = await createPracticeForTests(prisma);
-    const desk = deskCookie(practice.id);
-    const owner = ownerCookie(practice.id);
+    const deskUser = await createUserForTests(prisma, practice.id, 'front_desk');
+    const ownerUser = await createUserForTests(prisma, practice.id, 'practice_owner');
+    const desk = cookieFor(deskUser.id, practice.id, 'front_desk');
+    const owner = cookieFor(ownerUser.id, practice.id, 'practice_owner');
 
     const blocked = await Promise.all([
       request(app).get('/api/insurance/claims').set('Cookie', desk),
@@ -70,6 +68,6 @@ describe.skipIf(!dbReady)('front_desk API gate', () => {
       .set('Cookie', owner);
     expect(ownerInsurance.status).not.toBe(403);
 
-    await prisma.practice.delete({ where: { id: practice.id } });
+    await cleanupPracticeWithUsers(prisma, practice.id);
   }, 30000);
 });

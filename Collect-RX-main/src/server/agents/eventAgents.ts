@@ -17,6 +17,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { runAgent, type AgentResult } from './agentRunner.js';
+import { logger } from '../observability/logger.js';
 
 // ── post-call-debrief ─────────────────────────────────────────────────────────
 // Fired after every call.ended. Extracts lessons from the call and routes
@@ -35,7 +36,7 @@ export async function triggerPostCallDebrief(
 ): Promise<void> {
   // Fire-and-forget — never block the webhook response
   runAgent('post-call-debrief', { call: callData }, prisma).catch((err) => {
-    console.error('[EventAgents] post-call-debrief failed:', err);
+    logger.error('[EventAgents] post-call-debrief failed', { error: err });
   });
 }
 
@@ -59,7 +60,7 @@ export async function triggerHallucinationDetector(
   if (!HIGH_STAKE_OUTCOMES.includes(callData.outcome)) return;
 
   runAgent('hallucination-detector', { call: callData }, prisma).catch((err) => {
-    console.error('[EventAgents] hallucination-detector failed:', err);
+    logger.error('[EventAgents] hallucination-detector failed', { error: err });
   });
 }
 
@@ -78,7 +79,7 @@ export async function triggerEscalationTriage(
   },
 ): Promise<void> {
   runAgent('escalation-triage', { escalation: escalationData }, prisma).catch((err) => {
-    console.error('[EventAgents] escalation-triage failed:', err);
+    logger.error('[EventAgents] escalation-triage failed', { error: err });
   });
 }
 
@@ -123,7 +124,7 @@ export async function triggerPracticeOnboardingValidator(
   },
 ): Promise<void> {
   runAgent('practice-onboarding-validator', { practice }, prisma).catch((err) => {
-    console.error('[EventAgents] practice-onboarding-validator failed:', err);
+    logger.error('[EventAgents] practice-onboarding-validator failed', { error: err });
   });
 }
 

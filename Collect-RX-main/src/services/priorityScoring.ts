@@ -311,3 +311,88 @@ export function scoreToClaimPriority(total: number, maxScore: number): ClaimPrio
   if (ratio >= 0.35) return 'NORMAL';
   return 'LOW';
 }
+
+const CLAIM_PRIORITY_ORDINAL: Record<ClaimPriority, number> = {
+  URGENT: 0,
+  HIGH: 1,
+  NORMAL: 2,
+  LOW: 3,
+};
+
+/** Ordinal for sorting `ClaimPriority` bands most-urgent-first (lower = more urgent). */
+export function claimPriorityOrdinal(priority: ClaimPriority): number {
+  return CLAIM_PRIORITY_ORDINAL[priority];
+}
+
+// ─── Carrier call-order preference (CarrierPriorityPanel / `CarrierOrder` model) ──────────────
+//
+// The settings panel persists a practice's preferred carrier-calling sequence as a JSON string
+// array on `CarrierOrder.order`. This shares the parsing + carrier-code normalization so both
+// the settings API (`routes/queue.ts`) and dispatch ranking (`buildPriorityQueue`) agree.
+
+/**
+ * Parses a persisted `CarrierOrder.order` JSON string back into a string array, falling back to
+ * `fallback` (a copy) when the value is missing, not JSON, or not an array of strings.
+ */
+export function parseCarrierOrderJson(raw: string, fallback: readonly string[]): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+      return parsed as string[];
+    }
+  } catch {
+    /* ignore — falls through to fallback */
+  }
+  return [...fallback];
+}
+
+/** Display-code default order shown by `CarrierPriorityPanel` before a practice customizes it. */
+export const DEFAULT_CARRIER_ORDER = [
+  'sun_life',
+  'canada_life',
+  'manulife',
+  'green_shield',
+  'rbc_insurance',
+  'telus_adjudicare',
+] as const;
+
+/**
+ * `CarrierOrder.order` has always used the settings-panel display code `rbc_insurance`, while
+ * `InsuranceClaim.carrierId` (the Prisma `CarrierId` enum) uses `rbc`. Normalize here so a saved
+ * order actually lines up with real claim rows instead of silently matching nothing for RBC.
+ */
+const CARRIER_ORDER_CODE_ALIASES: Readonly<Record<string, CarrierId>> = {
+  rbc_insurance: 'rbc',
+};
+
+const KNOWN_CARRIER_IDS: ReadonlySet<CarrierId> = new Set<CarrierId>([
+  'sun_life',
+  'canada_life',
+  'manulife',
+  'green_shield',
+  'rbc',
+  'telus_adjudicare',
+]);
+
+function normalizeCarrierOrderCode(code: string): CarrierId | null {
+  const candidate = CARRIER_ORDER_CODE_ALIASES[code] ?? code;
+  return KNOWN_CARRIER_IDS.has(candidate as CarrierId) ? (candidate as CarrierId) : null;
+}
+
+/**
+ * Maps each recognized carrier to its position in a saved `CarrierOrder.order` list (first
+ * occurrence wins; unrecognized/duplicate codes are skipped).
+ */
+export function buildCarrierOrderRankMap(order: readonly string[]): Map<CarrierId, number> {
+  const map = new Map<CarrierId, number>();
+  for (const code of order) {
+    const id = normalizeCarrierOrderCode(code);
+    if (id && !map.has(id)) map.set(id, map.size);
+  }
+  return map;
+}
+
+/** Rank of a carrier within a saved order; carriers absent from the saved list sort last. */
+export function carrierOrderRank(carrierId: CarrierId, rankMap: ReadonlyMap<CarrierId, number>): number {
+  return rankMap.get(carrierId) ?? rankMap.size;
+}

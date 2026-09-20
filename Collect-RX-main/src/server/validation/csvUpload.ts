@@ -32,9 +32,13 @@ export function validateCsvUploadFile(
   if (!file?.buffer?.length) {
     return { ok: false, status: 400, error: 'CSV file required (field name: file)' };
   }
-  const maxBytes = opts.maxBytes ?? 12 * 1024 * 1024;
+  const maxBytes = opts.maxBytes ?? 100 * 1024 * 1024; // Default 100MB per security audit
   if (file.size > maxBytes || file.buffer.length > maxBytes) {
-    return { ok: false, status: 400, error: `File exceeds maximum size (${maxBytes} bytes)` };
+    return {
+      ok: false,
+      status: 413,
+      error: `File exceeds maximum size of ${Math.floor(maxBytes / (1024 * 1024))}MB`,
+    };
   }
   const extSet = opts.allowedExtensions ?? DEFAULT_ALLOWED_EXT;
   const mimeSet = opts.allowedMimeTypes ?? DEFAULT_ALLOWED_MIME;

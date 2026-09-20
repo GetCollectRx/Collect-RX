@@ -17,6 +17,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
 import {
   analyzeEvidenceGap,
 } from '../services/cdcp/evidenceMapper.js';
@@ -28,6 +29,7 @@ import {
   apply2026FeeGuide,
 } from '../services/carrierRules.js';
 import type { CdcpDeniedClaim } from '../services/cdcp/types.js';
+import { logger } from '../observability/logger.js';
 
 export function createCdcpRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -36,7 +38,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
   // ── POST /api/cdcp/denied-claims ────────────────────────────────────────────
   // Called by Abeldent sync when Transaction 11 denials are detected
-  router.post('/denied-claims', async (req: Request, res: Response) => {
+  router.post('/denied-claims', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const { claims } = req.body as { claims: CdcpDeniedClaim[] };
 
@@ -49,6 +51,11 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
+      }
+
       const { ingestCdcpDeniedClaimsToPrisma } = await import('../recovery/cdcpPrismaQueue.js');
       const result = await ingestCdcpDeniedClaimsToPrisma(prisma, practiceId, claims);
 
@@ -59,7 +66,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         urgentClaimIds: result.urgentClaimIds,
       });
     } catch (err) {
-      console.error('[CDCP] /denied-claims error:', err);
+      logger.error('[CDCP] /denied-claims error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -72,11 +79,16 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      const { isCsvArFeatureEnabled, CSV_AR_FEATURES } = await import('../featureFlags/csvArFeatures.js');
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.DENIAL_HUB))) {
+        return res.status(403).json({ error: 'Denial hub is paused for this practice' });
+      }
+
       const { listCdcpQueueFromPrisma } = await import('../recovery/cdcpPrismaQueue.js');
       const result = await listCdcpQueueFromPrisma(prisma, practiceId);
       res.json(result);
     } catch (err) {
-      console.error('[CDCP] /queue error:', err);
+      logger.error('[CDCP] /queue error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -100,7 +112,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json(gap);
     } catch (err) {
-      console.error('[CDCP] /evidence-gap error:', err);
+      logger.error('[CDCP] /evidence-gap error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -117,13 +129,13 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
       const strategy = selectSubmissionStrategy(pmsCapability);
       res.json(strategy);
     } catch (err) {
-      console.error('[CDCP] /submission-strategy error:', err);
+      logger.error('[CDCP] /submission-strategy error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
   // ── PATCH /api/cdcp/reconsiderations/:id ────────────────────────────────────
-  router.patch('/reconsiderations/:id', async (req: Request, res: Response) => {
+  router.patch('/reconsiderations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, assignedAdjudicatorId, confirmationNumber, notes, submissionMethod } = req.body;
@@ -147,7 +159,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ success: true });
     } catch (err) {
-      console.error('[CDCP] PATCH /reconsiderations error:', err);
+      logger.error('[CDCP] PATCH /reconsiderations error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -177,7 +189,108 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
         balanceBillingProhibitedAbove: Math.round(ceiling * 100) / 100,
       });
     } catch (err) {
-      console.error('[CDCP] /fee-ceiling error:', err);
+      logger.error('[CDCP] /fee-ceiling error', { error: err });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /api/cdcp/reconsiderations ─────────────────────────────────────────
+  router.get('/reconsiderations', async (req: Request, res: Response) => {
+    try {
+      const practiceId = req.practiceAuth?.practiceId;
+      if (!practiceId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { status, limit, offset } = req.query as { status?: string; limit?: string; offset?: string };
+      const take = Math.min(100, Math.max(1, Number(limit) || 50));
+      const skip = Math.max(0, Number(offset) || 0);
+
+      const where: Record<string, unknown> = { practiceId };
+      if (status) {
+        where.status = status;
+      }
+
+      const [total, cases] = await Promise.all([
+        prisma.cdcpReconsiderationCase.count({ where }),
+        prisma.cdcpReconsiderationCase.findMany({
+          where,
+          orderBy: { denialDate: 'desc' },
+          take,
+          skip,
+        }),
+      ]);
+
+      res.json({ total, cases, limit: take, offset: skip });
+    } catch (err) {
+      logger.error('[CDCP] GET /reconsiderations error', { error: err });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /api/cdcp/reconsiderations/:id ──────────────────────────────────────
+  router.get('/reconsiderations/:id', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const practiceId = req.practiceAuth?.practiceId;
+      if (!practiceId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const caseRecord = await prisma.cdcpReconsiderationCase.findFirst({
+        where: { id, practiceId },
+      });
+
+      if (!caseRecord) {
+        return res.status(404).json({ error: 'Reconsideration not found' });
+      }
+
+      res.json({ case: caseRecord });
+    } catch (err) {
+      logger.error('[CDCP] GET /reconsiderations/:id error', { error: err });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── POST /api/cdcp/reconsiderations ─────────────────────────────────────────
+  router.post('/reconsiderations', blockAuditorWrites, async (req: Request, res: Response) => {
+    try {
+      const practiceId = req.practiceAuth?.practiceId;
+      if (!practiceId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const {
+        patientToken,
+        claimRef,
+        carrierCode,
+        procedureCode,
+        denialDate,
+        clinicalEvidenceSummary,
+        originalAdjudicatorHint,
+      } = req.body;
+
+      if (!patientToken || !claimRef || !denialDate) {
+        return res.status(400).json({ error: 'patientToken, claimRef, and denialDate required' });
+      }
+
+      const caseRecord = await prisma.cdcpReconsiderationCase.create({
+        data: {
+          practiceId,
+          patientToken,
+          claimRef,
+          carrierCode: carrierCode || 'cdcp_generic',
+          procedureCode: procedureCode || null,
+          denialDate: new Date(denialDate),
+          status: 'open',
+          clinicalEvidenceSummary: clinicalEvidenceSummary || null,
+          originalAdjudicatorHint: originalAdjudicatorHint || null,
+        },
+      });
+
+      res.status(201).json({ case: caseRecord });
+    } catch (err) {
+      logger.error('[CDCP] POST /reconsiderations error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -199,7 +312,38 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
 
       res.json({ snapshots: rows });
     } catch (err) {
-      console.error('[CDCP] GET /kpi error:', err);
+      logger.error('[CDCP] GET /kpi error', { error: err });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── POST /api/cdcp/kpi ──────────────────────────────────────────────────────
+  router.post('/kpi', blockAuditorWrites, async (req: Request, res: Response) => {
+    try {
+      const practiceId = req.practiceAuth?.practiceId;
+      if (!practiceId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { snapshotDate, metrics } = req.body as {
+        snapshotDate?: string;
+        metrics?: Record<string, unknown>;
+      };
+
+      if (!snapshotDate || !metrics || typeof metrics !== 'object') {
+        return res.status(400).json({ error: 'snapshotDate and metrics object required' });
+      }
+
+      const result = await prisma.$executeRaw`
+        INSERT INTO phase5_kpi_snapshots (practice_id, snapshot_date, metrics, created_at)
+        VALUES (${parseInt(practiceId, 10)}, ${snapshotDate}::date, ${JSON.stringify(metrics)}::jsonb, NOW())
+        ON CONFLICT (practice_id, snapshot_date) DO UPDATE
+        SET metrics = ${JSON.stringify(metrics)}::jsonb, created_at = NOW()
+      `;
+
+      res.json({ ok: true, result });
+    } catch (err) {
+      logger.error('[CDCP] POST /kpi error', { error: err });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

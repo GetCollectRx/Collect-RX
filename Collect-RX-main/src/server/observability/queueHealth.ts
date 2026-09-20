@@ -7,6 +7,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { isWithinCallWindow } from '../../carriers/adapter.js';
 import { runWithRlsBypass } from '../db/rlsContext.js';
+import { getDeskQueueTickHealth } from '../frontDesk/queueEngine.js';
 
 export interface QueueHealthSnapshot {
   /** PENDING queue entries whose scheduledFor has passed (eligible right now). */
@@ -17,6 +18,10 @@ export interface QueueHealthSnapshot {
   openCallAttempts: number;
   oldestOpenAttemptAgeMinutes: number | null;
   withinCallWindow: boolean;
+  /** P0.5 — single-instance tick health from this process's desk queue engine. */
+  lastSuccessfulTickAt: string | null;
+  consecutiveTickFailures: number;
+  lastTickFailureAt: string | null;
 }
 
 export async function getQueueHealth(prisma: PrismaClient): Promise<QueueHealthSnapshot> {
@@ -42,12 +47,17 @@ export async function getQueueHealth(prisma: PrismaClient): Promise<QueueHealthS
     const ageMinutes = (d: Date | undefined | null): number | null =>
       d ? Math.floor((now.getTime() - d.getTime()) / 60_000) : null;
 
+    const tickHealth = getDeskQueueTickHealth();
+
     return {
       duePendingCount,
       oldestDuePendingAgeMinutes: ageMinutes(oldestDue?.scheduledFor),
       openCallAttempts,
       oldestOpenAttemptAgeMinutes: ageMinutes(oldestAttempt?.initiatedAt),
       withinCallWindow: isWithinCallWindow(),
+      lastSuccessfulTickAt: tickHealth.lastSuccessfulTickAt,
+      consecutiveTickFailures: tickHealth.consecutiveTickFailures,
+      lastTickFailureAt: tickHealth.lastTickFailureAt,
     };
   });
 }
@@ -66,7 +76,10 @@ export interface QueueHealthThresholds {
 
 export function defaultQueueHealthThresholds(): QueueHealthThresholds {
   return {
-    stallMinutes: Math.max(5, Number(process.env.OPS_ALERT_QUEUE_STALL_MINUTES || 30)),
+    // P0.5 — reduced from 30 to 5: a 30-minute silent stall in an unsupervised
+    // pilot go-live is far too slow to notice; 5 minutes still comfortably
+    // exceeds one tick interval (60s) plus this engine's own backoff/retry.
+    stallMinutes: Math.max(5, Number(process.env.OPS_ALERT_QUEUE_STALL_MINUTES || 5)),
     stuckAttemptMinutes: Math.max(30, Number(process.env.OPS_ALERT_ATTEMPT_STUCK_MINUTES || 150)),
   };
 }

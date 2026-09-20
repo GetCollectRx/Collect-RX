@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
 
 export interface WeeklyPracticeMetrics {
   practiceId: string;
@@ -165,13 +166,13 @@ export async function sendWeeklyPilotReports(
 
   const sg = await getSendGrid();
   if (!sg) {
-    console.warn('[weeklyPilotReport] SENDGRID_API_KEY unset — skipping weekly report run');
+    logger.warn('[weeklyPilotReport] SENDGRID_API_KEY unset — skipping weekly report run', {});
     return result;
   }
 
   const from = process.env.SENDGRID_FROM_EMAIL;
   if (!from) {
-    console.warn('[weeklyPilotReport] SENDGRID_FROM_EMAIL unset — skipping weekly report run');
+    logger.warn('[weeklyPilotReport] SENDGRID_FROM_EMAIL unset — skipping weekly report run', {});
     return result;
   }
 
@@ -198,10 +199,7 @@ export async function sendWeeklyPilotReports(
       result.sent++;
     } catch (err) {
       result.failed++;
-      console.error(
-        `[weeklyPilotReport] send failed for practice ${practice.id}:`,
-        (err as Error).message,
-      );
+      logger.error('[weeklyPilotReport] send failed', { practiceId: practice.id, error: err });
     }
   }
 

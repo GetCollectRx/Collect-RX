@@ -5,6 +5,7 @@ import type { CarrierId, PrismaClient } from '@prisma/client';
 import { getCell, parseMoney } from '../pms/parseExportRows.js';
 import { mapToCarrierId } from '../pms/carrierMap.js';
 import { detectUnderpayment, upsertUnderpaymentCase } from './underpaymentDetector.js';
+import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../featureFlags/csvArFeatures.js';
 
 export interface NormalizedEobRow {
   claimNumber: string;
@@ -22,6 +23,8 @@ export interface EobImportResult {
   underpayments: number;
   skipped: number;
   errors: { claimNumber?: string; error: string }[];
+  /** Set when the practice has EOB reconciliation paused via CSV_AR_FEATURES — no rows were processed. */
+  featureDisabled?: boolean;
 }
 
 export function normalizeEobRow(raw: Record<string, unknown>): NormalizedEobRow | null {
@@ -66,6 +69,14 @@ export async function importEobRowsToPrisma(
     skipped: 0,
     errors: [],
   };
+
+  if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.EOB_RECONCILIATION))) {
+    return {
+      ...result,
+      featureDisabled: true,
+      errors: [{ error: 'EOB reconciliation is disabled for this practice' }],
+    };
+  }
 
   for (const raw of rows) {
     result.processed += 1;

@@ -1,84 +1,94 @@
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
-import LegalTerms from './pages/LegalTerms'
-import LegalPrivacy from './pages/LegalPrivacy'
-import ProductOnePager from './pages/ProductOnePager'
-import Changelog from './pages/Changelog'
-import PilotDemo  from './pages/PilotDemo'
+const LegalTerms = lazy(() => import('./pages/LegalTerms'))
+const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
+const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
+const Changelog = lazy(() => import('./pages/Changelog'))
+const PilotDemo = lazy(() => import('./pages/PilotDemo'))
 import { PracticeProvider, usePractice } from './context/PracticeContext'
+import { isPracticeGroupAdmin } from './lib/personaRole'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
 import { PlanUsageBanner } from './components/PlanUsageBanner'
 import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
-import Dashboard             from './pages/Dashboard'
-import Analytics             from './pages/Analytics'
-import AssumptionValidation  from './pages/AssumptionValidation'
-import PilotRunbook          from './pages/PilotRunbook'
-import Admin                 from './pages/Admin'
-import OfficeGuide           from './pages/OfficeGuide'
 import { LoginPage }         from './pages/LoginPage'
-import PracticeBillingPage   from './pages/PracticeBillingPage'
-import PreVisitCommandCenter from './pages/PreVisitCommandCenter'
-import CanadianExpansion     from './pages/CanadianExpansion'
-import GroupDashboard        from './pages/GroupDashboard'
-import ArCommandCenter       from './pages/ArCommandCenter'
-import InsuranceClaims       from './pages/InsuranceClaims'
-import InsuranceClaimDetail  from './pages/InsuranceClaimDetail'
-import WorkQueue             from './pages/WorkQueue'
-import SyncOpsDashboard      from './pages/SyncOpsDashboard'
-import DesktopDownload       from './pages/DesktopDownload'
-import LiveConsole           from './pages/LiveConsole'
-import CallHistory           from './pages/CallHistory'
-import AgingReport           from './pages/AgingReport'
-import CarrierStats          from './pages/CarrierStats'
-import PracticeSettings      from './pages/PracticeSettings'
-import Escalations           from './pages/Escalations'
-import QueueStatsReport      from './pages/QueueStatsReport'
-import Portfolio             from './pages/Portfolio'
-import AdminPractices        from './pages/AdminPractices'
-import PartnershipsBoard     from './pages/PartnershipsBoard'
-import ProspectDetail        from './pages/ProspectDetail'
-import SystemHealth          from './pages/SystemHealth'
-import UserManagement        from './pages/UserManagement'
-import BreakGlass            from './pages/BreakGlass'
 import ResetPasswordPage       from './pages/ResetPasswordPage'
 import SignupPage              from './pages/SignupPage'
 import AcceptInvitePage        from './pages/AcceptInvitePage'
-import UsersAdmin              from './pages/UsersAdmin'
+const Dashboard             = lazy(() => import('./pages/Dashboard'))
+const Analytics             = lazy(() => import('./pages/Analytics'))
+const AssumptionValidation  = lazy(() => import('./pages/AssumptionValidation'))
+const PilotRunbook          = lazy(() => import('./pages/PilotRunbook'))
+const Admin                 = lazy(() => import('./pages/Admin'))
+const OfficeGuide           = lazy(() => import('./pages/OfficeGuide'))
+const PracticeBillingPage   = lazy(() => import('./pages/PracticeBillingPage'))
+const PreVisitCommandCenter = lazy(() => import('./pages/PreVisitCommandCenter'))
+const CanadianExpansion     = lazy(() => import('./pages/CanadianExpansion'))
+const GroupDashboard        = lazy(() => import('./pages/GroupDashboard'))
+const GroupPmsImportPage    = lazy(() => import('./pages/GroupPmsImportPage'))
+const ArCommandCenter       = lazy(() => import('./pages/ArCommandCenter'))
+const InsuranceClaims       = lazy(() => import('./pages/InsuranceClaims'))
+const InsuranceClaimDetail  = lazy(() => import('./pages/InsuranceClaimDetail'))
+const PreTreatmentEstimate  = lazy(() => import('./pages/PreTreatmentEstimate'))
+const PreVisitBlueprintPage = lazy(() => import('./pages/PreVisitBlueprintPage'))
+const WorkQueue             = lazy(() => import('./pages/WorkQueue'))
+const SyncOpsDashboard      = lazy(() => import('./pages/SyncOpsDashboard'))
+const DesktopDownload       = lazy(() => import('./pages/DesktopDownload'))
+const LiveConsole           = lazy(() => import('./pages/LiveConsole'))
+const CallHistory           = lazy(() => import('./pages/CallHistory'))
+const AgingReport           = lazy(() => import('./pages/AgingReport'))
+const CarrierStats          = lazy(() => import('./pages/CarrierStats'))
+const PracticeSettings      = lazy(() => import('./pages/PracticeSettings'))
+const Escalations           = lazy(() => import('./pages/Escalations'))
+const QueueStatsReport      = lazy(() => import('./pages/QueueStatsReport'))
+const Portfolio             = lazy(() => import('./pages/Portfolio'))
+const AdminPractices        = lazy(() => import('./pages/AdminPractices'))
+const PartnershipsBoard     = lazy(() => import('./pages/PartnershipsBoard'))
+const ProspectDetail        = lazy(() => import('./pages/ProspectDetail'))
+const SystemHealth          = lazy(() => import('./pages/SystemHealth'))
+const UserManagement        = lazy(() => import('./pages/UserManagement'))
+const BreakGlass            = lazy(() => import('./pages/BreakGlass'))
+const UsersAdmin            = lazy(() => import('./pages/UsersAdmin'))
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { AppTopBar, SidebarBrand } from './components/app/AppTopBar'
 import { NavIcon, type NavIconName } from './components/app/NavIcon'
 import { HOME_ROUTE, type UserRole } from './types/userRole'
 import { StartupScreen } from './components/StartupScreen'
-import { useEffect, useState, type ReactNode } from 'react'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
-import ProductUsageAnalytics from './pages/ProductUsageAnalytics'
+const ProductUsageAnalytics = lazy(() => import('./pages/ProductUsageAnalytics'))
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
 import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
 import { isCommandCenterSurface } from './lib/appSurface'
-import MarketingSite from './website/MarketingSite'
+const MarketingSite = lazy(() => import('./website/MarketingSite'))
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
-import CsvImportPage from './pages/CsvImportPage'
+const CsvImportPage = lazy(() => import('./pages/CsvImportPage'))
 import { ToastProvider } from './context/ToastContext'
 import { CommandPalette } from './components/CommandPalette'
+import './styles/tailwind.css'
 import './App.css'
 import './styles/brandTokens.css'
 import './styles/collectrxAppTheme.css'
+
+/** Fallback shown while a lazily-loaded route chunk is fetched. */
+function RouteFallback({ fullScreen = false }: { fullScreen?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-center${fullScreen ? ' min-h-screen' : ' py-24'}`}
+      style={fullScreen ? { background: 'var(--crx-bg1)' } : undefined}
+    >
+      <div className="flex items-center gap-2.5">
+        <CollectRxLogoMark size={24} />
+        <p className="text-sm font-medium" style={{ color: 'var(--crx-t2)' }}>Loading…</p>
+      </div>
+    </div>
+  )
+}
 
 /** Paths that should redirect to the signed-in home route (not render AppShell content). */
 function isPostAuthEntryPath(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/'
   return path === '/' || path === '/login'
-}
-
-/**
- * Practice-user group admins (sessionUser present) home on the PHI-free
- * GroupDashboard. Platform billing-ops/admin sessions also carry the legacy
- * shim role 'group_admin' but have no sessionUser — they keep the
- * billing-ops persona home (/portfolio), whose APIs accept their JWT.
- */
-function isPracticeGroupAdmin(role: string | null, sessionUser: unknown): boolean {
-  return role === 'group_admin' && sessionUser != null
 }
 
 function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
@@ -112,11 +122,11 @@ function AppHomeFallback() {
 }
 
 function GroupAdminRoute({ children }: { children: ReactNode }) {
-  const { authState, role } = usePractice()
+  const { authState, role, sessionUser } = usePractice()
   if (authState === 'anon') {
     return <Navigate to="/login" replace />
   }
-  if (authState === 'ready' && role !== 'group_admin') {
+  if (authState === 'ready' && !isPracticeGroupAdmin(role, sessionUser)) {
     return <AppHomeFallback />
   }
   return <>{children}</>
@@ -171,6 +181,8 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     label: 'Before visit',
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
       { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
     ],
   },
@@ -179,6 +191,8 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     items: [
       { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
+      { to: '/admin/integrations', exact: false, label: 'Integrations', icon: 'admin' },
+      { to: '/admin/staff', exact: true, label: 'Staff', icon: 'users' },
     ],
   },
 ]
@@ -191,6 +205,7 @@ const AUDITOR_NAV: NavItem[] = [
 
 const GROUP_ADMIN_NAV: NavItem[] = [
   { to: '/group-dashboard', exact: true, label: 'Group overview', icon: 'portfolio' },
+  { to: '/group/pms-import', exact: true, label: 'Batch PMS import', icon: 'workqueue' },
 ]
 
 const BILLING_OPS_NAV: NavItem[] = [
@@ -219,7 +234,11 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
   },
   {
     label: 'Before visit',
-    items: [{ to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' }],
+    items: [
+      { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
+      { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
+    ],
   },
   {
     label: 'Account',
@@ -354,45 +373,71 @@ function sidebarNavSections(
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
-function Sidebar() {
+function SidebarCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button type="button" className="crx-sidebar-close" onClick={onClose} aria-label="Close navigation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  )
+}
+
+function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { isPlatformDev, isFrontDesk, isPracticeOwner, userRole, role, sessionUser } = usePractice()
+  const location = useLocation()
+
+  // Close the mobile drawer whenever the route changes (e.g. after tapping a nav link).
+  useEffect(() => {
+    onClose()
+  }, [location.pathname])
+
+  const sidebarClassName = `crx-sidebar${open ? ' crx-sidebar-open' : ''}`
 
   if (isFrontDesk) {
     return (
-      <aside className="crx-sidebar" aria-label="Front desk navigation">
-        <div className="crx-sidebar-head">
-          <SidebarBrand to="/console" suffix=" Desk" />
-        </div>
-        <nav className="crx-sidebar-nav" role="navigation">
-          {FRONT_DESK_NAV.map((item) => (
-            <SidebarNavLink key={item.to} item={item} />
-          ))}
-        </nav>
-      </aside>
+      <>
+        {open && <button type="button" className="crx-sidebar-backdrop" onClick={onClose} aria-label="Close navigation" />}
+        <aside className={sidebarClassName} aria-label="Front desk navigation">
+          <div className="crx-sidebar-head">
+            <SidebarBrand to="/console" suffix=" Desk" />
+            <SidebarCloseButton onClose={onClose} />
+          </div>
+          <nav className="crx-sidebar-nav" role="navigation">
+            {FRONT_DESK_NAV.map((item) => (
+              <SidebarNavLink key={item.to} item={item} />
+            ))}
+          </nav>
+        </aside>
+      </>
     )
   }
 
   const navSections = sidebarNavSections(userRole, isPlatformDev, isPracticeOwner, isPracticeGroupAdmin(role, sessionUser), role)
 
   return (
-    <aside className="crx-sidebar" aria-label="Main navigation">
-      <div className="crx-sidebar-head">
-        <SidebarBrand />
-        {isPlatformDev && <span className="crx-sidebar-dev-pill">Dev</span>}
-      </div>
-      <nav className="crx-sidebar-nav" role="navigation">
-        {navSections.map((section) => (
-          <div key={section.label || 'nav'} className="crx-nav-section">
-            {section.label ? (
-              <p className="crx-section-label crx-nav-section-label">{section.label}</p>
-            ) : null}
-            {section.items.map((item) => (
-              <SidebarNavLink key={item.to} item={item} />
-            ))}
-          </div>
-        ))}
-      </nav>
-    </aside>
+    <>
+      {open && <button type="button" className="crx-sidebar-backdrop" onClick={onClose} aria-label="Close navigation" />}
+      <aside className={sidebarClassName} aria-label="Main navigation">
+        <div className="crx-sidebar-head">
+          <SidebarBrand />
+          {isPlatformDev && userRole !== 'platform_admin' && <span className="crx-sidebar-dev-pill">Dev</span>}
+          <SidebarCloseButton onClose={onClose} />
+        </div>
+        <nav className="crx-sidebar-nav" role="navigation">
+          {navSections.map((section) => (
+            <div key={section.label || 'nav'} className="crx-nav-section">
+              {section.label ? (
+                <p className="crx-section-label crx-nav-section-label">{section.label}</p>
+              ) : null}
+              {section.items.map((item) => (
+                <SidebarNavLink key={item.to} item={item} />
+              ))}
+            </div>
+          ))}
+        </nav>
+      </aside>
+    </>
   )
 }
 
@@ -401,6 +446,7 @@ function PlatformDevRouteGuard({ children }: { children: ReactNode }) {
   const location = useLocation()
   if (
     isPlatformDev &&
+    userRole !== 'platform_admin' &&
     PLATFORM_DEV_BLOCKED_PREFIXES.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`))
   ) {
     return <Navigate to="/" replace />
@@ -436,12 +482,13 @@ function useBrandAppShellTheme() {
 function AppShell() {
   useBrandAppShellTheme()
   const { sessionHealth, userRole } = usePractice()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <div className="crx-app flex min-h-screen">
       <CommandPalette />
-      <Sidebar />
+      <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="crx-app-main">
-        <AppTopBar />
+        <AppTopBar onToggleNav={() => setMobileNavOpen((v) => !v)} />
         <SessionHealthBanner
           health={sessionHealth}
           isPlatformAdmin={userRole === 'platform_admin'}
@@ -450,6 +497,7 @@ function AppShell() {
         <PlanUsageBanner />
         <main className="crx-app-content" id="main-content">
         <PlatformDevRouteGuard>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/console" element={<ProtectedRoute allowedRoles={['front_desk']}><LiveConsole /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute allowedRoles={['front_desk']}><CallHistory /></ProtectedRoute>} />
@@ -469,7 +517,7 @@ function AppShell() {
           <Route path="/admin/break-glass" element={<ProtectedRoute allowedRoles={['platform_admin']}><BreakGlass /></ProtectedRoute>} />
           <Route path="/admin/staff" element={<ProtectedRoute allowedRoles={['practice_owner']}><UsersAdmin /></ProtectedRoute>} />
           <Route path="/admin/integrations" element={<ProtectedRoute allowedRoles={['practice_owner', 'platform_admin']}><Admin /></ProtectedRoute>} />
-          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PilotRunbook /></ProtectedRoute>} />
+          <Route path="/admin/runbook" element={<ProtectedRoute allowedRoles={['platform_admin']}><PilotRunbook /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/guide" element={<OfficeGuide />} />
           <Route path="/download" element={<DesktopDownload />} />
@@ -479,17 +527,21 @@ function AppShell() {
           <Route path="/ar-command-center" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><ArCommandCenter /></ProtectedRoute>} />
           <Route path="/import" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CsvImportPage /></ProtectedRoute>} />
           <Route path="/insurance/:id" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><InsuranceClaimDetail /></ProtectedRoute>} />
-          <Route path="/admin/sync"    element={<SyncOpsDashboard />} />
-          <Route path="/analytics"     element={<Analytics />} />
+          <Route path="/admin/sync" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><SyncOpsDashboard /></ProtectedRoute>} />
+          <Route path="/analytics" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'auditor', 'billing_ops_manager', 'platform_admin']}><Analytics /></ProtectedRoute>} />
           <Route path="/validation" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_ops_manager', 'platform_admin']}><AssumptionValidation /></ProtectedRoute>} />
           <Route path="/usage-insights" element={<ProtectedRoute allowedRoles={['platform_admin', 'practice_owner']}><ProductUsageAnalytics /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'accountant']}><PracticeBillingPage /></ProtectedRoute>} />
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
+          <Route path="/pre-treatment-estimate" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreTreatmentEstimate /></ProtectedRoute>} />
+          <Route path="/pre-visit-blueprint" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitBlueprintPage /></ProtectedRoute>} />
           <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
           <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
+          <Route path="/group/pms-import" element={<GroupAdminRoute><GroupPmsImportPage /></GroupAdminRoute>} />
           <Route path="*" element={<AppHomeFallback />} />
         </Routes>
+        </Suspense>
         </PlatformDevRouteGuard>
         </main>
       </div>
@@ -600,6 +652,7 @@ function App() {
       <ToastProvider>
         <PracticeProvider>
           <AnalyticsSessionBridge>
+            <Suspense fallback={<RouteFallback fullScreen />}>
             {isCommandCenterSurface ? (
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -611,6 +664,7 @@ function App() {
               </Routes>
             ) : (
               <Routes>
+                <Route path="/" element={<MarketingSite />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
                 <Route path="/legal/privacy" element={<LegalPrivacy />} />
                 <Route path="/product" element={<ProductOnePager />} />
@@ -631,6 +685,7 @@ function App() {
                 <Route path="*" element={<AuthGate />} />
               </Routes>
             )}
+            </Suspense>
           </AnalyticsSessionBridge>
         </PracticeProvider>
       </ToastProvider>

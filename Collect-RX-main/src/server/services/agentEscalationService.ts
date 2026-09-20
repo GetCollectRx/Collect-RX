@@ -1,5 +1,6 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import nodemailer from 'nodemailer';
+import { logger } from '../observability/logger.js';
 
 export interface AgentFinding {
   id: string;
@@ -73,7 +74,7 @@ export async function recordAgentRun(
     const subject = `🔴 CRITICAL — CollectRx: ${input.agentName} — ${criticalFindings.length} finding(s)`;
     const lines = criticalFindings.map(f => buildCriticalNotificationText(input.agentName, f, run.id));
     await sendEmail(subject, lines.join('\n\n---\n\n')).catch(err =>
-      console.error('[agentEscalation] email failed:', err),
+      logger.error('[agentEscalation] email failed', { error: err }),
     );
   }
 

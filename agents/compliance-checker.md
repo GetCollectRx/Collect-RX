@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Compliance Checker Agent
 
 **Purpose:** Ongoing compliance check for CRTC, PHIPA, and PIPEDA obligations. Run before any new carrier is added, before scaling call volume, and quarterly as a standing review. This is what keeps CollectRx from getting fined.

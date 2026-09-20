@@ -14,7 +14,7 @@ URL or config you find is a stale leftover.
 | Migrations | `release_command = 'npx prisma migrate deploy'` | Runs before each release; nonzero exit blocks the deploy |
 | Postgres | Fly Postgres, private network | Connection uses `.flycast`/`.internal` hosts (see `src/server/databaseTls.ts`) |
 | Redis | Shared `REDIS_URL` | App and worker must point at the same instance (BullMQ producer/consumer) |
-| Health check | `GET /api/health` | Wired into `[[http_service.checks]]` |
+| Health check | `GET /api/health/ready` | Wired into `[[http_service.checks]]` (`fly.toml`); checks DB connectivity and, in production, the RLS role-safety gate — see `OUTSTANDING-FIXES-PRODUCT-READY.md` P11-02. `GET /api/health` is the separate, DB-independent liveness endpoint Fly's proxy checks for an open socket. |
 
 ## Deploy
 

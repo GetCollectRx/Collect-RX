@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
+import { logger } from '../observability/logger.js';
 import {
   getDesktopReleaseInfo,
   canResolveDesktopRelease,
@@ -24,7 +25,7 @@ export function createDesktopReleasesRouter(): Router {
         downloadsConfigured,
       });
     } catch (err) {
-      console.error('[desktop/releases]', (err as Error).message);
+      logger.error('[desktop/releases]', { error: err });
       return res.status(500).json({ success: false, error: 'Failed to load release metadata' });
     }
   });
@@ -56,7 +57,7 @@ export function createDesktopReleasesRouter(): Router {
     try {
       const streamed = await streamGithubReleaseAsset(fileName);
       if (!streamed) {
-        console.error('[desktop/releases/assets] not found or GitHub denied:', fileName);
+        logger.error('[desktop/releases/assets] not found or GitHub denied', { error: fileName });
         return res.status(404).json({
           success: false,
           error:
@@ -73,7 +74,7 @@ export function createDesktopReleasesRouter(): Router {
       await pipeline(Readable.fromWeb(streamed.body as import('stream/web').ReadableStream), res);
       return undefined;
     } catch (err) {
-      console.error('[desktop/releases/assets]', fileName, (err as Error).message);
+      logger.error('[desktop/releases/assets]', { fileName, error: err });
       if (!res.headersSent) {
         return res.status(502).json({ success: false, error: 'Failed to download installer' });
       }

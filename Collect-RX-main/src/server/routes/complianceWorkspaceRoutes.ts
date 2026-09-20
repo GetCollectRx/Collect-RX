@@ -12,6 +12,7 @@ import {
 import { runComplianceAudit } from '../compliance/auditAgent.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { createHash } from 'node:crypto';
+import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../featureFlags/csvArFeatures.js';
 
 export const complianceWorkspaceRouter = Router();
 
@@ -40,6 +41,10 @@ complianceWorkspaceRouter.get(
   async (req: Request, res: Response) => {
     try {
       const practiceId = practiceIdFromSession(req);
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.COMPLIANCE_WORKSPACE))) {
+        res.status(403).json({ success: false, error: 'Compliance workspace is disabled for this practice' });
+        return;
+      }
       const limit = Math.min(200, parseInt(String(req.query.limit ?? '50'), 10) || 50);
       const events = await prisma.phiAccessEvent.findMany({
         where: { practiceId },
@@ -59,6 +64,10 @@ complianceWorkspaceRouter.get(
   async (req: Request, res: Response) => {
     try {
       const practiceId = practiceIdFromSession(req);
+      if (!(await isCsvArFeatureEnabled(prisma, practiceId, CSV_AR_FEATURES.COMPLIANCE_WORKSPACE))) {
+        res.status(403).json({ success: false, error: 'Compliance workspace is disabled for this practice' });
+        return;
+      }
       const since = new Date(Date.now() - 90 * 86400000);
       const [phiAccess, auditLogs, recoveryEvents] = await Promise.all([
         prisma.phiAccessEvent.findMany({

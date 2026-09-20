@@ -1,17 +1,69 @@
 import { Router, type Request, type Response } from 'express';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { recordDemoBooking } from '../marketing/demoScheduler.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 
-function verifyWebhookSecret(req: Request): boolean {
-  const expected = process.env.MARKETING_DEMO_WEBHOOK_SECRET?.trim();
-  if (!expected) {
-    return process.env.NODE_ENV !== 'production';
-  }
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Cal.com signs the raw request body and sends the digest as
+ * `X-Cal-Signature-256: sha256=<hmac-sha256 hex>`. It never sends the secret
+ * itself in a header, so verification has to recompute this digest — a
+ * string-equality check against a header never matches a real delivery.
+ */
+function verifyCalComSignature(rawBody: Buffer, header: string, secret: string): boolean {
+  const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+  return timingSafeStringEqual(header, expected);
+}
+
+/**
+ * Calendly signs `${timestamp}.${rawBody}` and sends
+ * `Calendly-Webhook-Signature: t=<timestamp>,v1=<hmac-sha256 hex>`.
+ */
+function verifyCalendlySignature(rawBody: Buffer, header: string, secret: string): boolean {
+  const parts = new Map(
+    header.split(',').map((part) => {
+      const [key, value] = part.split('=');
+      return [key?.trim() ?? '', value?.trim() ?? ''];
+    }),
+  );
+  const timestamp = parts.get('t');
+  const signature = parts.get('v1');
+  if (!timestamp || !signature) return false;
+
+  const expected = createHmac('sha256', secret)
+    .update(`${timestamp}.${rawBody.toString('utf8')}`)
+    .digest('hex');
+  return timingSafeStringEqual(signature, expected);
+}
+
+/** Fallback for internally-triggered/generic bookings that aren't Calendly or Cal.com. */
+function verifyRawSecretHeader(req: Request, secret: string): boolean {
   const provided =
     req.header('X-CollectRx-Webhook-Secret') ||
     req.header('Authorization')?.replace(/^Bearer\s+/i, '');
-  return provided === expected;
+  return provided !== undefined && timingSafeStringEqual(provided, secret);
+}
+
+function verifyWebhookSignature(req: Request, rawBody: Buffer): boolean {
+  const secret = process.env.MARKETING_DEMO_WEBHOOK_SECRET?.trim();
+  if (!secret) {
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  const calComHeader = req.header('X-Cal-Signature-256');
+  if (calComHeader) return verifyCalComSignature(rawBody, calComHeader, secret);
+
+  const calendlyHeader = req.header('Calendly-Webhook-Signature');
+  if (calendlyHeader) return verifyCalendlySignature(rawBody, calendlyHeader, secret);
+
+  return verifyRawSecretHeader(req, secret);
 }
 
 function parseScheduledAt(raw: unknown): Date | null {
@@ -81,12 +133,17 @@ export function createDemoBookingWebhookRouter(prisma: PrismaClient): Router {
   const router = Router();
 
   router.post('/', async (req: Request, res: Response) => {
-    if (!verifyWebhookSecret(req)) {
+    const rawBody = req.body;
+    if (!Buffer.isBuffer(rawBody)) {
+      return res.status(400).json({ success: false, error: 'Expected raw JSON body' });
+    }
+
+    if (!verifyWebhookSignature(req, rawBody)) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     try {
-      const body = req.body as Record<string, unknown>;
+      const body = JSON.parse(rawBody.toString('utf8')) as Record<string, unknown>;
       const calendly = parseCalendlyBody(body);
       const calcom = parseCalComBody(body);
       const generic = parseGenericBody(body);

@@ -37,20 +37,76 @@ import {
   registerBodySchema,
   inviteBodySchema,
   acceptInviteBodySchema,
+  convertToOrganizationBodySchema,
 } from '../validation/zodSchemas.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
+import { callerAdminOrganizationId } from '../accessControl/organizationContext.js';
+import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
+import { logger } from '../observability/logger.js';
 
 const BCRYPT_ROUNDS = 12;
+
+type PracticeListRow = { id: string; name: string; timezone: string };
+
+/**
+ * Practices an auditor may see, per their `AuditorGrant` rows — a global
+ * grant (`practiceId: null`) sees every practice, a scoped grant sees only
+ * the practices it names. Mirrors `assertAuditorPracticeGrant` in
+ * `middleware/grantChecks.ts`, which already enforces this same grant table
+ * on per-practice data routes; this just extends it to the practices-list
+ * surfaced by `/me` and login so an auditor with a real grant isn't shown an
+ * empty list despite being authorized to read the data behind it.
+ */
+async function auditorPractices(prisma: PrismaClient, auditorUserId: string): Promise<PracticeListRow[]> {
+  const grants = await prisma.auditorGrant.findMany({ where: { auditorUserId } });
+  if (grants.length === 0) return [];
+  if (grants.some((g) => g.practiceId === null)) {
+    return prisma.practice.findMany({
+      select: { id: true, name: true, timezone: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+  const practiceIds = grants.map((g) => g.practiceId).filter((id): id is string => id !== null);
+  if (practiceIds.length === 0) return [];
+  return prisma.practice.findMany({
+    where: { id: { in: practiceIds } },
+    select: { id: true, name: true, timezone: true },
+    orderBy: { name: 'asc' },
+  });
+}
 
 async function buildSessionHealth(prisma: PrismaClient) {
   const health = await runSessionHealthCheck(prisma);
   if (!health.ok) {
-    console.warn('[sessionHealth] Login health check failed:', health.checks.filter((c) => !c.ok && !c.skipped));
+    logger.warn('[sessionHealth] Login health check failed', {
+      failedChecks: health.checks.filter((c) => !c.ok && !c.skipped),
+    });
   }
   return health;
+}
+
+/**
+ * A real customer group_admin's org practices, for the practice switcher —
+ * PracticeContext.tsx already falls back to `data.practices` for any session
+ * shape, so populating this array here is the only change the switcher needs.
+ */
+async function groupAdminOrgPractices(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<Array<{ id: string; name: string; timezone: string }>> {
+  const memberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  });
+  if (memberships.length === 0) return [];
+  return prisma.practice.findMany({
+    where: { organizationMemberships: { some: { organizationId: { in: memberships.map((m) => m.organizationId) } } } },
+    select: { id: true, name: true, timezone: true },
+    orderBy: { name: 'asc' },
+  });
 }
 
 // ─── Platform dev password ────────────────────────────────────────────────────
@@ -85,7 +141,7 @@ async function verifyPlatformDevPassword(password: string): Promise<boolean> {
  *  - practice_owner: can manage all roles below owner (not another owner)
  *  - office_manager: can manage billing_coordinator, front_desk, associate_dentist, accountant
  */
-function canManageRole(
+export function canManageRole(
   actorAuth: UserAuthPayload,
   targetRole: string,
 ): boolean {
@@ -128,6 +184,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     });
     const subscription = await getSubscriptionGateState(prisma, user.practiceId);
     const health = await buildSessionHealth(prisma);
+    const practices = user.role === 'group_admin' ? await groupAdminOrgPractices(prisma, user.id) : undefined;
 
     return res.json({
       role: user.role,
@@ -135,6 +192,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
       phiAccess: ['practice_owner', 'office_manager', 'billing_coordinator', 'associate_dentist', 'front_desk'].includes(user.role),
       practice,
+      ...(practices ? { practices } : {}),
       subscription,
       user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
       health,
@@ -188,9 +246,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           select: { id: true, name: true, timezone: true },
           orderBy: { name: 'asc' },
         })
-      : practice
-        ? [practice]
-        : [];
+      : userRole === 'auditor'
+        ? await auditorPractices(prisma, user.id)
+        : practice
+          ? [practice]
+          : [];
 
     return res.json({
       userRole,
@@ -232,7 +292,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
       return respondPracticeLogin(req, res, user);
     } catch (e) {
-      console.error('Dev demo login error:', e);
+      logger.error('[authRoutes] Dev demo login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -250,6 +310,16 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (practiceUser?.isActive) {
         if (practiceUser.role === 'accountant' && practiceUser.tokenExpiresAt && practiceUser.tokenExpiresAt < new Date()) {
           return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
+        }
+        // Phase 4 FR-5: domain-based SSO enforcement, checked live at login
+        // time (not stored per-user) — a config change takes effect immediately.
+        const { findEnforcingSsoOrgForEmail } = await import('../sso/organizationSsoService.js');
+        const ssoOrg = await findEnforcingSsoOrgForEmail(prisma, email);
+        if (ssoOrg) {
+          return res.status(403).json({
+            error: 'Your organization requires single sign-on. Use your SSO login link instead of a password.',
+            ssoLoginUrl: `/api/auth/sso/${ssoOrg.orgSlug}/login`,
+          });
         }
         const ok = await bcrypt.compare(password, practiceUser.passwordHash);
         if (!ok) {
@@ -269,7 +339,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.status(401).json({ error: 'Invalid credentials' });
     } catch (e) {
-      console.error('Login error:', e);
+      logger.error('[authRoutes] Login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -314,7 +384,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         health,
       });
     } catch (e) {
-      console.error('Platform dev login error:', e);
+      logger.error('[authRoutes] Platform dev login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -336,7 +406,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
       return respondPlatformUserLogin(req, res, user);
     } catch (e) {
-      console.error('Platform user login error:', e);
+      logger.error('[authRoutes] Platform user login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -353,7 +423,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const health = await buildSessionHealth(prisma);
       return res.json(health);
     } catch (e) {
-      console.error('session-health error:', e);
+      logger.error('[authRoutes] session-health error', { error: e });
       return res.status(500).json({ error: 'Health check failed' });
     }
   });
@@ -400,12 +470,14 @@ export function createAuthRouter(prisma: PrismaClient): Router {
               select: { id: true, name: true, timezone: true },
               orderBy: { name: 'asc' },
             })
-          : platformUser.practiceId
-            ? await prisma.practice.findMany({
-                where: { id: platformUser.practiceId },
-                select: { id: true, name: true, timezone: true },
-              })
-            : [];
+          : userRole === 'auditor'
+            ? await auditorPractices(prisma, platformUser.id)
+            : platformUser.practiceId
+              ? await prisma.practice.findMany({
+                  where: { id: platformUser.practiceId },
+                  select: { id: true, name: true, timezone: true },
+                })
+              : [];
         const ctx = practiceIdFromRequestHints(req) ?? platformUser.practiceId ?? practices[0]?.id;
         const practice = ctx
           ? await prisma.practice.findUnique({
@@ -413,12 +485,23 @@ export function createAuthRouter(prisma: PrismaClient): Router {
               select: { id: true, name: true, timezone: true },
             })
           : null;
+        // Must match respondPlatformUserLogin's mapping below — this collapsed
+        // platform_admin into 'group_admin' (billing_ops_manager's bucket)
+        // instead of 'platform_dev', so authRoleToBriefPersona() on the client
+        // silently demoted a platform_admin to billing_ops_manager on every
+        // full page load (any deep link, refresh, or bookmark), locking them
+        // out of every actual admin screen they'd just logged into — the
+        // backend session/API auth is unaffected (it reads userRole from the
+        // cookie, not this field), but the frontend nav breaks completely.
+        // See OUTSTANDING-FIXES-PRODUCT-READY.md P10-09.
         const legacyRole =
           userRole === 'auditor'
             ? ('accountant' as const)
-            : userRole === 'billing_ops_manager' || userRole === 'platform_admin'
+            : userRole === 'billing_ops_manager'
               ? ('group_admin' as const)
-              : ('practice_owner' as const);
+              : userRole === 'platform_admin'
+                ? ('platform_dev' as const)
+                : ('practice_owner' as const);
         return res.json({
           role: legacyRole,
           userRole,
@@ -453,17 +536,19 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(401).json({ error: 'Session invalid' });
       }
       const subscription = await getSubscriptionGateState(prisma, user.practiceId);
+      const practices = dbUser.role === 'group_admin' ? await groupAdminOrgPractices(prisma, dbUser.id) : undefined;
       return res.json({
         role: user.role,
         userRole: getUserRole(auth) ?? practiceRoleToBrief(user.role),
         deskRole: user.role === 'front_desk' ? 'front_desk' : 'owner',
         phiAccess: auth.phiAccess,
         practice,
+        ...(practices ? { practices } : {}),
         subscription,
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
       });
     } catch (e) {
-      console.error('me error:', e);
+      logger.error('[authRoutes] me error', { error: e });
       return res.status(500).json({ error: 'Failed' });
     }
   });
@@ -490,7 +575,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
       return res.json({ users });
     } catch (e) {
-      console.error('list users error:', e);
+      logger.error('[authRoutes] list users error', { error: e });
       return res.status(500).json({ error: 'Failed to list users' });
     }
   });
@@ -547,7 +632,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.status(201).json({ user });
     } catch (e) {
-      console.error('create user error:', e);
+      logger.error('[authRoutes] create user error', { error: e });
       return res.status(500).json({ error: 'Failed to create user' });
     }
   });
@@ -599,7 +684,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ user: updated });
     } catch (e) {
-      console.error('update user error:', e);
+      logger.error('[authRoutes] update user error', { error: e });
       return res.status(500).json({ error: 'Failed to update user' });
     }
   });
@@ -630,7 +715,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       await prisma.user.update({ where: { id: target.id }, data: { isActive: false } });
       return res.json({ ok: true });
     } catch (e) {
-      console.error('deactivate user error:', e);
+      logger.error('[authRoutes] deactivate user error', { error: e });
       return res.status(500).json({ error: 'Failed to deactivate user' });
     }
   });
@@ -666,7 +751,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ ok: true });
     } catch (e) {
-      console.error('change password error:', e);
+      logger.error('[authRoutes] change password error', { error: e });
       return res.status(500).json({ error: 'Failed to change password' });
     }
   });
@@ -693,7 +778,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       });
       return res.json({ user: updated });
     } catch (e) {
-      console.error('promote owner error:', e);
+      logger.error('[authRoutes] promote owner error', { error: e });
       return res.status(500).json({ error: 'Failed to promote user' });
     }
   });
@@ -734,14 +819,17 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
       void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
-        console.error('[password-reset] email send failed', e);
+        logger.error('[password-reset] email send failed', { error: e });
       });
 
-      console.log(`[password-reset] token issued for ${email}`);
+      // email is redacted automatically by the structured logger — see
+      // safeMeta() in observability/logger.ts — rather than left in a raw
+      // template string the way this line used to log it.
+      logger.info('[password-reset] token issued', { email });
 
       return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
     } catch (e) {
-      console.error('reset-password request error:', e);
+      logger.error('[authRoutes] reset-password request error', { error: e });
       return res.status(500).json({ error: 'Failed to process request' });
     }
   });
@@ -775,52 +863,86 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       return res.json({ ok: true });
     } catch (e) {
-      console.error('reset-password confirm error:', e);
+      logger.error('[authRoutes] reset-password confirm error', { error: e });
       return res.status(500).json({ error: 'Failed to reset password' });
     }
   });
 
   // ── Self-service registration ─────────────────────────────────────────────
 
-  /** POST /api/auth/register — create a new practice + owner account (public) */
+  /**
+   * POST /api/auth/register — create a new practice + owner account (public).
+   * When `additionalPractices` is present, self-serve DSO signup: creates an
+   * Organization plus every practice in one transaction, with the signing-up
+   * user as group_admin/org_admin — the self-serve counterpart to the
+   * platform_dev-only POST /api/admin/organizations tool.
+   */
   r.post('/register', authLimiter, async (req: Request, res: Response) => {
     try {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { practiceName, displayName, email, password } = parsed.data;
+      const { practiceName, displayName, email, password, organizationName, additionalPractices } = parsed.data;
+
+      if (additionalPractices && additionalPractices.length > 0 && !organizationName) {
+        return res.status(400).json({ error: 'organizationName is required when adding additional locations' });
+      }
 
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
 
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const isOrgSignup = Boolean(additionalPractices && additionalPractices.length > 0);
 
-      const { practice, user } = await prisma.$transaction(async (tx) => {
-        const practice = await tx.practice.create({
-          data: {
-            name: practiceName,
-            passwordHash,
-            timezone: 'America/Toronto',
-            billingTier: 'trial',
-            trialEndsAt: trialEndDate(),
-          },
-        });
+      const { practice, user, organizationId } = await prisma.$transaction(async (tx) => {
+        const allPractices = [{ practiceName, timezone: undefined as string | undefined }, ...(additionalPractices ?? [])];
+
+        // organizationName is guaranteed set here — the 400 check above already
+        // rejected a non-empty additionalPractices with no organizationName.
+        const organization = isOrgSignup
+          ? await tx.organization.create({ data: { name: organizationName! } })
+          : null;
+
+        const createdPractices = [];
+        for (const p of allPractices) {
+          const created = organization
+            ? await createOrgPractice(tx, organization.id, { practiceName: p.practiceName, timezone: p.timezone, passwordHash })
+            : await tx.practice.create({
+                data: {
+                  name: p.practiceName,
+                  passwordHash,
+                  timezone: p.timezone ?? 'America/Toronto',
+                  billingTier: 'trial',
+                  trialEndsAt: trialEndDate(),
+                },
+              });
+          createdPractices.push(created);
+        }
+
+        const practice = createdPractices[0];
         const user = await tx.user.create({
           data: {
             practiceId: practice.id,
             email,
             passwordHash,
             displayName,
-            role: 'practice_owner',
+            role: isOrgSignup ? 'group_admin' : 'practice_owner',
           },
           select: { id: true, email: true, displayName: true, role: true },
         });
-        return { practice, user };
+
+        if (organization) {
+          await tx.organizationMember.create({
+            data: { organizationId: organization.id, userId: user.id, role: 'org_admin' },
+          });
+        }
+
+        return { practice, user, organizationId: organization?.id };
       });
 
       const sessionAuth = {
         userId: user.id,
         practiceId: practice.id,
-        role: 'practice_owner' as const,
+        role: user.role as 'practice_owner' | 'group_admin',
         email: user.email,
         displayName: user.displayName,
       };
@@ -828,12 +950,52 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       return res.status(201).json({
         user,
         practiceId: practice.id,
-        role: 'practice_owner',
-        userRole: 'owner',
+        organizationId,
+        role: user.role,
+        userRole: isOrgSignup ? 'billing_ops_manager' : 'owner',
       });
     } catch (e) {
-      console.error('register error:', e);
+      logger.error('[authRoutes] register error', { error: e });
       return res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  /**
+   * POST /api/auth/convert-to-organization — self-serve upgrade for a
+   * standalone practice_owner who wants to become a DSO owner, without
+   * re-registering. Links their existing practice into a new Organization
+   * and upgrades their PracticeRole to group_admin.
+   */
+  r.post('/convert-to-organization', authenticate, authorizeRole('practice_owner'), async (req: Request, res: Response) => {
+    try {
+      const auth = req.auth!;
+      const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
+      if (!actorAuth) return res.status(403).json({ error: 'Practice owner session required' });
+
+      const existingMembership = await prisma.organizationMember.findFirst({ where: { userId: actorAuth.userId } });
+      if (existingMembership) return res.status(400).json({ error: 'You are already part of an organization' });
+
+      const parsed = convertToOrganizationBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
+
+      const organizationId = await prisma.$transaction(async (tx) => {
+        const organization = await tx.organization.create({ data: { name: parsed.data.organizationName } });
+        await tx.organizationPractice.create({
+          data: { organizationId: organization.id, practiceId: actorAuth.practiceId },
+        });
+        await tx.organizationMember.create({
+          data: { organizationId: organization.id, userId: actorAuth.userId, role: 'org_admin' },
+        });
+        await tx.user.update({ where: { id: actorAuth.userId }, data: { role: 'group_admin' } });
+        return organization.id;
+      });
+
+      setUserAuthCookie(res, { userId: actorAuth.userId, practiceId: actorAuth.practiceId, role: 'group_admin' });
+
+      return res.status(201).json({ organizationId, role: 'group_admin' });
+    } catch (e) {
+      console.error('convert-to-organization error:', e);
+      return res.status(500).json({ error: 'Failed to create organization' });
     }
   });
 
@@ -844,14 +1006,58 @@ export function createAuthRouter(prisma: PrismaClient): Router {
     try {
       const auth = req.auth!;
       const actorAuth = isUserSession(auth) ? (auth as UserAuthPayload) : null;
-      const practiceId = actorAuth?.practiceId ?? practiceIdFromRequestHints(req) ?? '';
+      let practiceId = actorAuth?.practiceId ?? practiceIdFromRequestHints(req) ?? '';
 
       const parsed = inviteBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { email, role } = parsed.data;
+      const { email, role, providerId, orgRole: requestedOrgRole } = parsed.data;
 
-      if (actorAuth && !isPlatformDev(auth) && !canManageRole(actorAuth, role)) {
-        return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
+      if (role === 'associate_dentist' && !providerId) {
+        return res.status(400).json({ error: 'providerId is required for associate_dentist role' });
+      }
+      if (requestedOrgRole === 'org_billing_viewer' && role !== 'accountant') {
+        return res.status(400).json({ error: 'orgRole "org_billing_viewer" requires role "accountant"' });
+      }
+
+      // A co-admin invite (role === 'group_admin') is a same-level invite that
+      // canManageRole's actorLevel > targetLevel rule would otherwise block —
+      // it's allowed only for an existing org_admin inviting into their own
+      // organization, checked separately from the normal role-hierarchy rule.
+      // A billing-viewer invite (role === 'accountant' + orgRole === 'org_billing_viewer')
+      // is the same shape — org_admin-only, org-scoped — for the DSO controller/CFO
+      // persona (Phase 4 FR-9, specs/phase-4-enterprise-it-compliance.md).
+      let organizationId: string | undefined;
+      let orgRole: 'org_admin' | 'org_billing_viewer' | undefined;
+      if (actorAuth && !isPlatformDev(auth)) {
+        if (role === 'group_admin') {
+          organizationId = (await callerAdminOrganizationId(prisma, actorAuth.userId)) ?? undefined;
+          if (!organizationId) {
+            return res.status(403).json({ error: 'Only an organization admin can invite a co-admin' });
+          }
+          orgRole = 'org_admin';
+        } else if (requestedOrgRole === 'org_billing_viewer') {
+          organizationId = (await callerAdminOrganizationId(prisma, actorAuth.userId)) ?? undefined;
+          if (!organizationId) {
+            return res.status(403).json({ error: 'Only an organization admin can invite a billing viewer' });
+          }
+          orgRole = 'org_billing_viewer';
+        } else if (!canManageRole(actorAuth, role)) {
+          return res.status(403).json({ error: `Your role cannot invite someone with role '${role}'` });
+        }
+
+        // A group_admin may target a specific sibling practice instead of their
+        // own home practice — validated against their org membership, not just
+        // trusted from the request body (authorized narrow RLS iteration).
+        if (actorAuth.role === 'group_admin' && parsed.data.practiceId && parsed.data.practiceId !== actorAuth.practiceId) {
+          const callerOrgId = await callerAdminOrganizationId(prisma, actorAuth.userId);
+          const belongs = callerOrgId
+            ? await prisma.organizationPractice.findFirst({ where: { organizationId: callerOrgId, practiceId: parsed.data.practiceId } })
+            : null;
+          if (!belongs) {
+            return res.status(403).json({ error: 'That practice is not in your organization' });
+          }
+          practiceId = parsed.data.practiceId;
+        }
       }
 
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -862,14 +1068,30 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
       const invite = await prisma.inviteToken.create({
-        data: { practiceId, email, role: role as import('@prisma/client').PracticeRole, expiresAt },
+        data: {
+          practiceId,
+          email,
+          role: role as import('@prisma/client').PracticeRole,
+          expiresAt,
+          organizationId,
+          orgRole,
+          providerId: providerId ?? null,
+        },
         select: { token: true },
       });
 
-      await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
-      return res.json({ invited: true });
+      // The invite token is already durably created at this point — an email
+      // delivery failure (bad credentials, SendGrid outage) must not report
+      // total failure, since the invite is still valid and usable via its link.
+      try {
+        await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
+        return res.json({ invited: true, emailSent: true });
+      } catch (emailErr) {
+        console.error('invite email send failed (token still created):', emailErr);
+        return res.json({ invited: true, emailSent: false, token: invite.token });
+      }
     } catch (e) {
-      console.error('invite error:', e);
+      logger.error('[authRoutes] invite error', { error: e });
       return res.status(500).json({ error: 'Failed to send invite' });
     }
   });
@@ -886,7 +1108,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'This invite has expired' });
       return res.json({ email: invite.email, role: invite.role, practiceName: invite.practice.name });
     } catch (e) {
-      console.error('invite lookup error:', e);
+      logger.error('[authRoutes] invite lookup error', { error: e });
       return res.status(500).json({ error: 'Failed to look up invite' });
     }
   });
@@ -908,19 +1130,27 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-      const [user] = await prisma.$transaction([
-        prisma.user.create({
+      const user = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
           data: {
             practiceId: invite.practiceId,
             email: invite.email,
             passwordHash,
             displayName,
             role: invite.role,
+            providerId: invite.providerId,
           },
           select: { id: true, email: true, displayName: true, role: true },
-        }),
-        prisma.inviteToken.update({ where: { token }, data: { usedAt: new Date() } }),
-      ]);
+        });
+        await tx.inviteToken.update({ where: { token }, data: { usedAt: new Date() } });
+        if (invite.organizationId) {
+          await tx.organizationMember.create({
+            // Falls back to org_admin for invites predating the orgRole column.
+            data: { organizationId: invite.organizationId, userId: user.id, role: invite.orgRole ?? 'org_admin' },
+          });
+        }
+        return user;
+      });
 
       const sessionAuth = {
         userId: user.id,
@@ -932,7 +1162,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       setUserAuthCookie(res, sessionAuth);
       return res.status(201).json({ user, role: user.role });
     } catch (e) {
-      console.error('accept-invite error:', e);
+      logger.error('[authRoutes] accept-invite error', { error: e });
       return res.status(500).json({ error: 'Failed to create account' });
     }
   });

@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Client Acquisition Agent
 
 **Purpose:** Build and work the pipeline of dental practices that should be using CollectRx. Identify high-value prospects, sequence outreach, track conversations, optimize the pitch based on what's working, and get practices from "never heard of you" to "billing agent authorization letter signed." Run weekly.

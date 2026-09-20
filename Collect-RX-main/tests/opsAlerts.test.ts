@@ -3,6 +3,7 @@ import { getAlertDefinition } from '../src/server/observability/alertCatalog.js'
 import {
   alertsFromFailedChecks,
   formatOpsAlertText,
+  opsAlertsEnabled,
   shouldSendAlert,
 } from '../src/server/observability/opsAlerts.js';
 
@@ -48,5 +49,31 @@ describe('opsAlerts', () => {
     vi.stubEnv('OPS_ALERT_COOLDOWN_MINUTES', '60');
     const p = { alertId: 'tests', source: 'unit-test-cooldown' };
     expect(shouldSendAlert(p)).toBe(true);
+  });
+
+  describe('opsAlertsEnabled — production-default gate (P1.1)', () => {
+    it('defaults on in production when the env var is unset', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('OPS_ALERTS_ENABLED', '');
+      expect(opsAlertsEnabled()).toBe(true);
+    });
+
+    it('defaults off outside production when the env var is unset', () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('OPS_ALERTS_ENABLED', '');
+      expect(opsAlertsEnabled()).toBe(false);
+    });
+
+    it('an explicit "0" opts out even in production', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('OPS_ALERTS_ENABLED', '0');
+      expect(opsAlertsEnabled()).toBe(false);
+    });
+
+    it('an explicit "1" opts in outside production', () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('OPS_ALERTS_ENABLED', '1');
+      expect(opsAlertsEnabled()).toBe(true);
+    });
   });
 });

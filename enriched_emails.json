@@ -1,0 +1,112 @@
+{
+  "enrichment_summary": {
+    "source_csv": "outreach/dental-prospects-ottawa-gta.csv",
+    "csv_rows": 151,
+    "matched_to_csv": 20,
+    "unique_emails": 20,
+    "emails_verified": false,
+    "note": "Addresses were produced by automated web lookup and are NOT individually confirmed; most follow an info@<domain> pattern. Review the import dry-run output by hand before sending. Rejected entries are kept in outreach/enrichment-rejected.json."
+  },
+  "prospects": [
+    {
+      "practice_name": "6ix Eglinton Dental",
+      "city": "Toronto",
+      "email": "info@6ixeglintondental.ca"
+    },
+    {
+      "practice_name": "Archer Dental Little Italy",
+      "city": "Toronto",
+      "email": "LittleItaly@ArcherDental.ca"
+    },
+    {
+      "practice_name": "Dakota Dental",
+      "city": "Toronto",
+      "email": "info@dakotadentalclinic.com"
+    },
+    {
+      "practice_name": "Dental Studio on Wellesley",
+      "city": "Toronto",
+      "email": "info@dentalonw.ca"
+    },
+    {
+      "practice_name": "Dentistry on Finch",
+      "city": "Toronto",
+      "email": "info@dentistryonfinch.com"
+    },
+    {
+      "practice_name": "Dufferin Family Dentistry",
+      "city": "Toronto",
+      "email": "info@bloordufferindental.com"
+    },
+    {
+      "practice_name": "Ellesmere Dental",
+      "city": "Toronto",
+      "email": "info@ellesmerevillagedental.ca"
+    },
+    {
+      "practice_name": "JunctionWest Dental",
+      "city": "Toronto",
+      "email": "info@junctionwestdental.ca"
+    },
+    {
+      "practice_name": "Kingsview Dental",
+      "city": "Toronto",
+      "email": "info@kingsviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Kingwest Dental",
+      "city": "Toronto",
+      "email": "info@kingwestdental.ca"
+    },
+    {
+      "practice_name": "Kingwest Dental Studio",
+      "city": "Toronto",
+      "email": "info@kwdstudio.ca"
+    },
+    {
+      "practice_name": "Mint 32 Dentistry",
+      "city": "Toronto",
+      "email": "hello@mintdentistry.ca"
+    },
+    {
+      "practice_name": "One Marine Dental",
+      "city": "Toronto",
+      "email": "onemarinedental@gmail.com"
+    },
+    {
+      "practice_name": "Parkview Dental",
+      "city": "Toronto",
+      "email": "info@parkviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Smiles Plus Dental Centre",
+      "city": "Toronto",
+      "email": "info@smilesplus.ca"
+    },
+    {
+      "practice_name": "Smiles on Lawrence Dental",
+      "city": "Toronto",
+      "email": "smilesonlawrence@gmail.com"
+    },
+    {
+      "practice_name": "The Richmond Dental Centre",
+      "city": "Toronto",
+      "email": "therichmonddentalcentre@gmail.com"
+    },
+    {
+      "practice_name": "Urbanview Dental",
+      "city": "Toronto",
+      "email": "info@urbanviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Waterview Dental",
+      "city": "Toronto",
+      "email": "info@waterviewdentaltoronto.com"
+    },
+    {
+      "practice_name": "Woodbine & Danforth Dental Care",
+      "city": "Toronto",
+      "email": "info@teethcare.ca"
+    }
+  ]
+}

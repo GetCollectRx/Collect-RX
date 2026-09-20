@@ -47,7 +47,7 @@ export default function BreakGlass() {
       <Card>
         <CardHeader
           title="Queue override"
-          subtitle="Build or run the call queue across practices. Practice owners will be notified."
+          subtitle="Records an audited break-glass request. This does not build, run, or dispatch the AR queue — dispatch runs automatically on its own schedule — and practice owners are not notified."
         />
         <div className="space-y-4">
           <label className="block">

@@ -12,6 +12,7 @@ import { enqueuePreVisitJob } from './preVisitJobs.js';
 import { isCdcpCarrier, requiresCdcpPredetermination } from './procedureRules.js';
 import { parsePreVisitStructuredData } from './preVisitStructuredOutput.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 const PRE_VISIT_RECALL_DELAY_MS = 4 * 60 * 60 * 1000;
 
@@ -35,7 +36,7 @@ export async function processPreVisitCallEnded(
     }),
   );
   if (!verification) {
-    console.warn(`[preVisitWebhook] verification not found: ${verificationId}`);
+    logger.warn('[preVisitWebhook] verification not found', { verificationId });
     return true;
   }
 
@@ -50,7 +51,9 @@ export async function processPreVisitCallEnded(
 
     const parsed = parsePreVisitStructuredData(sd);
     if (!parsed.valid && Object.keys(sd).length > 0) {
-      console.warn('[preVisitWebhook] structured output parse warnings:', parsed.parseWarnings);
+      logger.warn('[preVisitWebhook] structured output parse warnings', {
+        warnings: parsed.parseWarnings,
+      });
     }
 
     const eligibilityStatus = parsed.eligibilityStatus;
@@ -87,9 +90,21 @@ export async function processPreVisitCallEnded(
     let cdcpCaseId: string | null = null;
 
     if (meta?.cdcpContext || meta?.preVisitType === 'cdcp_predet') {
+      // Tenant identity must come from the verification row, not the Vapi
+      // payload: dispatch metadata carries camelCase keys the detector does
+      // not read, and structuredData is LLM output — an absent or wrong
+      // practice_id there either drops the denial or violates the RLS
+      // WITH CHECK on CdcpReconsiderationCase (42501).
       const denialSignal = detectDenialFromEndOfCall({
         type: 'end-of-call-report',
-        call: { id: payload.call.id, metadata: meta as unknown as Record<string, unknown> },
+        call: {
+          id: payload.call.id,
+          metadata: {
+            ...(meta as unknown as Record<string, unknown>),
+            practice_id: verification.practiceId,
+            patient_token: verification.patientToken,
+          },
+        },
         analysis: { structuredData: sd },
       });
       if (denialSignal) {
@@ -117,10 +132,11 @@ export async function processPreVisitCallEnded(
       const elig = eligibilityStatus?.toLowerCase();
       const snapStatus =
         elig === 'eligible' ? 'active' : elig === 'ineligible' ? 'inactive' : 'unknown';
+      // patientId is the PMS record ID; patientToken is the PIIVault UUID. The
+      // pre-visit pipeline only ever has the token, so patientId is left unset.
       await prisma.eligibilitySnapshot.create({
         data: {
           practiceId: verification.practiceId,
-          patientId: verification.patientToken,
           patientToken: verification.patientToken,
           carrier: verification.carrierId,
           status: snapStatus as 'active' | 'inactive' | 'unknown',
@@ -200,7 +216,7 @@ export async function processPreVisitCallEnded(
           PRE_VISIT_RECALL_DELAY_MS,
         );
       } catch (enqueueErr) {
-        console.error('[preVisitWebhook] failed to enqueue recall job:', enqueueErr);
+        logger.error('[preVisitWebhook] failed to enqueue recall job', { error: enqueueErr });
       }
     }
 

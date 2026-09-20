@@ -46,4 +46,4 @@ Run locally: `npm run check:env` (with `NODE_ENV=production` for prod rules), `n
 1. Set Fly.io production secrets: `JWT_SECRET`, `VAPI_WEBHOOK_SECRET`, `AGENT_RUNTIME_SECRET` (see 2.1 — **now required**, the endpoint 401s everything without it rather than failing open), `STRIPE_*`, `SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY`, `DATABASE_URL` (Fly-internal, TLS exemption applies), `PHI_ENCRYPTION_KEY` if at-rest encryption on, `HEALTH_METRICS_TOKEN`, `ALLOWED_ORIGINS`.
 2. Never commit or share `Collect-RX-main/.env`.
 3. Run `NODE_ENV=production npm run check:env` against the production variable set — the Fly TLS exemption gap (1.5) is fixed, so this should no longer false-fail on `DATABASE_URL`.
-4. Add the missing routers to `tests/idorPracticeScope.audit.test.ts`'s `AUTH_ROUTE_FILES` (2.3) so future scoping regressions are actually caught — not yet done.
+4. ~~Add the missing routers to `tests/idorPracticeScope.audit.test.ts`'s `AUTH_ROUTE_FILES` (2.3)~~ — done in `d6c6d5d` (2026-07-18); all routers listed in 2.3 are present in `AUTH_ROUTE_FILES` / `PLATFORM_ROLE_GATED_ROUTE_FILES`.

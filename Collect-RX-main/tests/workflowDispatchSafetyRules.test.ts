@@ -7,7 +7,10 @@
  * are deterministic regardless of when/where they run. 2026-04-14 is a Tuesday and
  * 2026-04-18 is a Saturday (verified against America/New_York via Intl.DateTimeFormat).
  *
- * DB-dependent — skipped with a warning if DATABASE_URL is unreachable.
+ * DB-dependent — this suite gates the most safety-critical rules in the codebase (CARRIER_BLOCK,
+ * claim-age gating, max attempts, call-window enforcement), so it must NEVER silently no-op. If
+ * DATABASE_URL is unreachable, this file throws instead of skipping — see the top-level `await`
+ * below — so CI fails loud rather than reporting a false "0 failures" pass.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CarrierId } from '@prisma/client';
@@ -17,15 +20,14 @@ import { validateDispatch } from '../src/carriers/adapter.js';
 import { applyCarrierBlock, clearCarrierBlock } from '../src/server/frontDesk/carrierBlockService.js';
 import { defaultPracticeSettings, updatePracticeSettings } from '../src/server/services/practiceSettingsService.js';
 
-let dbReady = false;
 try {
   await prisma.$connect();
   await prisma.$queryRaw`SELECT 1`;
-  dbReady = true;
 } catch (e) {
-  console.warn(
-    '[workflowDispatchSafetyRules] DATABASE_URL unreachable — skipping:',
-    (e as Error).message,
+  throw new Error(
+    'workflowDispatchSafetyRules requires a live DATABASE_URL — this safety-critical suite ' +
+      '(CARRIER_BLOCK, claim-age gating, max-attempts, call-window enforcement) must not ' +
+      `silently skip. Original error: ${(e as Error).message}`,
   );
 }
 
@@ -36,7 +38,7 @@ const SATURDAY_10AM_ET = new Date('2026-04-18T14:00:00Z');
 const TUESDAY_5AM_ET = new Date('2026-04-14T09:00:00Z');
 const TUESDAY_7PM_ET = new Date('2026-04-14T23:00:00Z');
 
-describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch()', () => {
+describe('Safety-critical dispatch gating — validateDispatch()', () => {
   let practiceId: string;
   let sunLifeClaimId: string;
   let canadaLifeClaimId: string;
@@ -206,6 +208,50 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
     expect(result.reason).toMatch(/08:00–17:00/);
   });
 
+  it('CARRIER_CONCURRENCY_LIMIT: rejects when the fleet-wide snapshot shows the carrier at its ceiling, regardless of practice', async () => {
+    // sun_life's configured limit is 5 (see CARRIER_CONCURRENCY_LIMITS) — a
+    // snapshot at or above that, from calls anywhere in the fleet, must block
+    // dispatch for THIS practice's sun_life claim too. Not this practice's own
+    // count — a multi-location group's other locations count against the
+    // same ceiling.
+    const atCeiling = await validateDispatch(prisma, {
+      practiceId,
+      claimId: sunLifeClaimId,
+      carrierId: 'sun_life',
+      daysOutstanding: 45,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+      carrierActiveCounts: new Map([['sun_life', 5]]),
+    });
+    expect(atCeiling.allowed).toBe(false);
+    expect(atCeiling.code).toBe('CARRIER_CONCURRENCY_LIMIT');
+    expect(atCeiling.reason).toMatch(/fleet-wide/);
+
+    const underCeiling = await validateDispatch(prisma, {
+      practiceId,
+      claimId: sunLifeClaimId,
+      carrierId: 'sun_life',
+      daysOutstanding: 45,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+      carrierActiveCounts: new Map([['sun_life', 4]]),
+    });
+    expect(underCeiling.allowed).toBe(true);
+
+    const noSnapshotSupplied = await validateDispatch(prisma, {
+      practiceId,
+      claimId: sunLifeClaimId,
+      carrierId: 'sun_life',
+      daysOutstanding: 45,
+      attemptsSoFar: 0,
+      scheduledFor: TUESDAY_10AM_ET,
+      claimStatus: 'PENDING',
+    });
+    expect(noSnapshotSupplied.allowed).toBe(true);
+  });
+
   it(
     'CARRIER_BLOCK: a detected block immediately suspends ALL calls to that carrier, and clearing it restores dispatch',
     async () => {
@@ -265,6 +311,117 @@ describe.skipIf(!dbReady)('Safety-critical dispatch gating — validateDispatch(
         claimStatus: 'PENDING',
       });
       expect(afterClear.allowed).toBe(true);
+    },
+    30_000,
+  );
+
+  it(
+    'CARRIER_BLOCK propagates to a sibling practice in the same Organization, and clearing it on the tripped practice restores dispatch for both',
+    async () => {
+      // Second location in the same DSO/group — its own CarrierBlockEvent
+      // table has no row for manulife, so without organization-aware
+      // propagation it would keep dialing manulife on the same voice model
+      // right after a sibling location got flagged for automation.
+      //
+      // Only the sibling's claim is run through validateDispatch's full guard
+      // chain (including carrier authorization) in this test — applyCarrierBlock
+      // on `practiceId` below writes the block event directly and does not need
+      // (or touch) that shared fixture practice's own carrier authorization, so
+      // its settings — set up once in beforeAll for the other tests in this
+      // file — are left untouched here.
+      const siblingPractice = await createPracticeForTests(prisma);
+      const settings = defaultPracticeSettings();
+      settings.voiceAgentEnabled = true;
+      settings.carrierConfigs = settings.carrierConfigs.map((c) =>
+        c.carrierId === 'manulife'
+          ? { ...c, authorizationSubmitted: true, providerNumber: 'PN-TEST-002' }
+          : c,
+      );
+      await updatePracticeSettings(prisma, siblingPractice.id, settings);
+
+      const siblingClaim = await prisma.insuranceClaim.create({
+        data: {
+          practiceId: siblingPractice.id,
+          carrierId: 'manulife',
+          claimNumber: 'CLM-GATE-SIBLING-ML',
+          patientToken: 'tok-gate-sibling-ml',
+          billedAmount: 500,
+          outstandingAmount: 500,
+          daysOutstanding: 45,
+          status: 'PENDING',
+        },
+      });
+
+      const org = await prisma.organization.create({ data: { name: `Fixture Group ${Date.now()}` } });
+      await prisma.organizationPractice.createMany({
+        data: [
+          { organizationId: org.id, practiceId },
+          { organizationId: org.id, practiceId: siblingPractice.id },
+        ],
+      });
+
+      try {
+        const siblingBefore = await validateDispatch(prisma, {
+          practiceId: siblingPractice.id,
+          claimId: siblingClaim.id,
+          carrierId: 'manulife',
+          daysOutstanding: 45,
+          attemptsSoFar: 0,
+          scheduledFor: TUESDAY_10AM_ET,
+          claimStatus: 'PENDING',
+        });
+        expect(siblingBefore.allowed).toBe(true);
+
+        // hangVapi: false — no live Vapi call to hang up in this unit-scoped test.
+        await applyCarrierBlock(prisma, {
+          practiceId,
+          carrierId: 'manulife',
+          vapiCallId: 'vapi-test-call-id-org',
+          reason: 'IVR detected automation and hung up',
+          hangVapi: false,
+        });
+
+        // The OTHER location — which never tripped its own block — must also
+        // be blocked, and told why, not left dialing manulife blind.
+        const siblingAfter = await validateDispatch(prisma, {
+          practiceId: siblingPractice.id,
+          claimId: siblingClaim.id,
+          carrierId: 'manulife',
+          daysOutstanding: 45,
+          attemptsSoFar: 0,
+          scheduledFor: TUESDAY_10AM_ET,
+          claimStatus: 'PENDING',
+        });
+        expect(siblingAfter.allowed).toBe(false);
+        expect(siblingAfter.code).toBe('CARRIER_BLOCK');
+        expect(siblingAfter.reason).toMatch(/Another location in your organization/);
+
+        const cleared = await clearCarrierBlock(
+          prisma,
+          practiceId,
+          'manulife',
+          'staff-e2e-test',
+          'False alarm — resumed after review',
+        );
+        expect(cleared).toBe(true);
+
+        const siblingAfterClear = await validateDispatch(prisma, {
+          practiceId: siblingPractice.id,
+          claimId: siblingClaim.id,
+          carrierId: 'manulife',
+          daysOutstanding: 45,
+          attemptsSoFar: 0,
+          scheduledFor: TUESDAY_10AM_ET,
+          claimStatus: 'PENDING',
+        });
+        expect(siblingAfterClear.allowed).toBe(true);
+      } finally {
+        await prisma.organizationPractice.deleteMany({ where: { organizationId: org.id } });
+        await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined);
+        await prisma.carrierBlockEvent.deleteMany({ where: { practiceId, carrierId: 'manulife' } });
+        await prisma.insuranceClaim.deleteMany({ where: { id: siblingClaim.id } });
+        await prisma.practice.delete({ where: { id: siblingPractice.id } }).catch(() => undefined);
+      }
     },
     30_000,
   );

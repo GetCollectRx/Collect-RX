@@ -12,7 +12,7 @@ import {
   readEnvFromDotenv,
   readPortFromEnvFile,
 } from './free-dev-ports.mjs';
-import { ensureLocalRedis } from './ensure-dev-services.mjs';
+import { ensureLocalRedis, ensurePostgresReachable } from './ensure-dev-services.mjs';
 
 const COLLECTRX_DEFAULT_REMOTE_API = 'https://collect-rx.fly.dev';
 
@@ -102,6 +102,7 @@ async function main() {
   const preferredApi = readPortFromEnvFile('PORT', 3000);
   freeCollectRxDevPorts({ apiPort: preferredApi, vitePort: preferredVite });
 
+  await ensurePostgresReachable();
   const redis = await ensureLocalRedis();
   const useWorker = redis.enabled;
 

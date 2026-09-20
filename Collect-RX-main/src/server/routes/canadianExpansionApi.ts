@@ -32,6 +32,9 @@ import {
 import { useOwnerPracticeApiAuthOnly } from '../middleware/ownerPracticeApi.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
 import { practiceIdFromSession } from '../middleware/requirePracticeSession.js';
+import { blockAuditorWrites } from '../middleware/requireUserRole.js';
+import { preserveRlsAcrossMiddleware } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
 
 function practiceId(req: Request): string {
   return practiceIdFromSession(req);
@@ -47,7 +50,7 @@ function handleError(label: string, e: unknown, res: Response): Response {
       return res.status(409).json({ error: 'A record with this identifier already exists' });
     }
   }
-  console.error(label, e);
+  logger.error(label, { error: e });
   return res.status(500).json({ error: `${label} failed` });
 }
 
@@ -85,7 +88,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-01 — register a denied predetermination / claim for tracking */
-  r.post('/canadian/cdcp/reconsiderations', async (req: Request, res: Response) => {
+  r.post('/canadian/cdcp/reconsiderations', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const input = validateReconsiderationCreate(req.body);
@@ -122,7 +125,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.patch('/canadian/cdcp/reconsiderations/:id', async (req: Request, res: Response) => {
+  r.patch('/canadian/cdcp/reconsiderations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const id = req.params.id;
@@ -201,7 +204,8 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
   r.post(
     '/canadian/fee-guide/import',
-    csvUpload.single('file'),
+    blockAuditorWrites,
+    preserveRlsAcrossMiddleware(csvUpload.single('file')),
     async (req: Request, res: Response) => {
       try {
         const pid = practiceId(req);
@@ -253,7 +257,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   );
 
   /** MOD-04 — log PMS write-back intent (Abeldent UPDATE executed on-premise; this is cloud audit + coordination). */
-  r.post('/canadian/pms/writeback', async (req: Request, res: Response) => {
+  r.post('/canadian/pms/writeback', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const input = validateWriteback(req.body);
@@ -334,7 +338,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
    * Desktop connector ack — mark a write-back row as processed (or error).
    * Body: { id, ok: boolean, error?: string, durationMs?: number }
    */
-  r.post('/canadian/pms/writeback-ack', async (req: Request, res: Response) => {
+  r.post('/canadian/pms/writeback-ack', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const b = (req.body || {}) as Record<string, unknown>;

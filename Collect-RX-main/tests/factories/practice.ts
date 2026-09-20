@@ -47,8 +47,37 @@ export async function createPracticeWithOwnerForTests(
   return { practice, user, email, password: FIXTURE_PRACTICE_PASSWORD };
 }
 
+/**
+ * Add a real, DB-backed user to an existing practice for a given role — for tests
+ * that need a token whose userId actually resolves in the DB. `authenticate()`
+ * cross-checks a request's practiceId claim against `User.practiceId` on every
+ * practice-scoped request, so a token minted for a userId with no matching row
+ * (or a mismatched practiceId) is now correctly rejected with 401 — tests that
+ * used synthetic, never-persisted userIds must create a real row instead.
+ */
+export async function createUserForTests(
+  prisma: PrismaClient,
+  practiceId: string,
+  role: PracticeRole,
+  overrides: { providerId?: string } = {},
+) {
+  const passwordHash = await bcrypt.hash(FIXTURE_PRACTICE_PASSWORD, 4);
+  const email = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@fixture.test`;
+  return prisma.user.create({
+    data: {
+      practiceId,
+      email,
+      passwordHash,
+      role,
+      displayName: 'Fixture User',
+      ...overrides,
+    },
+  });
+}
+
 /** Delete a practice and all its users, in FK-safe order. */
 export async function cleanupPracticeWithUsers(prisma: PrismaClient, practiceId: string) {
+  await prisma.inviteToken.deleteMany({ where: { practiceId } });
   await prisma.user.deleteMany({ where: { practiceId } });
   await prisma.practice.delete({ where: { id: practiceId } }).catch(() => undefined);
 }

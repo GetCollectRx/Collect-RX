@@ -579,9 +579,16 @@ export default function InsuranceClaimDetail() {
                 onClick={async () => {
                   setExportingPack(true)
                   try {
-                    const res = await apiFetchJson<{ success: boolean; checksum: string }>(
+                    const res = await apiFetchJson<{ success: boolean; data: unknown; checksum: string }>(
                       `/api/insurance/claims/${id}/evidence-pack`,
                     )
+                    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `evidence-pack-${claim?.claimNumber ?? id}.json`
+                    a.click()
+                    URL.revokeObjectURL(url)
                     setActionMsg(`Evidence pack exported (checksum ${res.checksum.slice(0, 12)}…)`)
                   } finally {
                     setExportingPack(false)

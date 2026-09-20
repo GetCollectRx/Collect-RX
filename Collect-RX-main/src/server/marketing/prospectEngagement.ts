@@ -76,16 +76,25 @@ export async function handleProspectSendGridEvent(
   }
 
   if (event === 'spamreport' || event === 'unsubscribe') {
-    await prisma.prospect.update({
-      where: { id: prospect.id },
-      data: {
-        optOutAt: new Date(),
-        stage: 'opted_out',
-        sequenceCompleted: true,
-      },
-    });
-    await logProspectActivity(prisma, prospect.id, 'email_opt_out', event);
+    await optOutProspect(prisma, prospect.id, event);
   }
+}
+
+/**
+ * Shared by the SendGrid engagement webhook above and the RFC 8058 one-click
+ * unsubscribe route (publicUnsubscribeRoutes.ts) — both are ways a prospect
+ * opts out, and both must leave the exact same state behind.
+ */
+export async function optOutProspect(prisma: PrismaClient, prospectId: string, source: string): Promise<void> {
+  await prisma.prospect.update({
+    where: { id: prospectId },
+    data: {
+      optOutAt: new Date(),
+      stage: 'opted_out',
+      sequenceCompleted: true,
+    },
+  });
+  await logProspectActivity(prisma, prospectId, 'email_opt_out', source);
 }
 
 export async function findProspectByEmail(

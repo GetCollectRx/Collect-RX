@@ -2,6 +2,7 @@
  * CollectRx is insurance-carrier recovery only. Patient SMS, email, and pay-link
  * outreach are permanently disabled in production code paths.
  */
+import { logger } from './observability/logger.js';
 
 export const PATIENT_OUTBOUND_CONTACT_DISABLED = true;
 
@@ -15,8 +16,6 @@ export function patientContactDisabledMessage(): string {
 
 /** Log once per blocked attempt; returns false so callers treat send as skipped. */
 export function blockPatientOutboundContact(channel: string, context?: string): false {
-  console.warn(
-    `[insurance-only] blocked patient ${channel} outreach${context ? `: ${context}` : ''}`,
-  );
+  logger.warn('[insurance-only] blocked patient outreach', { channel, context });
   return false;
 }

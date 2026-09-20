@@ -16,6 +16,7 @@ import {
 import { shouldSupersedeBlockingGate, shouldSupersedeOpenAction, isPracticeGateHoldDecision } from './gateSupersession.js';
 import { getCarrierHoldStats } from './holdLedger.js';
 import type { RecoveryDecision } from './types.js';
+import { logger } from '../observability/logger.js';
 
 export interface ApplyRecoveryAfterCallParams {
   claim: {
@@ -247,6 +248,35 @@ export async function applyRecoveryAfterCall(
       processed.outcomeDetail,
     );
 
+    // The Escalations page (front-desk queue) reads call_escalations, not
+    // insurance_claims.status or claim_recovery_actions — every path that can
+    // route a claim to ESCALATED must also write this row or the claim is
+    // invisible to the one screen built to work it (see
+    // OUTSTANDING-FIXES-PRODUCT-READY.md P10-04; queueEngine.ts had the same
+    // gap for the pre-dispatch guard codes).
+    if (decision.claimStatus === 'ESCALATED') {
+      const escalationReason = decision.actionDetail ?? decision.actionTitle ?? decision.reason;
+      const existingEscalation = await tx.callEscalation.findFirst({
+        where: { practiceId: claim.practiceId, claimId: claim.id, status: 'open', reason: escalationReason },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await tx.callEscalation.create({
+          data: {
+            practiceId: claim.practiceId,
+            claimId: claim.id,
+            claimRef: claim.claimNumber,
+            carrierId: claim.carrierId as import('@prisma/client').CarrierId,
+            amountClaimedCents: outstandingCents,
+            reason: escalationReason,
+            callAttemptId: attemptId,
+            attemptNumber: attemptCount,
+            status: 'open',
+          },
+        });
+      }
+    }
+
     await tx.claimRecoveryEvent.create({
       data: {
         practiceId: claim.practiceId,
@@ -277,7 +307,7 @@ export async function applyRecoveryAfterCall(
       title: gateToNotify.title,
       detail: gateToNotify.detail,
     }).catch((e) => {
-      console.error('[recoveryLoop] gate alert failed (non-fatal):', e);
+      logger.error('[recoveryLoop] gate alert failed (non-fatal)', { error: e });
     });
   }
 
@@ -342,7 +372,7 @@ export async function emitRecoveryTerminalEmrEvent(
       },
     });
   } catch (e) {
-    console.error('[recoveryLoop] EMR outbox enqueue failed (non-fatal):', e);
+    logger.error('[recoveryLoop] EMR outbox enqueue failed (non-fatal)', { error: e });
   }
 }
 
@@ -355,16 +385,23 @@ export async function processPaymentTraceDue(prisma: PrismaClient): Promise<numb
   const _openStatus: import('@prisma/client').RecoveryActionStatus = 'OPEN';
   void _openStatus; // used only for type-checking
 
-  const lockedIds = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM claim_recovery_actions
-    WHERE action_type = 'PAYMENT_VERIFY_SYNC'
-      AND status = 'OPEN'
-      AND scheduled_recall_at <= ${now}
-      AND cleared_at IS NULL
-    ORDER BY scheduled_recall_at ASC
-    LIMIT 50
-    FOR UPDATE SKIP LOCKED
-  `;
+  // Raw SQL never receives the RLS extension's set_config (it only wraps model
+  // operations), so under FORCE RLS a bare $queryRaw silently returns zero rows.
+  // This worker legitimately crosses tenants: set the bypass flag in the same
+  // transaction as the query — set_config(..., true) is transaction-scoped.
+  const lockedIds = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`;
+    return tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM claim_recovery_actions
+      WHERE action_type = 'PAYMENT_VERIFY_SYNC'
+        AND status = 'OPEN'
+        AND scheduled_recall_at <= ${now}
+        AND cleared_at IS NULL
+      ORDER BY scheduled_recall_at ASC
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    `;
+  });
 
   if (lockedIds.length === 0) return 0;
 

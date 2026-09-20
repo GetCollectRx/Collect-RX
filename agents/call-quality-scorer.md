@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Call Quality Scorer Agent
 
 **Purpose:** Grade every call on a consistent rubric so patterns emerge over time. A single bad call is noise; 20 calls scoring poorly on the same criterion is a product problem. Scores feed into: Voice Agent Trainer (what to fix), Collections Performance (which practices' calls are underperforming), ROI Proof (quality-adjusted recovery rates). Run daily.

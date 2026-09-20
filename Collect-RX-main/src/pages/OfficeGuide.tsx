@@ -115,7 +115,7 @@ export default function OfficeGuide() {
       <Card>
         <CardHeader
           title="Demo walkthrough (CollectRx Demo Practice)"
-          subtitle="Local dev: demo@collectrx-test.local / collectrx-demo-local-only (see .env SEED_PRACTICE_PASSWORD)"
+          subtitle="Local dev only — see .env SEED_PRACTICE_EMAIL / SEED_PRACTICE_PASSWORD"
         />
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Four story claims teach the call-to-resolution loop. Calls prefixed with <code className="text-xs">demo-</code>{' '}

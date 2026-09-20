@@ -14,6 +14,7 @@
  */
 
 import { createClient, ClickHouseClient } from '@clickhouse/client';
+import { logger } from '../observability/logger.js';
 
 let _client: ClickHouseClient | null = null;
 
@@ -60,7 +61,7 @@ export async function safeQuery<T = unknown>(
     });
     return await result.json<T>();
   } catch (err) {
-    console.error('[ClickHouse] query error:', err instanceof Error ? err.message : err);
+    logger.error('[ClickHouse] query error', { error: err });
     return [];
   }
 }
@@ -78,7 +79,7 @@ export async function safeInsert(
       format: 'JSONEachRow',
     });
   } catch (err) {
-    console.error('[ClickHouse] insert error:', err instanceof Error ? err.message : err);
+    logger.error('[ClickHouse] insert error', { error: err });
   }
 }
 

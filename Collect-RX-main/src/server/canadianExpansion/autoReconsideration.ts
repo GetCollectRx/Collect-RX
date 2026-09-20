@@ -5,6 +5,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { deriveInitialStatus } from './reconsideration';
+import { logger } from '../observability/logger.js';
 
 interface VapiEndOfCallMessage {
   type?: string;
@@ -133,7 +134,7 @@ export async function maybeAutoCreateFromVapiBody(
   try {
     return await upsertReconsiderationFromSignal(prisma, signal);
   } catch (e) {
-    console.error('[auto-reconsideration] upsert failed', e);
+    logger.error('[auto-reconsideration] upsert failed', { error: e });
     return null;
   }
 }

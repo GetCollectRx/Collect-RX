@@ -1,6 +1,8 @@
-import type { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import type { CarrierId, PrismaClient } from '@prisma/client';
 import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, getHumanAssistedSquadId, type VapiCallParams } from '../../vapi/client.js';
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
 import { mapActiveCall } from './deskMappers.js';
@@ -12,40 +14,139 @@ import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './pat
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getKnownSubmissionChannel } from '../learning/submissionChannelMemory.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
-import logger from '../../logger.cjs';
+import { dispatchOpsAlert } from '../observability/opsAlerts.js';
+import logger from '../observability/logger.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
 // If a tick takes longer than 60 seconds (slow DB, slow Vapi), the next tick
 // fires but immediately returns rather than running a parallel dispatch loop.
 let isTickRunning = false;
+// Tracked so a graceful shutdown can await the in-flight tick instead of
+// exiting mid-dispatch (which would leave a claim in an ambiguous state).
+let currentTick: Promise<void> | null = null;
+let acceptingNewTicks = true;
+
+// P0.5 — tick-level failure tracking (in-process; matches the existing
+// isTickRunning/vapiCircuitBreaker precedent of single-instance state exposed
+// via getMetrics()). A thrown tick previously just logged and waited for the
+// next fixed 60s fire — under a sustained outage (DB down, etc.) that means
+// hammering the same failure every 60s forever with no backoff and no alert.
+let consecutiveTickFailures = 0;
+let lastSuccessfulTickAt: Date | null = null;
+let lastTickFailureAt: Date | null = null;
+// Epoch ms before which fire() should skip — 0 means no backoff in effect.
+let nextTickEarliestAt = 0;
+
+const TICK_BACKOFF_BASE_MS = 60_000;
+const TICK_BACKOFF_MAX_MS = 15 * 60_000;
+const TICK_FAILURE_ALERT_THRESHOLD = 3;
+
+/** Exposed for /api/health/metrics via queueHealth.ts — single-instance signal. */
+export function getDeskQueueTickHealth(): {
+  lastSuccessfulTickAt: string | null;
+  consecutiveTickFailures: number;
+  lastTickFailureAt: string | null;
+} {
+  return {
+    lastSuccessfulTickAt: lastSuccessfulTickAt?.toISOString() ?? null,
+    consecutiveTickFailures,
+    lastTickFailureAt: lastTickFailureAt?.toISOString() ?? null,
+  };
+}
 
 export function startDeskQueueEngine(prisma: PrismaClient): void {
   if (tickTimer) return;
-  tickTimer = setInterval(() => {
+  acceptingNewTicks = true;
+  const fire = () => {
+    if (!acceptingNewTicks) return;
     if (isTickRunning) {
       logger.warn('[deskQueueEngine] previous tick still running — skipping to prevent dual-dispatch');
       return;
     }
+    if (Date.now() < nextTickEarliestAt) {
+      return;
+    }
     isTickRunning = true;
-    void runDeskQueueTick(prisma)
-      .catch((err) => { console.error('[deskQueueEngine] tick error:', err); })
-      .finally(() => { isTickRunning = false; });
-  }, 60_000);
-  isTickRunning = true;
-  void runDeskQueueTick(prisma)
-    .catch((err) => { console.error('[deskQueueEngine] initial tick error:', err); })
-    .finally(() => { isTickRunning = false; });
+    currentTick = runDeskQueueTick(prisma)
+      .then(() => {
+        if (consecutiveTickFailures > 0) {
+          logger.info('[deskQueueEngine] tick recovered after previous failures', {
+            previousConsecutiveFailures: consecutiveTickFailures,
+          });
+        }
+        consecutiveTickFailures = 0;
+        nextTickEarliestAt = 0;
+        lastSuccessfulTickAt = new Date();
+      })
+      .catch((err) => {
+        consecutiveTickFailures += 1;
+        lastTickFailureAt = new Date();
+        // 2^N (not 2^(N-1)): the fixed 60s tick interval means a backoff equal
+        // to exactly one interval would coincide with the next scheduled fire
+        // and skip nothing — this must exceed one interval to actually defer
+        // the next attempt instead of retrying on the very next tick.
+        const backoffMs = Math.min(
+          TICK_BACKOFF_MAX_MS,
+          TICK_BACKOFF_BASE_MS * 2 ** consecutiveTickFailures,
+        );
+        nextTickEarliestAt = Date.now() + backoffMs;
+        logger.error('[deskQueueEngine] tick error', {
+          error: err,
+          consecutiveTickFailures,
+          nextRetryInMs: backoffMs,
+        });
+        if (consecutiveTickFailures >= TICK_FAILURE_ALERT_THRESHOLD) {
+          void dispatchOpsAlert({
+            alertId: 'desk_queue_tick_failing',
+            detail: `${consecutiveTickFailures} consecutive tick failures. Latest error: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            source: 'desk-queue-engine',
+          }).catch((alertErr) => {
+            logger.error('[deskQueueEngine] failed to dispatch tick-failure alert (non-fatal)', {
+              error: alertErr,
+            });
+          });
+        }
+      })
+      .finally(() => { isTickRunning = false; currentTick = null; });
+  };
+  tickTimer = setInterval(fire, 60_000);
+  fire();
 }
 
 export function stopDeskQueueEngine(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
+  }
+}
+
+/**
+ * Graceful-shutdown hook: stop scheduling new ticks and wait for any
+ * in-flight tick to finish (up to timeoutMs) before the process exits, so a
+ * claim mid-dispatch isn't abandoned by a hard exit. Does not throw on
+ * timeout — shutdown must proceed either way, just logs so it's visible.
+ */
+export async function drainDeskQueueEngine(timeoutMs: number): Promise<void> {
+  acceptingNewTicks = false;
+  stopDeskQueueEngine();
+  const inFlight = currentTick;
+  if (!inFlight) return;
+
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => { timedOut = true; resolve(); }, timeoutMs);
+  });
+  await Promise.race([inFlight, timeout]);
+  if (timedOut) {
+    logger.error('[deskQueueEngine] shutdown: in-flight tick did not finish — proceeding anyway', { timeoutMs });
   }
 }
 
@@ -81,6 +182,15 @@ const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is auto
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
 const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
+// Ambiguous outcome (request timed out / network failure — Vapi may or may not
+// have created the call) gets a longer cooldown than a confirmed rejection:
+// retrying too soon risks dialing the carrier twice for the same attempt.
+const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
+
+// Fleet-wide carrier concurrency limiting — when a carrier's active call
+// count hits its per-carrier ceiling, defer new attempts for the carrier.
+const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
+const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
 
 // A call attempt whose end-of-call webhook never arrived would hold the M-7
 // single-call lock forever, freezing the practice's entire queue. Anything
@@ -96,6 +206,112 @@ function vapiSlotBudget(): number {
   const reserve = parseInt(process.env.VAPI_CONCURRENCY_RESERVE ?? '2', 10);
   if (!Number.isFinite(limit) || !Number.isFinite(reserve)) return 8;
   return Math.max(0, limit - Math.max(0, reserve));
+}
+
+/** Add random jitter to a base defer window to spread retries across time. */
+function withJitter(baseMs: number, jitterMs: number): number {
+  const random = Math.random() * jitterMs;
+  return baseMs + random;
+}
+
+/** Defer all pending candidates for a practice when fleet-wide slot budget exhausted. */
+async function deferForFleetCapacity(
+  prisma: PrismaClient,
+  practiceIds: string[],
+): Promise<void> {
+  for (const practiceId of practiceIds) {
+    await prisma.callQueue.updateMany({
+      where: { practiceId, status: 'PENDING' },
+      data: {
+        scheduledFor: new Date(Date.now() + DEFER_DISPATCH_FAILURE_MS),
+        dispatchDeferralCode: 'VAPI_CAPACITY_EXHAUSTED',
+        dispatchDeferralNextAction: 'Waiting for available Vapi slots; retries automatically.',
+        dispatchDeferredAt: new Date(),
+      },
+    });
+  }
+}
+
+// This process's identity for the QueueEngineLease row — diagnostic only,
+// the claim itself is decided by the atomic UPDATE below, not by comparing IDs.
+const ENGINE_INSTANCE_ID = `${process.pid}-${randomUUID()}`;
+const LEASE_ID = 'global';
+// Longer than the 60s tick interval so a live tick's lease survives to cover
+// the next scheduled fire (no gap where a second replica could sneak in),
+// but a crashed process's stale lease still clears within two ticks.
+const LEASE_TTL_MS = 90_000;
+
+/**
+ * Atomically claim the fleet-wide dispatch lease. Only one replica's tick
+ * body may run at a time — the in-process isTickRunning guard alone only
+ * protects a single Node process, not a horizontally-scaled deployment.
+ * Uses the same claim-row idiom as ProcessedVapiWebhook rather than a native
+ * Postgres advisory lock: session-level advisory locks are tied to the
+ * physical connection that acquired them, and a pooled connection can route
+ * the matching unlock call through a different one, silently failing to
+ * release — a DB row with a WHERE-guarded UPSERT has no such gotcha.
+ *
+ * The WHERE guard must also let this same instance renew its own still-live
+ * lease — LEASE_TTL_MS (90s) is deliberately longer than the 60s tick
+ * interval so a slow tick's lease survives to the next scheduled fire, but
+ * without the locked_by clause below, that same margin means this process's
+ * OWN next tick would see its own lease as still "held" and skip forever:
+ * on a single-machine deployment (the only thing running today) every tick
+ * after the first would silently never dispatch again. Caught by
+ * tests/dsoLoadCapacity.test.ts running two real consecutive ticks — every
+ * other lease test either reset the row between cases or mocked $executeRaw
+ * outright, so this never showed up until something ran the real sequence.
+ */
+export async function claimTickLease(
+  prisma: PrismaClient,
+  instanceId: string = ENGINE_INSTANCE_ID,
+): Promise<boolean> {
+  const affected = await prisma.$executeRaw`
+    INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
+    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    ON CONFLICT (id) DO UPDATE
+    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+        locked_by = ${instanceId},
+        updated_at = now()
+    WHERE queue_engine_lease.locked_until IS NULL
+       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_by = ${instanceId}
+  `;
+  return affected > 0;
+}
+
+interface PracticeServeOrder {
+  id: string;
+}
+
+/**
+ * Practices ordered so the one that's gone longest without a turn (or never
+ * had one) goes first. A practice only keeps its place in line if the loop
+ * never reached it this tick (slot budget exhausted first) — see the
+ * lastServedAt touch inside the loop below.
+ */
+export async function orderPracticesByFairness(prisma: PrismaClient): Promise<PracticeServeOrder[]> {
+  // This ordering is inherently cross-practice by design — fairness across the whole
+  // fleet requires seeing every practice's last-served time, not just one tenant's.
+  // `$queryRaw` is a raw top-level Prisma Client method, not a model operation, so it
+  // is NOT intercepted by the collectrx-rls extension (src/lib/prismaRls.ts) the way
+  // `.create()`/`.findMany()` etc. are — calling it directly leaves `app.rls_bypass`
+  // unset on whatever pooled connection it runs on. `practice_desk_state` has FORCE
+  // ROW LEVEL SECURITY, so an unset bypass silently filters every row from the LEFT
+  // JOIN, making every practice appear "never served" and collapsing this into
+  // meaningless UUID tie-break order — found via adversarial ordering tests
+  // (tests/queueEngineFairnessAndLease.test.ts) reproducing even in full isolation.
+  // Set the bypass explicitly, scoped to this one query's own transaction.
+  const [, order] = await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('app.rls_bypass', 'true', true)`,
+    prisma.$queryRaw<PracticeServeOrder[]>`
+      SELECT p.id
+      FROM "Practice" p
+      LEFT JOIN practice_desk_state pds ON pds.practice_id = p.id
+      ORDER BY pds.last_served_at ASC NULLS FIRST, p.id ASC
+    `,
+  ]);
+  return order;
 }
 
 async function deferQueueEntry(
@@ -127,6 +343,7 @@ async function settleBlockedCandidate(
     id: string;
     practiceId: string;
     claimId: string;
+    attempts: number;
     claim: {
       claimNumber: string;
       carrierId: keyof typeof CARRIER_CONFIGS;
@@ -134,10 +351,11 @@ async function settleBlockedCandidate(
     };
   },
   guardCode: string | undefined,
+  guardReason: string | undefined,
 ): Promise<BlockedDisposition> {
   switch (guardCode) {
     case 'ESCALATE_OVER_90':
-    case 'MAX_ATTEMPTS':
+    case 'MAX_ATTEMPTS': {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
           where: { id: entry.claimId },
@@ -148,29 +366,36 @@ async function settleBlockedCandidate(
           data: { status: 'ESCALATED' },
         }),
       ]);
-      if (guardCode === 'MAX_ATTEMPTS') {
-        const existingEscalation = await prisma.callEscalation.findFirst({
-          where: {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            status: 'open',
-            reason: 'Maximum automated call attempts reached',
-          },
-          select: { id: true },
+      // The Escalations page (front-desk queue) reads call_escalations, not
+      // insurance_claims.status — every path that sets ESCALATED here must also
+      // write this row or the claim goes invisible to the one screen built to
+      // work it (see OUTSTANDING-FIXES-PRODUCT-READY.md P10-04).
+      const reason =
+        guardCode === 'MAX_ATTEMPTS'
+          ? 'Maximum automated call attempts reached'
+          : guardReason ?? 'Claim aged past 90 days — escalate to human';
+      const existingEscalation = await prisma.callEscalation.findFirst({
+        where: {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          status: 'open',
+          reason,
+        },
+        select: { id: true },
+      });
+      if (!existingEscalation) {
+        await createEscalation(prisma, {
+          practiceId: entry.practiceId,
+          claimId: entry.claimId,
+          claimRef: entry.claim.claimNumber,
+          carrierId: entry.claim.carrierId,
+          amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
+          reason,
+          attemptNumber: guardCode === 'MAX_ATTEMPTS' ? 3 : entry.attempts,
         });
-        if (!existingEscalation) {
-          await createEscalation(prisma, {
-            practiceId: entry.practiceId,
-            claimId: entry.claimId,
-            claimRef: entry.claim.claimNumber,
-            carrierId: entry.claim.carrierId,
-            amountClaimedCents: Math.round(Number(entry.claim.outstandingAmount) * 100),
-            reason: 'Maximum automated call attempts reached',
-            attemptNumber: 3,
-          });
-        }
       }
       return 'skip';
+    }
     case 'APPROVED_PENDING_PAYMENT':
       // Payment follow-up happens in practice AR — this entry is done as a carrier call.
       await prisma.callQueue.update({
@@ -180,13 +405,19 @@ async function settleBlockedCandidate(
       return 'skip';
     case 'CARRIER_BLOCK':
       // Mirrors carrierBlockService for entries queued after the block landed.
+      // guardReason carries the specific cause (this practice's own block, or
+      // a sibling organization location's block) — surface it verbatim rather
+      // than a generic message, since a practice that never tripped its own
+      // block would otherwise see an unexplained pause.
       await prisma.$transaction([
         prisma.callQueue.update({
           where: { id: entry.id },
           data: {
             status: 'BLOCKED',
             dispatchDeferralCode: 'CARRIER_BLOCK',
-            dispatchDeferralNextAction: 'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
+            dispatchDeferralNextAction:
+              guardReason ??
+              'Keep carrier calls suspended until an authorized staff member completes the carrier-block review.',
             dispatchDeferredAt: new Date(),
           },
         }),
@@ -210,6 +441,18 @@ async function settleBlockedCandidate(
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
       );
       return 'skip';
+    case 'CARRIER_CONCURRENCY_LIMIT':
+      // Fleet-wide, not practice-wide — a different candidate in this same
+      // batch may target a carrier with room, so skip this one claim rather
+      // than stopping the practice's whole tick.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        withJitter(DEFER_CARRIER_CONCURRENCY_BASE_MS, DEFER_CARRIER_CONCURRENCY_JITTER_MS),
+        'CARRIER_CONCURRENCY_LIMIT',
+        'Waiting for an open fleet-wide calling slot to this carrier; retries automatically.',
+      );
+      return 'skip';
     default:
       // RECOVERY_GATE, CARRIER_NOT_AUTHORIZED, and any un-coded rejection:
       // state must change (staff action, route change) before retry makes sense.
@@ -227,18 +470,59 @@ async function settleBlockedCandidate(
 export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
   if (!isWithinCallWindow()) return;
 
-  const [practices, activeCallsGlobal] = await runWithRlsBypass(async () =>
+  // Fleet-wide lease: if another replica already holds it this cycle, skip —
+  // it, not this process, is running the tick body right now.
+  if (!(await runWithRlsBypass(() => claimTickLease(prisma)))) {
+    logger.warn('[deskQueueEngine] another replica holds the dispatch lease — skipping this tick', {
+      instanceId: ENGINE_INSTANCE_ID,
+    });
+    return;
+  }
+
+  const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
-      prisma.practice.findMany({ select: { id: true } }),
+      orderPracticesByFairness(prisma),
       prisma.callAttempt.count({ where: { completedAt: null } }),
+      // Fleet-wide per-carrier snapshot for the concurrency guard below. Must
+      // be gathered here, outside any single practice's RLS scope — a query
+      // run inside runWithPracticeRls would silently narrow to that one
+      // practice's calls under enforced RLS, defeating a fleet-wide ceiling.
+      prisma.callAttempt.findMany({
+        where: { completedAt: null },
+        select: { claim: { select: { carrierId: true } } },
+      }),
     ]),
   );
+
+  // Mutated in-memory as calls dispatch through this tick so two practices
+  // targeting the same carrier in the same pass don't both slip under the
+  // ceiling before either write lands.
+  const carrierActiveCounts = new Map<CarrierId, number>();
+  for (const attempt of activeAttemptCarriers) {
+    const carrierId = attempt.claim?.carrierId;
+    if (!carrierId) continue;
+    carrierActiveCounts.set(carrierId, (carrierActiveCounts.get(carrierId) ?? 0) + 1);
+  }
 
   let slotsRemaining = vapiSlotBudget() - activeCallsGlobal;
   if (slotsRemaining <= 0) {
     logger.warn('[deskQueueEngine] Vapi concurrency budget exhausted — skipping dispatch this tick', {
       activeCallsGlobal,
       slotBudget: vapiSlotBudget(),
+    });
+    await runWithRlsBypass(() => deferForFleetCapacity(prisma, practices.map((p) => p.id)));
+    return;
+  }
+
+  // Additive to the guards above — does not replace the isTickRunning latch,
+  // the lease, or the slot budget. Skipping the whole tick here (rather than
+  // letting every candidate claim fail into its own per-claim deferral) is
+  // deliberate: if Vapi is down, there is no point spending a claim's
+  // dispatch attempt (and its 15-minute defer window) finding that out
+  // again for every practice in the loop.
+  if (vapiCircuitBreaker.getState() === 'OPEN') {
+    logger.warn('[deskQueueEngine] Vapi circuit breaker OPEN — skipping dispatch this tick', {
+      metrics: vapiCircuitBreaker.getMetrics(),
     });
     return;
   }
@@ -249,6 +533,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // loop — isolate each practice's tick.
     try {
     await runWithPracticeRls(practiceId, async () => {
+    // Reaching this point spends this practice's fairness turn for the tick —
+    // it sorts to the back of orderPracticesByFairness next time, same as
+    // every other practice the loop got to (paused or not). A practice the
+    // loop never reaches (slot budget ran out first) keeps its older
+    // timestamp and moves to the front instead.
+    await prisma.practiceDeskState.upsert({
+      where: { practiceId },
+      create: { practiceId, lastServedAt: new Date() },
+      update: { lastServedAt: new Date() },
+    });
     if (await isPracticeQueuePaused(prisma, practiceId)) return;
 
     // ── STALE ATTEMPT WATCHDOG ─────────────────────────────────────────────────
@@ -277,7 +571,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         initiatedAt: { lt: ceilingBefore },
         claim: { practiceId, deletedAt: null },
       },
-      select: { id: true, vapiCallId: true, initiatedAt: true },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
     for (const attempt of overCeiling) {
       if (!attempt.vapiCallId) continue;
@@ -290,10 +584,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       try {
         await endVapiCall(attempt.vapiCallId);
       } catch (endErr) {
-        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+        // endVapiCall failing (e.g. Vapi already has no record of this call)
+        // must not leave the attempt open — the same tick would retry it every
+        // 60s indefinitely, repeatedly failing and tripping the Vapi circuit
+        // breaker. Close it now with the same compensation the stale-attempt
+        // watchdog below uses, instead of waiting up to STALE_ATTEMPT_MS.
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call — closing attempt directly', {
           vapiCallId: attempt.vapiCallId,
           error: endErr,
         });
+        await prisma.$transaction([
+          prisma.callAttempt.update({
+            where: { id: attempt.id },
+            data: { completedAt: new Date(), liveState: 'ceiling_terminated_no_webhook' },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId: attempt.claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+          }),
+          prisma.insuranceClaim.updateMany({
+            where: { id: attempt.claimId, status: 'CALLING' },
+            data: { status: 'IN_QUEUE' },
+          }),
+        ]);
       }
     }
 
@@ -356,7 +669,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const planGate = await canMakeCall(practiceId);
     if (!planGate.allowed) {
-      console.warn('[deskQueueEngine] plan gate blocked dispatch', {
+      logger.warn('[deskQueueEngine] plan gate blocked dispatch', {
         practiceId,
         reason: planGate.reason,
       });
@@ -364,15 +677,28 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     }
 
     // COGS breaker throttle: spend the remaining budget on the claims worth
-    // the most, not on whatever is next in line.
+    // the most, not on whatever is next in line. The claims filtered out here
+    // still need a recorded reason — otherwise they sit PENDING with no
+    // dispatchDeferralCode indefinitely (as long as the practice stays
+    // throttled), indistinguishable from the engine never having reached them.
     const dispatchable = planGate.essentialOnly
       ? candidates.filter((c) => c.priority === 'HIGH' || c.priority === 'URGENT')
       : candidates;
     if (planGate.essentialOnly && dispatchable.length < candidates.length) {
+      const throttledOut = candidates.filter((c) => c.priority !== 'HIGH' && c.priority !== 'URGENT');
       logger.warn('[deskQueueEngine] COGS throttle active — dispatching high-priority claims only', {
         practiceId,
-        skipped: candidates.length - dispatchable.length,
+        skipped: throttledOut.length,
       });
+      for (const entry of throttledOut) {
+        await deferQueueEntry(
+          prisma,
+          entry.id,
+          DEFER_STAFF_ACTION_MS,
+          'COGS_THROTTLE_LOW_PRIORITY',
+          'Delivery cost is elevated this billing period — only HIGH/URGENT claims dispatch until it eases or the period resets.',
+        );
+      }
     }
 
     for (const next of dispatchable) {
@@ -385,6 +711,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       attemptsSoFar,
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
+      carrierActiveCounts,
     });
 
     if (!guard.allowed) {
@@ -393,7 +720,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         code: guard.code,
         reason: guard.reason,
       });
-      const disposition = await settleBlockedCandidate(prisma, next, guard.code);
+      const disposition = await settleBlockedCandidate(prisma, next, guard.code, guard.reason);
       if (disposition === 'stop') return;
       continue;
     }
@@ -562,6 +889,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       ...publishedNavigation,
       ...(learnedNotes ? [learnedNotes] : []),
     ].join(' | ');
+    // What a rep has actually stated before about where resubmissions/docs go
+    // for this carrier — lets Claims_Agent confirm a known channel instead of
+    // asking cold on every call. Empty string when nothing is on file yet.
+    const knownResubmissionChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'CLAIM_RESUBMISSION',
+    );
+    const knownDocumentationChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'DOCUMENTATION',
+    );
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
@@ -598,6 +938,11 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       // IVR / holds / listens. Never dials the fully-autonomous squad for
       // a human-assisted practice.
       squadId:                practiceSettings.humanAssistedMode ? getHumanAssistedSquadId() : undefined,
+      knownResubmissionChannel,
+      knownDocumentationChannel,
+      // Stable for this attempt — a retry of the same attempt (after an
+      // ambiguous timeout) reuses it; the next real attempt gets a new one.
+      idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
@@ -609,21 +954,30 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     try {
       vapiResult = await initiateCall(callParams);
     } catch (dispatchErr) {
-      logger.error('[deskQueueEngine] Vapi dispatch failed — deferring claim', {
-        claimId: next.claimId,
-        carrierId: next.claim.carrierId,
-        error: dispatchErr,
-      });
+      const ambiguous = dispatchErr instanceof VapiAmbiguousOutcomeError;
+      logger.error(
+        ambiguous
+          ? '[deskQueueEngine] Vapi dispatch outcome unknown (timeout/network) — deferring with a longer cooldown'
+          : '[deskQueueEngine] Vapi dispatch failed — deferring claim',
+        {
+          claimId: next.claimId,
+          carrierId: next.claim.carrierId,
+          error: dispatchErr,
+        },
+      );
       await deferQueueEntry(
         prisma,
         next.id,
-        DEFER_DISPATCH_FAILURE_MS,
-        'TRANSIENT_DISPATCH_FAILURE',
-        'The system will retry during the next scheduled dispatch window.',
+        ambiguous ? DEFER_AMBIGUOUS_DISPATCH_MS : DEFER_DISPATCH_FAILURE_MS,
+        ambiguous ? 'VAPI_DISPATCH_OUTCOME_UNKNOWN' : 'TRANSIENT_DISPATCH_FAILURE',
+        ambiguous
+          ? 'Vapi did not confirm whether the call was created before timing out. Verify in the Vapi dashboard before the next automatic retry.'
+          : 'The system will retry during the next scheduled dispatch window.',
       );
       continue;
     }
     slotsRemaining -= 1;
+    carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
       const attempt = await prisma.callAttempt.create({

@@ -5,6 +5,7 @@ import { sendHotLeadAlert } from './hotLeadAlerts.js';
 import { sendProspectEmail } from './prospectEmail.js';
 import { buildPreDemoEmail } from './emailTemplates.js';
 import { syncProspectStageToHubspot } from './hubspotSync.js';
+import { logger } from '../observability/logger.js';
 
 export interface DemoBookingInput {
   prospectId?: string;
@@ -53,7 +54,7 @@ export async function recordDemoBooking(
   );
 
   void syncProspectStageToHubspot(prisma, prospect.id, 'demo_booked').catch((err) => {
-    console.warn('[hubspot] demo_booked sync failed', (err as Error).message);
+    logger.warn('[hubspot] demo_booked sync failed', { error: err });
   });
 
   return { prospectId: prospect.id };

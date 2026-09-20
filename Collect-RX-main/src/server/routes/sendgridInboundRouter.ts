@@ -6,6 +6,7 @@ import {
   findProspectByEmail,
 } from '../marketing/prospectEngagement.js';
 import { processInboundReply } from '../marketing/replyIntelligence.js';
+import { logger } from '../observability/logger.js';
 
 const upload = multer();
 
@@ -42,23 +43,32 @@ export function createSendgridInboundRouter(prisma: PrismaClient): Router {
     }
 
     const prospectId = extractProspectIdFromHeaders(headerMap);
-    let prospect = prospectId
-      ? await prisma.prospect.findUnique({ where: { id: prospectId } })
-      : null;
-
-    if (!prospect && fromEmail) {
-      prospect = await findProspectByEmail(prisma, fromEmail);
+    let prospect;
+    try {
+      prospect = prospectId
+        ? await prisma.prospect.findUnique({ where: { id: prospectId } })
+        : null;
+      if (!prospect && fromEmail) {
+        prospect = await findProspectByEmail(prisma, fromEmail);
+      }
+    } catch (err) {
+      // A malformed prospectId (e.g. not a valid UUID) throws a Prisma
+      // validation error synchronously inside this await — uncaught, that's
+      // an unhandled rejection that crashes the whole process under this
+      // app's `process.on('unhandledRejection')` handler, not just this request.
+      logger.error('[sendgrid-inbound] prospect lookup failed', { error: err });
+      return res.status(200).send('ok');
     }
 
     if (!prospect) {
-      console.warn('[sendgrid-inbound] no matching prospect for', fromEmail);
+      logger.warn('[sendgrid-inbound] no matching prospect for', { detail: fromEmail });
       return res.status(200).send('ok');
     }
 
     try {
       await processInboundReply(prisma, prospect, text, fromEmail);
     } catch (err) {
-      console.error('[sendgrid-inbound]', (err as Error).message);
+      logger.error('[sendgrid-inbound]', { error: err });
     }
 
     return res.status(200).send('ok');

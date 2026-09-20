@@ -9,12 +9,14 @@ import { pullLearningBacklog, getNotionConfig } from './notionClient.js';
 import { researchItem } from './research.js';
 import { rankCandidates } from './bucketRanker.js';
 import { implementRankedItem } from './implementer.js';
-import { sendLearningCycleSms } from './notify.js';
+import { sendLearningCycleSms, sendLearningCycleCompleteNotification } from './notify.js';
+import { runEmailScheduler } from './emailScheduler.js';
 import type { CycleSummary } from './types.js';
+import { logger } from '../observability/logger.js';
 
 export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSummary> {
   if (!isLearningLoopEnabled()) {
-    console.log('[learning] LEARNING_LOOP_ENABLED is off — skipping cycle');
+    logger.info('[learning] LEARNING_LOOP_ENABLED is off — skipping cycle', {});
     return {
       pulled: 0,
       researched: 0,
@@ -137,6 +139,16 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
 
     const smsSent = await sendLearningCycleSms(summary);
 
+    // Run email scheduler (prospect outreach)
+    await runEmailScheduler(prisma).catch((err) => {
+      logger.error('[learning] email scheduler error', { error: err });
+    });
+
+    // Send comprehensive notifications (email, Slack)
+    void sendLearningCycleCompleteNotification(summary).catch((err) =>
+      logger.error('[learning] notification error', { error: err }),
+    );
+
     await prisma.learningCycleRun.update({
       where: { id: run.id },
       data: {
@@ -152,7 +164,7 @@ export async function runLearningCycle(prisma: PrismaClient): Promise<CycleSumma
       },
     });
 
-    console.log('[learning] cycle complete', summary);
+    logger.info('[learning] cycle complete', { summary });
     return summary;
   } catch (err) {
     const message = (err as Error).message;

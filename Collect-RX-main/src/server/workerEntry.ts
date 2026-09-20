@@ -3,8 +3,12 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
+// P6-02: optional Sentry — no-ops when SENTRY_DSN is unset. Same as index.ts;
+// this is a separate Node process so it needs its own init.
+initSentry();
 
 import type { PrismaClient } from '@prisma/client';
 import { Worker, type ConnectionOptions } from 'bullmq';
@@ -12,25 +16,41 @@ import express from 'express';
 import IORedis from 'ioredis';
 import { prisma } from '../lib/prisma.js';
 import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
+import { runWithCorrelationId } from './observability/correlationContext.js';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
+import { runProspectHarvesting } from './jobs/prospectHarvestingJob.js';
 import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisitJobs.js';
-import { dispatchPreVisitCall } from './preVisit/preVisitDispatch.js';
-import { sweepUpcomingAppointments } from './preVisit/appointmentIngest.js';
+import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
+import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import { runTriageCredentialHealthJob } from './triage/triageCredentialHealthJob.js';
+import { runDataRetentionAcrossPractices } from './jobs/dataRetentionJob.js';
+import { dispatchOpsAlert } from './observability/opsAlerts.js';
+import {
+  shouldAlertOnJobExhaustion,
+  buildJobFailureAlertDetail,
+  resolveJobCorrelationId,
+} from './jobs/jobFailureAlert.js';
+import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { runOntarioArAgingSweep } from './jobs/ontarioArAgingSweep.js';
+import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
+import { runAgent } from './jobs/agentRunnerService.js';
+import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
 
 if (!process.env.REDIS_URL) {
-  console.error(
-    'worker: REDIS_URL is required.\n' +
-      '  Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env:\n' +
-      '    REDIS_URL=redis://127.0.0.1:6379\n' +
-      '  Without Redis: rules + reminders run in-process inside `npm run dev` (no worker process).\n' +
-      '  One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
+  logger.error(
+    'worker: REDIS_URL is required',
+    {
+      hint:
+        'Local Redis: from repo root run `docker compose up -d redis`, then in Collect-RX-main/.env: ' +
+        'REDIS_URL=redis://127.0.0.1:6379. Without Redis: rules + reminders run in-process inside `npm run dev` ' +
+        '(no worker process). One-off learning cycle (no worker): LEARNING_LOOP_ENABLED=1 npm run learning:cycle',
+    },
   );
   process.exit(1);
 }
@@ -66,14 +86,15 @@ healthApp.get('/api/health/ready', async (_req, res) => {
   }
 });
 const healthServer = healthApp.listen(healthPort, () => {
-  console.log(`[worker] health endpoint listening on port ${healthPort}`);
+  logger.info('[worker] health endpoint listening', { healthPort });
 });
 healthServer.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(
-      `[worker] port ${healthPort} already in use (API may be on ${parseInt(process.env.PORT ?? '3000', 10)}). ` +
-        'Stop the other process or set WORKER_HEALTH_PORT.',
-    );
+    logger.error('[worker] health port already in use', {
+      healthPort,
+      apiPort: parseInt(process.env.PORT ?? '3000', 10),
+      hint: 'Stop the other process or set WORKER_HEALTH_PORT.',
+    });
     process.exit(1);
   }
   throw err;
@@ -92,13 +113,13 @@ async function handlePreVisitEligibility(db: PrismaClient, payload: PreVisitJobP
       Math.max(0, result.retryAt.getTime() - Date.now()),
       `window:${result.retryAt.toISOString()}`,
     );
-    console.warn('[worker] PRE_VISIT_ELIGIBILITY deferred:', result.reason);
+    logger.warn('[worker] PRE_VISIT_ELIGIBILITY deferred', { reason: result.reason });
     return;
   }
   if ('skipped' in result) {
-    console.log('[worker] PRE_VISIT_ELIGIBILITY skipped:', result.reason);
+    logger.info('[worker] PRE_VISIT_ELIGIBILITY skipped', { reason: result.reason });
   } else {
-    console.log('[worker] PRE_VISIT_ELIGIBILITY dispatched:', result.vapiCallId);
+    logger.info('[worker] PRE_VISIT_ELIGIBILITY dispatched', { vapiCallId: result.vapiCallId });
   }
 }
 
@@ -113,58 +134,188 @@ async function handlePreVisitCdcpPredet(db: PrismaClient, payload: PreVisitJobPa
       Math.max(0, result.retryAt.getTime() - Date.now()),
       `window:${result.retryAt.toISOString()}`,
     );
-    console.warn('[worker] PRE_VISIT_CDCP_PREDET deferred:', result.reason);
+    logger.warn('[worker] PRE_VISIT_CDCP_PREDET deferred', { reason: result.reason });
     return;
   }
   if ('skipped' in result) {
-    console.log('[worker] PRE_VISIT_CDCP_PREDET skipped:', result.reason);
+    logger.info('[worker] PRE_VISIT_CDCP_PREDET skipped', { reason: result.reason });
   } else {
-    console.log('[worker] PRE_VISIT_CDCP_PREDET dispatched:', result.vapiCallId);
+    logger.info('[worker] PRE_VISIT_CDCP_PREDET dispatched', { vapiCallId: result.vapiCallId });
+  }
+}
+
+async function handlePreVisitTelusTx23(db: PrismaClient, payload: PreVisitJobPayload): Promise<void> {
+  const result = await runWithPracticeRls(payload.practiceId, async () =>
+    dispatchTelusTx23Check(db, payload),
+  );
+  if (result.resolved) {
+    logger.info('[worker] PRE_VISIT_TELUS_TX23 resolved', {});
+  } else {
+    logger.info('[worker] PRE_VISIT_TELUS_TX23 unresolved', { reason: result.reason });
   }
 }
 
 const worker = new Worker(
   AR_QUEUE_NAME,
   async (job) => {
-    await runWithRlsBypass(async () => {
+    const correlationId = resolveJobCorrelationId(job.data as { correlationId?: string } | undefined);
+
+    await runWithCorrelationId(correlationId, () =>
+    runWithRlsBypass(async () => {
       if (job.name === 'RULES_TICK') {
         await runRulesEngineTick(prisma);
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
-        console.log(`[worker] TRIAGE_CREDENTIAL_HEALTH checked ${checked} credential(s)`);
+        logger.info('[worker] TRIAGE_CREDENTIAL_HEALTH checked credentials', { checked });
+      } else if (job.name === 'DATA_RETENTION') {
+        const results = await runDataRetentionAcrossPractices(prisma);
+        const ran = results.filter((r) => r.ran);
+        const errored = results.filter((r) => r.errors.length > 0);
+        if (ran.length > 0 || errored.length > 0) {
+          logger.info('[worker] DATA_RETENTION completed', {
+            practicesRan: ran.length,
+            claimsPurged: ran.reduce((s, r) => s + r.claimsPurged, 0),
+            auditLogRowsPurged: ran.reduce((s, r) => s + r.auditLogRowsPurged, 0),
+            phiAccessEventRowsPurged: ran.reduce((s, r) => s + r.phiAccessEventRowsPurged, 0),
+            practicesErrored: errored.length,
+          });
+          for (const r of errored) {
+            logger.error('[worker] DATA_RETENTION errors for practice', {
+              practiceId: r.practiceId,
+              errors: r.errors,
+            });
+          }
+        }
       } else if (job.name === 'REMINDER_CYCLE') {
-        console.log('[worker] REMINDER_CYCLE skipped — patient outreach disabled');
+        logger.info('[worker] REMINDER_CYCLE skipped — patient outreach disabled', {});
       } else if (job.name === 'LEARNING_CYCLE') {
         await runLearningCycle(prisma);
       } else if (job.name === 'MARKETING_SEQUENCE_TICK') {
         await runMarketingSequenceTick(prisma);
       } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
         await runMarketingLearningCycle(prisma);
+      } else if (job.name === 'PROSPECT_HARVEST') {
+        const results = await runProspectHarvesting(prisma);
+        if (results.length > 0) {
+          const totalImported = results.reduce((sum, r) => sum + r.imported, 0);
+          logger.info('[worker] PROSPECT_HARVEST completed', { campaignsProcessed: results.length, totalImported });
+        }
       } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
         await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
         await handlePreVisitCdcpPredet(prisma, job.data as PreVisitJobPayload);
+      } else if (job.name === 'PRE_VISIT_TELUS_TX23') {
+        await handlePreVisitTelusTx23(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'APPOINTMENT_VERIFICATION_SWEEP') {
-        const n = await sweepUpcomingAppointments(prisma);
-        if (n > 0) console.log(`[worker] APPOINTMENT_VERIFICATION_SWEEP verified ${n} appointment(s)`);
+        const n = await sweepUpcomingAppointmentsAcrossPractices(prisma);
+        if (n > 0) logger.info('[worker] APPOINTMENT_VERIFICATION_SWEEP verified appointments', { verified: n });
+      } else if (job.name === 'DLQ_RETENTION_SWEEP') {
+        const pruned = await pruneOldDeadLetters(prisma);
+        if (pruned > 0) logger.info('[worker] DLQ_RETENTION_SWEEP pruned dead letters', { pruned });
+      } else if (job.name === 'ONTARIO_AR_AGING_SWEEP') {
+        await runOntarioArAgingSweep(prisma);
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }
-    });
+    }));
   },
   { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
 );
 
 worker.on('failed', (job, err) => {
-  console.error('[worker] job failed', { id: job?.id, name: job?.name, err: (err as Error).message });
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  logger.error('[worker] job failed', {
+    id: job?.id,
+    name: job?.name,
+    attemptsMade,
+    attemptsAllowed,
+    error: err,
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'worker_job_failed',
+      detail: buildJobFailureAlertDetail(job.name, job.id, attemptsMade, attemptsAllowed, (err as Error).message),
+      source: 'worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch worker_job_failed alert', { error: alertErr });
+    });
+
+    void insertDeadLetter(prisma, {
+      queueName: AR_QUEUE_NAME,
+      jobName: job.name,
+      bullJobId: job.id,
+      payload: job.data,
+      stacktrace: job.stacktrace ?? undefined,
+      finalErrorMessage: (err as Error).message,
+      attemptsMade,
+    }).catch((dlqErr) => {
+      logger.error('[worker] failed to write dead letter record', { error: dlqErr });
+    });
+  }
 });
 
-console.log(`[worker] listening on queue "${AR_QUEUE_NAME}"`);
+logger.info('[worker] listening on queue', { queue: AR_QUEUE_NAME });
+
+// Agent runner worker (separate queue for autonomous agents)
+const agentWorker = new Worker(
+  'agent-runner',
+  async (job) => {
+    const correlationId = job.id ?? 'agent-run-' + Date.now();
+
+    await runWithCorrelationId(correlationId, () =>
+      runWithRlsBypass(async () => {
+        if (job.name === 'AGENT_RUN') {
+          await runAgent(job);
+        } else {
+          throw new Error(`Unknown agent job name: ${job.name}`);
+        }
+      }),
+    );
+  },
+  { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
+);
+
+agentWorker.on('failed', (job, err) => {
+  const attemptsMade = job?.attemptsMade ?? 0;
+  const attemptsAllowed = job?.opts?.attempts ?? 1;
+  const agentName = job?.data?.agentName ?? 'unknown';
+
+  logger.error('[worker] agent job failed', {
+    id: job?.id,
+    agentName,
+    attemptsMade,
+    attemptsAllowed,
+    error: String(err),
+  });
+
+  if (job && shouldAlertOnJobExhaustion(attemptsMade, attemptsAllowed)) {
+    void dispatchOpsAlert({
+      alertId: 'agent_job_failed',
+      detail: `Agent ${agentName} failed after ${attemptsMade} attempts: ${(err as Error).message}`,
+      source: 'agent-worker',
+    }).catch((alertErr) => {
+      logger.error('[worker] failed to dispatch agent_job_failed alert', { error: alertErr });
+    });
+  }
+});
+
+agentWorker.on('completed', (job) => {
+  logger.info('[worker] agent job completed', {
+    id: job?.id,
+    agentName: job?.data?.agentName,
+  });
+});
+
+logger.info('[worker] agent runner listening on queue', { queue: 'agent-runner' });
 
 async function shutdown() {
-  console.log('[worker] shutting down...');
+  logger.info('[worker] shutting down', {});
   healthServer.close();
   await worker.close();
+  await agentWorker.close();
+  await closeAgentRunnerQueue();
   await prisma.$disconnect();
   await connection.quit();
   process.exit(0);

@@ -9,7 +9,7 @@ import { app, prisma } from '../src/server/index.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import { processPreVisitCallEnded } from '../src/server/preVisit/preVisitWebhook.js';
 import { buildPreVisitDeniedPayload } from './fixtures/preVisitWebhooks.js';
-import { createPracticeForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { createPracticeForTests, createUserForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 import { runWithPracticeRls } from '../src/server/db/rlsContext.js';
 
 let dbReady = false;
@@ -28,9 +28,10 @@ afterAll(async () => {
   await prisma.$disconnect().catch(() => undefined);
 });
 
-function ownerCookie(practiceId: string): string {
+async function ownerCookie(practiceId: string): Promise<string> {
+  const owner = await createUserForTests(prisma, practiceId, 'practice_owner');
   return `${COOKIE_NAME}=${signUserToken({
-    userId: `owner-${practiceId}`,
+    userId: owner.id,
     practiceId,
     role: 'practice_owner',
   })}`;
@@ -72,7 +73,7 @@ function buildSampleCdcpCsv(): string {
 describe.skipIf(!dbReady)('Pre-visit integration — CDCP predet CSV import', () => {
   it('POST /api/pre-visit/cdcp-predets/import ingests sample CSV', async () => {
     const practice = await createPracticeForTests(prisma);
-    const cookie = ownerCookie(practice.id);
+    const cookie = await ownerCookie(practice.id);
     const csv = buildSampleCdcpCsv();
 
     const res = await request(app)

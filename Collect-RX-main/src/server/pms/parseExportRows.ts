@@ -21,6 +21,26 @@ export function parseMoney(raw: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Same parsing as parseMoney, but a cell that's present and non-blank yet not
+ * a number throws instead of silently becoming 0. Used only for the two
+ * fields (billed/outstanding) that decide whether a row is a real balance or
+ * gets treated as already-paid-off: parseMoney's 0-fallback made a garbage
+ * cell (e.g. a shifted-column export, "N/A", a formula error string)
+ * indistinguishable from a genuine zero balance, so the row silently
+ * disappeared into the "skipped" count with no error surfaced to the
+ * importing user — reproduced live via /import with amount_billed="abc",
+ * amount_outstanding="xyz" before this fix.
+ */
+export function parseMoneyStrict(raw: string | null, fieldLabel: string): number {
+  if (!raw) return 0;
+  const n = parseFloat(String(raw).replace(/[$,\s]/g, ''));
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fieldLabel} "${raw}" is not a valid number`);
+  }
+  return n;
+}
+
 export function parseIntSafe(raw: string | null | undefined, fallback = 0): number {
   const n = parseInt(String(raw ?? ''), 10);
   return Number.isFinite(n) ? n : fallback;
@@ -60,6 +80,13 @@ export interface NormalizedPmsClaimRow {
   /** AbelDent / CDAnet transaction type (e.g. T11 pre-auth denial) */
   transactionType: string | null;
   denialReasonCode: string | null;
+  /**
+   * Treating dentist's unique 9-digit CDA provider number, when the PMS
+   * export includes one. Optional: most practices' exports predate this
+   * column, so its absence does not fail the row — see
+   * validateTreatingDentistForClaim, called only when this is present.
+   */
+  treatingDentistProviderNumber: string | null;
 }
 
 const CLAIM_ID_KEYS: Record<PmsImportFamily, string[]> = {
@@ -88,7 +115,7 @@ export function normalizePmsClaimRow(
     throw new Error(`Row missing claim identifier (${importFamily} export)`);
   }
 
-  const outstanding = parseMoney(
+  const outstanding = parseMoneyStrict(
     getCell(
       raw,
       'Amount Outstanding',
@@ -99,10 +126,13 @@ export function normalizePmsClaimRow(
       'Ins Balance',
       'Insurance Balance',
     ),
+    'Amount Outstanding',
   );
-  const billed = parseMoney(
-    getCell(raw, 'Amount Billed', 'Billed', 'amount_billed', 'Total Billed', 'Fee', 'Submitted Amount'),
-  ) || outstanding;
+  const billed =
+    parseMoneyStrict(
+      getCell(raw, 'Amount Billed', 'Billed', 'amount_billed', 'Total Billed', 'Fee', 'Submitted Amount'),
+      'Amount Billed',
+    ) || outstanding;
 
   const daysOutstanding = parseIntSafe(
     getCell(raw, 'Days Outstanding', 'Days', 'days_outstanding', 'Aging Days', 'Age'),
@@ -280,12 +310,22 @@ export function normalizePmsClaimRow(
       'Trans Type',
       'CDAnet Type',
     ),
+    treatingDentistProviderNumber: getCell(
+      raw,
+      'Treating Dentist Provider Number',
+      'Treating Dentist',
+      'Provider Number',
+      'CDA Provider Number',
+      'treating_dentist_provider_number',
+      'provider_number',
+    ),
     denialReasonCode: getCell(
       raw,
       'Denial Code',
       'Denial Reason',
       'Reason Code',
       'denial_code',
+      'denial_reason',
       'denial_reason_code',
       'EOB Code',
     ),

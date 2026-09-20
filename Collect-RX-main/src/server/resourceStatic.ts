@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import { logger } from './observability/logger.js';
 
 /** Slug under /resources/ → file under dist/resources/ */
 const RESOURCE_PAGES: Record<string, string> = {
@@ -32,7 +33,7 @@ export function createResourceStaticMiddleware(distPath: string): RequestHandler
     const filePath = path.join(distPath, 'resources', rel);
     if (!fs.existsSync(filePath)) {
       if (process.env.NODE_ENV === 'production') {
-        console.warn(`[resources] missing static file for ${req.path}: ${filePath}`);
+        logger.warn('[resources] missing static file', { path: req.path, filePath });
       }
       return next();
     }

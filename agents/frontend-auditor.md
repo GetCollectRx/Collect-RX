@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Frontend Auditor Agent
 
 **Purpose:** Audit the live site at https://collectrx.ca and the frontend source in `Collect-RX-main/src/pages/` and `src/frontend/`. Flag regressions, broken UI, missing features, and CRTC/PHIPA disclosure gaps. Run after every deployment.

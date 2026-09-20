@@ -20,6 +20,7 @@
  */
 
 import { getClickHouseClient, isClickHouseMockMode } from './clickhouse.js';
+import { logger } from '../observability/logger.js';
 
 // ---------------------------------------------------------------------------
 // DDL statements (executed in order)
@@ -140,23 +141,20 @@ const DDL: string[] = [
 
 export async function runTelemetryMigrations(): Promise<void> {
   if (isClickHouseMockMode()) {
-    console.log('[Telemetry] CLICKHOUSE_URL unset — skipping ClickHouse migrations (mock mode).');
+    logger.info('[Telemetry] CLICKHOUSE_URL unset — skipping ClickHouse migrations (mock mode).', {});
     return;
   }
   const client = getClickHouseClient();
-  console.log('[Analytics] Running ClickHouse migrations…');
+  logger.info('[Analytics] Running ClickHouse migrations…', {});
 
   for (const ddl of DDL) {
     try {
       await client.command({ query: ddl.trim() });
     } catch (err) {
       // Log but don't throw — analytics schema failures must not block API startup.
-      console.error(
-        '[Analytics] Migration error (non-fatal):',
-        err instanceof Error ? err.message : err
-      );
+      logger.error('[Analytics] Migration error (non-fatal)', { error: err });
     }
   }
 
-  console.log('[Analytics] ClickHouse migrations complete.');
+  logger.info('[Analytics] ClickHouse migrations complete.', {});
 }

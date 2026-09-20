@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Competitive Intelligence Agent
 
 **Purpose:** Monitor the competitive landscape in dental insurance AR automation, track any new entrants or adjacent players, understand how CollectRx is differentiated, and surface when a competitor move requires a product or sales response. Run monthly. Feeds into: Product Manager, Client Acquisition.

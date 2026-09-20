@@ -10,8 +10,9 @@ import { appendAuditLog } from '../audit/auditLog.js';
 import type { Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { isPlatformDev, authUserId } from '../accessControl/types.js';
-import { requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
+import { requireCanEditPracticeAdmin, requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { reviewLesson } from '../learning/carrierLessons.js';
+import { logger } from '../observability/logger.js';
 
 const router = Router();
 router.use(authenticate);
@@ -74,12 +75,12 @@ router.get('/settings', async (req: Request, res: Response) => {
     });
     return res.json({ settings: row?.settings ?? null });
   } catch (err) {
-    console.error('[GET /admin/settings]', err);
+    logger.error('[GET /admin/settings]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
-router.put('/settings', async (req: Request, res: Response) => {
+router.put('/settings', requireCanEditPracticeAdmin, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const body = req.body as { settings?: Prisma.JsonObject };
@@ -100,7 +101,7 @@ router.put('/settings', async (req: Request, res: Response) => {
     });
     return res.json({ ok: true });
   } catch (err) {
-    console.error('[PUT /admin/settings]', err);
+    logger.error('[PUT /admin/settings]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -109,7 +110,7 @@ router.get('/integrations', async (_req: Request, res: Response) => {
   try {
     return res.json(integrationPayload());
   } catch (err) {
-    console.error('[GET /admin/integrations]', err);
+    logger.error('[GET /admin/integrations]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -145,12 +146,12 @@ router.get('/practice-identity', async (req: Request, res: Response) => {
       taxId: row.taxId ?? '',
     });
   } catch (err) {
-    console.error('[GET /admin/practice-identity]', err);
+    logger.error('[GET /admin/practice-identity]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
 
-router.put('/practice-identity', async (req: Request, res: Response) => {
+router.put('/practice-identity', requireCanEditPracticeAdmin, async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
     const body = req.body as {
@@ -211,7 +212,7 @@ router.put('/practice-identity', async (req: Request, res: Response) => {
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error('[PUT /admin/practice-identity]', err);
+    logger.error('[PUT /admin/practice-identity]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -246,7 +247,7 @@ router.get('/audit-log', async (req: Request, res: Response) => {
       })),
     });
   } catch (err) {
-    console.error('[GET /admin/audit-log]', err);
+    logger.error('[GET /admin/audit-log]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -269,7 +270,7 @@ router.get('/carrier-lessons', async (req: Request, res: Response) => {
     });
     return res.json({ lessons });
   } catch (err) {
-    console.error('[GET /admin/carrier-lessons]', err);
+    logger.error('[GET /admin/carrier-lessons]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });
@@ -295,7 +296,7 @@ router.post('/carrier-lessons/:id/review', async (req: Request, res: Response) =
     });
     return res.json({ ok: true, status: action === 'approve' ? 'APPROVED' : 'REJECTED' });
   } catch (err) {
-    console.error('[POST /admin/carrier-lessons/:id/review]', err);
+    logger.error('[POST /admin/carrier-lessons/:id/review]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });

@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Post-Call Debrief Agent
 
 **Purpose:** After every completed call batch, analyze what happened and extract what can be learned. Calls are the product — every call contains information that should make the next call better. Run automatically after each carrier call session (or daily if call volume is high). Feeds into: Voice Agent Trainer, Carrier IVR Health, Escalation Triage.

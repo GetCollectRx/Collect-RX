@@ -19,13 +19,16 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { InsuranceClaim, CarrierId, User, Practice, AuditLog } from '@prisma/client';
-import { prisma } from '../src/server/index.js';
+import type { InsuranceClaim, CarrierId, User, Practice, AuditLog, Prisma } from '@prisma/client';
+import request from 'supertest';
+import { app, prisma } from '../src/server/index.js';
+import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 import {
   createPracticeWithOwnerForTests,
   cleanupPracticeWithUsers,
   FIXTURE_PRACTICE_PASSWORD,
 } from './factories/practice.js';
+import { runWithRlsBypass } from '../src/server/db/rlsContext.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup & Fixtures
@@ -53,7 +56,10 @@ let claimA1: InsuranceClaim;
 let claimA2: InsuranceClaim;
 let claimB1: InsuranceClaim;
 
-beforeAll(async () => {
+// Fixture hooks run under an explicit RLS bypass so they also work when
+// COLLECTRX_RLS_TEST_STRICT=1 disables the automatic vitest bypass (FORCE RLS
+// would otherwise reject the cross-practice fixture writes).
+beforeAll(() => runWithRlsBypass(async () => {
   if (!dbReady) return;
   try {
     // Create two practices with users
@@ -143,9 +149,9 @@ beforeAll(async () => {
     console.warn('[rls.test] fixture setup failed — suite will error:', (e as Error).message);
     throw e;
   }
-});
+}));
 
-afterEach(async () => {
+afterEach(() => runWithRlsBypass(async () => {
   if (!dbReady) return;
 
   // Clean up recovery actions and notifications created during tests
@@ -164,9 +170,9 @@ afterEach(async () => {
       },
     },
   });
-});
+}));
 
-afterAll(async () => {
+afterAll(() => runWithRlsBypass(async () => {
   if (!dbReady) return;
 
   // Clean up in reverse FK order
@@ -200,13 +206,13 @@ afterAll(async () => {
   await cleanupPracticeWithUsers(prisma, practiceB.id);
 
   await prisma.$disconnect().catch(() => undefined);
-});
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests: Insurance Claims Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Insurance Claims Isolation', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Insurance Claims Isolation', () => {
   it('Practice A user can read their own claims', async () => {
     const claims = await prisma.insuranceClaim.findMany({
       where: {
@@ -344,7 +350,9 @@ describe.skipIf(!dbReady)('RLS: Write Isolation (Cannot Update Cross-Practice Da
     });
   });
 
-  it('scoped updateMany does not change another practice', async () => {
+  // App-layer scoping assertions rely on the vitest bypass; under strict FORCE
+  // RLS a context-less session reads zero rows, so they run in default mode only.
+  it.skipIf(strictRls)('scoped updateMany does not change another practice', async () => {
     await prisma.insuranceClaim.updateMany({
       where: { practiceId: practiceA.id },
       data: { priority: 'HIGH' },
@@ -357,7 +365,7 @@ describe.skipIf(!dbReady)('RLS: Write Isolation (Cannot Update Cross-Practice Da
     });
   });
 
-  it('Practice A can create recovery action on own claim', async () => {
+  it.skipIf(strictRls)('Practice A can create recovery action on own claim', async () => {
     const recovery = await prisma.claimRecoveryAction.create({
       data: {
         practiceId: practiceA.id,
@@ -377,7 +385,7 @@ describe.skipIf(!dbReady)('RLS: Write Isolation (Cannot Update Cross-Practice Da
 // Tests: Audit Log Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Audit Log Scoping', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Audit Log Scoping', () => {
   it('Practice A can read its own audit logs', async () => {
     const logs = await prisma.auditLog.findMany({
       where: {
@@ -474,7 +482,7 @@ describe.skipIf(!dbReady)('RLS: Audit Log Scoping', () => {
 // Tests: Recovery Actions & Events Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Recovery Data Isolation', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Recovery Data Isolation', () => {
   it('Practice A can create recovery action on own claim', async () => {
     const action = await prisma.claimRecoveryAction.create({
       data: {
@@ -572,7 +580,7 @@ describe.skipIf(!dbReady)('RLS: Recovery Data Isolation', () => {
 // Tests: Notifications Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Notifications & Alerts Isolation', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Notifications & Alerts Isolation', () => {
   it('Practice A can create notification for own claim', async () => {
     const notif = await prisma.practiceNotification.create({
       data: {
@@ -645,7 +653,7 @@ describe.skipIf(!dbReady)('RLS: Notifications & Alerts Isolation', () => {
 // Tests: Unique Constraints & Cross-Practice Edge Cases
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Unique Constraints & Edge Cases', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Unique Constraints & Edge Cases', () => {
   it('Claim number must be unique within a practice, not globally', async () => {
     // Practice A and B can have the same claim number (scoped by practice)
     const claimA = await prisma.insuranceClaim.findFirst({
@@ -729,7 +737,7 @@ describe.skipIf(!dbReady)('RLS: Unique Constraints & Edge Cases', () => {
 // Tests: Aggregate Queries & Counting Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Aggregate Queries & Statistics', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Aggregate Queries & Statistics', () => {
   it('Sum of outstanding amounts is practice-scoped', async () => {
     const agg = await prisma.insuranceClaim.aggregate({
       where: { practiceId: practiceA.id },
@@ -814,7 +822,7 @@ describe.skipIf(!dbReady)('RLS: Aggregate Queries & Statistics', () => {
 // Tests: Bulk Operations Isolation
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!dbReady)('RLS: Bulk Operations & updateMany', () => {
+describe.skipIf(!dbReady || strictRls)('RLS: Bulk Operations & updateMany', () => {
   it('updateMany only affects specified practice', async () => {
     const before = await prisma.insuranceClaim.findMany({
       where: { practiceId: practiceA.id },
@@ -894,52 +902,177 @@ describe.skipIf(!dbReady)('RLS: Bulk Operations & updateMany', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe.skipIf(!dbReady)('RLS: Direct SQL Enforcement (Database-Level Policies)', () => {
+  // The RLS Prisma extension (src/lib/prismaRls.ts) only wraps model queries;
+  // raw SQL must set the transaction-local app.practice_id itself, in the same
+  // transaction as the query, or FORCE RLS filters every row.
+  async function queryRawAsPractice<T>(
+    practiceId: string,
+    run: (tx: Prisma.TransactionClient) => Promise<T>
+  ): Promise<T> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.practice_id', ${practiceId}, true)`;
+      return run(tx);
+    });
+  }
+
   it('Raw SQL respects practice_id filtering', async () => {
-    const result = await prisma.$queryRaw`
-      SELECT COUNT(*) as count
-      FROM insurance_claims
-      WHERE practice_id = ${practiceA.id}
-    `;
+    const result = await queryRawAsPractice(
+      practiceA.id,
+      (tx) => tx.$queryRaw`
+        SELECT COUNT(*) as count
+        FROM insurance_claims
+        WHERE practice_id = ${practiceA.id}
+      `
+    );
 
     const count = (result as Array<{ count: bigint }>)[0].count;
     expect(Number(count)).toBeGreaterThanOrEqual(2);
   });
 
   it('Raw SQL returns correct claim by practice', async () => {
-    const result = await prisma.$queryRaw`
-      SELECT id, practice_id, claim_number
-      FROM insurance_claims
-      WHERE id = ${claimA1.id}
-    `;
+    const result = await queryRawAsPractice(
+      practiceA.id,
+      (tx) => tx.$queryRaw`
+        SELECT id, practice_id, claim_number
+        FROM insurance_claims
+        WHERE id = ${claimA1.id}
+      `
+    );
 
     const claim = (result as Array<{ id: string; practice_id: string; claim_number: string }>)[0];
     expect(claim.practice_id).toBe(practiceA.id);
     expect(claim.claim_number).toBe('CLAIM-A-001');
   });
 
+  // Requires a connection RLS actually applies to — CI's service role is the
+  // Postgres superuser, which bypasses even FORCE RLS, so this only proves
+  // enforcement under the strict-RLS environment (same gate as write isolation).
+  it.skipIf(!strictRls)("Raw SQL under Practice A context cannot see Practice B's claim", async () => {
+    const result = await queryRawAsPractice(
+      practiceA.id,
+      (tx) => tx.$queryRaw`
+        SELECT id
+        FROM insurance_claims
+        WHERE id = ${claimB1.id}
+      `
+    );
+
+    expect((result as Array<unknown>).length).toBe(0);
+  });
+
   it('Audit log query via SQL is practice-scoped', async () => {
     // Table is Prisma default "AuditLog" with camelCase columns (see migration 20260422150000).
-    const result = await prisma.$queryRaw`
-      SELECT COUNT(*) as count
-      FROM "AuditLog"
-      WHERE "practiceId" = ${practiceA.id}
-    `;
+    const result = await queryRawAsPractice(
+      practiceA.id,
+      (tx) => tx.$queryRaw`
+        SELECT COUNT(*) as count
+        FROM "AuditLog"
+        WHERE "practiceId" = ${practiceA.id}
+      `
+    );
 
     const count = (result as Array<{ count: bigint }>)[0].count;
     expect(Number(count)).toBeGreaterThanOrEqual(1);
   });
 
   it('Cannot bypass practice isolation with raw SQL join', async () => {
-    // Attempt to join across practices should return empty or enforce isolation
-    const result = await prisma.$queryRaw`
-      SELECT ic.id, ic.claim_number, ca.title
-      FROM insurance_claims ic
-      LEFT JOIN claim_recovery_actions ca ON ca.claim_id = ic.id
-      WHERE ic.practice_id = ${practiceA.id}
-      AND ca.practice_id = ${practiceB.id}
-    `;
+    // Under Practice A's context, Practice B's recovery actions are invisible
+    // to the join even if a row were cross-linked to an A claim.
+    const result = await queryRawAsPractice(
+      practiceA.id,
+      (tx) => tx.$queryRaw`
+        SELECT ic.id, ic.claim_number, ca.title
+        FROM insurance_claims ic
+        LEFT JOIN claim_recovery_actions ca ON ca.claim_id = ic.id
+        WHERE ic.practice_id = ${practiceA.id}
+        AND ca.practice_id = ${practiceB.id}
+      `
+    );
 
     // Should be empty (no claims in A with actions from B)
     expect((result as Array<unknown>).length).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: Group Admin Route — Cross-Practice RLS Re-Scoping (Phase 0 regression)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Under superuser/default test roles, RLS is not force-enforced, so an admin
+// route that forgets to re-scope per sibling practice would incidentally
+// return correct data anyway — only strict mode (restricted role + FORCE RLS)
+// proves groupAdminRoutes.ts actually re-scopes via runWithPracticeRls per
+// iteration instead of relying on the caller's own session-level practice_id.
+describe.skipIf(!dbReady || !strictRls)('RLS: Group Admin Cross-Practice Aggregation', () => {
+  let orgHomePractice: Practice;
+  let orgSiblingPractice: Practice;
+  let groupAdminUser: User;
+  let organizationId: string;
+  let siblingClaimId: string;
+
+  beforeAll(() => runWithRlsBypass(async () => {
+    if (!dbReady) return;
+    const home = await createPracticeWithOwnerForTests(prisma, { role: 'group_admin' });
+    orgHomePractice = home.practice;
+    groupAdminUser = home.user;
+
+    const sibling = await createPracticeWithOwnerForTests(prisma);
+    orgSiblingPractice = sibling.practice;
+
+    const org = await prisma.organization.create({ data: { name: `RLS Org ${Date.now()}` } });
+    organizationId = org.id;
+    await prisma.organizationMember.create({
+      data: { organizationId, userId: groupAdminUser.id, role: 'org_admin' },
+    });
+    await prisma.organizationPractice.createMany({
+      data: [
+        { organizationId, practiceId: orgHomePractice.id },
+        { organizationId, practiceId: orgSiblingPractice.id },
+      ],
+    });
+
+    const siblingClaim = await prisma.insuranceClaim.create({
+      data: {
+        practiceId: orgSiblingPractice.id,
+        carrierId: 'green_shield' as CarrierId,
+        claimNumber: `GROUP-SIBLING-${Date.now()}`,
+        patientToken: crypto.randomUUID(),
+        billedAmount: 400,
+        outstandingAmount: 400,
+        daysOutstanding: 40,
+      },
+    });
+    siblingClaimId = siblingClaim.id;
+  }));
+
+  afterAll(() => runWithRlsBypass(async () => {
+    if (!dbReady) return;
+    await prisma.insuranceClaim.deleteMany({ where: { id: siblingClaimId } });
+    await prisma.organizationPractice.deleteMany({ where: { organizationId } });
+    await prisma.organizationMember.deleteMany({ where: { organizationId } });
+    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
+    await cleanupPracticeWithUsers(prisma, orgHomePractice.id);
+    await cleanupPracticeWithUsers(prisma, orgSiblingPractice.id);
+  }));
+
+  it('practices-summary reports the sibling practice claim, not zero', async () => {
+    const cookie = `${COOKIE_NAME}=${signUserToken({
+      userId: groupAdminUser.id,
+      practiceId: orgHomePractice.id,
+      role: 'group_admin',
+    })}`;
+
+    const res = await request(app)
+      .get('/api/group/practices-summary')
+      .set('Cookie', cookie);
+
+    expect(res.status).toBe(200);
+    const siblingSummary = (res.body.practices as Array<{ id: string; totalClaims: number }>).find(
+      (p) => p.id === orgSiblingPractice.id,
+    );
+    expect(siblingSummary).toBeDefined();
+    // Pre-fix, this reads 0 — the session's RLS context stays pinned to the
+    // admin's home practice for every iteration of the sibling-practice loop.
+    expect(siblingSummary?.totalClaims).toBe(1);
   });
 });

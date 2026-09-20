@@ -18,6 +18,7 @@ import { RedisStore, type RedisReply } from 'rate-limit-redis';
 import rateLimit, { ipKeyGenerator, type Options, type RateLimitRequestHandler } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { COOKIE_NAME, verifyAuthToken } from '../authToken';
+import { logger } from '../observability/logger.js';
 
 let rateLimitRedis: IORedis | null = null;
 let loggedRedisStore = false;
@@ -78,7 +79,7 @@ function makeLimiter(name: string, opts: Partial<Options>): RateLimitRequestHand
 
   if (redis && !loggedRedisStore) {
     loggedRedisStore = true;
-    console.log('[rate-limit] Redis store enabled (REDIS_URL). Limits shared across replicas.');
+    logger.info('[rate-limit] Redis store enabled (REDIS_URL). Limits shared across replicas.', {});
   }
 
   return rateLimit({

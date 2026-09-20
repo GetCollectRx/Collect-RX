@@ -14,6 +14,7 @@ import {
   type WorkQueueFilters,
 } from '../server/services/workQueueService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
+import { logger } from '../server/observability/logger.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -44,7 +45,7 @@ router.get('/', async (req: Request, res: Response) => {
     );
     return res.json({ success: true, ...result, items });
   } catch (err) {
-    console.error('[GET /work-queue]', err);
+    logger.error('[GET /work-queue]', { error: err });
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

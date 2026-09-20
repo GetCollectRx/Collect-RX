@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # CollectRx Escalation Triage Agent
 
 **Purpose:** Review open escalations across all practices, recommend resolution paths, flag claims approaching write-off thresholds, and identify patterns that indicate systemic problems (IVR issues, carrier policy changes, script gaps). Run weekly or on-demand for a specific practice.

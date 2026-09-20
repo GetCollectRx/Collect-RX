@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { usePractice } from '../context/PracticeContext';
 import { apiFetchJson } from '../lib/apiFetch';
 
@@ -58,7 +58,13 @@ interface Phase5Kpis {
   source: 'live' | 'insufficient_data';
 }
 
-type Tab = 'overview' | 'verifications' | 'deadlines' | 'adjudication' | 'kpis';
+export type Tab = 'overview' | 'verifications' | 'deadlines' | 'adjudication' | 'kpis';
+
+export const VALID_TABS: readonly Tab[] = ['overview', 'verifications', 'deadlines', 'adjudication', 'kpis'];
+
+export function isValidTab(value: string | null): value is Tab {
+  return value !== null && (VALID_TABS as readonly string[]).includes(value);
+}
 
 function statusColor(status: string): string {
   if (status === 'GREEN') return '#16a34a';
@@ -114,7 +120,8 @@ const KPI_LABELS: Array<{ key: keyof Phase5Kpis; label: string; unit: string }> 
 export default function PreVisitCommandCenter() {
   const { practiceId } = usePractice();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get('tab') as Tab) || 'overview';
+  const rawTab = searchParams.get('tab');
+  const tab = isValidTab(rawTab) ? rawTab : 'overview';
   const [deadlines, setDeadlines] = useState<CdcpCase[]>([]);
   const [verifications, setVerifications] = useState<VerificationRow[]>([]);
   const [graph, setGraph] = useState<AdjudicationGraph | null>(null);
@@ -217,7 +224,7 @@ export default function PreVisitCommandCenter() {
 
       {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
 
-      {!loading && tab === 'overview' && (
+      {!loading && !error && tab === 'overview' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
             <div className="crx-card" style={{ padding: 16 }}>
@@ -248,7 +255,7 @@ export default function PreVisitCommandCenter() {
         </>
       )}
 
-      {!loading && tab === 'deadlines' && (
+      {!loading && !error && tab === 'deadlines' && (
         <section>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 12 }}>CDCP deadline tracker</h2>
           {deadlines.length === 0 ? (
@@ -285,7 +292,7 @@ export default function PreVisitCommandCenter() {
         </section>
       )}
 
-      {!loading && tab === 'verifications' && (
+      {!loading && !error && tab === 'verifications' && (
         <section>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 12 }}>Appointment verifications</h2>
           {verifications.length === 0 ? (
@@ -319,7 +326,7 @@ export default function PreVisitCommandCenter() {
         </section>
       )}
 
-      {!loading && tab === 'adjudication' && graph && (
+      {!loading && !error && tab === 'adjudication' && graph && (
         <section>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 4 }}>Adjudication graph</h2>
           <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
@@ -358,7 +365,7 @@ export default function PreVisitCommandCenter() {
         </section>
       )}
 
-      {!loading && tab === 'kpis' && (
+      {!loading && !error && tab === 'kpis' && (
         <section>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 12 }}>Phase 5 KPIs (30 days)</h2>
           {!kpis || kpis.source === 'insufficient_data' ? (
@@ -381,8 +388,7 @@ export default function PreVisitCommandCenter() {
       )}
 
       <footer style={{ marginTop: 32, fontSize: 12, color: '#94a3b8' }}>
-        Configure pre-visit VAPI squad via <code>VAPI_PREVISIT_SQUAD_ID</code> — see{' '}
-        <code>vapi-previsit-config.json</code>. Legacy <Link to="/pre-visit?tab=kpis">/cdcp</Link> redirects here.
+        Pre-visit calling isn't set up for this practice yet. Contact support to enable it.
       </footer>
     </div>
   );

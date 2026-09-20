@@ -110,6 +110,96 @@
   flex-direction: column;
 }
 
+.crx-app .crx-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--crx-t0);
+  background: var(--crx-bg2);
+  border: 1px solid var(--crx-bdr2);
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.crx-app .crx-nav-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.crx-app .crx-nav-toggle:hover {
+  background: var(--crx-green-lo);
+}
+
+.crx-app .crx-sidebar-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  color: var(--crx-t3);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.crx-app .crx-sidebar-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.crx-app .crx-sidebar-close:hover {
+  color: var(--crx-t1);
+  background: var(--crx-green-lo);
+}
+
+.crx-app .crx-sidebar-backdrop {
+  display: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+/* Below this width the fixed sidebar no longer fits alongside content —
+   switch to an off-canvas drawer triggered by the top-bar hamburger. */
+@media (max-width: 900px) {
+  .crx-app .crx-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 0 1px var(--crx-bdr);
+    z-index: 50;
+  }
+
+  .crx-app .crx-sidebar.crx-sidebar-open {
+    transform: translateX(0);
+  }
+
+  .crx-app .crx-app-main {
+    margin-left: 0;
+  }
+
+  .crx-app .crx-nav-toggle {
+    display: inline-flex;
+  }
+
+  .crx-app .crx-sidebar-close {
+    display: inline-flex;
+  }
+
+  .crx-app .crx-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(15, 15, 12, 0.4);
+  }
+}
+
 .crx-app .crx-app-content {
   flex: 1;
   min-height: 0;
