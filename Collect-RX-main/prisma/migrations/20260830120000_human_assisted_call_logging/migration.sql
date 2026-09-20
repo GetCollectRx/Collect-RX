@@ -9,7 +9,7 @@ CREATE TABLE "human_assisted_call_logs" (
   "id" TEXT NOT NULL,
   "claim_id" TEXT,
   "practice_id" TEXT NOT NULL,
-  "carrier_id" "CarrierId" NOT NULL,
+  "carrier_id" "carrier_id" NOT NULL,
   "vapi_call_id" TEXT NOT NULL,
   "scenario" TEXT NOT NULL,
   "rep_name" TEXT,
@@ -42,7 +42,7 @@ CREATE INDEX "human_assisted_call_logs_claim_id_idx" ON "human_assisted_call_log
 
 CREATE TABLE "human_assisted_carrier_profiles" (
   "id" TEXT NOT NULL,
-  "carrier_id" "CarrierId" NOT NULL,
+  "carrier_id" "carrier_id" NOT NULL,
   "category" "human_assisted_profile_category" NOT NULL,
   "observation" TEXT NOT NULL,
   "recommendation" TEXT NOT NULL,
