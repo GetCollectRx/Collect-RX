@@ -127,6 +127,7 @@ import adminRouter from './routes/adminRoutes';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import pmsApiRouter from './routes/pmsApiRoutes.js';
 import workQueueRouter from '../routes/workQueue.js';
+import dispatchApprovalsRouter from '../routes/dispatchApprovals.js';
 import { createCdcpRouter } from './routes/cdcp.js';
 import preVisitRouter from './routes/preVisitRoutes.js';
 import { createCanadianExpansionRouter } from './routes/canadianExpansionApi.js';
@@ -553,6 +554,7 @@ app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/pms', pmsApiRouter);
 app.use('/api/work-queue', workQueueRouter);
+app.use('/api/dispatch-approvals', dispatchApprovalsRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
 app.use('/api/pre-visit',  preVisitRouter);

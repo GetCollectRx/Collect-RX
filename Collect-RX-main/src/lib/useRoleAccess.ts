@@ -25,6 +25,8 @@ export interface RoleAccess {
   canClearGates: boolean
   /** See live call strip + queue stats on dashboard (read-only loop). */
   canViewLiveLoop: boolean
+  /** Approve/skip claims at the pre-dispatch human checkpoint (RDC-SO / PHIPA). */
+  canApproveDispatchBatch: boolean
   // Special modes
   isReadOnly: boolean // practice_owner, accountant — blocks settings edits & manual dials
   // Default landing route after login
@@ -64,6 +66,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: true, canManageUsers: false, canEditAdmin: true,
         ...noDeskOps,
         ...gateOperator,
+        canApproveDispatchBatch: false,
         isReadOnly: false,
         homeRoute: '/admin',
       }
@@ -78,6 +81,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
+        canApproveDispatchBatch: true,
         isReadOnly: true,
         homeRoute: '/dashboard',
       }
@@ -92,6 +96,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
+        canApproveDispatchBatch: true,
         isReadOnly: false,
         homeRoute: '/dashboard',
       }
@@ -106,6 +111,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         ...noDeskOps,
         canResolveEscalations: true,
         ...gateOperator,
+        canApproveDispatchBatch: true,
         isReadOnly: false,
         homeRoute: '/dashboard',
       }
@@ -120,6 +126,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         ...noDeskOps,
         canClearGates: false,
         canViewLiveLoop: true,
+        canApproveDispatchBatch: false,
         isReadOnly: true,
         homeRoute: '/dashboard',
       }
@@ -133,6 +140,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         ...noGateOps,
+        canApproveDispatchBatch: false,
         isReadOnly: true,
         homeRoute: '/reports/aging',
       }
@@ -146,6 +154,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...deskOperator,
         ...gateOperator,
+        canApproveDispatchBatch: true,
         isReadOnly: false,
         homeRoute: '/console',
       }
@@ -160,6 +169,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         ...noDeskOps,
         canResolveEscalations: true,
         ...noGateOps,
+        canApproveDispatchBatch: false,
         isReadOnly: true,
         homeRoute: '/group-dashboard',
       }
@@ -173,6 +183,7 @@ function accessForRole(role: AuthRole | null): RoleAccess {
         canEditCarrierConfig: false, canManageUsers: false, canEditAdmin: false,
         ...noDeskOps,
         ...noGateOps,
+        canApproveDispatchBatch: false,
         isReadOnly: true,
         homeRoute: '/login',
       }
