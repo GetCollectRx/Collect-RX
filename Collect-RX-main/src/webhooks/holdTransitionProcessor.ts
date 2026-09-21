@@ -1,10 +1,7 @@
 /**
  * Hold and Agent Transition Processor
  *
- * Processes Vapi webhook events to track:
- * 1. Call.started event — when hold ends and engagement with rep begins
- * 2. Agent transitions — IVR_Navigator → Hold_Sentinel → Claims_Agent etc.
- * 3. Calculates hold duration and agent dwell time from timestamps
+ * Processes explicit Vapi agent-transition data when it is present.
  *
  * This feeds the holdLedger and enables real-time hold monitoring on the front desk.
  */
@@ -20,77 +17,48 @@ interface HoldTransitionContext {
 }
 
 /**
- * Process call.started webhook — indicates hold has ended and rep has picked up.
- * Records the actual ring-to-rep time, which becomes the hold duration.
- *
- * For Hold_Sentinel, this is when the agent hears a human voice and knows
- * engagement is real (not just hold music or system prompts).
+ * A Vapi call.started event means the outbound call connected. It does not
+ * prove that a carrier representative answered or that hold ended. Keep this
+ * handler as an explicit no-op so callers cannot accidentally reintroduce that
+ * unsafe inference.
  */
 export async function processCallStarted(
-  payload: VapiWebhookPayload,
-  context: HoldTransitionContext,
+  _payload: VapiWebhookPayload,
+  _context: HoldTransitionContext,
 ): Promise<void> {
-  if (payload.type !== 'call.started' || !payload.call.startedAt) {
-    return;
-  }
+  return;
+}
 
-  try {
-    const callAttempt = await db.callAttempt.findUnique({
-      where: { id: context.callAttemptId },
-      select: { id: true, initiatedAt: true },
-    });
+const ALLOWED_AGENTS = new Set([
+  'IVR_Navigator',
+  'Hold_Sentinel',
+  'Claims_Agent',
+  'Escalation_Closer',
+  'Resolution_Closer',
+]);
 
-    if (!callAttempt) {
-      logger.warn('[hold-processor] CallAttempt not found for call.started event', {
-        callAttemptId: context.callAttemptId,
-        vapiCallId: context.vapiCallId,
-      });
-      return;
-    }
+type AgentTransition = {
+  fromAgent?: string;
+  toAgent: string;
+  transitionedAt?: string;
+  durationSeconds?: number;
+  holdTimeoutTriggered?: boolean;
+};
 
-    // Calculate hold duration: from when call was initiated (dispatched) to when
-    // the call.started webhook arrived (rep answered). This is the customer's
-    // hold time waiting for a representative.
-    const startedAtTime = new Date(payload.call.startedAt);
-    const holdDurationSeconds = Math.round(
-      (startedAtTime.getTime() - callAttempt.initiatedAt.getTime()) / 1000
-    );
-
-    // Update CallAttempt with hold duration and started timestamp
-    await db.callAttempt.update({
-      where: { id: context.callAttemptId },
-      data: {
-        startedAt: startedAtTime,
-        holdDurationSeconds: Math.max(0, holdDurationSeconds),
-      },
-    });
-
-    logger.info('[hold-processor] Recorded hold end and hold duration', {
-      callAttemptId: context.callAttemptId,
-      holdDurationSeconds,
-      startedAt: payload.call.startedAt,
-    });
-
-    // Create an initial agent transition record for Hold_Sentinel → Claims_Agent
-    // (assuming Vapi moved from Hold_Sentinel to Claims_Agent when rep answered).
-    // This provides the baseline for tracking which agent currently has the call.
-    await db.callTransition.create({
-      data: {
-        callAttemptId: context.callAttemptId,
-        fromAgent: 'Hold_Sentinel',
-        toAgent: 'Claims_Agent',
-        transitionedAt: startedAtTime,
-        durationSeconds: holdDurationSeconds,
-      },
-    });
-  } catch (error) {
-    logger.error('[hold-processor] Failed to process call.started event', {
-      error,
-      callAttemptId: context.callAttemptId,
-      vapiCallId: context.vapiCallId,
-    });
-    throw error;
-  }
+function readAgentTransition(payload: VapiWebhookPayload): AgentTransition | null {
+  const collectrx = payload.analysis?.collectrx as unknown;
+  if (!collectrx || typeof collectrx !== 'object') return null;
+  const candidate = (collectrx as Record<string, unknown>).agentTransition;
+  if (!candidate || typeof candidate !== 'object') return null;
+  const value = candidate as Record<string, unknown>;
+  if (typeof value.toAgent !== 'string' || !ALLOWED_AGENTS.has(value.toAgent)) return null;
+  return {
+    fromAgent: typeof value.fromAgent === 'string' ? value.fromAgent : undefined,
+    toAgent: value.toAgent,
+    transitionedAt: typeof value.transitionedAt === 'string' ? value.transitionedAt : undefined,
+    durationSeconds: typeof value.durationSeconds === 'number' ? value.durationSeconds : undefined,
+    holdTimeoutTriggered: value.holdTimeoutTriggered === true,
+  };
 }
 
 /**
@@ -114,22 +82,23 @@ export async function processAgentTransition(
   payload: VapiWebhookPayload,
   context: HoldTransitionContext,
 ): Promise<void> {
-  const transition = (payload.analysis?.collectrx as any)?.agentTransition;
-  if (!transition || typeof transition.toAgent !== 'string') {
-    return;
-  }
+  const transition = readAgentTransition(payload);
+  if (!transition) return;
 
   try {
-    const transitionTime = new Date(transition.transitionedAt || new Date().toISOString());
+    const liveState = transition.toAgent === 'IVR_Navigator'
+      ? 'ivr_navigation'
+      : transition.toAgent === 'Claims_Agent'
+        ? 'rep_connected'
+        : transition.toAgent === 'Escalation_Closer'
+          ? 'escalating'
+          : transition.toAgent === 'Resolution_Closer'
+            ? 'resolving'
+            : 'on_hold';
 
-    const record = await db.callTransition.create({
-      data: {
-        callAttemptId: context.callAttemptId,
-        fromAgent: transition.fromAgent || undefined,
-        toAgent: transition.toAgent,
-        transitionedAt: transitionTime,
-        durationSeconds: transition.durationSeconds || undefined,
-      },
+    await db.callAttempt.update({
+      where: { id: context.callAttemptId },
+      data: { activeAgent: transition.toAgent, liveState },
     });
 
     logger.info('[hold-processor] Recorded agent transition', {
@@ -139,13 +108,10 @@ export async function processAgentTransition(
       durationSeconds: transition.durationSeconds,
     });
 
-    // If this transition indicates Hold_Sentinel timeout occurred
-    // (e.g., Hold_Sentinel → Escalation_Closer with no Claims_Agent engagement),
-    // mark the holdTimeoutOccurred flag on the CallAttempt.
-    if (transition.holdTimeoutTriggered || transition.toAgent === 'Escalation_Closer') {
-      await db.callAttempt.update({
-        where: { id: context.callAttemptId },
-        data: { holdTimeoutOccurred: true },
+    if (transition.holdTimeoutTriggered) {
+      logger.warn('[hold-processor] Explicit hold timeout reported', {
+        callAttemptId: context.callAttemptId,
+        vapiCallId: context.vapiCallId,
       });
     }
   } catch (error) {
@@ -166,7 +132,7 @@ export async function processHoldAndTransitions(
   payload: VapiWebhookPayload,
   context: HoldTransitionContext,
 ): Promise<void> {
-  // call.started indicates hold has ended; record it and mark Claims_Agent transition
+  // Never infer hold completion from call.started; it only means the call connected.
   if (payload.type === 'call.started') {
     await processCallStarted(payload, context);
   }

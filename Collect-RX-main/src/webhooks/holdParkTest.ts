@@ -34,17 +34,31 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Router, type Request, type Response } from 'express';
-import logger from '../logger.cjs';
+import { logger } from '../server/observability/logger.js';
 import { isResumeLegExpected } from './holdParkAudioStream';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
 const CONFERENCE_NAME = 'collectrx-holdpark-test';
-const STATUS_CALLBACK_URL = 'https://collect-rx.fly.dev/api/webhooks/hold-park/conference-status';
-const WAIT_URL = 'https://collect-rx.fly.dev/api/webhooks/hold-park/wait';
-const MUSIC_URL = 'https://collect-rx.fly.dev/api/webhooks/hold-park/holdmusic.mp3';
-const AUDIO_STREAM_URL = 'wss://collect-rx.fly.dev/ws/hold-park-audio';
+function harnessUrls(): {
+  statusCallbackUrl: string;
+  waitUrl: string;
+  musicUrl: string;
+  audioStreamUrl: string;
+} {
+  const baseUrl = process.env.HOLD_PARK_TEST_BASE_URL?.trim().replace(/\/$/, '');
+  if (!baseUrl || !/^https:\/\//i.test(baseUrl)) {
+    throw new Error('HOLD_PARK_TEST_BASE_URL must be an https URL');
+  }
+  const wsBaseUrl = baseUrl.replace(/^https:/i, 'wss:');
+  return {
+    statusCallbackUrl: `${baseUrl}/api/webhooks/hold-park/conference-status`,
+    waitUrl: `${baseUrl}/api/webhooks/hold-park/wait`,
+    musicUrl: `${baseUrl}/api/webhooks/hold-park/holdmusic.mp3`,
+    audioStreamUrl: `${wsBaseUrl}/ws/hold-park-audio`,
+  };
+}
 
 // This URL is this Vapi phone number's configured server.url, which means it
 // gets two unrelated kinds of traffic: Twilio's own voice webhook fetch
@@ -55,6 +69,7 @@ const AUDIO_STREAM_URL = 'wss://collect-rx.fly.dev/ws/hold-park-audio';
 // expect a TwiML response. Mixing them up is what produced the garbled first
 // live test. Distinguish by content-type before doing anything else.
 router.post('/', (req: Request, res: Response) => {
+  const urls = harnessUrls();
   const contentType = req.headers['content-type'] ?? '';
 
   if (contentType.includes('application/json')) {
@@ -92,7 +107,7 @@ router.post('/', (req: Request, res: Response) => {
   const streamBlock = isResumeLeg
     ? ''
     : `<Start>
-    <Stream url="${AUDIO_STREAM_URL}" track="inbound_track" />
+    <Stream url="${urls.audioStreamUrl}" track="inbound_track" />
   </Start>
   `;
 
@@ -102,9 +117,9 @@ router.post('/', (req: Request, res: Response) => {
     <Conference
       startConferenceOnEnter="true"
       endConferenceOnExit="true"
-      waitUrl="${WAIT_URL}"
+      waitUrl="${urls.waitUrl}"
       beep="false"
-      statusCallback="${STATUS_CALLBACK_URL}"
+      statusCallback="${urls.statusCallbackUrl}"
       statusCallbackEvent="start end"
       statusCallbackMethod="POST"
     >${CONFERENCE_NAME}</Conference>
@@ -122,9 +137,10 @@ router.post('/', (req: Request, res: Response) => {
 // Twilio to loop the track indefinitely within one fetch, so it doesn't need
 // to keep re-requesting this route while the call sits parked.
 router.post('/wait', (_req: Request, res: Response) => {
+  const { musicUrl } = harnessUrls();
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Play loop="0">${MUSIC_URL}</Play>
+  <Play loop="0">${musicUrl}</Play>
 </Response>`;
   res.set('Content-Type', 'text/xml');
   res.send(twiml);

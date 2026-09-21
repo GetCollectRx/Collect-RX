@@ -87,11 +87,36 @@ describe.skipIf(!dbReady || !strictRls)('strict PostgreSQL RLS', () => {
     claimAId = claimA.id;
     claimBId = claimB.id;
 
+    const [queueA, queueB] = await Promise.all([
+      adminPrisma.callQueue.create({ data: { practiceId: practiceAId, claimId: claimAId, scheduledFor: new Date() } }),
+      adminPrisma.callQueue.create({ data: { practiceId: practiceBId, claimId: claimBId, scheduledFor: new Date() } }),
+    ]);
+    await Promise.all([
+      adminPrisma.callDispatchIntent.create({
+        data: {
+          practiceId: practiceAId, claimId: claimAId, queueEntryId: queueA.id,
+          attemptNumber: 1, idempotencyKey: `strict:${queueA.id}:1`,
+        },
+      }),
+      adminPrisma.callDispatchIntent.create({
+        data: {
+          practiceId: practiceBId, claimId: claimBId, queueEntryId: queueB.id,
+          attemptNumber: 1, idempotencyKey: `strict:${queueB.id}:1`,
+        },
+      }),
+    ]);
+
     const visibleToA = await withPracticeRlsSession(practiceAId, (tx) =>
       tx.insuranceClaim.findMany({ select: { id: true } }),
     );
     expect(visibleToA.map((claim) => claim.id)).toContain(claimAId);
     expect(visibleToA.map((claim) => claim.id)).not.toContain(claimBId);
+
+    const intentsVisibleToA = await withPracticeRlsSession(practiceAId, (tx) =>
+      tx.callDispatchIntent.findMany({ select: { practiceId: true } }),
+    );
+    expect(intentsVisibleToA).toHaveLength(1);
+    expect(intentsVisibleToA[0]?.practiceId).toBe(practiceAId);
 
     const crossTenantUpdate = await withPracticeRlsSession(practiceAId, (tx) =>
       tx.insuranceClaim.updateMany({
@@ -118,6 +143,9 @@ afterAll(async () => {
     return;
   }
   if (practiceAId || practiceBId) {
+    await adminPrisma.callQueue.deleteMany({
+      where: { practiceId: { in: [practiceAId, practiceBId].filter(Boolean) } },
+    });
     await adminPrisma.insuranceClaim.deleteMany({
       where: { practiceId: { in: [practiceAId, practiceBId].filter(Boolean) } },
     });

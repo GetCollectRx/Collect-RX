@@ -94,6 +94,33 @@ vi.mock('../../src/server/audit/auditLog.js', () => ({
   appendPhiAccessEvent: vi.fn(),
 }));
 
+vi.mock('../../src/server/frontDesk/dispatchIntent.js', () => ({
+  reconcileStaleDispatchIntents: vi.fn(async () => ({ safeExpired: 0, heldAmbiguous: 0 })),
+  ensureDispatchIntent: vi.fn(async (_db, input) => ({
+    id: `intent-${input.queueEntryId}`, status: 'READY',
+    idempotencyKey: `carrier-call:${input.queueEntryId}:${input.attemptNumber}`,
+  })),
+  markDispatchSending: vi.fn(async () => ({})),
+  recordAmbiguousDispatch: vi.fn(async (db, input) => db.callQueue.update({
+    where: { id: input.queueEntryId },
+    data: {
+      status: 'BLOCKED', dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+      dispatchDeferralNextAction: 'Reconcile this intent with Vapi before retrying; automatic redial is disabled.',
+      dispatchDeferredAt: new Date(),
+    },
+  })),
+  recordRejectedDispatch: vi.fn(async (db, input) => db.callQueue.update({
+    where: { id: input.queueEntryId },
+    data: {
+      status: 'PENDING', scheduledFor: input.retryAt,
+      dispatchDeferralCode: 'TRANSIENT_DISPATCH_FAILURE',
+      dispatchDeferralNextAction: 'The system will create a new attempt during the next scheduled dispatch window.',
+      dispatchDeferredAt: new Date(),
+    },
+  })),
+  confirmDispatch: vi.fn(async () => ({ id: 'attempt-1' })),
+}));
+
 vi.mock('../../src/server/observability/logger.js', () => ({
   default: { warn: vi.fn(), error: vi.fn(), audit: vi.fn() },
 }));
@@ -600,7 +627,7 @@ describe('runDeskQueueTick resilience', () => {
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });
 
-  it('defers a claim with a longer cooldown and a distinct code when the Vapi outcome is ambiguous (timeout/network)', async () => {
+  it('blocks a claim for reconciliation and does not automatically redial when the Vapi outcome is ambiguous', async () => {
     const failing = queueEntry('1');
     const eligible = queueEntry('2');
     const prisma = tickPrisma([failing, eligible]);
@@ -612,16 +639,14 @@ describe('runDeskQueueTick resilience', () => {
 
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
-    const deferCall = prisma.callQueue.update.mock.calls.find(
+    const blockCall = prisma.callQueue.update.mock.calls.find(
       ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
-        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
+        args.where.id === 'q-1' && args.data.status === 'BLOCKED',
     );
-    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
-    const [{ data }] = deferCall as [{ data: { dispatchDeferralCode: string; scheduledFor: Date } }];
+    if (!blockCall) throw new Error('expected queue entry q-1 to be blocked for reconciliation');
+    const [{ data }] = blockCall as [{ data: { dispatchDeferralCode: string; scheduledFor?: Date } }];
     expect(data.dispatchDeferralCode).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
-    // Ambiguous cooldown (60min) must be longer than the confirmed-failure cooldown (15min).
-    const deferredMinutes = (data.scheduledFor.getTime() - Date.now()) / 60_000;
-    expect(deferredMinutes).toBeGreaterThan(45);
+    expect(data.scheduledFor).toBeUndefined();
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });

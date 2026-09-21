@@ -46,6 +46,10 @@ import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
+import {
+  consumePasswordResetToken,
+  issuePasswordResetToken,
+} from '../services/passwordResetService.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -803,19 +807,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
       }
 
-      // Invalidate any existing unused tokens for this user
-      await prisma.passwordResetToken.updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: new Date() },
-      });
-
-      const { randomBytes } = await import('node:crypto');
-      const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-      await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt },
-      });
+      const token = await issuePasswordResetToken(prisma, user.id);
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
       void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
@@ -850,16 +842,9 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
       }
 
-      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
-      if (!record || record.usedAt || record.expiresAt < new Date()) {
-        return res.status(400).json({ error: 'Invalid or expired reset token' });
-      }
-
       const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-      await prisma.$transaction([
-        prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
-        prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
-      ]);
+      const consumed = await consumePasswordResetToken(prisma, token, passwordHash);
+      if (!consumed) return res.status(400).json({ error: 'Invalid or expired reset token' });
 
       return res.json({ ok: true });
     } catch (e) {

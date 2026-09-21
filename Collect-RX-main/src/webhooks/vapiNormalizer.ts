@@ -122,9 +122,10 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
     };
   }
 
-  // ── call.started: fired when the call connects to a live carrier representative ──
-  // This is when hold ends and real engagement begins. We extract this to calculate
-  // actual hold duration (time from initiateCall to when rep picks up).
+  // ── call.started: fired when the outbound call connects ────────────────────
+  // This does not prove a live carrier representative answered or that hold
+  // ended. Representative engagement must come from an explicit agent/state
+  // transition or another verified structured signal.
   if (msgType === 'call.started') {
     const startedAt = asString(msg.startedAt) ?? asString(msg.call?.startedAt);
     return {

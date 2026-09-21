@@ -64,6 +64,29 @@ export default function DesktopDownload() {
 
   const info = release ?? fallbackDesktopReleaseInfo()
 
+  // Connector code is intentionally retained for a possible future phase, but
+  // the current supported pilot intake is CSV-only. Do not expose installers or
+  // setup instructions until product, security, deployment, and support review
+  // explicitly enables this surface.
+  const desktopConnectorAvailable = false
+  if (!desktopConnectorAvailable) {
+    return (
+      <div className="crx-app min-h-screen">
+        <div className="page-enter p-6 max-w-3xl mx-auto">
+          <Card>
+            <CardHeader title="Desktop connector unavailable" subtitle="Current supported intake: CSV only" />
+            <div className="px-4 pb-4 space-y-3 text-sm text-crx-t2">
+              <p>No installation or practice-management-system access is required for the current pilot.</p>
+              <Link to="/import" className="inline-flex font-medium text-crx-green hover:underline">
+                Import a reviewed CSV export
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <DataState loading={loading} error={error}>
       <div className="crx-app min-h-screen">

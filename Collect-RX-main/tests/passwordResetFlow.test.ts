@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+import { hashPasswordResetToken } from '../src/server/services/passwordResetService.js';
 
 let dbReady = false;
 try {
@@ -41,15 +42,29 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
       });
       expect(tokenRow).not.toBeNull();
       expect(tokenRow!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(tokenRow!.token).toMatch(/^[0-9a-f]{64}$/);
+
+      // The emailed bearer is intentionally unrecoverable from the DB. Seed a
+      // known raw-token digest to exercise the public confirmation endpoint.
+      const rawToken = `known-reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          token: hashPasswordResetToken(rawToken),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
 
       const newPassword = 'brand-new-password-123';
       const confirmRes = await request(app)
         .post('/api/auth/reset-password/confirm')
-        .send({ token: tokenRow!.token, newPassword });
+        .send({ token: rawToken, newPassword });
       expect(confirmRes.status).toBe(200);
       expect(confirmRes.body.ok).toBe(true);
 
-      const usedRow = await prisma.passwordResetToken.findUnique({ where: { id: tokenRow!.id } });
+      const usedRow = await prisma.passwordResetToken.findUnique({
+        where: { token: hashPasswordResetToken(rawToken) },
+      });
       expect(usedRow?.usedAt).not.toBeNull();
 
       const loginRes = await request(app)
@@ -75,7 +90,11 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
     try {
       const token = `expired-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt: new Date(Date.now() - 60_000) },
+        data: {
+          userId: user.id,
+          token: hashPasswordResetToken(token),
+          expiresAt: new Date(Date.now() - 60_000),
+        },
       });
 
       const res = await request(app)
@@ -99,7 +118,7 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
       await prisma.passwordResetToken.create({
         data: {
           userId: user.id,
-          token,
+          token: hashPasswordResetToken(token),
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           usedAt: new Date(),
         },

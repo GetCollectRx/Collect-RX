@@ -22,7 +22,7 @@ import {
 import { isHeldThenDumped } from '../recovery/holdLedger.js';
 import { parseMoneyToCents } from './claimsValidatorWebhook.js';
 import { piiVault } from '../../pii-vault.js';
-import { handlePostCallAudioDeletion } from '../../services/pii-vault.js';
+import { deleteAudioWithBoundedRetry } from '../../services/pii-vault.js';
 import {
   triggerPostCallDebrief,
   triggerHallucinationDetector,
@@ -468,30 +468,52 @@ async function processCallEnded(
   // belt-and-suspenders: recordingEnabled:false was set at call initiation,
   // but we also explicitly delete in case Vapi stored anything.
   //
-  // M-3: handlePostCallAudioDeletion never throws — it catches all errors and
-  // returns them in result.errors. Awaiting and checking the result ensures
-  // failed deletions are tracked in the audit log for compliance review.
+  // Deletion is retried a bounded number of times. Every state transition is
+  // persisted on CallAttempt so a completed webhook cannot make an unresolved
+  // vendor recording disappear from operational view. Vendor response bodies
+  // and recording URLs are deliberately excluded from durable state and audit.
   const recordingUrl = payload.recordingUrl ?? null;
-  try {
-    const deletionResult = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
-    if (deletionResult.errors.length > 0) {
-      logger.error('[vapi-webhook] post-call audio deletion incomplete — recording may persist at Vapi/Twilio', {
+  const validationBase =
+    attempt.validationResult &&
+    typeof attempt.validationResult === 'object' &&
+    !Array.isArray(attempt.validationResult)
+      ? attempt.validationResult
+      : {};
+  const { result: deletionResult, state: audioDeletionState } = await deleteAudioWithBoundedRetry(
+    vapiCallId,
+    recordingUrl,
+    {
+      maxAttempts: 3,
+      onState: async (state) => {
+        await prisma.callAttempt.update({
+          where: { id: attempt.id },
+          data: { validationResult: { ...validationBase, audioDeletion: state } },
+        });
+      },
+    },
+  );
+
+  const deletionResolved = audioDeletionState.status === 'resolved';
+  if (!deletionResolved) {
+    const maxDeletionAttempts = audioDeletionState.attempts;
+    logger.error('[vapi-webhook] post-call audio deletion reached unresolved terminal state', {
+      vapiCallId,
+      attempts: maxDeletionAttempts,
+      errorCodes: deletionResult.errors,
+    });
+    await appendAuditLog(prisma, {
+      practiceId: claim.practiceId,
+      action: 'AUDIO_DELETION_FAILED',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: {
         vapiCallId,
-        errors: deletionResult.errors,
-      });
-      // Write to audit log so the compliance team can investigate and retry.
-      await appendAuditLog(prisma, {
-        practiceId: claim.practiceId,
-        action: 'AUDIO_DELETION_FAILED',
-        subjectType: 'CallAttempt',
-        subjectId: attempt.id,
-        details: { vapiCallId, errors: deletionResult.errors, recordingUrl },
-      }).catch((auditErr: unknown) => {
-        logger.error('[vapi-webhook] failed to write AUDIO_DELETION_FAILED audit log', { error: auditErr });
-      });
-    }
-  } catch (deletionErr: unknown) {
-    logger.error('[vapi-webhook] post-call audio deletion threw unexpectedly', { error: deletionErr });
+        attempts: maxDeletionAttempts,
+        vapiDeleted: deletionResult.vapiDeleted,
+        twilioDeleted: deletionResult.twilioDeleted,
+        errorCodes: deletionResult.errors,
+      },
+    });
   }
 
   // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────

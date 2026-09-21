@@ -20,7 +20,7 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Copy root package-lock.json to workspace
+      - name: Prepare reproducible Docker build context
         # Collect-RX-main is an npm workspace member; its own package-lock.json
         # drifts stale (unused, last touched 2026-05-24) since dependency changes
         # only ever get made against the actively-maintained root lockfile. The
@@ -32,14 +32,17 @@ jobs:
         # against a package.json that had already moved past it.
         run: cp package-lock.json Collect-RX-main/
 
+      - name: Verify locked dependencies
+        working-directory: Collect-RX-main
+        run: npm ci --ignore-scripts --dry-run
+
       - name: Deploy to collect-rx (production)
         working-directory: Collect-RX-main
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy -c fly.toml -a collect-rx --remote-only
 
-      # P2.2 — Fly's own health-check-gated rollout (fly.toml's [[http_service.checks]]
-      # against /api/health/ready, combined with release_command's migrate-deploy gate)
+      # Fly's app and worker checks plus release_command's migrate-deploy gate
       # already blocks a release that can't reach the DB from ever taking traffic; this
       # is a deeper, post-traffic check (deployed successfully, but is it actually
       # correct?) that flyctl's own health check can't see. A failure here does NOT

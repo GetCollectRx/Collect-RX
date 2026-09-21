@@ -36,19 +36,20 @@
 import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import axios from 'axios';
-import logger from '../logger.cjs';
+import { logger } from '../server/observability/logger.js';
 
 const WS_PATH = '/ws/hold-park-audio';
 
-const HOLD_PARK_NUMBER = '+16139098770';
-// Originally used the "TEST IVR sim line" (a free Vapi-provided number) as a
-// distinct caller ID so this call wouldn't dial itself as its own
-// destination. That failed live with "Free Vapi numbers do not support
-// international calls" (+1 US vs +1 Canada counts as international to Vapi's
-// free-number restriction, even both being NANP). Confirmed via a direct API
-// call that the production number dialing itself is accepted with no error,
-// since it's a real Twilio number and not subject to that restriction.
-const RESUME_CALLER_PHONE_NUMBER_ID = 'a4003bab-7509-44bd-9af4-7c9e1e7e6e73';
+function holdParkTestConfiguration(): { number: string; phoneNumberId: string } {
+  const number = process.env.HOLD_PARK_TEST_NUMBER?.trim();
+  const phoneNumberId = process.env.HOLD_PARK_TEST_VAPI_PHONE_NUMBER_ID?.trim();
+  if (!number || !phoneNumberId) {
+    throw new Error(
+      'Hold Park engineering harness requires HOLD_PARK_TEST_NUMBER and HOLD_PARK_TEST_VAPI_PHONE_NUMBER_ID',
+    );
+  }
+  return { number, phoneNumberId };
+}
 
 const FRAME_SAMPLES = 160; // 20ms @ 8kHz mu-law, per Twilio's Media Streams format
 const WINDOW_FRAMES = 15; // ~300ms, shortened from 50 (~1s) after real audio data showed a
@@ -119,6 +120,7 @@ async function triggerHoldParkResume(callSid: string): Promise<void> {
     return;
   }
 
+  const config = holdParkTestConfiguration();
   resumeLegExpectedUntil = Date.now() + 15000; // 15s to actually land on the webhook
 
   await axios.post(
@@ -143,8 +145,8 @@ async function triggerHoldParkResume(callSid: string): Promise<void> {
         voice: { provider: 'vapi', voiceId: 'Elliot' },
         maxDurationSeconds: 300,
       },
-      phoneNumberId: RESUME_CALLER_PHONE_NUMBER_ID,
-      customer: { number: HOLD_PARK_NUMBER, name: 'Hold-park auto-resume' },
+      phoneNumberId: config.phoneNumberId,
+      customer: { number: config.number, name: 'Hold-park auto-resume' },
       metadata: { test: true, purpose: 'hold_park_auto_resume', triggeredByCallSid: callSid },
     },
     { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } },

@@ -59,6 +59,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { correlationIdMiddleware } from './middleware/correlationId.js';
+import { authenticate } from './middleware/authenticate.js';
+import { auditPhiAccessMiddleware } from './middleware/auditPhiAccess.js';
 import { logger } from './observability/logger.js';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -321,13 +323,22 @@ app.use(
 // Twilio's application/x-www-form-urlencoded voice webhook; both parsers are
 // needed, each only acts on its own content-type and leaves the other alone.
 // ─────────────────────────────────────────────────────────────────────────────
-app.use(
-  '/api/webhooks/hold-park',
-  webhookLimiter,
-  express.json(),
-  express.urlencoded({ extended: false }),
-  holdParkTestRouter,
-);
+const holdParkEngineeringHarnessEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true';
+
+if (process.env.NODE_ENV === 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true') {
+  throw new Error('HOLD_PARK_TEST_ENABLED is forbidden in production');
+}
+
+if (holdParkEngineeringHarnessEnabled) {
+  app.use(
+    '/api/webhooks/hold-park',
+    webhookLimiter,
+    express.json(),
+    express.urlencoded({ extended: false }),
+    holdParkTestRouter,
+  );
+}
 
 app.post(
   '/api/webhooks/sendgrid',
@@ -498,6 +509,10 @@ app.use('/api', anonStandardLimiter);
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
+// Required PHI access-intent audit. Audit-store failure prevents execution.
+app.use('/api/insurance', authenticate, auditPhiAccessMiddleware);
+app.use('/api/calls', authenticate, auditPhiAccessMiddleware);
+app.use('/api/admin/audit-log', authenticate, auditPhiAccessMiddleware);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
@@ -831,7 +846,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
-  attachHoldParkAudioStream(server);
+  if (holdParkEngineeringHarnessEnabled) {
+    attachHoldParkAudioStream(server);
+  }
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);
