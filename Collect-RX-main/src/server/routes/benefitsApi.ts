@@ -23,7 +23,7 @@ export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
   const r = Router();
   useOwnerPracticeApiAuthOnly(r);
 
-  r.get('/benefits/:patientToken', async (req: Request, res: Response) => {
+  r.get('/:patientToken', async (req: Request, res: Response) => {
     try {
       practiceId(req);
       const patientToken = req.params.patientToken;
@@ -72,7 +72,7 @@ export function createBenefitsApiRouter(_prisma: PrismaClient): Router {
     }
   });
 
-  r.post('/benefits/estimate', async (req: Request, res: Response) => {
+  r.post('/estimate', async (req: Request, res: Response) => {
     try {
       practiceId(req);
       const body = req.body as {

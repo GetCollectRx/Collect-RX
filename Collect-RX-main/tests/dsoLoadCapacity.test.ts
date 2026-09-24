@@ -195,13 +195,27 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     // for up to 90s after any prior run. Reproduced directly: back-to-back
     // invocations of this file failed every time until this reset was added.
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
-    // Spread across all 6 carriers (4 max per carrier well under
+    // Spread across 5 carriers (4 max per carrier well under
     // CARRIER_CONCURRENCY_LIMITS' fleet-wide cap of 5/carrier — see
     // src/billing/tiers.ts) so that real, intentional guard doesn't throttle
     // this test's own fleet before it can prove the pipeline dispatches all
     // 20; per-carrier scarcity has its own dedicated coverage in
     // tests/queueEngineFairnessAndLease.test.ts.
-    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
+    //
+    // telus_adjudicare deliberately excluded here: carrier-configs.json's
+    // _dial_phone_policy documents that NO TELUS TPA currently has a
+    // verified_provider_phone (as of 2026-08-01, 0 of 13) — this is a
+    // permanent, intentional safety gate (dialing an unverified TPA number
+    // burns one of only 3 allowed attempts), not a fixture gap, so a
+    // TELUS-routed claim in this fixture always defers with
+    // TELUS_TPA_PHONE_UNVERIFIED regardless of how "valid" its synthetic
+    // group number looks. Reproduced directly: with TELUS included, this
+    // test deterministically dispatched 17/20 every run, not a flake — the
+    // 3 practices landing on telus_adjudicare (i % 6 === 5) correctly never
+    // dispatch. This file's job is proving the real pipeline handles load
+    // at N=20, not re-proving TELUS's phone-verification gate (which has
+    // its own rationale documented in carrier-configs.json).
+    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc'];
     fleet = await Promise.all(
       Array.from({ length: FLEET_SIZE }, (_, i) => seedDispatchablePractice(CARRIERS[i % CARRIERS.length])),
     );

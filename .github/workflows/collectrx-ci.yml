@@ -7,6 +7,18 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  # Safety net, not a replacement for push-triggered CI: confirmed directly (GitHub API,
+  # 2026-09-24) that 5 consecutive direct pushes to main (2026-08-26 to 2026-08-31,
+  # including bdafe2e, which shipped Hold Sentinel with 3 real TS compile errors) never
+  # triggered ANY collectrx-ci.yml run at all — not a failure, a silent no-run. The broken
+  # build sat on main undetected for 3 weeks until an unrelated PR happened to fix it. This
+  # schedule re-runs the full suite against main's actual current HEAD daily regardless of
+  # whether push-triggered CI fired, so a gap like that surfaces within a day, not weeks.
+  # The stronger, structural fix is requiring status checks + disallowing direct pushes to
+  # main in GitHub branch protection settings — this schedule is the fallback for whatever
+  # that doesn't catch, not a substitute for it.
+  schedule:
+    - cron: '0 13 * * *' # 9am Eastern (13:00 UTC) daily
 
 concurrency:
   group: collectrx-ci-${{ github.workflow }}-${{ github.ref }}

@@ -17,7 +17,7 @@ export type PmsImportFamily = 'abeldent' | 'dentrix' | 'generic';
 /** All carrier call / recovery decisions use this profile regardless of PMS vendor. */
 export const PHONE_DECISION_PROFILE = 'carrier_recovery_v1' as const;
 
-export type PmsIngestMode = 'csv' | 'desktop_connector' | 'unknown';
+export type PmsIngestMode = 'csv' | 'desktop_connector' | 'folder_watch' | 'unknown';
 
 export interface PracticePmsInfo {
   vendorId: PmsVendorId;

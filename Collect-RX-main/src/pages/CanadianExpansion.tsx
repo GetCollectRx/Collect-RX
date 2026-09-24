@@ -131,7 +131,7 @@ export default function CanadianExpansion() {
     setErr(null)
     try {
       const [m, c, w, d] = await Promise.all([
-        apiFetch('/api/analytics/canadian-phase2'),
+        apiFetch('/api/canadian/analytics/canadian-phase2'),
         apiFetch('/api/canadian/cdcp/reconsiderations'),
         apiFetch('/api/canadian/pms/writeback-log?limit=15'),
         apiFetch('/api/canadian/compliance/disclosures'),

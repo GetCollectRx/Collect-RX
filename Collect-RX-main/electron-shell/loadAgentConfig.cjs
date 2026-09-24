@@ -78,6 +78,16 @@ function applyAgentConfigToEnv(config) {
     schemaMap: 'ABELDENT_SCHEMA_MAP',
     syncIntervalMinutes: 'SYNC_INTERVAL_MINUTES',
     dashboardUrl: 'COLLECTRX_DASHBOARD_URL',
+    // Folder-watch connector (desktop/services/folderWatchSync.cjs) — see
+    // desktop/config/agent-config.example.json for the full key list.
+    watchFolder: 'WATCH_FOLDER',
+    watchIntervalMs: 'WATCH_INTERVAL_MS',
+    watchStabilityMs: 'WATCH_STABILITY_MS',
+    watchFileExtensions: 'WATCH_FILE_EXTENSIONS',
+    watchMaxAttempts: 'WATCH_MAX_ATTEMPTS',
+    watchRetentionPolicy: 'WATCH_RETENTION_POLICY',
+    watchRetentionDays: 'WATCH_RETENTION_DAYS',
+    watchPmsVendor: 'WATCH_PMS_VENDOR',
   };
   for (const [key, envName] of Object.entries(map)) {
     if (config[key] != null && !process.env[envName]) {
