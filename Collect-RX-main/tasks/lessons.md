@@ -227,3 +227,88 @@ Root cause: `src/server/index.ts` mounts several routers at the bare `/api` pref
 Left as-is — pre-existing on `dev` before this merge, unrelated to what this branch was merging, and a real fix means either mounting these routers at their own sub-path or moving `useOwnerPracticeApiAuthOnly`/`strictLimiter` to route-level instead of router-level, both of which need their own dedicated verification pass.
 
 **How to apply next time this comes up:** when a test's actual HTTP response doesn't match what the route's own code should produce, don't stop at grepping the literal middleware name in the suspect file — a shared middleware installer (`useOwnerPracticeApiAuthOnly`, `useOwnerPracticeApi`, etc.) can apply something without the literal string ever appearing in that file. `console.trace()` on the actual response call, with `Error.stackTraceLimit` raised, finds the true call path in one shot instead of iterating through guesses.
+
+## 2026-09-24 — Two findings from a full-history audit, both fixed: a 6-day silent CI gap that let a broken commit sit on `main` for 3 weeks, and the `/api` mount-leak bug from 2026-08-09 (above) closed for real
+
+Khalid asked for a retroactive audit of the repo's git history for work removed or broken by
+a later push (prompted by adopting a new standing rule — see both `CLAUDE.md` files, "before
+every push, know the direction and the blast radius"). Two real, actionable findings came out
+of it; both are now fixed.
+
+### Finding 1 — collectrx-ci.yml silently did not run for 6 days, letting a 3-week broken build sit on `main`
+
+`bdafe2e` ("V1 human-assisted squad: fix outcome derivation + wire up dispatch", 2026-08-30,
+pushed directly to `main` by Khalid, no PR) shipped importing three symbols that were never
+defined anywhere (`getTelusDialPhone`, `sendPracticeSms`, the `'LIVE_CALL_NEEDS_STAFF'` type
+value) — three real `tsc` errors (TS2614, TS2305, TS2322). It sat broken on `main` until
+`80f3640` (2026-09-19, also Khalid, inside PR #101) fixed it — almost 3 weeks later. Confirmed
+directly via `80f3640`'s own commit message: "never built cleanly from this branch's own
+committed code, independent of any downstream change" — this was not a later push undoing
+earlier work, it shipped broken from day one.
+
+**Root cause, confirmed via the GitHub Actions API, not inferred:** `collectrx-ci.yml` triggers
+on `push: branches: [main, dev]`, which should run `tsc --noEmit` (the `verify` job) on every
+push to `main` with no exceptions. Pulling every `collectrx-ci.yml` run for the relevant window
+found a clean gap: the last push-triggered run before the gap was `0afde93` (2026-08-26), the
+next was `e4d1c54` (2026-09-02) — **5 consecutive commits landed on `main` in between
+(`6a83b35`, `077b08c`, `63756bd`, `bdafe2e`, `a676c80`) and none of them, individually or as a
+batch, triggered any workflow run at all.** Not a failure — a silent no-run. The workflow file
+itself was byte-identical between the two known-good runs (`git diff 0afde93 e4d1c54 --
+.github/workflows/collectrx-ci.yml` is empty), so it wasn't an invalid-workflow-file bug like
+the June `secrets` context incident (see the 2026-06-12 entry above). One of the five gap
+commits (`6a83b35`) does fix an adjacent-but-different CI bug — TruffleHog's `secret-scanning.yml`
+exiting 1 on every direct push because `base`/`head` resolved to the same commit — but that's a
+separate workflow file from `collectrx-ci.yml` and doesn't explain this gap. The exact mechanism
+for why GitHub Actions never triggered `collectrx-ci.yml` for these 5 pushes was not fully
+root-caused (ruled out: invalid workflow YAML, `[skip ci]` markers, bot-authored pushes — mixed
+human/Claude authorship across the 5 commits, including Khalid's own `bdafe2e`) — could be a
+transient GitHub webhook delivery failure or a temporarily toggled repo setting, neither of
+which is confirmable after the fact with the tools available in this session.
+
+**Fix applied:** rather than chase the exact transient cause, added a daily `schedule:` trigger
+to `collectrx-ci.yml` (`0 13 * * *`, 9am Eastern) — re-runs the full existing job suite against
+`main`'s actual current HEAD once a day regardless of whether push-triggered CI fired, so a
+silent gap like this one surfaces within a day instead of three weeks. This reuses every
+existing job unchanged (no new file, no drift risk between two copies of the same checks) and
+the `verify` job's existing "Notify ops (CI failure)" step fires the same way for schedule
+failures as push failures.
+
+**This is a safety net, not the real fix — flagged directly to Khalid, not yet done as of this
+entry:** GitHub branch protection on `main` requiring status checks to pass and disallowing
+direct pushes (forcing everything through a PR, where `pull_request:`-triggered CI is far more
+reliable and is a required check before merge) would have made this specific incident
+structurally impossible — `bdafe2e` could not have landed with red/no-run CI if direct pushes
+to `main` weren't allowed at all. No tool available in this session could read or change branch
+protection settings; this needs to be set in GitHub's own UI (Settings → Branches → `main`).
+
+### Finding 2 — the 2026-08-09 `/api` mount-leak bug (see that entry above) was never actually fixed for 2 of the 3 routers it named
+
+That entry said "left as-is." Checked directly against current `main` (2026-09-24): `orgAdminRoutes.ts`
+was fixed at some point after that entry (mounted at `/api/admin/organizations` instead of bare
+`/api` — see the comment above its mount line in `index.ts`) and `earlyAccessRoutes.ts`'s
+`strictLimiter` leak was separately fixed (commit tagged "P10-15", moved to per-route middleware,
+with its own regression test in `tests/rateLimiters.test.ts`). **`benefitsApi.ts` and
+`canadianExpansionApi.ts` were still mounted at bare `/api` with `useOwnerPracticeApiAuthOnly(r)`
+still a router-wide `.use()`, so the original leak (any unauthenticated request to an unmatched
+`/api/*` path got a 401 instead of falling through to the real 404 handler) was still live today,
+confirmed by writing a test that reproduced it before fixing it.**
+
+Fixed by mounting both at their own specific prefixes (`/api/benefits`, `/api/canadian`),
+following the exact pattern already used for `orgAdminRoutes.ts`. `benefitsApi.ts`'s 2 routes and
+11 of `canadianExpansionApi.ts`'s 12 routes already started with a prefix matching their new mount
+(`/benefits/...`, `/canadian/...`), so stripping that redundant prefix from each route definition
+and adding it to the mount instead kept every external URL identical. The 1 exception,
+`GET /analytics/canadian-phase2`, didn't share the `/canadian` prefix its siblings had — moved its
+external URL from `/api/analytics/canadian-phase2` to `/api/canadian/analytics/canadian-phase2`
+(the only caller, `src/pages/CanadianExpansion.tsx`, updated in the same change). Also mounted
+`earlyAccessRoutes.ts` at its own prefix (`/api/early-access`) even though it wasn't actively
+leaking anymore post-P10-15 — it has no router-level `.use()` today, but mounting it at bare `/api`
+left that one line away from reintroducing the same bug class the moment anyone adds one.
+Regression test: `tests/apiMountLeak.test.ts` — asserts an unmatched `/api/*` path 404s instead of
+getting a leaked 401, and that each router's own routes still require auth on their new,
+narrower mount.
+
+**How to apply next time this comes up:** "left as-is" in this log is not the same as "fixed" —
+before trusting an entry that says a bug was scoped/deferred, check whether it was ever actually
+closed, especially when the same bug class (a router-wide `.use()` on a broadly-mounted router)
+appears more than once in the same file. One instance getting fixed doesn't mean its siblings did.
