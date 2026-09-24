@@ -42,6 +42,31 @@ realistic only for Open Dental today; AbelDent already has the live-DB equivalen
 UI automation (Option 3) was not attempted — it cannot be tested reliably without a live
 install of each PMS.
 
+## Cost dependency — why the folder-watcher is the default, not a fallback
+
+Of the four vendors whose integration path is gated behind a commercial partner/developer
+program (Dentrix, Eaglesoft, Curve Dental, Softdent), none publish pricing, and the
+program shape in every case (paid integration marketplace, authorized-partner
+certification, sales-only onboarding) is the kind that typically carries an ongoing fee
+or revenue share once an integration goes from evaluation to production. Open Dental's
+self-serve developer API is the one exception with no fee mentioned in public docs, but
+that is not the same as a written no-cost guarantee, and terms can change.
+
+**Decision rule going forward**: do not invest engineering time against any PMS's official
+API until CollectRx has written pricing/terms from that vendor, confirmed to hold at the
+practice volume CollectRx expects to run. "Technically documented" is necessary but not
+sufficient — a per-call or per-integration fee that scales with practice count is a real
+cost-structure risk, not a rounding error, and a vendor can also revoke or re-price access
+unilaterally in a way CollectRx does not control.
+
+This is why the folder-watcher (below) is the **default architecture for every PMS**,
+AbelDent included, not merely the thing built because the others weren't "confirmed."
+It has no vendor API relationship, no per-call cost, and no exposure to a vendor
+changing pricing or revoking access. It is also a direct hedge against AbelDent's own
+Cloud migration risk noted above: if AbelDent locks down direct SQL access, the likely
+replacement is a paid API, and having the folder-watcher already working means CollectRx
+is not forced into an emergency paid integration to keep syncing.
+
 ## What was built
 
 Given the evidence, the only piece buildable now without assuming an unconfirmed vendor
