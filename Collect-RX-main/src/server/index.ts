@@ -539,11 +539,25 @@ app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
 app.use('/api/ontario-billing', ontarioBillingRouter);
 app.use('/api/queue',       queueRouter);
-app.use('/api',            createEarlyAccessRouter(prisma));
+// Mounted at /api/early-access, not bare /api — see the same fix applied to
+// benefitsApi.ts and canadianExpansionApi.ts below and to orgAdminRoutes.ts
+// above: a router mounted at bare /api runs any router-wide `.use()` it adds
+// for every /api/* request that reaches it, not just its own routes. This
+// router has no such `.use()` today, but mounting it specifically keeps it
+// that way structurally rather than by accident.
+app.use('/api/early-access', createEarlyAccessRouter(prisma));
 app.use('/api/connector',  createConnectorRouter());
 app.use('/api/admin/connector', createConnectorAdminRouter());
 app.use('/api/admin/dlq', createDlqAdminRouter());
-app.use('/api',            createBenefitsApiRouter(prisma));
+// Mounted at /api/benefits, not bare /api — this router's useOwnerPracticeApiAuthOnly(r)
+// call is a router-wide `.use()`, which Express runs for every request that reaches
+// this router, not just requests matching one of its own routes. Mounted at bare /api,
+// it 401'd every unauthenticated request to any later, more-specific /api/* router in
+// this file (canadianExpansionApi.ts had the identical bug — see below — and
+// orgAdminRoutes.ts had it too, fixed above). Internal route paths already start with
+// /benefits, so this mount change alone would double the path; see benefitsApi.ts's own
+// route definitions, stripped of their /benefits prefix in the same change.
+app.use('/api/benefits',   createBenefitsApiRouter(prisma));
 app.use('/api/dashboard',  dashboardRouter);
 app.use('/api/admin',      createPlatformPersonaAdminRouter());
 app.use('/api/admin/partnerships', createPartnershipsRouter(prisma));
@@ -556,7 +570,13 @@ app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));
 app.use('/api/pre-visit',  preVisitRouter);
-app.use('/api',            createCanadianExpansionRouter(prisma));
+// Mounted at /api/canadian, not bare /api — same useOwnerPracticeApiAuthOnly(r) leak as
+// benefitsApi.ts above. 11 of this router's 12 routes already start with /canadian, so
+// this mount change plus stripping that prefix from those 11 (see canadianExpansionApi.ts)
+// keeps their external URLs identical. The 12th, GET /analytics/canadian-phase2, moves from
+// /api/analytics/canadian-phase2 to /api/canadian/analytics/canadian-phase2 — its one caller
+// (src/pages/CanadianExpansion.tsx) is updated in the same change.
+app.use('/api/canadian',   createCanadianExpansionRouter(prisma));
 // Compliance audit — platform_admin / auditor only
 app.use('/api/compliance', complianceRouter);
 app.use('/api/compliance/workspace', complianceWorkspaceRouter);

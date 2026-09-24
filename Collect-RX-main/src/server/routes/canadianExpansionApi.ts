@@ -73,7 +73,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-01 — list CDCP reconsideration cases with 60-day countdown */
-  r.get('/canadian/cdcp/reconsiderations', async (req: Request, res: Response) => {
+  r.get('/cdcp/reconsiderations', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const rows = await prisma.cdcpReconsiderationCase.findMany({
@@ -88,7 +88,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-01 — register a denied predetermination / claim for tracking */
-  r.post('/canadian/cdcp/reconsiderations', blockAuditorWrites, async (req: Request, res: Response) => {
+  r.post('/cdcp/reconsiderations', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const input = validateReconsiderationCreate(req.body);
@@ -125,7 +125,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.patch('/canadian/cdcp/reconsiderations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
+  r.patch('/cdcp/reconsiderations/:id', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const id = req.params.id;
@@ -155,7 +155,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-03 — precision gap estimate (DB-backed fee guide → bundled fallback) */
-  r.post('/canadian/gap-estimate', computeLimiter, async (req: Request, res: Response) => {
+  r.post('/gap-estimate', computeLimiter, async (req: Request, res: Response) => {
     try {
       const input = validateGapEstimate(req.body);
       const summary = await estimatePrecisionGapWithDb(
@@ -173,7 +173,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-03 — list imported fee guide entries (for admin / verification) */
-  r.get('/canadian/fee-guide', async (req: Request, res: Response) => {
+  r.get('/fee-guide', async (req: Request, res: Response) => {
     try {
       const scope = String(req.query.scope || '').toUpperCase();
       if (!['CDCP', 'ON', 'BC', 'AB'].includes(scope)) {
@@ -203,7 +203,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     limits: { fileSize: 2 * 1024 * 1024 },
   });
   r.post(
-    '/canadian/fee-guide/import',
+    '/fee-guide/import',
     blockAuditorWrites,
     preserveRlsAcrossMiddleware(csvUpload.single('file')),
     async (req: Request, res: Response) => {
@@ -257,7 +257,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   );
 
   /** MOD-04 — log PMS write-back intent (Abeldent UPDATE executed on-premise; this is cloud audit + coordination). */
-  r.post('/canadian/pms/writeback', blockAuditorWrites, async (req: Request, res: Response) => {
+  r.post('/pms/writeback', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const input = validateWriteback(req.body);
@@ -290,7 +290,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   });
 
-  r.get('/canadian/pms/writeback-log', async (req: Request, res: Response) => {
+  r.get('/pms/writeback-log', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const take = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
@@ -319,7 +319,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
    * Desktop connector poll — returns pending write-backs for execution on-prem.
    * Authenticated via the existing practice JWT (long-lived service token).
    */
-  r.get('/canadian/pms/writeback-pending', async (req: Request, res: Response) => {
+  r.get('/pms/writeback-pending', async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const take = Math.min(50, Math.max(1, Number(req.query.limit) || 25));
@@ -338,7 +338,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
    * Desktop connector ack — mark a write-back row as processed (or error).
    * Body: { id, ok: boolean, error?: string, durationMs?: number }
    */
-  r.post('/canadian/pms/writeback-ack', blockAuditorWrites, async (req: Request, res: Response) => {
+  r.post('/pms/writeback-ack', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
       const b = (req.body || {}) as Record<string, unknown>;
@@ -375,7 +375,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
   });
 
   /** MOD-02 — Law 25 / AIDA transparency / CRTC ADAD disclosure bundle */
-  r.get('/canadian/compliance/disclosures', (_req: Request, res: Response) => {
+  r.get('/compliance/disclosures', (_req: Request, res: Response) => {
     return res.json(getComplianceDisclosures());
   });
 
