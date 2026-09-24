@@ -56,6 +56,10 @@ describe.skipIf(!dbReady)(
     afterAll(async () => {
       await prisma.callEscalation.deleteMany({ where: { practiceId: practice.id } });
       await prisma.workItem.deleteMany({ where: { practiceId: practice.id } });
+      // The re-import/payment-verification test below leaves a COMPLETED (not deleted)
+      // CallQueue row behind — callQueue.claimId FKs to insuranceClaim, so it must go first.
+      await prisma.claimRecoveryEvent.deleteMany({ where: { practiceId: practice.id } });
+      await prisma.callQueue.deleteMany({ where: { practiceId: practice.id } });
       await prisma.insuranceClaim.deleteMany({ where: { practiceId: practice.id } });
       await prisma.pmsImportRun.deleteMany({ where: { practiceId: practice.id } });
       await cleanupPracticeWithUsers(prisma, practice.id);
@@ -185,6 +189,83 @@ describe.skipIf(!dbReady)(
 
       const remainingQueueEntry = await prisma.callQueue.findFirst({ where: { claimId: claim!.id } });
       expect(remainingQueueEntry).toBeNull();
+    });
+
+    // Verification gap this test closes: CollectRx/Collect-RX CLAUDE.md and prior audits noted
+    // the import/payment-verification path (prismaClaimImporter.ts upsert + paymentVerification.ts)
+    // had no test that re-imports the same claim number and checks matching + the resulting
+    // PAYMENT_VERIFIED_SYNC transition. Isolated to its own claim number (CLM-E2E-1003) so it
+    // doesn't disturb the CLM-E2E-1001/1002 fixtures the earlier tests in this file depend on.
+    it('re-importing the same claim number is a safe upsert and verifies payment closure on balance-to-zero', async () => {
+      const firstImport = await runPmsImportPipeline(prisma, {
+        practiceId: practice.id,
+        pmsSource: 'other',
+        rows: parseSimpleCsv(
+          [
+            'claim_number,patient_first_name,patient_last_name,carrier_name,treatment_date,amount_billed,amount_outstanding,days_outstanding',
+            'CLM-E2E-1003,Amir,Khan,Manulife,2026-01-05,300.00,300.00,60',
+          ].join('\n'),
+        ),
+      });
+      expect(firstImport.status).toBe('success');
+      expect(firstImport.imported).toBe(1);
+
+      const created = await prisma.insuranceClaim.findUniqueOrThrow({
+        where: { practiceId_claimNumber: { practiceId: practice.id, claimNumber: 'CLM-E2E-1003' } },
+      });
+      expect(Number(created.outstandingAmount)).toBe(300);
+      expect(created.status).toBe('PENDING');
+
+      // Simulate the claim having progressed into the call queue between imports —
+      // PAYMENT_VERIFY_STATUSES gates the sync-verified transition on the claim being
+      // in an active recovery state, not on it still being freshly imported.
+      await prisma.insuranceClaim.update({ where: { id: created.id }, data: { status: 'IN_QUEUE' } });
+      const queueEntry = await prisma.callQueue.create({
+        data: { practiceId: practice.id, claimId: created.id, scheduledFor: new Date(), status: 'PENDING' },
+      });
+
+      // Re-import the SAME claim number with the balance paid down to zero, as a
+      // corrected/updated PMS export would carry after the carrier pays the claim.
+      const secondImport = await runPmsImportPipeline(prisma, {
+        practiceId: practice.id,
+        pmsSource: 'other',
+        rows: parseSimpleCsv(
+          [
+            'claim_number,patient_first_name,patient_last_name,carrier_name,treatment_date,amount_billed,amount_outstanding,days_outstanding',
+            'CLM-E2E-1003,Amir,Khan,Manulife,2026-01-05,300.00,0.00,62',
+          ].join('\n'),
+        ),
+      });
+      expect(secondImport.status).toBe('success');
+      expect(secondImport.imported).toBe(1);
+
+      // Safe matching: still exactly one row for this claim number, same id — an upsert, not a duplicate.
+      const allWithNumber = await prisma.insuranceClaim.findMany({
+        where: { practiceId: practice.id, claimNumber: 'CLM-E2E-1003' },
+      });
+      expect(allWithNumber).toHaveLength(1);
+      expect(allWithNumber[0]!.id).toBe(created.id);
+
+      // Payment-closure confirmation: the pipeline's built-in payment-verification batch
+      // detected the balance dropping to zero on an in-flight claim and ran the
+      // PAYMENT_VERIFIED_SYNC transition (transitionClaimRecovery.ts) automatically —
+      // this is not something the caller has to invoke separately.
+      expect(secondImport.paymentsVerified).toBe(1);
+      expect(secondImport.dollarsRecoveredSyncVerified).toBe(300);
+
+      const resolvedClaim = await prisma.insuranceClaim.findUniqueOrThrow({ where: { id: created.id } });
+      expect(Number(resolvedClaim.outstandingAmount)).toBe(0);
+      expect(resolvedClaim.status).toBe('RESOLVED');
+      expect(resolvedClaim.recoveryRoute).toBe('STOP');
+
+      const closedQueueEntry = await prisma.callQueue.findUnique({ where: { id: queueEntry.id } });
+      expect(closedQueueEntry?.status).toBe('COMPLETED');
+
+      const events = await prisma.claimRecoveryEvent.findMany({
+        where: { claimId: created.id, eventType: 'PAYMENT_VERIFIED_SYNC' },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]!.amountRecoveredCents).toBe(30000);
     });
   },
 );

@@ -221,6 +221,7 @@ async function initDashboardTarget() {
 // Dev: resolve directly to desktop/services/abeldent-sync.cjs
 // Packaged: electron-builder copies desktop/ into resources/app/desktop/
 const SYNC_SERVICE_PATH = path.join(__dirname, '..', 'desktop', 'services', 'abeldent-sync.cjs');
+const WATCH_SERVICE_PATH = path.join(__dirname, '..', 'desktop', 'services', 'folderWatchSync.cjs');
 
 // ── State ────────────────────────────────────────────────────────────────────
 let mainWindow  = null;
@@ -228,6 +229,9 @@ let tray        = null;
 let syncProcess = null;
 let syncStatus  = 'starting';
 let syncLastMsg = 'Starting…';
+let watchProcess = null;
+let watchStatus   = 'starting';
+let watchLastMsg  = 'Starting…';
 let loadFallbackAttempted = false;
 app.isQuitting  = false;
 
@@ -256,25 +260,49 @@ const TOOLTIPS = {
 };
 
 // ── Tray ─────────────────────────────────────────────────────────────────────
+// Worse-of-two: 'error' beats 'starting' beats 'healthy', so either connector's problem surfaces.
+function combinedStatus() {
+  const rank = { error: 2, starting: 1, healthy: 0 };
+  return (rank[watchStatus] || 0) > (rank[syncStatus] || 0) ? watchStatus : syncStatus;
+}
+
 function buildTrayMenu() {
-  return Menu.buildFromTemplate([
+  const items = [
     { label: 'Open CollectRx', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
     { type: 'separator' },
-    { label: `Sync: ${syncStatus}`, enabled: false },
+    { label: `AbelDent sync: ${syncStatus}`, enabled: false },
     { label: 'Trigger manual sync', click: () => triggerManualSync() },
-    { type: 'separator' },
-    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
-  ]);
+  ];
+  if (watchProcess || process.env.WATCH_FOLDER?.trim()) {
+    items.push(
+      { label: `Folder watch: ${watchStatus}`, enabled: false },
+      { label: 'Trigger folder scan now', click: () => triggerManualWatch() },
+    );
+  }
+  items.push({ type: 'separator' }, { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } });
+  return Menu.buildFromTemplate(items);
 }
 
 function setStatus(status, message) {
   syncStatus  = status;
   syncLastMsg = message || TOOLTIPS[status] || status;
-  if (!tray) return;
-  tray.setImage(ICONS[status] || ICONS.starting);
-  tray.setToolTip(TOOLTIPS[status] || 'CollectRx');
-  tray.setContextMenu(buildTrayMenu());
+  refreshTray();
   mainWindow?.webContents.send('sync-status-changed', { status, message: syncLastMsg });
+}
+
+function setWatchStatus(status, message) {
+  watchStatus  = status;
+  watchLastMsg = message || TOOLTIPS[status] || status;
+  refreshTray();
+  mainWindow?.webContents.send('watch-status-changed', { status, message: watchLastMsg });
+}
+
+function refreshTray() {
+  if (!tray) return;
+  const combined = combinedStatus();
+  tray.setImage(ICONS[combined] || ICONS.starting);
+  tray.setToolTip(TOOLTIPS[combined] || 'CollectRx');
+  tray.setContextMenu(buildTrayMenu());
 }
 
 function createTray() {
@@ -406,9 +434,79 @@ function triggerManualSync() {
   }
 }
 
+// ── Folder-watch service ────────────────────────────────────────────────────
+// Independent of the AbelDent SQL connector above — a practice may run either,
+// both, or neither, depending on what their PMS actually supports (see
+// docs/operations/PMS-AUTOMATION-EVIDENCE.md). Only starts when WATCH_FOLDER
+// is explicitly configured; otherwise this is a silent no-op, same pattern as
+// spawnSyncService()'s ABELDENT_SCHEMA_MAP gate above.
+function spawnFolderWatchService() {
+  if (!process.env.WATCH_FOLDER?.trim()) {
+    setWatchStatus('healthy', 'No watch folder configured');
+    return;
+  }
+  if (!fs.existsSync(WATCH_SERVICE_PATH)) {
+    console.log('[Watch] Service not found at', WATCH_SERVICE_PATH, '— skipping');
+    setWatchStatus('starting', 'Watch service not yet configured');
+    return;
+  }
+
+  console.log('[Watch] Spawning', WATCH_SERVICE_PATH);
+  setWatchStatus('starting', 'Folder watch starting…');
+
+  watchProcess = spawn(process.execPath, [WATCH_SERVICE_PATH], {
+    env: {
+      PATH                     : process.env.PATH,
+      NODE_ENV                 : process.env.NODE_ENV,
+      WATCH_FOLDER             : process.env.WATCH_FOLDER,
+      WATCH_INTERVAL_MS        : process.env.WATCH_INTERVAL_MS,
+      WATCH_STABILITY_MS       : process.env.WATCH_STABILITY_MS,
+      WATCH_FILE_EXTENSIONS    : process.env.WATCH_FILE_EXTENSIONS,
+      WATCH_MAX_ATTEMPTS       : process.env.WATCH_MAX_ATTEMPTS,
+      WATCH_RETENTION_POLICY   : process.env.WATCH_RETENTION_POLICY,
+      WATCH_RETENTION_DAYS     : process.env.WATCH_RETENTION_DAYS,
+      WATCH_PMS_VENDOR         : process.env.WATCH_PMS_VENDOR,
+      WATCH_STATE_DIR          : process.env.WATCH_STATE_DIR,
+      COLLECTRX_API_URL        : process.env.COLLECTRX_API_URL || COLLECTRX_PROD_API_ORIGIN,
+      COLLECTRX_API_TOKEN      : process.env.COLLECTRX_API_TOKEN || process.env.COLLECTRX_CONNECTOR_TOKEN,
+      COLLECTRX_CONNECTOR_TOKEN: process.env.COLLECTRX_CONNECTOR_TOKEN,
+    },
+    stdio      : ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  watchProcess.stdout.on('data', (chunk) => {
+    const line = chunk.toString().trim();
+    if (line.includes('WATCH_OK'))    setWatchStatus('healthy', line);
+    if (line.includes('WATCH_ERROR')) setWatchStatus('error',   line);
+  });
+
+  watchProcess.stderr.on('data', (chunk) => {
+    const line = chunk.toString().trim();
+    console.error('[Watch err]', line.replace(/\S+@\S+/g, '[redacted]').slice(0, 200));
+    if (line.toLowerCase().includes('error')) setWatchStatus('error', 'Watch error — check logs');
+  });
+
+  watchProcess.on('exit', (code) => {
+    watchProcess = null;
+    if (!app.isQuitting) {
+      setWatchStatus('error', `Folder watch stopped (code ${code}). Restarting in 30s…`);
+      setTimeout(spawnFolderWatchService, 30_000);
+    }
+  });
+}
+
+function triggerManualWatch() {
+  if (watchProcess && !watchProcess.killed) {
+    watchProcess.stdin?.write('WATCH_NOW\n');
+  }
+}
+
 // ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle('get-sync-status',    () => ({ status: syncStatus, message: syncLastMsg }));
 ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; });
+ipcMain.handle('get-watch-status',   () => ({ status: watchStatus, message: watchLastMsg }));
+ipcMain.handle('trigger-manual-watch', () => { triggerManualWatch(); return true; });
 ipcMain.handle('get-app-version',    () => app.getVersion());
 ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
 ipcMain.handle('restart-to-update',  () => {
@@ -491,6 +589,7 @@ app.whenReady().then(async () => {
   createTray();
   createWindow();
   spawnSyncService();
+  spawnFolderWatchService();
   setupAutoUpdater();
   runStartupHealthScan();
 });
@@ -504,6 +603,7 @@ app.on('window-all-closed', (e) => e.preventDefault()); // stay in tray on Windo
 app.on('before-quit', () => {
   app.isQuitting = true;
   syncProcess?.kill('SIGTERM');
+  watchProcess?.kill('SIGTERM');
   if (desktopServerHandle) {
     void desktopServerHandle.close().catch(() => {});
     desktopServerHandle = null;

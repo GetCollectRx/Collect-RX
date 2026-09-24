@@ -1,0 +1,13 @@
+{
+  "$schema": "https://www.collectrx.ca/schemas/agent-config-v1.json",
+  "apiUrl": "https://www.collectrx.ca",
+  "apiToken": "PASTE_CONNECTOR_TOKEN_FROM_ADMIN_SYNC_OPS",
+  "watchFolder": "C:\\CollectRxExports",
+  "watchIntervalMs": 60000,
+  "watchStabilityMs": 10000,
+  "watchFileExtensions": ".csv,.txt",
+  "watchMaxAttempts": 5,
+  "watchRetentionPolicy": "move",
+  "watchRetentionDays": 30,
+  "watchPmsVendor": "auto"
+}

@@ -85,6 +85,76 @@ describe.skipIf(!dbReady)('Connector routes (integration)', () => {
     expect(res.body.imported).toBe(0);
   });
 
+  it('POST /api/connector/claims/import-file returns 401 without token', async () => {
+    const res = await request(app)
+      .post('/api/connector/claims/import-file')
+      .attach('file', Buffer.from('claim_number\nX-1'), 'export.csv');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/connector/claims/import-file rejects a non-CSV file', async () => {
+    const res = await request(app)
+      .post('/api/connector/claims/import-file')
+      .set(auth())
+      .attach('file', Buffer.from('not a csv'), 'export.png');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/connector/claims/import-file rejects an unknown pmsVendor', async () => {
+    const csv = 'claim_number,carrier_name,amount_outstanding\nCLM-FW-1,Sun Life,100\n';
+    const res = await request(app)
+      .post('/api/connector/claims/import-file')
+      .set(auth())
+      .field('pmsVendor', 'not_a_real_vendor')
+      .attach('file', Buffer.from(csv), 'export.csv');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Unknown PMS vendor/);
+  });
+
+  it('POST /api/connector/claims/import-file parses and imports a CSV export — the folder-watcher\'s upload path', async () => {
+    const csv = [
+      'claim_number,patient_first_name,patient_last_name,carrier_name,treatment_date,amount_billed,amount_outstanding,days_outstanding',
+      'CLM-FW-1001,Priya,Nair,Sun Life,2026-02-01,180.00,180.00,35',
+    ].join('\n');
+
+    const res = await request(app)
+      .post('/api/connector/claims/import-file')
+      .set(auth())
+      .field('pmsVendor', 'other')
+      .attach('file', Buffer.from(csv), 'export.csv');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.imported).toBe(1);
+    expect(res.body.failed).toBe(0);
+    expect(typeof res.body.contentHash).toBe('string');
+    expect(res.body.contentHash).toHaveLength(64); // sha256 hex
+
+    const claim = await prisma.insuranceClaim.findUnique({
+      where: { practiceId_claimNumber: { practiceId, claimNumber: 'CLM-FW-1001' } },
+    });
+    expect(claim).toBeTruthy();
+    expect(Number(claim!.outstandingAmount)).toBe(180);
+
+    // Re-uploading identical bytes is a safe no-op via the same upsert path the JSON
+    // route uses — not a duplicate row, and the reported hash matches (dedupe-friendly
+    // for the local watcher's ledger, which keys on this exact value).
+    const replay = await request(app)
+      .post('/api/connector/claims/import-file')
+      .set(auth())
+      .field('pmsVendor', 'other')
+      .attach('file', Buffer.from(csv), 'export.csv');
+    expect(replay.status).toBe(200);
+    expect(replay.body.contentHash).toBe(res.body.contentHash);
+    const stillOne = await prisma.insuranceClaim.findMany({
+      where: { practiceId, claimNumber: 'CLM-FW-1001' },
+    });
+    expect(stillOne).toHaveLength(1);
+
+    await prisma.insuranceClaim.deleteMany({ where: { practiceId, claimNumber: 'CLM-FW-1001' } });
+    await prisma.pmsImportRun.deleteMany({ where: { practiceId } });
+  });
+
   it('GET /api/connector/writeback-pending returns entries array', async () => {
     const res = await request(app).get('/api/connector/writeback-pending').set(auth());
     expect(res.status).toBe(200);

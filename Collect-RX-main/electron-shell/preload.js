@@ -20,6 +20,13 @@ contextBridge.exposeInMainWorld('collectrx', {
     return () => ipcRenderer.removeListener('sync-status-changed', fn);
   },
   triggerManualSync: () => ipcRenderer.invoke('trigger-manual-sync'),
+  getWatchStatus   : () => ipcRenderer.invoke('get-watch-status'),
+  onWatchStatusChange: (cb) => {
+    const fn = (_e, data) => cb(data);
+    ipcRenderer.on('watch-status-changed', fn);
+    return () => ipcRenderer.removeListener('watch-status-changed', fn);
+  },
+  triggerManualWatch: () => ipcRenderer.invoke('trigger-manual-watch'),
   getAppVersion    : () => ipcRenderer.invoke('get-app-version'),
   onUpdateAvailable: (cb) => {
     const fn = (_e, data) => cb(data);
