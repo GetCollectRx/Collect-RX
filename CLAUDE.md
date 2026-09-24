@@ -58,6 +58,12 @@ This applies retroactively: references to specific-practice language in code (a 
 
 ---
 
+## Standing rule: before every push, know the direction and the blast radius
+
+A passing local check proves the diff is internally correct, not that it belongs or that it leaves other components working. Before pushing: (1) confirm the change matches current product direction per `docs/operations/PATH-TO-DELIVERY.md` and relevant ADRs, not a stale doc or assumption; (2) map what else depends on the code you touched, and what it depends on, in both directions, not just the tests you wrote for your own change; (3) treat any shared-dependency bump (an npm package, a shared util) as touching every caller, not just the file you meant to change. Full rule and rationale: [`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md), "Standing rule: before every push, know the direction and the blast radius."
+
+---
+
 ## Commands (from repo root)
 
 ```bash
