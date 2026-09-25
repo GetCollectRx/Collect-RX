@@ -224,6 +224,24 @@ real perf regression.
 
 ---
 
+## P0 (carried from a separate prior audit, not yet independently re-verified here)
+
+### P0-06 — CARRIER_BLOCK's manual-dispatch race window is asserted safe, not proven
+A separate prior "Shippability Auditor" session (same day, 2026-09-25) flagged this as its #1
+priority finding and it was not re-investigated in depth during this pass — noted here rather than
+silently dropped. `src/routes/insurance.ts`'s manual single-claim dispatch route (admin-triggered
+"call now") comments the CARRIER_BLOCK/days-outstanding/business-hours check as
+"non-race-prone" with no test proving that claim — i.e., no test demonstrates that a CARRIER_BLOCK
+flag flipping concurrently with this check-then-dial sequence can't let a call through. This
+pass's own 50-practice loadtest exercised CARRIER_BLOCK propagation correctly under real
+concurrent load, but only for the automated bulk queue engine
+(`runDeskQueueTick`/`validateDispatch` via the main dispatch loop) — not this separate
+admin-manual-trigger code path. This is CollectRx's own documented "most critical operational
+safety rule" (`CLAUDE.md`); a genuine proof (or disproof) of the race-window claim deserves
+dedicated, careful test design — deliberately not rushed under a quick-win pass.
+
+---
+
 ## P2 — lower priority / informational
 
 ### P2-01 — Local dev Postgres had migration-history drift from this branch
