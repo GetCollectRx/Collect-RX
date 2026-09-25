@@ -266,15 +266,25 @@ export async function claimTickLease(
   prisma: PrismaClient,
   instanceId: string = ENGINE_INSTANCE_ID,
 ): Promise<boolean> {
+  // locked_until/updated_at are `timestamp without time zone` (Prisma's DateTime
+  // default — no @db.Timestamptz on this model), and Prisma's own JS-side writes
+  // (e.g. the queueEngineLease.upsert() used in tests) always store UTC-numbered
+  // naive digits. Bare `now()` is a timestamptz; comparing/assigning it directly
+  // against this naive column makes Postgres cast it down using the SESSION
+  // timezone (America/Toronto here, not UTC) — off by the UTC offset (4-5h
+  // depending on DST), so a genuinely-expired lease could silently fail to be
+  // reclaimed for hours. `now() AT TIME ZONE 'UTC'` forces the same UTC-numbered
+  // naive representation Prisma already uses, on both the read (WHERE) and the
+  // write (VALUES/SET) sides.
   const affected = await prisma.$executeRaw`
     INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
-    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    VALUES (${LEASE_ID}, (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, (now() AT TIME ZONE 'UTC'))
     ON CONFLICT (id) DO UPDATE
-    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+    SET locked_until = (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
         locked_by = ${instanceId},
-        updated_at = now()
+        updated_at = (now() AT TIME ZONE 'UTC')
     WHERE queue_engine_lease.locked_until IS NULL
-       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_until < (now() AT TIME ZONE 'UTC')
        OR queue_engine_lease.locked_by = ${instanceId}
   `;
   return affected > 0;
