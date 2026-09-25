@@ -217,13 +217,26 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
       where: { completedAt: null },
       data: { completedAt: new Date() },
     });
-    // Spread across all 6 carriers (4 max per carrier well under
+    // Spread across 5 carriers (4 max per carrier well under
     // CARRIER_CONCURRENCY_LIMITS' fleet-wide cap of 5/carrier — see
     // src/billing/tiers.ts) so that real, intentional guard doesn't throttle
     // this test's own fleet before it can prove the pipeline dispatches all
     // 20; per-carrier scarcity has its own dedicated coverage in
     // tests/queueEngineFairnessAndLease.test.ts.
-    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
+    //
+    // Deliberately excludes telus_adjudicare: queueEngine.ts's TELUS branch
+    // (~line 865) refuses to dial any TELUS claim until identifyTelusPlan()
+    // resolves a verified_provider_phone for that claim's TPA, and
+    // carrier-configs.json's own _dial_phone_policy states plainly that zero
+    // TPAs currently have one set (an operator must confirm each by a real
+    // phone call first). Confirmed empirically: every telus_adjudicare claim
+    // in this fleet was deferred with TELUS_TPA_PHONE_UNVERIFIED, not
+    // dispatched — a real, deliberate, currently-universal gate, not a
+    // concurrency bug this capacity test should be asserting against. TELUS
+    // TPA identification/dial-resolution has its own dedicated coverage
+    // elsewhere (src/services/eligibility/engine.test.ts and
+    // tests/canadianExpansionApi tests).
+    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc'];
     fleet = await Promise.all(
       Array.from({ length: FLEET_SIZE }, (_, i) => seedDispatchablePractice(CARRIERS[i % CARRIERS.length])),
     );
