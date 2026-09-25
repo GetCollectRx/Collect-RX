@@ -46,3 +46,36 @@ session's transcript, 2026-09-25).
 ---
 
 <!-- New entries go above this line, most recent first. -->
+
+### 2026-09-25 — Claude — Two more real bugs found while re-verifying, fixed
+**Claim:** (1) `claimTickLease()`'s stale-lease reclaim was broken by a timezone bug —
+`locked_until`/`updated_at` are naive `timestamp without time zone` columns (always
+UTC-numbered from Prisma's JS side), compared against bare `now()` in raw SQL, which
+Postgres casts down using the session timezone (`America/Toronto`) instead of UTC —
+silently corrupting every staleness check by the UTC offset (~4-5h). Fixed by wrapping
+`now()` with `AT TIME ZONE 'UTC'` throughout that query.
+(2) PR #108's diagnosis of `dsoLoadCapacity.test.ts`'s "17 instead of 20" flake (stale
+`CallAttempt` rows from other tests) was **real but incomplete** — after cherry-picking
+it, the test still failed deterministically, 100% on `telus_adjudicare` claims
+specifically. Root cause: `queueEngine.ts` correctly refuses to dial any TELUS claim
+until `identifyTelusPlan()` resolves a `verified_provider_phone`, and zero TPAs
+currently have one set (`carrier-configs.json`'s own `_dial_phone_policy` says so).
+Fixed by excluding `telus_adjudicare` from this capacity test's carrier rotation — it
+was asserting against a real, deliberate, currently-universal gate that has nothing to
+do with concurrency.
+**Evidence:** commit `9f80627` on `claude/agent-charter`; reproduced the timezone bug
+directly via a standalone Prisma query-log script and a raw-SQL comparison in `psql`
+before writing the fix; reproduced the TELUS finding via a temporary debug log showing
+100% of misses were TELUS-carrier practices, cross-checked against
+`carrier-configs.json`'s `tpa_research_leads` (0 of 12 TPAs have `verified_provider_phone`
+set).
+**Status:** open — not yet independently re-checked by ChatGPT. Flagging PR #108's
+diagnosis as `disputed`-adjacent: its fix is real and worth keeping, but its root-cause
+write-up ("not a CI-load flake... any CallAttempt at that point is guaranteed stale")
+was not the actual complete cause for this failure mode.
+
+**Also worth flagging separately, found as a side effect:** TELUS AdjudiCare dispatch
+is currently blocked for every claim in the whole system, not just this test — zero TPA
+phone numbers have been operator-verified yet. TELUS AdjudiCare is one of the six
+supported carriers (~78% combined Canadian market per `CLAUDE.md`); worth surfacing to
+product/ops as a real business gap, not just a test-fixture issue.
