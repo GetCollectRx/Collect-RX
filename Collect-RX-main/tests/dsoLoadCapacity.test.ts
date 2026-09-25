@@ -329,5 +329,11 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     }
     const lease = await prisma.queueEngineLease.findUnique({ where: { id: 'global' } });
     expect(lease?.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
-  }, 60_000);
+    // 60s was tight enough to time out under a full sequential `vitest run`
+    // (235 files, ~440s total) even though 10 real ticks complete in ~50s in
+    // isolation — this is host/DB load sensitivity, not a per-tick latency
+    // regression (verified: the previous two tests in this same file, also
+    // real N=20 dispatch, stayed at 5-10s each in the same slow run). Wider
+    // budget so a loaded CI/dev box doesn't produce a false failure here.
+  }, 120_000);
 });
