@@ -82,7 +82,7 @@ Same root cause as P0-01; listed separately because the fix is a standing CI gat
 migration. See P0-01's fix shape, item 3.
 
 ### P0-04 — `npm ci` cannot satisfy `archiver`'s `buffer-crc32` dependency; DSO compliance export returns 500
-**Status: IN PROGRESS** (root cause identified this pass; not yet fixed)
+**Status: DONE** — cherry-picked PR #90's fix onto `claude/agent-charter`, merged via PR #110. `tests/orgComplianceExport.test.ts` passes.
 
 `GET /api/group/compliance/export/v2` (the DSO/org compliance zip export) fails with a 500 on a
 clean, current install. Root cause, confirmed directly: `archiver@8.0.0` (used to build the export
@@ -102,42 +102,39 @@ and confirm `npm ci` + `tests/orgComplianceExport.test.ts` both pass from a clea
 merging. This is a release gate, not a flaky test — every fresh install of this exact lockfile will
 fail the same way, including CI.
 
-### P0-05 — Two DB-lease/locking tests fail deterministically in isolation (not load-related)
-**Status: IN PROGRESS** (confirmed reproducible; root cause not fully isolated this pass)
+### P0-05 — `claimTickLease` stale-lease reclaim was broken by a timezone bug
+**Status: DONE** — fixed in `claude/agent-charter` (commit `9f80627`), merged via PR #110.
 
-Two tests fail 100% of the time when run completely alone (no concurrent load, no other test
-files running), ruling out flakiness or resource contention as the cause:
+`claimTickLease()`'s stale-lease reclaim (`src/server/frontDesk/queueEngine.ts`) failed 100% of
+the time in complete isolation — confirmed the underlying SQL logic was correct by hand-running
+the equivalent raw query in `psql`, which narrowed it to the Prisma-layer code specifically. Root
+cause found: `queue_engine_lease.locked_until`/`updated_at` are `timestamp without time zone`
+(Prisma's `DateTime` default), always written with UTC-numbered digits from the JS side, but the
+raw SQL compared them against bare `now()` — a `timestamptz` that Postgres casts down using the
+**session timezone** (`America/Toronto` in this environment) rather than UTC before comparing,
+silently corrupting every staleness check by the UTC offset (~4-5h depending on DST). A crashed
+process's lease could sit unreclaimed for hours. Fixed by wrapping every `now()` in that query
+with `AT TIME ZONE 'UTC'`. This directly contradicted
+`docs/operations/DSO-SCALE-VERIFICATION-2026-08-04.md`'s claim that "a stale lease from a crashed
+process is reclaimable" — that claim was wrong and is now actually true.
+Verified: `tests/queueEngineFairnessAndLease.test.ts` 6/6 passing, including this case.
 
-- `tests/queueEngineFairnessAndLease.test.ts > claimTickLease — fleet-wide distributed lock >
-  allows reclaiming a stale (expired) lease` — expects `claimTickLease()` to return `true` when an
-  existing lease's `locked_until` is 60s in the past (a "dead instance" scenario). Fails with
-  `false`. Verified the underlying SQL logic is correct by hand-running the equivalent raw
-  `INSERT ... ON CONFLICT ... WHERE locked_until < now()` directly in `psql` against the same
-  database — it reclaims the lease correctly. The gap is therefore somewhere between the Prisma
-  client path (`claimTickLease()` in `src/server/frontDesk/queueEngine.ts`) and that same SQL, not
-  in the SQL itself. This directly contradicts
-  `docs/operations/DSO-SCALE-VERIFICATION-2026-08-04.md`'s claim that "a stale lease from a
-  crashed process is reclaimable" — that claim needs to be re-verified, not assumed, given fresh
-  evidence.
-- `tests/webhookValidation.test.ts > Stripe webhook validation > idempotent — duplicate event
-  processed only once` — first call's `res1.body.handled` is `undefined`, not `true`. The test's
-  synthetic event uses a `price.id` (`price_idempotent_test`) with no corresponding
-  `STRIPE_PRICE_*` mapping configured — plausible that the `customer.subscription.updated` handler
-  only sets `handled: true` (and, if so, may only *record* the event for idempotency) when the
-  price resolves to a known tier, which would mean an event referencing an unrecognized price
-  isn't idempotency-protected. Not fully root-caused this pass — flagged with the specific
-  reproduction so engineering can confirm.
-
-**Fix:** engineering time to trace `claimTickLease()`'s actual generated SQL/params vs. the
-hand-verified raw query, and to read the `customer.subscription.updated` handler's early-return
-paths for the unmapped-price case. Re-run both tests in isolation after any fix — they were
-reproducible enough that flaky-test theories can be ruled out immediately.
+**`tests/webhookValidation.test.ts`'s idempotency test — retracted, not a real bug.** Originally
+listed here as unconfirmed (`res1.body.handled` was `undefined`). Re-ran it after fixing the local
+test-environment's RLS role setup (the same `BYPASSRLS`-grant issue that caused the 11 false
+failures documented above) — it now passes cleanly (`200 {"received":true,"handled":true}`). This
+was the same category of environment artifact as those 11, not a product bug; the original entry
+here was written before that connection was made. No code change needed.
 
 ---
 
 ## P1 — should fix before broad multi-practice rollout
 
 ### P1-01 — No explicit Prisma connection-pool sizing; observed a real pool timeout under concurrent test load
+**Status: IN PROGRESS** — documented the gap and the fix syntax in `.env.example`
+(`claude/quick-wins` branch); the actual `connection_limit`/`pool_timeout` value still needs
+sizing against the real production machine and target concurrent-practice count, which isn't
+knowable from this environment.
 `PrismaClient` (`src/lib/prisma.ts`) is instantiated with no `connection_limit`/`pool_timeout`, and
 `DATABASE_URL` (`.env.example`, Fly secrets per docs) carries no `?connection_limit=` query param
 anywhere in the repo — the app runs on Prisma's default pool size
@@ -184,11 +181,15 @@ it does not error, and CI's lint step only fails on errors. The documented rule 
 gate have drifted apart. Either downgrade the doc to match reality or promote the rule to `error`
 and clear/justify the existing 66 instances.
 
-### P1-04 — `publicLimiter` rate limiter is dead code
-`tests/rateLimiters.test.ts` itself documents this: the limiter is implemented and unit-tested but
-not wired to any route, and the routes it was originally built for don't exist. Either wire it to
-the intended route(s) or remove it — an unused rate limiter sitting in the codebase looks like
-protection that isn't actually there.
+### P1-04 — `publicLimiter` — retracted, not dead code
+**Status: DONE (was already fixed in product code; only the test's description was stale).**
+Verified against current HEAD before touching anything: `src/server/routes/publicUnsubscribeRoutes.ts`
+mounts `publicLimiter` on a real, live route (`/api/public/prospect-unsubscribe`,
+`app.use('/api/public', createPublicUnsubscribeRouter(prisma))` in `index.ts`). The route was
+built specifically to fix the exact gap `tests/rateLimiters.test.ts` had documented (CASL/CAN-SPAM
+one-click unsubscribe advertised in email headers but 404ing) — the fix just landed without anyone
+updating the test that reported the bug. Updated the test to assert the real wiring instead of a
+bug that no longer exists (`claude/quick-wins` branch).
 
 ### P1-05 — Electron toolchain requires Node ≥22.12, declared engine is ≥20.10
 `package.json` (`engines.node`) and CI's `actions/setup-node@v4` both target Node 20, but
@@ -202,16 +203,11 @@ three of its jobs, so CI's actual Windows `.exe` build runs the same mismatch. B
 with Node 20.
 
 ### P1-06 — 3 `softDeleteIsolation.test.ts` tests can never run — they test a schema field the `User` model doesn't have
-`userSoftDeleteSchemaReady` (`tests/softDeleteIsolation.test.ts`) gates 3 tests ("excludes
-soft-deleted users from practice-scoped user lists," "prevent authentication with soft-deleted
-user," "preserve AuditLog when user is soft-deleted") on `User` having a `deletedAt` field.
-Confirmed directly against `prisma/schema.prisma`: `User` has no `deletedAt` field — deactivation
-is via `isActive: Boolean` instead (confirmed live and checked on every request in
-`src/server/middleware/authenticate.ts`). These 3 tests will skip on every run, forever, in any
-environment, since the schema condition they gate on can never become true without a schema
-change nobody has made. Not a security gap in itself (`isActive` deactivation is real and tested
-elsewhere), but these 3 tests currently look like passing/present coverage for "user soft-delete
-isolation" while structurally never executing — rewrite them against `isActive`, or delete them.
+**Status: DONE.** Rewrote all 3 tests against the real mechanism (`isActive: Boolean`, checked on
+every request in `authenticate.ts`) instead of the `deletedAt` field `User` never had — login
+rejection is now verified through a real HTTP request to `/api/auth/login`, not just a DB query.
+All 14 tests in the file now run and pass (was 11 running + 3 permanently skipped).
+`claude/quick-wins` branch.
 
 ### P1-07 — `dsoLoadCapacity.test.ts` sustained-tick lease-renewal test times out at exactly its 60s budget
 Ten sequential real `runDeskQueueTick()` calls against a 20-practice fleet (this test's own
@@ -264,7 +260,8 @@ CI's own `verify`/`e2e`/`perf-smoke`/`queue-redis` jobs explicitly do
 (`ALTER ROLE prisma BYPASSRLS`) before running the same suite, because ordinary test fixtures
 write directly via Prisma outside `runWithRlsContext`. Confirmed by re-running both files against
 a role with `BYPASSRLS` granted (mirroring CI exactly) — both pass cleanly. **The other 6 failed
-tests are real** — see P0-04, P0-05, P1-00, and the loadtest/dsoHttpLoadCapacity findings above.
+tests were real** — see the now-DONE P0-04/P0-05 above (both fixed via PR #110), P1-07, and the
+loadtest/dsoHttpLoadCapacity findings.
 
 ## Verified this pass — do not re-flag without new evidence
 

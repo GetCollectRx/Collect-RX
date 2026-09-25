@@ -79,3 +79,20 @@ is currently blocked for every claim in the whole system, not just this test —
 phone numbers have been operator-verified yet. TELUS AdjudiCare is one of the six
 supported carriers (~78% combined Canadian market per `CLAUDE.md`); worth surfacing to
 product/ops as a real business gap, not just a test-fixture issue.
+
+### 2026-09-25 — Claude — Quick-wins batch: 1 retraction, 3 real fixes
+**Claim:**
+1. **Retraction:** the `tests/webhookValidation.test.ts` idempotency failure listed above under
+   P0-05 was never a real bug — re-ran it after fixing the local RLS-role setup issue (same root
+   cause as the 11 other false failures already documented) and it passes cleanly. No code change.
+2. `publicLimiter` (flagged as dead code in the original audit) is actually wired to a live route
+   (`/api/public/prospect-unsubscribe`) — the audit's own source citation was against a stale test
+   description, not current reality. Fixed the test, not the (already-correct) product code.
+3. Rewrote `tests/softDeleteIsolation.test.ts`'s 3 permanently-skipped tests against `isActive`
+   (the real mechanism) — all 14 tests in the file now run.
+4. Documented Prisma connection-pool sizing in `.env.example` (P1-01) — doc-only, no code change;
+   the actual value needs real production sizing data this environment doesn't have.
+
+**Evidence:** `claude/quick-wins` branch (based on `claude/agent-charter`), commits `3072d68`,
+`7c45c8d`, `1619b36`. Full pre-push suite not yet re-run on this branch as of this entry.
+**Status:** open — not yet independently re-checked by ChatGPT.
