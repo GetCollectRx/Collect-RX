@@ -5,6 +5,7 @@ import { logProspectActivity } from './prospectActivity.js';
 import { maybeStartReferralSequence } from './referralEngine.js';
 import { syncProspectStageToHubspot } from './hubspotSync.js';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 function defaultTimezone(province: string | null): string {
   const p = (province || '').toUpperCase();
@@ -53,18 +54,23 @@ export async function createPracticeFromProspect(
   let ownerEmail: string | null = null;
   if (prospect.email?.trim()) {
     ownerEmail = prospect.email.trim().toLowerCase();
-    const existingUser = await prisma.user.findUnique({ where: { email: ownerEmail } });
-    if (!existingUser) {
-      await prisma.user.create({
-        data: {
-          practiceId: practice.id,
-          email: ownerEmail,
-          passwordHash,
-          role: 'practice_owner',
-          displayName: prospect.contactName?.trim() || prospect.practiceName,
-        },
-      });
-    }
+    // Bypasses RLS: this creates the practice's very first user, before any
+    // request/session context naming that practice exists to authorize
+    // against — the same reason /api/auth/register does the same thing.
+    await runWithRlsBypass(async () => {
+      const existingUser = await prisma.user.findUnique({ where: { email: ownerEmail as string } });
+      if (!existingUser) {
+        await prisma.user.create({
+          data: {
+            practiceId: practice.id,
+            email: ownerEmail as string,
+            passwordHash,
+            role: 'practice_owner',
+            displayName: prospect.contactName?.trim() || prospect.practiceName,
+          },
+        });
+      }
+    });
   }
 
   await prisma.prospect.update({

@@ -46,6 +46,7 @@ import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -280,6 +281,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   /** POST /api/auth/dev/demo — one-click local demo sign-in (non-production only) */
   r.post('/dev/demo', async (req: Request, res: Response) => {
     try {
+return await runWithRlsBypass(async () => {
       if (process.env.NODE_ENV === 'production') {
         return res.status(404).json({ error: 'Not found' });
       }
@@ -291,7 +293,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         });
       }
       return respondPracticeLogin(req, res, user);
-    } catch (e) {
+});
+        } catch (e) {
       logger.error('[authRoutes] Dev demo login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
@@ -300,6 +303,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   /** POST /api/auth/login — email + password (practice staff or platform roles) */
   r.post('/login', authLimiter, async (req: Request, res: Response) => {
     try {
+return await runWithRlsBypass(async () => {
       const parsed = loginBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: formatZodError(parsed.error) });
@@ -338,7 +342,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       }
 
       return res.status(401).json({ error: 'Invalid credentials' });
-    } catch (e) {
+});
+        } catch (e) {
       logger.error('[authRoutes] Login error', { error: e });
       return res.status(500).json({ error: 'Login failed' });
     }
@@ -879,6 +884,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
    */
   r.post('/register', authLimiter, async (req: Request, res: Response) => {
     try {
+return await runWithRlsBypass(async () => {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
       const { practiceName, displayName, email, password, organizationName, additionalPractices } = parsed.data;
@@ -954,7 +960,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         role: user.role,
         userRole: isOrgSignup ? 'billing_ops_manager' : 'owner',
       });
-    } catch (e) {
+});
+        } catch (e) {
       logger.error('[authRoutes] register error', { error: e });
       return res.status(500).json({ error: 'Registration failed' });
     }
@@ -1116,6 +1123,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   /** POST /api/auth/accept-invite — create staff account from invite token (public) */
   r.post('/accept-invite', authLimiter, async (req: Request, res: Response) => {
     try {
+return await runWithRlsBypass(async () => {
       const parsed = acceptInviteBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
       const { token, displayName, password } = parsed.data;
@@ -1161,7 +1169,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       };
       setUserAuthCookie(res, sessionAuth);
       return res.status(201).json({ user, role: user.role });
-    } catch (e) {
+});
+        } catch (e) {
       logger.error('[authRoutes] accept-invite error', { error: e });
       return res.status(500).json({ error: 'Failed to create account' });
     }

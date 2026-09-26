@@ -11,6 +11,7 @@ import type { UserAuthPayload } from '../accessControl/types.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { frontendBaseUrl } from '../stripe/billing.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 /**
  * Phase 4 FR-1-6: per-org SAML 2.0 SSO front door. Authenticates onto the
@@ -66,6 +67,7 @@ export function createSsoRouter(prisma: PrismaClient): Router {
     const orgSlug = req.params.orgSlug;
     let organizationId: string | undefined;
     try {
+      return await runWithRlsBypass(async () => {
       const connection = await getOrganizationSsoConnectionBySlug(prisma, orgSlug);
       if (!connection) return res.status(404).json({ error: 'SSO not configured for this organization' });
       organizationId = connection.organizationId;
@@ -101,7 +103,8 @@ export function createSsoRouter(prisma: PrismaClient): Router {
         subjectId: organizationId,
       });
       return res.redirect(302, frontendBaseUrl());
-    } catch (e) {
+});
+        } catch (e) {
       if (organizationId) {
         return await loginFailed(prisma, res, organizationId, 'assertion_failed', String(e instanceof Error ? e.message : e));
       }

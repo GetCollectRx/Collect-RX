@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import { getPlanSummary, type UsageAlert } from './planBridge.js';
 import { sendPlanUsageAlertEmail } from '../email/planUsageAlert.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 type AlertSentMap = Record<string, boolean>;
 
@@ -45,14 +46,14 @@ export async function maybeSendPlanUsageAlertEmails(
   const fresh = codes.filter((c) => !sent[c]);
   if (fresh.length === 0) return;
 
-  const users = await prisma.user.findMany({
+  const users = await runWithRlsBypass(() => prisma.user.findMany({
     where: {
       practiceId,
       isActive: true,
       role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
     },
     select: { email: true, displayName: true, role: true },
-  });
+  }));
 
   const recipients = users.filter((u) => {
     if (u.role === 'practice_owner') return true;

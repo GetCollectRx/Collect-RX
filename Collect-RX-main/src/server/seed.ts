@@ -7,6 +7,14 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database (baseline practice, no claims)...');
 
+  // This script uses its own raw PrismaClient (not the app's RLS-extension-
+  // wrapped singleton), and runs as a one-shot connection outside any request
+  // context — so no app.practice_id/app.rls_bypass session var is ever set by
+  // the usual per-request mechanism. Tenant tables under FORCE RLS would
+  // silently reject every insert here without this. Session-scoped (not
+  // transaction-local — this script holds one connection for its whole run).
+  await prisma.$executeRawUnsafe("SELECT set_config('app.rls_bypass', 'true', false)");
+
   const defaultPassword = (process.env.SEED_PRACTICE_PASSWORD || '').trim();
   if (!defaultPassword) {
     throw new Error('SEED_PRACTICE_PASSWORD is required (no default). Set it in .env before running db:seed.');
