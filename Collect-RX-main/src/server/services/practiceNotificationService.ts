@@ -9,7 +9,7 @@ import { logger } from '../observability/logger.js';
 
 export interface PracticeNotification {
   practiceId: string;
-  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE';
+  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'LIVE_CALL_NEEDS_STAFF';
   subject: string;
   message: string;
   claimId?: string;

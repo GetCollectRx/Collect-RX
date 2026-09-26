@@ -2,25 +2,17 @@
  * Static IDOR guard audit — authenticated routers must use session practice id,
  * not trust body/query practiceId alone.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const ROOT = join(import.meta.dirname, '../src');
-
-function collectTsFiles(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    const st = statSync(p);
-    if (st.isDirectory()) {
-      if (name === 'node_modules' || name === 'dist') continue;
-      collectTsFiles(p, out);
-    } else if (name.endsWith('.ts') && !name.endsWith('.test.ts')) {
-      out.push(p);
-    }
-  }
-  return out;
-}
+// import.meta.dirname requires Node 20.11+/21.2+, above this repo's declared
+// package.json engines minimum of 20.10.0 — fileURLToPath is portable back
+// to Node 10 and avoids the mismatch. See scripts/sync-vapi-squad.ts for the
+// same fix and the crash this avoids.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '../src');
 
 /** Route modules that mount `authenticate` (practice-scoped APIs). */
 const AUTH_ROUTE_FILES = [

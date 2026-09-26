@@ -35,9 +35,6 @@ function mockCommonDeps() {
   }));
   vi.doMock('../src/server/services/escalationService.js', () => ({ createEscalation: vi.fn() }));
   vi.doMock('../src/server/audit/auditLog.js', () => ({ appendPhiAccessEvent: vi.fn() }));
-  vi.doMock('../src/server/frontDesk/dispatchIntent.js', () => ({
-    reconcileStaleDispatchIntents: vi.fn(async () => ({ safeExpired: 0, heldAmbiguous: 0 })),
-  }));
   vi.doMock('../src/server/observability/logger.js', () => ({
     default: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
   }));
@@ -63,8 +60,8 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
     const prisma = {
       $executeRaw: async () => 1, // claimTickLease succeeds
       $queryRaw: async () => [{ id: 'practice-1' }], // a practice IS due
-      $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
@@ -95,8 +92,8 @@ describe('runDeskQueueTick — circuit breaker gate', () => {
     const prisma = {
       $executeRaw: async () => 1,
       $queryRaw: async () => [], // no practices due — nothing to dispatch either way
-      $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
@@ -14,20 +14,13 @@ import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './pat
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getKnownSubmissionChannel } from '../learning/submissionChannelMemory.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
-import {
-  confirmDispatch,
-  ensureDispatchIntent,
-  markDispatchSending,
-  reconcileStaleDispatchIntents,
-  recordAmbiguousDispatch,
-  recordRejectedDispatch,
-} from './dispatchIntent.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
@@ -217,9 +210,7 @@ function vapiSlotBudget(): number {
 
 /** Add random jitter to a base defer window to spread retries across time. */
 function withJitter(baseMs: number, jitterMs: number): number {
-  // Keep retries measurably away from the base boundary while still spreading
-  // them across the latter half of the configured jitter window.
-  const random = jitterMs / 2 + Math.random() * (jitterMs / 2);
+  const random = Math.random() * jitterMs;
   return baseMs + random;
 }
 
@@ -488,11 +479,6 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     return;
   }
 
-  // Restart recovery runs under the fleet lease. READY means the network
-  // boundary was never crossed and is safe to expire; SENDING is conservatively
-  // held for reconciliation because Vapi may have accepted the request.
-  await runWithRlsBypass(() => reconcileStaleDispatchIntents(prisma));
-
   const [practices, activeCallsGlobal, activeAttemptCarriers] = await runWithRlsBypass(async () =>
     Promise.all([
       orderPracticesByFairness(prisma),
@@ -585,7 +571,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         initiatedAt: { lt: ceilingBefore },
         claim: { practiceId, deletedAt: null },
       },
-      select: { id: true, vapiCallId: true, initiatedAt: true },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
     for (const attempt of overCeiling) {
       if (!attempt.vapiCallId) continue;
@@ -598,10 +584,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       try {
         await endVapiCall(attempt.vapiCallId);
       } catch (endErr) {
-        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+        // endVapiCall failing (e.g. Vapi already has no record of this call)
+        // must not leave the attempt open — the same tick would retry it every
+        // 60s indefinitely, repeatedly failing and tripping the Vapi circuit
+        // breaker. Close it now with the same compensation the stale-attempt
+        // watchdog below uses, instead of waiting up to STALE_ATTEMPT_MS.
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call — closing attempt directly', {
           vapiCallId: attempt.vapiCallId,
           error: endErr,
         });
+        await prisma.$transaction([
+          prisma.callAttempt.update({
+            where: { id: attempt.id },
+            data: { completedAt: new Date(), liveState: 'ceiling_terminated_no_webhook' },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId: attempt.claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+          }),
+          prisma.insuranceClaim.updateMany({
+            where: { id: attempt.claimId, status: 'CALLING' },
+            data: { status: 'IN_QUEUE' },
+          }),
+        ]);
       }
     }
 
@@ -839,6 +844,42 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
+    // TELUS AdjudiCare has no single carrier-wide claims line — it's an
+    // aggregator for many small TPAs (confirmed against TELUS's own FAQ:
+    // "please contact your insurer directly"). carrierConfig.phone is a
+    // last-resort placeholder, not a real per-TPA number. Resolve the
+    // TPA-specific verified number instead; if none is verified yet,
+    // escalate to a human rather than dial a number likely to reach the
+    // wrong company and burn one of only 3 allowed attempts.
+    let dispatchCarrierPhone = carrierConfig.phone;
+    if (next.claim.carrierId === 'telus_adjudicare') {
+      const telusPhone = getTelusDialPhone(phi.subscriberId, phi.groupPolicyNumber ?? '');
+      if (!telusPhone) {
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: { claimId: next.claimId, resolvedAt: null },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId,
+            claimId: next.claimId,
+            claimRef: next.claim.claimNumber,
+            carrierId: next.claim.carrierId,
+            amountClaimedCents: Math.round(Number(next.claim.outstandingAmount) * 100),
+            reason: 'TELUS AdjudiCare TPA could not be resolved to a verified dial number — manual routing required before this claim can be called.',
+          });
+        }
+        await deferQueueEntry(
+          prisma,
+          next.id,
+          DEFER_STAFF_ACTION_MS,
+          'TELUS_TPA_PHONE_UNVERIFIED',
+          'Identify the underlying TPA and confirm its provider claim-status phone number, then clear this gate.',
+        );
+        continue;
+      }
+      dispatchCarrierPhone = telusPhone;
+    }
+
     // Only published, human-approved snapshots may augment the static adapter
     // hints. Proposed discovery output is never exposed to a live call.
     const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
@@ -848,6 +889,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       ...publishedNavigation,
       ...(learnedNotes ? [learnedNotes] : []),
     ].join(' | ');
+    // What a rep has actually stated before about where resubmissions/docs go
+    // for this carrier — lets Claims_Agent confirm a known channel instead of
+    // asking cold on every call. Empty string when nothing is on file yet.
+    const knownResubmissionChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'CLAIM_RESUBMISSION',
+    );
+    const knownDocumentationChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'DOCUMENTATION',
+    );
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
@@ -861,7 +915,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       subscriberName:         phi.subscriberName,
       subscriberDob:          phi.subscriberDateOfBirth,
       // ── Claim fields ──────────────────────────────────────────────────────────
-      carrierPhone:           carrierConfig.phone,
+      carrierPhone:           dispatchCarrierPhone,
       claimNumber:            next.claim.claimNumber,
       billedAmount:           Number(next.claim.billedAmount),
       outstandingAmount:      Number(next.claim.outstandingAmount),
@@ -880,30 +934,22 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
-      // Assigned from the durable intent below before the network boundary.
-      idempotencyKey:         '',
+      // V1: practice staff speak with the rep; CollectRx AI only navigates
+      // IVR / holds / listens. Never dials the fully-autonomous squad for
+      // a human-assisted practice.
+      squadId:                practiceSettings.humanAssistedMode ? getHumanAssistedSquadId() : undefined,
+      knownResubmissionChannel,
+      knownDocumentationChannel,
+      // Stable for this attempt — a retry of the same attempt (after an
+      // ambiguous timeout) reuses it; the next real attempt gets a new one.
+      idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
 
-    // The intent is committed before the external request. SENDING is written
-    // before crossing the network boundary, so a crash can never look safely
-    // retryable when Vapi may already have accepted the call.
-    const intent = await ensureDispatchIntent(prisma, {
-      practiceId,
-      claimId: next.claimId,
-      queueEntryId: next.id,
-      attemptNumber: next.attempts + 1,
-    });
-    if (intent.status !== 'READY') {
-      await deferQueueEntry(
-        prisma, next.id, DEFER_AMBIGUOUS_DISPATCH_MS,
-        'DISPATCH_INTENT_RECONCILIATION_REQUIRED',
-        'Reconcile the existing Vapi dispatch intent before retrying.',
-      );
-      return;
-    }
-    await markDispatchSending(prisma, intent.id);
-    callParams.idempotencyKey = intent.idempotencyKey;
-
+    // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
+    // All subsequent DB writes are wrapped so that if they fail, we immediately
+    // cancel the live Vapi call rather than leaving an orphan call with no DB record.
+    // A dispatch failure defers the entry: a payload-specific Vapi rejection must
+    // not hot-loop the same claim at the head of the queue every tick.
     let vapiResult: Awaited<ReturnType<typeof initiateCall>>;
     try {
       vapiResult = await initiateCall(callParams);
@@ -919,26 +965,51 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           error: dispatchErr,
         },
       );
-      if (ambiguous) {
-        await recordAmbiguousDispatch(prisma, {
-          intentId: intent.id, queueEntryId: next.id, failureCode: 'VAPI_NETWORK_OUTCOME_UNKNOWN',
-        });
-      } else {
-        await recordRejectedDispatch(prisma, {
-          intentId: intent.id, queueEntryId: next.id,
-          retryAt: new Date(Date.now() + withJitter(DEFER_DISPATCH_FAILURE_MS, 5 * 60 * 1000)),
-        });
-      }
+      await deferQueueEntry(
+        prisma,
+        next.id,
+        ambiguous ? DEFER_AMBIGUOUS_DISPATCH_MS : DEFER_DISPATCH_FAILURE_MS,
+        ambiguous ? 'VAPI_DISPATCH_OUTCOME_UNKNOWN' : 'TRANSIENT_DISPATCH_FAILURE',
+        ambiguous
+          ? 'Vapi did not confirm whether the call was created before timing out. Verify in the Vapi dashboard before the next automatic retry.'
+          : 'The system will retry during the next scheduled dispatch window.',
+      );
       continue;
     }
     slotsRemaining -= 1;
     carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
-      const attempt = await confirmDispatch(prisma, {
-        intentId: intent.id, queueEntryId: next.id, claimId: next.claimId,
-        vapiCallId: vapiResult.vapiCallId,
+      const attempt = await prisma.callAttempt.create({
+        data: {
+          claimId: next.claimId,
+          vapiCallId: vapiResult.vapiCallId,
+          initiatedAt: new Date(),
+          liveState: 'dialing',
+          activeAgent: 'IVR_Navigator',
+          // Excludes this call from CarrierLesson extraction (learning loop
+          // webhook path) — that pipeline is scoped to the autonomous squad only.
+          isHumanAssisted: practiceSettings.humanAssistedMode ?? false,
+        },
       });
+
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: next.claimId },
+          data: { status: 'CALLING' },
+        }),
+        prisma.callQueue.update({
+          where: { id: next.id },
+          data: {
+            status: 'IN_PROGRESS',
+            attempts: { increment: 1 },
+            lastAttemptAt: new Date(),
+            dispatchDeferralCode: null,
+            dispatchDeferralNextAction: null,
+            dispatchDeferredAt: null,
+          },
+        }),
+      ]);
 
       const call = mapActiveCall(attempt, next.claim, next.attempts + 1);
       broadcastDesk(practiceId, { type: 'call.started', data: { call } });

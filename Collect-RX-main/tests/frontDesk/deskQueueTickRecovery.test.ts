@@ -42,9 +42,6 @@ function mockCommonDeps() {
   }));
   vi.doMock('../../src/server/services/escalationService.js', () => ({ createEscalation: vi.fn() }));
   vi.doMock('../../src/server/audit/auditLog.js', () => ({ appendPhiAccessEvent: vi.fn() }));
-  vi.doMock('../../src/server/frontDesk/dispatchIntent.js', () => ({
-    reconcileStaleDispatchIntents: vi.fn(async () => ({ safeExpired: 0, heldAmbiguous: 0 })),
-  }));
   vi.doMock('../../src/server/observability/logger.js', () => ({
     default: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), audit: vi.fn() },
   }));
@@ -72,8 +69,8 @@ describe('desk queue engine — tick failure recovery', () => {
         return 1;
       }),
       $queryRaw: vi.fn(async () => []),
-      $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
@@ -95,8 +92,9 @@ describe('desk queue engine — tick failure recovery', () => {
     // By +120s total the backoff has elapsed and the tick retries.
     shouldFail = false;
     await vi.advanceTimersByTimeAsync(60_000);
-    // The successful retry performs both the lease claim and the explicit
-    // RLS-bypass setup used by the cross-practice fairness query.
+    // 1 (failed lease attempt above) + 2 for this successful tick: the lease
+    // claim itself, then orderPracticesByFairness's own $executeRaw (the
+    // `set_config('app.rls_bypass', ...)` statement inside its $transaction).
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(3);
     expect(getDeskQueueTickHealth().consecutiveTickFailures).toBe(0);
     expect(getDeskQueueTickHealth().lastSuccessfulTickAt).not.toBeNull();
@@ -114,8 +112,8 @@ describe('desk queue engine — tick failure recovery', () => {
         throw new Error('DB unreachable');
       }),
       $queryRaw: vi.fn(async () => []),
-      $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
       callAttempt: { count: async () => 0, findMany: async () => [] },
+      $transaction: (ops: unknown[]) => Promise.all(ops),
     } as unknown as PrismaClient;
 
     const { startDeskQueueEngine, stopDeskQueueEngine, getDeskQueueTickHealth } = await import(
