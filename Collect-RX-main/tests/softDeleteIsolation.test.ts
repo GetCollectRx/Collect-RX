@@ -7,20 +7,18 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../src/server/index.js';
+import request from 'supertest';
+import { app, prisma } from '../src/server/index.js';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 let dbReady = false;
 let softDeleteSchemaReady = false;
-let userSoftDeleteSchemaReady = false;
 try {
   await prisma.$connect();
   await prisma.$queryRaw`SELECT 1`;
   dbReady = true;
   const claimModel = Prisma.dmmf.datamodel.models.find((m) => m.name === 'InsuranceClaim');
   softDeleteSchemaReady = claimModel?.fields.some((f) => f.name === 'deletedAt') ?? false;
-  const userModel = Prisma.dmmf.datamodel.models.find((m) => m.name === 'User');
-  userSoftDeleteSchemaReady = userModel?.fields.some((f) => f.name === 'deletedAt') ?? false;
 } catch (e) {
   console.warn('[softDeleteIsolation] DATABASE_URL unreachable — tests will be skipped:', (e as Error).message);
 }
@@ -48,11 +46,18 @@ async function softDeleteClaim(claimId: string) {
  * Soft-delete a user (sets deletedAt timestamp).
  * Note: This assumes a future schema migration adds `deletedAt` to User.
  */
-async function softDeleteUser(userId: string) {
+/**
+ * User deactivation, not soft delete: User has no `deletedAt` field (schema
+ * confirmed — see the removed userSoftDeleteSchemaReady check this file used
+ * to gate on, which was permanently false). The real mechanism is
+ * `isActive: false`, checked on every authenticated request in
+ * src/server/middleware/authenticate.ts.
+ */
+async function deactivateUser(userId: string) {
   return prisma.user.update({
     where: { id: userId },
-    data: { deletedAt: new Date() },
-  } as unknown as Prisma.UserUpdateArgs);
+    data: { isActive: false },
+  });
 }
 
 /**
@@ -64,16 +69,6 @@ async function softDeleteUser(userId: string) {
 async function findClaimNotDeleted(claimId: string) {
   return prisma.insuranceClaim.findFirst({
     where: { id: claimId, deletedAt: null },
-  });
-}
-
-/**
- * Query user excluding soft-deleted records.
- * This mimics the expected query scope filtering in the application.
- */
-async function findUserNotDeleted(userId: string) {
-  return prisma.user.findUnique({
-    where: { id: userId },
   });
 }
 
@@ -312,44 +307,32 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () 
     });
   });
 
-  describe.skipIf(!userSoftDeleteSchemaReady)('3. Deleted users cannot login', () => {
-    it('should prevent authentication with soft-deleted user', async () => {
+  describe('3. Deactivated users cannot login', () => {
+    it('rejects login for a deactivated (isActive: false) user with a real HTTP request', async () => {
       if (!dbReady) {
         console.log('Skipping: database not ready');
         return;
       }
 
-      const { practice, user, email, password } = await createPracticeWithOwnerForTests(prisma);
+      const { practice, email, password } = await createPracticeWithOwnerForTests(prisma);
 
-      // Verify user can be found before soft delete
-      let foundUser = await findUserNotDeleted(user.id);
-      expect(foundUser).not.toBeNull();
+      // A live account logs in fine before deactivation.
+      const preLogin = await request(app).post('/api/auth/login').send({ email, password });
+      expect(preLogin.status).toBe(200);
 
-      // Soft delete the user
-      await softDeleteUser(user.id);
+      await prisma.user.update({ where: { email }, data: { isActive: false } });
 
-      // User should not be found after soft delete
-      foundUser = await findUserNotDeleted(user.id);
-      expect(foundUser).toBeNull();
-
-      // Query for login should exclude soft-deleted users
-      const deletedUserByEmail = await prisma.user.findUnique({
-        where: { email },
-      });
-
-      // Depending on implementation, either:
-      // A) The user row still exists but a WHERE clause filters it (manual)
-      // B) A view or middleware hides it
-      // For now, we test that explicit deletion filter works:
-      if (deletedUserByEmail) {
-        expect((deletedUserByEmail as Record<string, unknown>)['deletedAt']).not.toBeNull();
-      }
+      // authenticate.ts re-checks isActive from the DB on every request, not
+      // just at login — so even a fresh login attempt with the deactivated
+      // account's real password must now fail.
+      const postLogin = await request(app).post('/api/auth/login').send({ email, password });
+      expect(postLogin.status).not.toBe(200);
 
       // Cleanup
       await cleanupPracticeWithUsers(prisma, practice.id);
     });
 
-    it('should exclude soft-deleted users from practice-scoped user lists', async () => {
+    it('excludes deactivated users from practice-scoped active-user lists', async () => {
       if (!dbReady) {
         console.log('Skipping: database not ready');
         return;
@@ -370,21 +353,22 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () 
       });
 
       // Both users should be findable initially
-      let practiceUsers = await prisma.user.findMany({
+      const practiceUsers = await prisma.user.findMany({
         where: { practiceId: practice.id },
       });
       expect(practiceUsers.length).toBeGreaterThanOrEqual(2);
 
-      // Soft delete user1
-      await softDeleteUser(user1.id);
+      // Deactivate user1
+      await deactivateUser(user1.id);
 
-      // Query active users only
+      // Query active users only — the real scope every practice-facing user
+      // list should apply (see src/server/routes/authRoutes.ts's users list).
       const activeUsers = await prisma.user.findMany({
         where: {
           practiceId: practice.id,
-          deletedAt: null,
+          isActive: true,
         },
-      } as unknown as Prisma.UserFindManyArgs);
+      });
 
       const activeUserIds = activeUsers.map((u) => u.id);
       expect(activeUserIds).toContain(user2.id);
@@ -486,7 +470,7 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () 
       await cleanupPracticeWithUsers(prisma, practice.id);
     });
 
-    it.skipIf(!userSoftDeleteSchemaReady)('should preserve AuditLog when user is soft-deleted', async () => {
+    it('preserves AuditLog entries when the referencing user is deactivated', async () => {
       if (!dbReady) {
         console.log('Skipping: database not ready');
         return;
@@ -506,8 +490,8 @@ describe.skipIf(!dbReady || !softDeleteSchemaReady)('Soft Delete Isolation', () 
         },
       });
 
-      // Soft delete user
-      await softDeleteUser(user.id);
+      // Deactivate the user (real mechanism — User has no deletedAt field)
+      await deactivateUser(user.id);
 
       // Audit log should still exist (immutable append-only log)
       const auditRecord = await prisma.auditLog.findUnique({

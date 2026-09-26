@@ -6,6 +6,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 export interface PracticeNotification {
   practiceId: string;
@@ -168,14 +169,19 @@ export async function sendCdcpReconsiderationNotification(
     });
 
     // Email staff
-    const staff = await prisma.user.findMany({
+    // Bypasses RLS deliberately: this function is called from unwrapped
+    // background jobs (CDCP reconsideration engine, escalation sweeps, etc.)
+    // with no app.practice_id session context. The practiceId filter below
+    // is the real scoping — RLS would just be a redundant no-op requiring
+    // the same context this function doesn't have.
+    const staff = await runWithRlsBypass(() => prisma.user.findMany({
       where: {
         practiceId: data.practiceId,
         isActive: true,
         role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
       },
       select: { email: true },
-    });
+    }));
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -252,14 +258,15 @@ export async function sendLearningCycleSummaryNotification(
     });
 
     // Email practice owners
-    const owners = await prisma.user.findMany({
+    // See sendCdcpReconsiderationNotification above for why this bypasses RLS.
+    const owners = await runWithRlsBypass(() => prisma.user.findMany({
       where: {
         practiceId: data.practiceId,
         isActive: true,
         role: 'practice_owner',
       },
       select: { email: true },
-    });
+    }));
 
     const emailTo = owners.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -324,14 +331,15 @@ export async function sendCriticalAlert(
     });
 
     // Email staff
-    const staff = await prisma.user.findMany({
+    // See sendCdcpReconsiderationNotification above for why this bypasses RLS.
+    const staff = await runWithRlsBypass(() => prisma.user.findMany({
       where: {
         practiceId,
         isActive: true,
         role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
       },
       select: { email: true },
-    });
+    }));
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {

@@ -11,6 +11,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 export interface WeeklyPracticeMetrics {
   practiceId: string;
@@ -139,11 +140,11 @@ export function weeklyPilotReportEnabled(): boolean {
 }
 
 async function findPracticeOwnerEmail(prisma: PrismaClient, practiceId: string): Promise<string | null> {
-  const owner = await prisma.user.findFirst({
+  const owner = await runWithRlsBypass(() => prisma.user.findFirst({
     where: { practiceId, role: 'practice_owner', isActive: true },
     select: { email: true },
     orderBy: { createdAt: 'asc' },
-  });
+  }));
   return owner?.email ?? null;
 }
 

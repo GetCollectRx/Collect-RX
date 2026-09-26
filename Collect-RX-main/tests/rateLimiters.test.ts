@@ -70,6 +70,8 @@
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import express from 'express';
 import request from 'supertest';
 import type { RateLimitRequestHandler } from 'express-rate-limit';
@@ -394,12 +396,12 @@ describe('telemetryEventsLimiter — 1000 requests / min, no skip (always active
   }, 60_000);
 });
 
-describe('publicLimiter — 60 requests / min — DEAD CODE, not wired to any route', () => {
+describe('publicLimiter — 60 requests / min — wired to /api/public/prospect-unsubscribe', () => {
   afterEach(async () => {
     await clearLimiterState(publicLimiter, 'public');
   });
 
-  it('the middleware itself enforces its configured limit correctly, if it is ever wired up', async () => {
+  it('the middleware itself enforces its configured limit correctly', async () => {
     const originalVitest = process.env.VITEST;
     process.env.VITEST = 'false';
     try {
@@ -409,23 +411,29 @@ describe('publicLimiter — 60 requests / min — DEAD CODE, not wired to any ro
     }
   }, 30_000);
 
-  it('documents the real bug this surfaced: no route in the server applies it, and the routes it was built for do not exist', () => {
-    // publicLimiter's own doc comment: "unauthenticated public routes (e.g.
-    // email unsubscribe)". grep across the entire src/ tree found exactly one
-    // other reference to it: src/server/compliance/auditAgent.ts, which only
-    // string-matches that the text "publicLimiter" and "max: 60" appear
-    // somewhere in rateLimiter.ts's source — a check that the declaration
-    // exists, not that anything uses it.
-    //
-    // Worse: the two unsubscribe URLs this limiter was clearly meant to
-    // protect — GET /api/public/email-unsubscribe and
-    // GET /api/public/prospect-unsubscribe (built in
-    // src/server/email/unsubscribeUrl.ts and embedded in the
-    // List-Unsubscribe email headers) — have no route handler anywhere in
-    // src/server at all. Clicking either link would 404. This is a real,
-    // separate compliance gap (CASL/CAN-SPAM one-click unsubscribe is
-    // advertised via headers but non-functional), out of scope to fix inside
-    // a rate-limiter test file — flagged here for a dedicated pass.
-    expect(true).toBe(true);
+  it('is actually applied to the live prospect-unsubscribe route (was dead code, now fixed)', () => {
+    // This test used to document a real bug: publicLimiter was declared but
+    // wired to no route, and the two unsubscribe URLs it was clearly meant
+    // to protect 404'd — a live CASL/CAN-SPAM compliance gap (one-click
+    // unsubscribe advertised in email headers but non-functional). That was
+    // fixed in src/server/routes/publicUnsubscribeRoutes.ts (see its own
+    // header comment) and mounted at src/server/index.ts's
+    // `app.use('/api/public', createPublicUnsubscribeRouter(prisma))` —
+    // confirmed by direct source citation, not assumed, per this file's
+    // stated methodology (see header comment above).
+    const routeSource = readFileSync(
+      resolve(import.meta.dirname, '../src/server/routes/publicUnsubscribeRoutes.ts'),
+      'utf-8',
+    );
+    expect(routeSource).toContain("import { publicLimiter } from '../middleware/rateLimiter.js'");
+    expect(routeSource).toContain('r.use(publicLimiter)');
+    expect(routeSource).toMatch(/r\.(get|post)\('\/prospect-unsubscribe'/);
+
+    // GET /api/public/email-unsubscribe (src/server/email/unsubscribeUrl.ts)
+    // is still unhandled — but that URL is for the retired patient-balance
+    // payment-reminder flow (`balanceId`/`e=` params), which CLAUDE.md marks
+    // out of scope (patient/client payment collection is retired). Not
+    // re-flagged as an active compliance gap; noted here so it isn't
+    // rediscovered as a surprise later.
   });
 });
