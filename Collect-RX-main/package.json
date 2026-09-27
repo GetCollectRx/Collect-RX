@@ -22,6 +22,7 @@
     "electron": "npm run dev:electron",
     "dev:electron": "concurrently \"COLLECTRX_DEV_LOCAL=1 npm run dev:backend\" \"COLLECTRX_DEV_LOCAL=1 npm run dev:frontend\" \"wait-on http://localhost:5173 && env -u ELECTRON_RUN_AS_NODE COLLECTRX_DEV_LOCAL=1 electron .\"",
     "check:api": "node scripts/check-api-coverage.mjs",
+    "check:rls": "node scripts/check-rls-coverage.mjs",
     "build": "npm run db:generate && tsc && npm run check:api && env NODE_ENV=production vite build",
     "build:renderer:desktop": "env NODE_ENV=production VITE_APP_SURFACE=desktop vite build",
     "build:win": "npm run db:generate && tsc && npm run check:api && npm run build:renderer:desktop && electron-builder --win",
