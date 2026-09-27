@@ -6,6 +6,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
+import { runWithPracticeRls } from '../db/rlsContext.js';
 
 export interface PracticeNotification {
   practiceId: string;
@@ -167,15 +168,17 @@ export async function sendCdcpReconsiderationNotification(
       severity: data.status === 'submitted' ? 'warning' : 'info',
     });
 
-    // Email staff
-    const staff = await prisma.user.findMany({
-      where: {
-        practiceId: data.practiceId,
-        isActive: true,
-        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-      },
-      select: { email: true },
-    });
+    // Email staff — background call path, no ambient RLS context.
+    const staff = await runWithPracticeRls(data.practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId: data.practiceId,
+          isActive: true,
+          role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -251,15 +254,17 @@ export async function sendLearningCycleSummaryNotification(
       severity: 'info',
     });
 
-    // Email practice owners
-    const owners = await prisma.user.findMany({
-      where: {
-        practiceId: data.practiceId,
-        isActive: true,
-        role: 'practice_owner',
-      },
-      select: { email: true },
-    });
+    // Email practice owners — background call path, no ambient RLS context.
+    const owners = await runWithPracticeRls(data.practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId: data.practiceId,
+          isActive: true,
+          role: 'practice_owner',
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = owners.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -323,15 +328,17 @@ export async function sendCriticalAlert(
       severity: 'critical',
     });
 
-    // Email staff
-    const staff = await prisma.user.findMany({
-      where: {
-        practiceId,
-        isActive: true,
-        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-      },
-      select: { email: true },
-    });
+    // Email staff — background call path, no ambient RLS context.
+    const staff = await runWithPracticeRls(practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId,
+          isActive: true,
+          role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {

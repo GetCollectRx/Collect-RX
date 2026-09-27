@@ -1,4 +1,4 @@
-import express, { Router, type Request, type Response } from 'express';
+import express, { Router, type Request, type Response, type NextFunction } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import {
   getOrganizationSsoConnectionBySlug,
@@ -11,6 +11,7 @@ import type { UserAuthPayload } from '../accessControl/types.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { frontendBaseUrl } from '../stripe/billing.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
+import { runWithRlsContext } from '../db/rlsContext.js';
 
 export async function findSsoUserForOrganization(
   prisma: PrismaClient,
@@ -34,9 +35,18 @@ export async function findSsoUserForOrganization(
  * Successful logins go to AuditLog; failures go to OrgSsoEvent (AuditLog's
  * practiceId is NOT NULL and an unmatched-email failure has no practice).
  */
+// Every route in this router runs before any session exists — that's the
+// whole point of an SSO front door — so none of them ever have an
+// app.practice_id to derive. Bypass here mirrors authRoutes.ts's pre-auth
+// routes exactly.
+function withRlsBypass(_req: Request, _res: Response, next: NextFunction) {
+  runWithRlsContext({ bypass: true }, () => next());
+}
+
 export function createSsoRouter(prisma: PrismaClient): Router {
   const r = Router();
   r.use(express.urlencoded({ extended: false }));
+  r.use(withRlsBypass);
 
   r.get('/:orgSlug/metadata', async (req: Request, res: Response) => {
     try {
