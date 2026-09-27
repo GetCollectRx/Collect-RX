@@ -30,40 +30,45 @@ describe('SSO organization binding', () => {
 });
 
 describe('password-reset token storage and consumption', () => {
+  // issuePasswordResetToken/consumePasswordResetToken run every query as raw
+  // SQL on `tx` (never an extended-model call) to avoid the RLS extension
+  // rerouting extended calls through the top-level client's own transaction —
+  // see the comment in passwordResetService.ts. Mocks below reflect that:
+  // tx.$executeRawUnsafe / tx.$queryRawUnsafe, not tx.passwordResetToken.*.
+
   it('stores only the token digest while returning the random bearer token', async () => {
-    const updateMany = vi.fn().mockReturnValue({ operation: 'invalidate' });
-    const create = vi.fn().mockImplementation((args) => ({ operation: 'create', args }));
-    const transaction = vi.fn().mockResolvedValue([]);
-    const prisma = {
-      passwordResetToken: { updateMany, create },
-      $transaction: transaction,
-    } as unknown as PrismaClient;
+    const executeRawUnsafe = vi.fn().mockResolvedValue(1);
+    const tx = { $executeRawUnsafe: executeRawUnsafe };
+    const transaction = vi.fn(async (fn: (client: typeof tx) => Promise<void>) => fn(tx));
+    const prisma = { $transaction: transaction } as unknown as PrismaClient;
 
     const rawToken = await issuePasswordResetToken(prisma, 'user-1', new Date('2026-09-20T12:00:00Z'));
-    const createArgs = create.mock.calls[0]?.[0];
+    const insertCall = executeRawUnsafe.mock.calls[1];
+    const [insertSql, , insertUserId, insertTokenHash, insertExpiresAt] = insertCall as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
 
     expect(rawToken).toMatch(/^[0-9a-f]{64}$/);
-    expect(createArgs.data.token).toBe(hashPasswordResetToken(rawToken));
-    expect(createArgs.data.token).not.toBe(rawToken);
-    expect(createArgs.data.expiresAt).toEqual(new Date('2026-09-20T13:00:00Z'));
+    expect(insertSql).toMatch(/INSERT INTO "PasswordResetToken"/);
+    expect(insertUserId).toBe('user-1');
+    expect(insertTokenHash).toBe(hashPasswordResetToken(rawToken));
+    expect(insertTokenHash).not.toBe(rawToken);
+    expect(insertExpiresAt).toBe('2026-09-20T13:00:00.000Z');
     expect(transaction).toHaveBeenCalledOnce();
   });
 
   it('atomically consumes an unexpired token once and revokes existing sessions', async () => {
     const now = new Date('2026-09-20T12:00:00Z');
     const rawToken = 'raw-secret-token';
-    const findUnique = vi.fn().mockResolvedValue({
-      id: 'reset-1',
-      userId: 'user-1',
-      usedAt: null,
-      expiresAt: new Date('2026-09-20T13:00:00Z'),
-    });
-    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const userUpdate = vi.fn().mockResolvedValue({ id: 'user-1' });
-    const tx = {
-      passwordResetToken: { findUnique, updateMany },
-      user: { update: userUpdate },
-    };
+    const queryRawUnsafe = vi.fn().mockResolvedValue([
+      { id: 'reset-1', userId: 'user-1', usedAt: null, expiresAt: new Date('2026-09-20T13:00:00Z') },
+    ]);
+    const executeRawUnsafe = vi.fn().mockResolvedValue(1);
+    const tx = { $queryRawUnsafe: queryRawUnsafe, $executeRawUnsafe: executeRawUnsafe };
     const prisma = {
       $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<boolean>) => fn(tx)),
     } as unknown as PrismaClient;
@@ -71,17 +76,24 @@ describe('password-reset token storage and consumption', () => {
     await expect(
       consumePasswordResetToken(prisma, rawToken, 'new-password-hash', now),
     ).resolves.toBe(true);
-    expect(findUnique).toHaveBeenCalledWith({
-      where: { token: hashPasswordResetToken(rawToken) },
-    });
-    expect(updateMany).toHaveBeenCalledWith({
-      where: { id: 'reset-1', usedAt: null, expiresAt: { gt: now } },
-      data: { usedAt: now },
-    });
-    expect(userUpdate).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { passwordHash: 'new-password-hash', tokenExpiresAt: now },
-    });
+    expect(queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringMatching(/SELECT .* FROM "PasswordResetToken" WHERE token = \$1/),
+      hashPasswordResetToken(rawToken),
+    );
+    expect(executeRawUnsafe).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(/UPDATE "PasswordResetToken" SET "usedAt"/),
+      now.toISOString(),
+      'reset-1',
+      now.toISOString(),
+    );
+    expect(executeRawUnsafe).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/UPDATE "User" SET "passwordHash"/),
+      'new-password-hash',
+      now.toISOString(),
+      'user-1',
+    );
   });
 
   it('rejects expired, used, unknown, and concurrently claimed tokens without changing a password', async () => {
@@ -91,32 +103,29 @@ describe('password-reset token storage and consumption', () => {
       { id: 'r', userId: 'u', usedAt: new Date(), expiresAt: new Date('2026-09-20T13:00:00Z') },
       { id: 'r', userId: 'u', usedAt: null, expiresAt: new Date('2026-09-20T11:59:59Z') },
     ]) {
-      const userUpdate = vi.fn();
+      const executeRawUnsafe = vi.fn();
       const tx = {
-        passwordResetToken: { findUnique: vi.fn().mockResolvedValue(record), updateMany: vi.fn() },
-        user: { update: userUpdate },
+        $queryRawUnsafe: vi.fn().mockResolvedValue(record ? [record] : []),
+        $executeRawUnsafe: executeRawUnsafe,
       };
       const prisma = {
         $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<boolean>) => fn(tx)),
       } as unknown as PrismaClient;
       await expect(consumePasswordResetToken(prisma, 'token', 'hash', now)).resolves.toBe(false);
-      expect(userUpdate).not.toHaveBeenCalled();
+      expect(executeRawUnsafe).not.toHaveBeenCalled();
     }
 
-    const userUpdate = vi.fn();
+    const executeRawUnsafe = vi.fn().mockResolvedValue(0);
     const tx = {
-      passwordResetToken: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 'r', userId: 'u', usedAt: null, expiresAt: new Date('2026-09-20T13:00:00Z'),
-        }),
-        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-      },
-      user: { update: userUpdate },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([
+        { id: 'r', userId: 'u', usedAt: null, expiresAt: new Date('2026-09-20T13:00:00Z') },
+      ]),
+      $executeRawUnsafe: executeRawUnsafe,
     };
     const prisma = {
       $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<boolean>) => fn(tx)),
     } as unknown as PrismaClient;
     await expect(consumePasswordResetToken(prisma, 'token', 'hash', now)).resolves.toBe(false);
-    expect(userUpdate).not.toHaveBeenCalled();
+    expect(executeRawUnsafe).toHaveBeenCalledTimes(1);
   });
 });

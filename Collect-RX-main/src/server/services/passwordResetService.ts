@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -18,15 +18,34 @@ export async function issuePasswordResetToken(
   const tokenHash = hashPasswordResetToken(token);
   const expiresAt = new Date(now.getTime() + RESET_TOKEN_TTL_MS);
 
-  await prisma.$transaction([
-    prisma.passwordResetToken.updateMany({
-      where: { userId, usedAt: null },
-      data: { usedAt: now },
-    }),
-    prisma.passwordResetToken.create({
-      data: { userId, token: tokenHash, expiresAt },
-    }),
-  ]);
+  // Raw SQL on `tx` only, never an extended-client call: the RLS extension's
+  // $allOperations hook reroutes extended calls through the top-level client's
+  // own $transaction, opening a second connection instead of reusing this
+  // transaction's — the same self-deadlock/atomicity break already found and
+  // fixed in reserveDispatchSlot() and emrSyncOutbox.ts.
+  // Bind Dates as explicit UTC ISO strings cast with ::timestamp, not native
+  // Date objects: raw-query parameter serialization of a Date against a
+  // "timestamp without time zone" column doesn't go through the same
+  // UTC-normalizing path typed Prisma methods use (Postgres rejects an
+  // unqualified text/timestamp bind outright — code 42804). A "Z"-suffixed
+  // ISO string cast to ::timestamp sidesteps both: Postgres's naive
+  // `timestamp` parser ignores any offset in the input and stores the
+  // literal digits, which for toISOString() are always UTC — matching what
+  // Prisma's typed methods already store.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `UPDATE "PasswordResetToken" SET "usedAt" = $1::timestamp WHERE "userId" = $2 AND "usedAt" IS NULL`,
+      now.toISOString(),
+      userId,
+    );
+    await tx.$executeRawUnsafe(
+      `INSERT INTO "PasswordResetToken" (id, "userId", token, "expiresAt") VALUES ($1, $2, $3, $4::timestamp)`,
+      randomUUID(),
+      userId,
+      tokenHash,
+      expiresAt.toISOString(),
+    );
+  });
 
   return token;
 }
@@ -44,20 +63,31 @@ export async function consumePasswordResetToken(
 ): Promise<boolean> {
   const tokenHash = hashPasswordResetToken(token);
 
+  // Raw SQL on `tx` only — see issuePasswordResetToken above for why.
   return prisma.$transaction(async (tx) => {
-    const record = await tx.passwordResetToken.findUnique({ where: { token: tokenHash } });
+    const rows = await tx.$queryRawUnsafe<
+      Array<{ id: string; userId: string; usedAt: Date | null; expiresAt: Date }>
+    >(
+      `SELECT id, "userId", "usedAt", "expiresAt" FROM "PasswordResetToken" WHERE token = $1`,
+      tokenHash,
+    );
+    const record = rows[0];
     if (!record || record.usedAt || record.expiresAt <= now) return false;
 
-    const claimed = await tx.passwordResetToken.updateMany({
-      where: { id: record.id, usedAt: null, expiresAt: { gt: now } },
-      data: { usedAt: now },
-    });
-    if (claimed.count !== 1) return false;
+    const claimed = await tx.$executeRawUnsafe(
+      `UPDATE "PasswordResetToken" SET "usedAt" = $1::timestamp WHERE id = $2 AND "usedAt" IS NULL AND "expiresAt" > $3::timestamp`,
+      now.toISOString(),
+      record.id,
+      now.toISOString(),
+    );
+    if (claimed !== 1) return false;
 
-    await tx.user.update({
-      where: { id: record.userId },
-      data: { passwordHash, tokenExpiresAt: now },
-    });
+    await tx.$executeRawUnsafe(
+      `UPDATE "User" SET "passwordHash" = $1, "tokenExpiresAt" = $2::timestamp WHERE id = $3`,
+      passwordHash,
+      now.toISOString(),
+      record.userId,
+    );
     return true;
   });
 }
