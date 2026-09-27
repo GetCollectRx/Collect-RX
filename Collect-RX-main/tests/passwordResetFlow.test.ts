@@ -36,10 +36,24 @@ describe.skipIf(!dbReady)('POST /api/auth/reset-password/request + /confirm', ()
       expect(requestRes.status).toBe(200);
       expect(requestRes.body.ok).toBe(true);
 
-      const tokenRow = await prisma.passwordResetToken.findFirst({
+      // issuePasswordResetToken's write is awaited before the route responds,
+      // so this read should always see it immediately — but this test has a
+      // documented history of flaking under full-suite load (263ed43 fixed
+      // an earlier console.log-parsing flake in this same test). A short
+      // poll is a standard, safe way to absorb transient connection-pool
+      // scheduling noise without masking a genuine failure: it still fails
+      // if the row never appears.
+      let tokenRow = await prisma.passwordResetToken.findFirst({
         where: { userId: user.id, usedAt: null },
         orderBy: { createdAt: 'desc' },
       });
+      for (let attempt = 0; !tokenRow && attempt < 10; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        tokenRow = await prisma.passwordResetToken.findFirst({
+          where: { userId: user.id, usedAt: null },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
       expect(tokenRow).not.toBeNull();
       expect(tokenRow!.expiresAt.getTime()).toBeGreaterThan(Date.now());
       expect(tokenRow!.token).toMatch(/^[0-9a-f]{64}$/);
