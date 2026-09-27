@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
@@ -954,6 +954,23 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       // ambiguous timeout) reuses it; the next real attempt gets a new one.
       idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
+
+    // Final CARRIER_BLOCK check immediately before the live dial — the upfront
+    // validateDispatch() check at the top of this claim's turn can be stale by
+    // now: triage, PHI detokenization, and practice/settings lookups all sit in
+    // between, and this loop processes many claims per tick with no per-claim
+    // lock, so a block fired against this carrier by a concurrent manual trigger
+    // or a webhook from another in-flight call must still be caught here.
+    const lateGuard = await checkCarrierBlock(prisma, practiceId, next.claim.carrierId);
+    if (!lateGuard.allowed) {
+      logger.warn('[deskQueueEngine] CARRIER_BLOCK fired mid-dispatch — settling queue entry', {
+        claimId: next.claimId,
+        reason: lateGuard.reason,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, lateGuard.code, lateGuard.reason);
+      if (disposition === 'stop') return;
+      continue;
+    }
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately
