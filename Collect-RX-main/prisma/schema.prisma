@@ -80,6 +80,7 @@ model Practice {
   csvImportLogs                  CsvImportLog[] @relation("csvImportLogs")
   dentists                       Dentist[]
   cdcpCoverages                  CdcpCoverage[]
+  callDispatchIntents            CallDispatchIntent[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -482,10 +483,15 @@ model AuditLog {
   /// Request metadata (not body)
   requestIp   String?
   userAgent   String?
+  /// Tenant-chained hash of the previous retained row; tamper-evident, not
+  /// WORM (see migration 20260920_audit_integrity's own header comment).
+  previousHash String? @map("previous_hash")
+  integrityHash String? @map("integrity_hash")
 
   @@index([practiceId, createdAt])
   @@index([userId, createdAt])
   @@index([createdAt])
+  @@index([practiceId, integrityHash])
 }
 
 /// Queryable PHI access trail. Contains identifiers and field categories only,
@@ -722,6 +728,7 @@ model InsuranceClaim {
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
   callAttempts      CallAttempt[]
+  dispatchIntents   CallDispatchIntent[]
   queueEntry        CallQueue?
   escalations       Escalation[]
   recoveryActions   ClaimRecoveryAction[]
@@ -1058,8 +1065,11 @@ model CallAttempt {
   /// the CarrierLesson learning pipeline, which is scoped to the fully-autonomous
   /// squad only — see HumanAssistedCallLog for V1's own, separate learning path.
   isHumanAssisted      Boolean      @default(false) @map("is_human_assisted")
+  /// Durable outbound intent that existed before the external Vapi request.
+  dispatchIntentId     String?      @unique @map("dispatch_intent_id")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
+  dispatchIntent  CallDispatchIntent?    @relation(fields: [dispatchIntentId], references: [id])
   guardrailAudits GuardrailAudit[]
   guardrailOutbox GuardrailAuditOutbox?
 
@@ -1068,6 +1078,35 @@ model CallAttempt {
   @@index([outcome])
   @@index([initiatedAt(sort: Desc)])
   @@map("call_attempts")
+}
+
+/// Durable boundary record for one outbound carrier-call attempt. READY is
+/// safe to abandon/retry because no send began; SENDING and AMBIGUOUS require
+/// reconciliation and must never be automatically redialled.
+model CallDispatchIntent {
+  id               String       @id @default(uuid())
+  practiceId       String       @map("practice_id")
+  claimId          String       @map("claim_id")
+  queueEntryId     String       @map("queue_entry_id")
+  attemptNumber    Int          @map("attempt_number")
+  idempotencyKey   String       @unique @map("idempotency_key")
+  status           String       @default("READY")
+  vapiCallId       String?      @unique @map("vapi_call_id")
+  failureCode      String?      @map("failure_code")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  sendStartedAt    DateTime?    @map("send_started_at")
+  confirmedAt      DateTime?    @map("confirmed_at")
+  reconciledAt     DateTime?    @map("reconciled_at")
+  practice         Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  claim            InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  queueEntry       CallQueue    @relation(fields: [queueEntryId], references: [id], onDelete: Cascade)
+  callAttempt      CallAttempt?
+
+  @@unique([queueEntryId, attemptNumber])
+  @@index([practiceId, status, updatedAt])
+  @@index([claimId, createdAt(sort: Desc)])
+  @@map("call_dispatch_intents")
 }
 
 /// Real-time transcript lines for the front desk live console (practice-scoped).
@@ -1183,6 +1222,7 @@ model CallQueue {
   updatedAt                  DateTime      @updatedAt @map("updated_at")
 
   claim InsuranceClaim @relation(fields: [claimId], references: [id])
+  dispatchIntents CallDispatchIntent[]
 
   @@index([practiceId, status])
   @@index([scheduledFor])

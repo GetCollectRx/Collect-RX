@@ -2,11 +2,16 @@ import type { PrismaClient } from '@prisma/client';
 import type { PmsVendorId } from '../../types/pms.js';
 import { importPmsClaimsToPrisma } from './prismaClaimImporter.js';
 import { validateImportTotals } from './importValidation.js';
-import { syncWorkItemsForPractice } from '../services/workQueueService.js';
+import {
+  syncEligibleCallQueueForPractice,
+  syncWorkItemsForPractice,
+} from '../services/workQueueService.js';
 import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
 import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
 import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
 import { logger } from '../observability/logger.js';
+import { normalizePmsClaimRow } from './parseExportRows.js';
+import { mapToCarrierId } from './carrierMap.js';
 
 /** @deprecated Use PmsVendorId — kept for callers passing legacy slugs. */
 export type PmsSource = PmsVendorId;
@@ -37,6 +42,29 @@ export interface RunPmsImportResult {
   ediMigrationRequired?: boolean;
   ediVersionStatus?: string;
   ediVersionMessage?: string;
+}
+
+function preflightImportRows(
+  rows: Record<string, unknown>[],
+  importFamily: Parameters<typeof normalizePmsClaimRow>[1],
+): { claimNumber?: string; error: string }[] {
+  const errors: { claimNumber?: string; error: string }[] = [];
+  for (const raw of rows) {
+    try {
+      const row = normalizePmsClaimRow(raw, importFamily);
+      if (!mapToCarrierId(row.carrierName)) {
+        errors.push({
+          claimNumber: row.claimNumber,
+          error:
+            `Unrecognized insurance carrier ${row.carrierName ? `"${row.carrierName}"` : '(blank)'} — ` +
+            'claim not imported. Supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare.',
+        });
+      }
+    } catch (err) {
+      errors.push({ error: (err as Error).message });
+    }
+  }
+  return errors;
 }
 
 export async function runPmsImportPipeline(
@@ -71,61 +99,99 @@ export async function runPmsImportPipeline(
   });
 
   try {
-    const importResult = await importPmsClaimsToPrisma(
-      prisma,
-      options.rows,
-      options.practiceId,
-      importFamily,
-    );
-
-    const validation = validateImportTotals({
-      sourceRecordCount: options.sourceRecordCount ?? options.rows.length,
-      importedRecordCount: importResult.imported,
-      sourceBalanceTotal: options.sourceBalanceTotal ?? importResult.importedBalanceTotal,
-      importedBalanceTotal: importResult.importedBalanceTotal,
-    });
-
-    const status = validation.passed
-      ? importResult.failed > 0
-        ? 'partial'
-        : 'success'
-      : 'validation_failed';
-
-    await prisma.pmsImportRun.update({
-      where: { id: run.id },
-      data: {
-        status,
-        completedAt: new Date(),
-        recordsImported: importResult.imported,
-        recordsSkipped: importResult.skipped,
-        recordsFailed: importResult.failed,
-        importedBalanceTotal: importResult.importedBalanceTotal,
-        driftPct: validation.driftPct,
-        validationPassed: validation.passed,
-        errorLog: {
-          validationMessages: validation.messages,
-          rowErrors: importResult.errors.slice(0, 50),
+    // Validate the entire file before the first claim, work item, or call-queue
+    // row is written. A malformed mixed file must not partially enter the live
+    // recovery workflow.
+    const preflightErrors = preflightImportRows(options.rows, importFamily);
+    if (preflightErrors.length > 0) {
+      await prisma.pmsImportRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'validation_failed',
+          completedAt: new Date(),
+          recordsImported: 0,
+          recordsSkipped: 0,
+          recordsFailed: preflightErrors.length,
+          validationPassed: false,
+          errorLog: { rowErrors: preflightErrors.slice(0, 50) },
         },
-      },
-    });
-
-    await syncWorkItemsForPractice(prisma, options.practiceId);
-    if (importResult.imported > 0 || importResult.skipped > 0) {
-      await ensurePracticePmsVendor(prisma, options.practiceId, vendorId);
+      });
+      return {
+        runId: run.id,
+        pmsVendor: vendorId,
+        status: 'validation_failed',
+        validationPassed: false,
+        imported: 0,
+        skipped: 0,
+        failed: preflightErrors.length,
+        driftPct: null,
+        errors: preflightErrors,
+        paymentsVerified: 0,
+        dollarsRecoveredSyncVerified: 0,
+      };
     }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // The import helpers use only model operations available on a transaction
+      // client. Keep the cast local so every workflow write shares this commit.
+      const transactionalPrisma = tx as unknown as PrismaClient;
+      const importResult = await importPmsClaimsToPrisma(
+        transactionalPrisma,
+        options.rows,
+        options.practiceId,
+        importFamily,
+      );
+
+      const validation = validateImportTotals({
+        sourceRecordCount: options.sourceRecordCount ?? options.rows.length,
+        importedRecordCount: importResult.imported + importResult.skipped,
+        sourceBalanceTotal: options.sourceBalanceTotal ?? importResult.importedBalanceTotal,
+        importedBalanceTotal: importResult.importedBalanceTotal,
+      });
+
+      if (!validation.passed || importResult.failed > 0) {
+        throw new Error(
+          `Import validation failed: ${[
+            ...validation.messages,
+            ...importResult.errors.map((entry) => entry.error),
+          ].join('; ')}`,
+        );
+      }
+
+      await syncWorkItemsForPractice(transactionalPrisma, options.practiceId);
+      await syncEligibleCallQueueForPractice(transactionalPrisma, options.practiceId);
+      if (importResult.imported > 0 || importResult.skipped > 0) {
+        await ensurePracticePmsVendor(transactionalPrisma, options.practiceId, vendorId);
+      }
+      await transactionalPrisma.pmsImportRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'success',
+          completedAt: new Date(),
+          recordsImported: importResult.imported,
+          recordsSkipped: importResult.skipped,
+          recordsFailed: 0,
+          importedBalanceTotal: importResult.importedBalanceTotal,
+          driftPct: validation.driftPct,
+          validationPassed: true,
+          errorLog: { validationMessages: [], rowErrors: [] },
+        },
+      });
+      return { importResult, validation };
+    });
 
     return {
       runId: run.id,
       pmsVendor: vendorId,
-      status,
-      validationPassed: validation.passed,
-      imported: importResult.imported,
-      skipped: importResult.skipped,
-      failed: importResult.failed,
-      driftPct: validation.driftPct,
-      errors: importResult.errors,
-      paymentsVerified: importResult.paymentsVerified,
-      dollarsRecoveredSyncVerified: importResult.dollarsRecoveredSyncVerified,
+      status: 'success',
+      validationPassed: true,
+      imported: result.importResult.imported,
+      skipped: result.importResult.skipped,
+      failed: 0,
+      driftPct: result.validation.driftPct,
+      errors: [],
+      paymentsVerified: result.importResult.paymentsVerified,
+      dollarsRecoveredSyncVerified: result.importResult.dollarsRecoveredSyncVerified,
       // EDI version guard results (Abeldent only)
       ...(ediGuardResult
         ? {

@@ -195,13 +195,48 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     // for up to 90s after any prior run. Reproduced directly: back-to-back
     // invocations of this file failed every time until this reset was added.
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
-    // Spread across all 6 carriers (4 max per carrier well under
+
+    // Same category of problem as the lease above, but for runDeskQueueTick's
+    // concurrency accounting: both vapiSlotBudget's global count and the
+    // per-carrier CARRIER_CONCURRENCY_LIMITS check (queueEngine.ts) query
+    // ALL CallAttempt rows with completedAt: null, fleet-wide — not scoped to
+    // this file's own practices. An earlier test elsewhere in the suite that
+    // creates a CallAttempt without completing/cleaning it up (its own bug,
+    // not this file's) leaves a row that silently counts against whichever
+    // carrier it's tagged to. With only ~3-4 of this test's 20 claims per
+    // carrier against a cap of 5/carrier, even one stale row is enough to
+    // push a carrier over the ceiling and drop this test below FLEET_SIZE —
+    // reproduced directly: "expected 20 calls, got 17" with stale open
+    // attempts left over from earlier tests in the same `vitest run`.
+    // Since vitest.config.ts runs this suite with maxWorkers: 1 (one
+    // sequential process), any CallAttempt with completedAt: null at this
+    // point is guaranteed stale — no test can have one genuinely in flight
+    // while this beforeAll is running — so closing them out here is safe,
+    // mirroring the lease reset above rather than guessing a bigger budget.
+    await prisma.callAttempt.updateMany({
+      where: { completedAt: null },
+      data: { completedAt: new Date() },
+    });
+    // Spread across 5 carriers (4 max per carrier well under
     // CARRIER_CONCURRENCY_LIMITS' fleet-wide cap of 5/carrier — see
     // src/billing/tiers.ts) so that real, intentional guard doesn't throttle
     // this test's own fleet before it can prove the pipeline dispatches all
     // 20; per-carrier scarcity has its own dedicated coverage in
     // tests/queueEngineFairnessAndLease.test.ts.
-    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc', 'telus_adjudicare'];
+    //
+    // Deliberately excludes telus_adjudicare: queueEngine.ts's TELUS branch
+    // (~line 865) refuses to dial any TELUS claim until identifyTelusPlan()
+    // resolves a verified_provider_phone for that claim's TPA, and
+    // carrier-configs.json's own _dial_phone_policy states plainly that zero
+    // TPAs currently have one set (an operator must confirm each by a real
+    // phone call first). Confirmed empirically: every telus_adjudicare claim
+    // in this fleet was deferred with TELUS_TPA_PHONE_UNVERIFIED, not
+    // dispatched — a real, deliberate, currently-universal gate, not a
+    // concurrency bug this capacity test should be asserting against. TELUS
+    // TPA identification/dial-resolution has its own dedicated coverage
+    // elsewhere (src/services/eligibility/engine.test.ts and
+    // tests/canadianExpansionApi tests).
+    const CARRIERS: CarrierId[] = ['sun_life', 'canada_life', 'manulife', 'green_shield', 'rbc'];
     fleet = await Promise.all(
       Array.from({ length: FLEET_SIZE }, (_, i) => seedDispatchablePractice(CARRIERS[i % CARRIERS.length])),
     );
@@ -294,5 +329,11 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     }
     const lease = await prisma.queueEngineLease.findUnique({ where: { id: 'global' } });
     expect(lease?.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
-  }, 60_000);
+    // 60s was tight enough to time out under a full sequential `vitest run`
+    // (235 files, ~440s total) even though 10 real ticks complete in ~50s in
+    // isolation — this is host/DB load sensitivity, not a per-tick latency
+    // regression (verified: the previous two tests in this same file, also
+    // real N=20 dispatch, stayed at 5-10s each in the same slow run). Wider
+    // budget so a loaded CI/dev box doesn't produce a false failure here.
+  }, 120_000);
 });

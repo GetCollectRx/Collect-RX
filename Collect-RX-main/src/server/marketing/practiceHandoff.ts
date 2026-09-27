@@ -5,6 +5,7 @@ import { logProspectActivity } from './prospectActivity.js';
 import { maybeStartReferralSequence } from './referralEngine.js';
 import { syncProspectStageToHubspot } from './hubspotSync.js';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 function defaultTimezone(province: string | null): string {
   const p = (province || '').toUpperCase();
@@ -42,34 +43,41 @@ export async function createPracticeFromProspect(
     randomBytes(9).toString('base64url');
 
   const passwordHash = await bcrypt.hash(temporaryPassword, 12);
-  const practice = await prisma.practice.create({
-    data: {
-      name: prospect.practiceName,
-      timezone: defaultTimezone(prospect.province),
-      passwordHash,
-    },
-  });
+  // Creates the practice's first user before any session/practiceId context
+  // for it can exist — bypass is correct here, same reasoning as the auth
+  // routes that create a practice's owner account pre-session.
+  const { practice, ownerEmail } = await runWithRlsBypass(async () => {
+    const practice = await prisma.practice.create({
+      data: {
+        name: prospect.practiceName,
+        timezone: defaultTimezone(prospect.province),
+        passwordHash,
+      },
+    });
 
-  let ownerEmail: string | null = null;
-  if (prospect.email?.trim()) {
-    ownerEmail = prospect.email.trim().toLowerCase();
-    const existingUser = await prisma.user.findUnique({ where: { email: ownerEmail } });
-    if (!existingUser) {
-      await prisma.user.create({
-        data: {
-          practiceId: practice.id,
-          email: ownerEmail,
-          passwordHash,
-          role: 'practice_owner',
-          displayName: prospect.contactName?.trim() || prospect.practiceName,
-        },
-      });
+    let ownerEmail: string | null = null;
+    if (prospect.email?.trim()) {
+      ownerEmail = prospect.email.trim().toLowerCase();
+      const existingUser = await prisma.user.findUnique({ where: { email: ownerEmail } });
+      if (!existingUser) {
+        await prisma.user.create({
+          data: {
+            practiceId: practice.id,
+            email: ownerEmail,
+            passwordHash,
+            role: 'practice_owner',
+            displayName: prospect.contactName?.trim() || prospect.practiceName,
+          },
+        });
+      }
     }
-  }
 
-  await prisma.prospect.update({
-    where: { id: prospectId },
-    data: { linkedPracticeId: practice.id },
+    await prisma.prospect.update({
+      where: { id: prospectId },
+      data: { linkedPracticeId: practice.id },
+    });
+
+    return { practice, ownerEmail };
   });
 
   await logProspectActivity(

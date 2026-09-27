@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { dispatchOpsAlert, opsAlertsEnabled } from '../observability/opsAlerts.js';
 import { logger } from '../observability/logger.js';
+import { runWithPracticeRls } from '../db/rlsContext.js';
 
 export interface RecoveryNotificationItem {
   id: string;
@@ -157,14 +158,18 @@ export async function notifyPracticeOnBlockingGate(
     claimUrl,
   ].join('\n');
 
-  const staff = await prisma.user.findMany({
-    where: {
-      practiceId: params.practiceId,
-      isActive: true,
-      role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-    },
-    select: { email: true },
-  });
+  // This is a scheduled/background call path, not a request — no ambient RLS
+  // context exists here.
+  const staff = await runWithPracticeRls(params.practiceId, () =>
+    prisma.user.findMany({
+      where: {
+        practiceId: params.practiceId,
+        isActive: true,
+        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+      },
+      select: { email: true },
+    }),
+  );
   const emails = staff.map((u) => u.email).filter(Boolean);
   const overrideTo = process.env.PRACTICE_GATE_EMAIL_TO?.trim();
   const emailTo = overrideTo

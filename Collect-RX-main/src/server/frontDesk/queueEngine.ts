@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
@@ -266,15 +266,25 @@ export async function claimTickLease(
   prisma: PrismaClient,
   instanceId: string = ENGINE_INSTANCE_ID,
 ): Promise<boolean> {
+  // locked_until/updated_at are `timestamp without time zone` (Prisma's DateTime
+  // default — no @db.Timestamptz on this model), and Prisma's own JS-side writes
+  // (e.g. the queueEngineLease.upsert() used in tests) always store UTC-numbered
+  // naive digits. Bare `now()` is a timestamptz; comparing/assigning it directly
+  // against this naive column makes Postgres cast it down using the SESSION
+  // timezone (America/Toronto here, not UTC) — off by the UTC offset (4-5h
+  // depending on DST), so a genuinely-expired lease could silently fail to be
+  // reclaimed for hours. `now() AT TIME ZONE 'UTC'` forces the same UTC-numbered
+  // naive representation Prisma already uses, on both the read (WHERE) and the
+  // write (VALUES/SET) sides.
   const affected = await prisma.$executeRaw`
     INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
-    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    VALUES (${LEASE_ID}, (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, (now() AT TIME ZONE 'UTC'))
     ON CONFLICT (id) DO UPDATE
-    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+    SET locked_until = (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
         locked_by = ${instanceId},
-        updated_at = now()
+        updated_at = (now() AT TIME ZONE 'UTC')
     WHERE queue_engine_lease.locked_until IS NULL
-       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_until < (now() AT TIME ZONE 'UTC')
        OR queue_engine_lease.locked_by = ${instanceId}
   `;
   return affected > 0;
@@ -944,6 +954,23 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       // ambiguous timeout) reuses it; the next real attempt gets a new one.
       idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
+
+    // Final CARRIER_BLOCK check immediately before the live dial — the upfront
+    // validateDispatch() check at the top of this claim's turn can be stale by
+    // now: triage, PHI detokenization, and practice/settings lookups all sit in
+    // between, and this loop processes many claims per tick with no per-claim
+    // lock, so a block fired against this carrier by a concurrent manual trigger
+    // or a webhook from another in-flight call must still be caught here.
+    const lateGuard = await checkCarrierBlock(prisma, practiceId, next.claim.carrierId);
+    if (!lateGuard.allowed) {
+      logger.warn('[deskQueueEngine] CARRIER_BLOCK fired mid-dispatch — settling queue entry', {
+        claimId: next.claimId,
+        reason: lateGuard.reason,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, lateGuard.code, lateGuard.reason);
+      if (disposition === 'stop') return;
+      continue;
+    }
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately

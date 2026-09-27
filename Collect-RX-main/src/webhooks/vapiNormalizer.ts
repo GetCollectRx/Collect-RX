@@ -122,6 +122,23 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
     };
   }
 
+  // ── call.started: fired when the outbound call connects ────────────────────
+  // This does not prove a live carrier representative answered or that hold
+  // ended. Representative engagement must come from an explicit agent/state
+  // transition or another verified structured signal.
+  if (msgType === 'call.started') {
+    const startedAt = asString(msg.startedAt) ?? asString(msg.call?.startedAt);
+    return {
+      type: 'call.started',
+      call: {
+        id: callId,
+        status: 'started',
+        startedAt,
+      },
+      metadata,
+    };
+  }
+
   // Message types the backend does not consume (speech-update, conversation-update, ...).
   return null;
 }

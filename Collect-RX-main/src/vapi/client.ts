@@ -436,7 +436,10 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       practice_tax_id:          practiceTaxId ?? '',
       practice_address:         practiceAddress ?? '',
       provider_number:          providerNumber,
-      // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds.
+      // Conservative CollectRx disclosure control: identify automation,
+      // practice, purpose, recording/transcription, and callback details at
+      // the start of the human interaction. Do not characterize the CRTC's
+      // ten-second disconnect provision as a disclosure deadline.
       // practice_phone is the billing/claims line, NOT the staff escalation line.
       practice_phone:           practicePhone,
       language_preference:      languagePreference ?? 'en',

@@ -12,9 +12,9 @@ WORKDIR /app
 COPY Collect-RX-main/package.json Collect-RX-main/package-lock.json ./
 COPY Collect-RX-main/prisma ./prisma/
 
-# Install deps. Uses npm install (not ci) so it works regardless of lock file
-# version differences between local and container npm.
-RUN npm install --ignore-scripts --include=dev
+# The deploy workflow copies the canonical workspace lock into this build
+# context. Fail rather than resolving a different dependency graph.
+RUN npm ci --ignore-scripts --include=dev
 
 # Prisma client generation must happen after install.
 RUN npx prisma generate

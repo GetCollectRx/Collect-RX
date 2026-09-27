@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import type { PrismaClient } from '@prisma/client';
 import { reconcilePendingAuthorizations, reconcilePendingPadTransactions } from '../gocardless/padService.js';
 import { logger } from '../observability/logger.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 let started = false;
 
@@ -34,7 +35,11 @@ export function startPadReconciliationScheduler(prisma: PrismaClient): void {
 
   started = true;
   cron.schedule(pattern, () => {
-    void Promise.all([reconcilePendingAuthorizations(prisma), reconcilePendingPadTransactions(prisma)])
+    // A cron sweep has no request/session — it must cross every practice's
+    // PAD mandates and transactions by design, not just one tenant's.
+    void runWithRlsBypass(() =>
+      Promise.all([reconcilePendingAuthorizations(prisma), reconcilePendingPadTransactions(prisma)]),
+    )
       .then(([authorizations, transactions]) => {
         if (authorizations.activated > 0 || transactions.updated > 0) {
           logger.info('[padReconcile] sweep results', {

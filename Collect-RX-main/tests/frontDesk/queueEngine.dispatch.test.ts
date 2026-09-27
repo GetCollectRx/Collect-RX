@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
 const validateDispatchMock = vi.fn();
+const checkCarrierBlockMock = vi.fn();
 const initiateCallMock = vi.fn();
 const endVapiCallMock = vi.fn();
 const detokenizeMock = vi.fn();
@@ -13,6 +14,7 @@ const transitionClaimRecoveryMock = vi.fn();
 
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
+  checkCarrierBlock: (...args: unknown[]) => checkCarrierBlockMock(...args),
   isWithinCallWindow: () => true,
   CARRIER_CONFIGS: {
     sun_life: {
@@ -223,6 +225,10 @@ function phiSuccess() {
 beforeEach(() => {
   vi.clearAllMocks();
   canMakeCallMock.mockResolvedValue({ allowed: true });
+  // Pre-dial re-check added alongside the upfront validateDispatch mock above —
+  // defaults to allowed so tests that don't care about CARRIER_BLOCK aren't
+  // incidentally blocked by it; tests that do care override this directly.
+  checkCarrierBlockMock.mockResolvedValue({ allowed: true });
   probeClaimStatusMock.mockResolvedValue(null);
   detokenizeMock.mockReturnValue(phiSuccess());
   initiateCallMock.mockResolvedValue({ vapiCallId: 'vapi-1' });

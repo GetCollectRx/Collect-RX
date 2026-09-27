@@ -290,7 +290,7 @@ export default function CsvImportPage() {
                   {result.validationPassed === false && <Badge color="amber">Validation drift</Badge>}
                 </div>
                 <p className="text-sm text-gray-600">
-                  Claims are in your work queue. CollectRx will schedule carrier follow-up during business hours (Mon–Fri 8am–5pm ET).
+                  Claims are in your work queue. Eligible claims are scheduled for carrier-status follow-up during business hours (Mon–Fri 8am–5pm ET); claims that need staff action remain in the work queue.
                 </p>
                 {result.rowErrors.length > 0 && (
                   <div className="text-sm">
