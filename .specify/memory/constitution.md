@@ -1,3 +1,20 @@
+<!--
+Sync Impact Report
+Version change: 1.0.0 -> 1.0.1 (PATCH: clarification, no principle redefinition)
+Modified principles:
+  - IV. Testing Standards — corrected the minimum-claim-age test constraint to match
+    the actual per-carrier minimum wait (day 21 TELUS AdjudiCare / day 32 others),
+    resolving an inconsistency with the Call Safety Rules section and CLAUDE.md.
+Added sections: none
+Removed sections: none
+Templates requiring updates:
+  - .specify/templates/plan-template.md ✅ (no change needed — Constitution Check
+    section references principles I/III/IV by number, not the stale wording)
+  - .specify/templates/spec-template.md ✅ (no change needed)
+  - .specify/templates/tasks-template.md ✅ (no change needed)
+Follow-up TODOs: none
+-->
+
 # CollectRx Constitution
 
 ## Core Principles
@@ -16,7 +33,7 @@ If a carrier detects automation, all calls to that carrier MUST be suspended imm
 
 ### IV. Testing Standards (Integration Over Mocks for Critical Paths)
 
-For the claim queue, PHI tokenization, carrier block logic, and Vapi webhook handling, tests MUST use real database connections. Mocked infrastructure has historically masked production failures. Unit tests (pure functions: eligibility math, CDT mapping, deductible calc, COB) may use mocks freely. Target ratio: 50% unit / 40% integration / 10% E2E. The three hard call constraints — no calls outside Mon–Fri 8am–5pm Eastern, max 3 attempts per claim, no calls on claims under 30 days old — MUST each have at least one dedicated test.
+For the claim queue, PHI tokenization, carrier block logic, and Vapi webhook handling, tests MUST use real database connections. Mocked infrastructure has historically masked production failures. Unit tests (pure functions: eligibility math, CDT mapping, deductible calc, COB) may use mocks freely. Target ratio: 50% unit / 40% integration / 10% E2E. The three hard call constraints — no calls outside Mon–Fri 8am–5pm Eastern, max 3 attempts per claim, no calls on claims younger than the carrier's minimum wait (day 21 for TELUS AdjudiCare, day 32 for all other carriers) — MUST each have at least one dedicated test.
 
 ### V. Performance & Minimal Footprint
 
@@ -50,4 +67,4 @@ These are operational constraints that MUST be enforced in code and tested:
 
 **Definition of done**: A feature is done when (a) `npm run lint` and `npm test` pass with no new skips, (b) all four UI states are implemented and verified, (c) the call safety rules are enforced and tested if applicable, and (d) a team member has reviewed the diff.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-19 | **Last Amended**: 2026-06-19
+**Version**: 1.0.1 | **Ratified**: 2026-06-19 | **Last Amended**: 2026-09-09
