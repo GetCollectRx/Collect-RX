@@ -12,6 +12,10 @@ export interface OpsAlertPayload {
   detail?: string;
   source?: string;
   host?: string;
+  /** Restrict delivery for alerts that should not page by SMS (for example,
+   * routine practice work already visible in the product). Defaults to every
+   * configured ops channel. */
+  channels?: Array<'sms' | 'email' | 'webhook'>;
 }
 
 const cooldownMs = () =>
@@ -191,15 +195,16 @@ export async function dispatchOpsAlert(payload: OpsAlertPayload): Promise<{
   const html = formatOpsAlertHtml(payload);
   const subject = `CollectRx [${(payload.severity ?? def.severity).toUpperCase()}] ${payload.title ?? def.title}`;
   const channels: string[] = [];
+  const allowedChannels = new Set(payload.channels ?? ['sms', 'email', 'webhook']);
 
-  if (await sendSms(text).catch(() => false)) channels.push('sms');
-  if (await sendEmail(subject, text, html).catch((e) => {
+  if (allowedChannels.has('sms') && await sendSms(text).catch(() => false)) channels.push('sms');
+  if (allowedChannels.has('email') && await sendEmail(subject, text, html).catch((e) => {
     logger.error('[opsAlerts] email failed', { error: e });
     return false;
   })) {
     channels.push('email');
   }
-  if (await sendWebhook(text, payload, def).catch((e) => {
+  if (allowedChannels.has('webhook') && await sendWebhook(text, payload, def).catch((e) => {
     logger.error('[opsAlerts] webhook failed', { error: e });
     return false;
   })) {
