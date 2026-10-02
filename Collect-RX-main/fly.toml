@@ -36,9 +36,10 @@ primary_region = 'yyz'
 [build]
 
 [deploy]
-# Runs as a one-off machine before the new release rolls out; a nonzero
-# exit blocks the deploy.
-release_command = 'npx prisma migrate deploy'
+# Emergency code-only release: this branch is based on the exact production
+# revision and contains no schema changes. Production's migrator role must be
+# repaired separately before normal main-branch deployments resume.
+release_command = 'echo "Code-only recovery-alert hotfix: migrations intentionally skipped"'
 
 [processes]
 app = 'npm run start'
