@@ -11,10 +11,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router, Request, Response } from 'express';
-import { CarrierId, ClaimStatus } from '@prisma/client';
+import { CarrierId, ClaimStatus, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
-import { validateDispatch, CARRIER_CONFIGS } from '../carriers/adapter';
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
 import { strictLimiter } from '../server/middleware/rateLimiter';
@@ -547,70 +547,146 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // attempt count under lock, set status to CALLING, and increment attempts.
     // This eliminates the TOCTOU gap where two concurrent triggers could both
     // pass the < 3 check and both dispatch.
-    const reserved = await prisma.$transaction(async (tx) => {
-      await tx.$queryRawUnsafe(
-        `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
-        claimId,
-      );
+    const reserveDispatchSlot = () =>
+      prisma.$transaction(async (tx) => {
+        // Every query in this transaction uses tx.$queryRawUnsafe/$executeRawUnsafe,
+        // never an extended tx.<model>.<method>() call. The RLS extension's
+        // $allOperations hook (src/lib/prismaRls.ts) wraps a practice-scoped
+        // or bypass call in its OWN base.$transaction([...]) — using the
+        // ORIGINAL top-level client, not this tx — which opens a second,
+        // separate connection while this one is mid-transaction. When that
+        // second connection then tries to touch the exact row this
+        // transaction's own FOR UPDATE lock (below) is holding, it blocks
+        // waiting for a lock this transaction itself can never release until
+        // that same call finishes — a guaranteed self-deadlock under any
+        // request with a live app.practice_id context (i.e. every real
+        // authenticated request; confirmed directly — this reservation
+        // hung for the full 15s transaction timeout and 500'd on an
+        // ordinary, no-block dispatch attempt before this fix, unrelated to
+        // CARRIER_BLOCK). Raw queries on tx bypass the extension entirely and
+        // stay on this transaction's own connection, avoiding the deadlock.
+        await tx.$executeRawUnsafe(`SELECT set_config('app.practice_id', $1, true)`, practiceId);
 
-      const lockedQueue = await tx.callQueue.findUnique({
-        where: { claimId },
-        select: {
-          attempts: true,
-          status: true,
-          lastAttemptAt: true,
-          dispatchDeferralCode: true,
-          dispatchDeferralNextAction: true,
-          dispatchDeferredAt: true,
-        },
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM insurance_claims WHERE id = $1 FOR UPDATE`,
+          claimId,
+        );
+
+        const lockedQueueRows = await tx.$queryRawUnsafe<
+          Array<{
+            attempts: number;
+            status: QueueStatus;
+            last_attempt_at: Date | null;
+            dispatch_deferral_code: string | null;
+            dispatch_deferral_next_action: string | null;
+            dispatch_deferred_at: Date | null;
+          }>
+        >(
+          `SELECT attempts, status, last_attempt_at, dispatch_deferral_code,
+                  dispatch_deferral_next_action, dispatch_deferred_at
+           FROM call_queue WHERE claim_id = $1`,
+          claimId,
+        );
+        const lockedClaimRows = await tx.$queryRawUnsafe<Array<{ status: ClaimStatus }>>(
+          `SELECT status FROM insurance_claims WHERE id = $1`,
+          claimId,
+        );
+        const lockedQueueRow = lockedQueueRows[0];
+        const lockedQueue = lockedQueueRow
+          ? {
+              attempts: lockedQueueRow.attempts,
+              status: lockedQueueRow.status,
+              lastAttemptAt: lockedQueueRow.last_attempt_at,
+              dispatchDeferralCode: lockedQueueRow.dispatch_deferral_code,
+              dispatchDeferralNextAction: lockedQueueRow.dispatch_deferral_next_action,
+              dispatchDeferredAt: lockedQueueRow.dispatch_deferred_at,
+            }
+          : null;
+        const lockedClaim = lockedClaimRows[0];
+
+        const lockedAttempts = lockedQueue?.attempts ?? claim.callAttempts.length;
+        if (lockedAttempts >= 3) {
+          return { ok: false as const, reason: `Maximum 3 call attempts reached (${lockedAttempts} so far)` };
+        }
+        if (lockedClaim?.status === 'CALLING' || lockedQueue?.status === 'IN_PROGRESS') {
+          return { ok: false as const, reason: 'A call is already in progress for this claim' };
+        }
+        // Re-check CARRIER_BLOCK under the row lock — the upfront validateDispatch()
+        // check above can be minutes-stale by the time a concurrent trigger reaches
+        // here; a block that fired against THIS practice+carrier between the two
+        // must not be missed just because it was fine at the top of the handler.
+        const freshBlockRows = await tx.$queryRawUnsafe<Array<{ blocked_at: Date }>>(
+          `SELECT blocked_at FROM carrier_block_events
+           WHERE practice_id = $1 AND carrier_id = $2::"carrier_id" AND resumed_at IS NULL
+           ORDER BY blocked_at DESC LIMIT 1`,
+          practiceId,
+          claim.carrierId,
+        );
+        if (freshBlockRows[0]) {
+          return {
+            ok: false as const,
+            reason: `CARRIER_BLOCK active for ${claim.carrierId} since ${freshBlockRows[0].blocked_at.toISOString()}.`,
+            code: 'CARRIER_BLOCK' as const,
+          };
+        }
+
+        await tx.$executeRawUnsafe(`UPDATE insurance_claims SET status = 'CALLING' WHERE id = $1`, claimId);
+
+        await tx.$executeRawUnsafe(
+          `INSERT INTO call_queue (id, practice_id, claim_id, scheduled_for, priority, attempts, last_attempt_at, status, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, now(), $3::"claim_priority", 1, now(), 'IN_PROGRESS', now(), now())
+           ON CONFLICT (claim_id) DO UPDATE SET
+             status = 'IN_PROGRESS',
+             attempts = call_queue.attempts + 1,
+             last_attempt_at = now(),
+             updated_at = now()`,
+          practiceId,
+          claimId,
+          claim.priority,
+        );
+
+        return {
+          ok: true as const,
+          reservation: {
+            claimStatus: lockedClaim?.status ?? claim.status,
+            queue: lockedQueue,
+          },
+        };
+      }, { timeout: 15000, maxWait: 10000 });
+
+    let reserved: Awaited<ReturnType<typeof reserveDispatchSlot>>;
+    try {
+      reserved = await reserveDispatchSlot();
+    } catch (reservationErr) {
+      logger.error('[POST /insurance/queue/trigger/:claimId] reservation transaction failed', {
+        claimId,
+        error: reservationErr,
       });
-      const lockedClaim = await tx.insuranceClaim.findUnique({
+      // The transaction may have partially committed despite the client-side
+      // throw (e.g. an interactive-transaction timeout that fires after the
+      // underlying commit already succeeded). Check actual DB state and self-heal
+      // rather than leaving the claim stuck in CALLING with no automatic recovery.
+      const postFailureClaim = await prisma.insuranceClaim.findUnique({
         where: { id: claimId },
         select: { status: true },
       });
-
-      const lockedAttempts = lockedQueue?.attempts ?? claim.callAttempts.length;
-      if (lockedAttempts >= 3) {
-        return { ok: false as const, reason: `Maximum 3 call attempts reached (${lockedAttempts} so far)` };
+      if (postFailureClaim?.status === 'CALLING') {
+        await prisma.$transaction([
+          prisma.insuranceClaim.update({
+            where: { id: claimId },
+            data: { status: claim.status },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING' },
+          }),
+        ]);
       }
-      if (lockedClaim?.status === 'CALLING' || lockedQueue?.status === 'IN_PROGRESS') {
-        return { ok: false as const, reason: 'A call is already in progress for this claim' };
-      }
-
-      await tx.insuranceClaim.update({
-        where: { id: claimId },
-        data: { status: 'CALLING' },
-      });
-
-      await tx.callQueue.upsert({
-        where: { claimId },
-        create: {
-          practiceId,
-          claimId,
-          scheduledFor: new Date(),
-          priority: claim.priority,
-          attempts: 1,
-          lastAttemptAt: new Date(),
-          status: 'IN_PROGRESS',
-        },
-        update: {
-          status: 'IN_PROGRESS',
-          attempts: { increment: 1 },
-          lastAttemptAt: new Date(),
-        },
-      });
-
-      return {
-        ok: true as const,
-        reservation: {
-          claimStatus: lockedClaim?.status ?? claim.status,
-          queue: lockedQueue,
-        },
-      };
-    });
+      throw reservationErr;
+    }
 
     if (!reserved.ok) {
-      return res.status(422).json({ success: false, error: reserved.reason });
+      return res.status(422).json({ success: false, error: reserved.reason, code: reserved.code });
     }
 
     const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
@@ -678,6 +754,28 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     // Build IVR instructions from carrier adapter knowledge base
     const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+
+    // Final CARRIER_BLOCK check immediately before the live dial — closes the
+    // window between the row-locked reservation above and the actual call,
+    // which still includes an unavoidable await gap (practice/settings lookup
+    // + PHI detokenization). Uses the full check (also covers org-sibling
+    // practices), not just this practice's own row, since that's the one
+    // thing the in-transaction recheck above intentionally left out to avoid
+    // nesting its own lookup inside reserveDispatchSlot()'s transaction.
+    const lateBlock = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
+    if (!lateBlock.allowed) {
+      await prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: claimId },
+          data: { status: claim.status },
+        }),
+        prisma.callQueue.update({
+          where: { claimId },
+          data: { status: 'PENDING', attempts: { decrement: 1 } },
+        }),
+      ]);
+      return res.status(422).json({ success: false, error: lateBlock.reason, code: lateBlock.code });
+    }
 
     // Initiate Vapi call (outside the transaction — no DB lock held during HTTP).
     // PHI injected as ephemeral call variables — never stored, never logged.

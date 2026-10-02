@@ -64,9 +64,15 @@ function phiAccessForRole(role: PracticeRole): boolean {
   }
 }
 
-/** TTL for each role. Accountants get a 90-day token; everyone else gets 8 hours. */
+/**
+ * Session TTLs are deliberately short for organization-wide and financial
+ * roles. MFA is still a production launch gate; long-lived bearer sessions
+ * must not be used as a substitute for it.
+ */
 function tokenTtlForRole(role: PracticeRole): string {
-  return role === 'accountant' ? '90d' : '8h';
+  if (role === 'group_admin' || role === 'accountant') return '1h';
+  if (role === 'practice_owner' || role === 'office_manager') return '4h';
+  return '8h';
 }
 
 // ─── Sign ────────────────────────────────────────────────────────────────────
@@ -98,7 +104,7 @@ export function signPlatformDevToken(): string {
     userId: 'platform-dev',
     practiceId: null,
   };
-  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '8h' });
+  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '1h' });
 }
 
 // ─── Verify ──────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
-import { validateDispatch, CARRIER_CONFIGS, isWithinCallWindow } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
@@ -14,6 +14,7 @@ import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './pat
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
 import { transitionClaimRecovery } from '../recovery/transitionClaimRecovery.js';
 import { getApprovedNavigationNotes } from '../learning/carrierLessons.js';
+import { getKnownSubmissionChannel } from '../learning/submissionChannelMemory.js';
 import { getPublishedNavigationSteps } from '../discovery/carrierDiscoveryService.js';
 import { runWithPracticeRls, runWithRlsBypass } from '../db/rlsContext.js';
 import { createEscalation } from '../services/escalationService.js';
@@ -265,15 +266,25 @@ export async function claimTickLease(
   prisma: PrismaClient,
   instanceId: string = ENGINE_INSTANCE_ID,
 ): Promise<boolean> {
+  // locked_until/updated_at are `timestamp without time zone` (Prisma's DateTime
+  // default — no @db.Timestamptz on this model), and Prisma's own JS-side writes
+  // (e.g. the queueEngineLease.upsert() used in tests) always store UTC-numbered
+  // naive digits. Bare `now()` is a timestamptz; comparing/assigning it directly
+  // against this naive column makes Postgres cast it down using the SESSION
+  // timezone (America/Toronto here, not UTC) — off by the UTC offset (4-5h
+  // depending on DST), so a genuinely-expired lease could silently fail to be
+  // reclaimed for hours. `now() AT TIME ZONE 'UTC'` forces the same UTC-numbered
+  // naive representation Prisma already uses, on both the read (WHERE) and the
+  // write (VALUES/SET) sides.
   const affected = await prisma.$executeRaw`
     INSERT INTO queue_engine_lease (id, locked_until, locked_by, updated_at)
-    VALUES (${LEASE_ID}, now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, now())
+    VALUES (${LEASE_ID}, (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'), ${instanceId}, (now() AT TIME ZONE 'UTC'))
     ON CONFLICT (id) DO UPDATE
-    SET locked_until = now() + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
+    SET locked_until = (now() AT TIME ZONE 'UTC') + (${LEASE_TTL_MS}::int * interval '1 millisecond'),
         locked_by = ${instanceId},
-        updated_at = now()
+        updated_at = (now() AT TIME ZONE 'UTC')
     WHERE queue_engine_lease.locked_until IS NULL
-       OR queue_engine_lease.locked_until < now()
+       OR queue_engine_lease.locked_until < (now() AT TIME ZONE 'UTC')
        OR queue_engine_lease.locked_by = ${instanceId}
   `;
   return affected > 0;
@@ -570,7 +581,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         initiatedAt: { lt: ceilingBefore },
         claim: { practiceId, deletedAt: null },
       },
-      select: { id: true, vapiCallId: true, initiatedAt: true },
+      select: { id: true, claimId: true, vapiCallId: true, initiatedAt: true },
     });
     for (const attempt of overCeiling) {
       if (!attempt.vapiCallId) continue;
@@ -583,10 +594,29 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       try {
         await endVapiCall(attempt.vapiCallId);
       } catch (endErr) {
-        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call', {
+        // endVapiCall failing (e.g. Vapi already has no record of this call)
+        // must not leave the attempt open — the same tick would retry it every
+        // 60s indefinitely, repeatedly failing and tripping the Vapi circuit
+        // breaker. Close it now with the same compensation the stale-attempt
+        // watchdog below uses, instead of waiting up to STALE_ATTEMPT_MS.
+        logger.error('[deskQueueEngine] failed to end over-ceiling Vapi call — closing attempt directly', {
           vapiCallId: attempt.vapiCallId,
           error: endErr,
         });
+        await prisma.$transaction([
+          prisma.callAttempt.update({
+            where: { id: attempt.id },
+            data: { completedAt: new Date(), liveState: 'ceiling_terminated_no_webhook' },
+          }),
+          prisma.callQueue.updateMany({
+            where: { claimId: attempt.claimId, status: 'IN_PROGRESS' },
+            data: { status: 'PENDING', scheduledFor: new Date(Date.now() + 5 * 60 * 1000) },
+          }),
+          prisma.insuranceClaim.updateMany({
+            where: { id: attempt.claimId, status: 'CALLING' },
+            data: { status: 'IN_QUEUE' },
+          }),
+        ]);
       }
     }
 
@@ -824,6 +854,42 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceSettings.billingPhone?.trim() ||
       practiceSettings.escalationPhoneNumber;
 
+    // TELUS AdjudiCare has no single carrier-wide claims line — it's an
+    // aggregator for many small TPAs (confirmed against TELUS's own FAQ:
+    // "please contact your insurer directly"). carrierConfig.phone is a
+    // last-resort placeholder, not a real per-TPA number. Resolve the
+    // TPA-specific verified number instead; if none is verified yet,
+    // escalate to a human rather than dial a number likely to reach the
+    // wrong company and burn one of only 3 allowed attempts.
+    let dispatchCarrierPhone = carrierConfig.phone;
+    if (next.claim.carrierId === 'telus_adjudicare') {
+      const telusPhone = getTelusDialPhone(phi.subscriberId, phi.groupPolicyNumber ?? '');
+      if (!telusPhone) {
+        const existingEscalation = await prisma.callEscalation.findFirst({
+          where: { claimId: next.claimId, resolvedAt: null },
+        });
+        if (!existingEscalation) {
+          await createEscalation(prisma, {
+            practiceId,
+            claimId: next.claimId,
+            claimRef: next.claim.claimNumber,
+            carrierId: next.claim.carrierId,
+            amountClaimedCents: Math.round(Number(next.claim.outstandingAmount) * 100),
+            reason: 'TELUS AdjudiCare TPA could not be resolved to a verified dial number — manual routing required before this claim can be called.',
+          });
+        }
+        await deferQueueEntry(
+          prisma,
+          next.id,
+          DEFER_STAFF_ACTION_MS,
+          'TELUS_TPA_PHONE_UNVERIFIED',
+          'Identify the underlying TPA and confirm its provider claim-status phone number, then clear this gate.',
+        );
+        continue;
+      }
+      dispatchCarrierPhone = telusPhone;
+    }
+
     // Only published, human-approved snapshots may augment the static adapter
     // hints. Proposed discovery output is never exposed to a live call.
     const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
@@ -833,6 +899,19 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       ...publishedNavigation,
       ...(learnedNotes ? [learnedNotes] : []),
     ].join(' | ');
+    // What a rep has actually stated before about where resubmissions/docs go
+    // for this carrier — lets Claims_Agent confirm a known channel instead of
+    // asking cold on every call. Empty string when nothing is on file yet.
+    const knownResubmissionChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'CLAIM_RESUBMISSION',
+    );
+    const knownDocumentationChannel = await getKnownSubmissionChannel(
+      prisma,
+      next.claim.carrierId,
+      'DOCUMENTATION',
+    );
 
     const callParams: VapiCallParams = {
       claimId: next.claim.id,
@@ -846,7 +925,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       subscriberName:         phi.subscriberName,
       subscriberDob:          phi.subscriberDateOfBirth,
       // ── Claim fields ──────────────────────────────────────────────────────────
-      carrierPhone:           carrierConfig.phone,
+      carrierPhone:           dispatchCarrierPhone,
       claimNumber:            next.claim.claimNumber,
       billedAmount:           Number(next.claim.billedAmount),
       outstandingAmount:      Number(next.claim.outstandingAmount),
@@ -865,10 +944,33 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practicePhone,
       languagePreference:     practiceCarrierConfig?.languagePreference ?? 'en',
       carrierIvrInstructions,
+      // V1: practice staff speak with the rep; CollectRx AI only navigates
+      // IVR / holds / listens. Never dials the fully-autonomous squad for
+      // a human-assisted practice.
+      squadId:                practiceSettings.humanAssistedMode ? getHumanAssistedSquadId() : undefined,
+      knownResubmissionChannel,
+      knownDocumentationChannel,
       // Stable for this attempt — a retry of the same attempt (after an
       // ambiguous timeout) reuses it; the next real attempt gets a new one.
       idempotencyKey:         `${next.claimId}:${next.attempts + 1}`,
     };
+
+    // Final CARRIER_BLOCK check immediately before the live dial — the upfront
+    // validateDispatch() check at the top of this claim's turn can be stale by
+    // now: triage, PHI detokenization, and practice/settings lookups all sit in
+    // between, and this loop processes many claims per tick with no per-claim
+    // lock, so a block fired against this carrier by a concurrent manual trigger
+    // or a webhook from another in-flight call must still be caught here.
+    const lateGuard = await checkCarrierBlock(prisma, practiceId, next.claim.carrierId);
+    if (!lateGuard.allowed) {
+      logger.warn('[deskQueueEngine] CARRIER_BLOCK fired mid-dispatch — settling queue entry', {
+        claimId: next.claimId,
+        reason: lateGuard.reason,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, lateGuard.code, lateGuard.reason);
+      if (disposition === 'stop') return;
+      continue;
+    }
 
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately
@@ -912,6 +1014,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           initiatedAt: new Date(),
           liveState: 'dialing',
           activeAgent: 'IVR_Navigator',
+          // Excludes this call from CarrierLesson extraction (learning loop
+          // webhook path) — that pipeline is scoped to the autonomous squad only.
+          isHumanAssisted: practiceSettings.humanAssistedMode ?? false,
         },
       });
 

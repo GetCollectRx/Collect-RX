@@ -18,7 +18,7 @@ Automated Dialing-Announcing Device (ADAD), **non-solicitation** calls.
 |------|----------|
 | Telemarketing (UTR Part III) | **No** — not solicitation |
 | National DNCL (UTR Part II) | **No** — B2B to business lines |
-| ADAD identification (Part IV Rule 4) | **Yes** — disclose automation, practice name, callback number within 10 seconds |
+| Automated-call identification | **Conservative product control** — disclose automation, practice name, claims-status purpose, and callback information at the start of a human interaction; confirm legal classification for each production workflow |
 | CASL (voice) | **No** |
 
 **Engineering controls:** Opening disclosure in `initiateCall()`, call hours Mon–Fri 8am–5pm ET,

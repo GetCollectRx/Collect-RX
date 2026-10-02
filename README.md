@@ -1,12 +1,14 @@
 # CollectRx platform
 
-Monorepo-style workspace for **CollectRx** — dental **insurance** accounts receivable (A/R) recovery (Practice → Insurance). Practice SaaS Billing is supported; patient/client payment collection is out of scope.
+Monorepo-style workspace for **CollectRx** — dental-insurance carrier follow-up that reduces staff time spent navigating IVRs and waiting on hold. Practice SaaS billing is supported; patient/client collections, negotiation, settlement, and payment direction are out of scope.
+
+The supported practice intake is **CSV only**. It requires no local installation and no access to the practice-management system. Dormant connector experiments remain in the repository for possible future work but are not a supported or advertised product capability.
 
 **Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. Launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md). Phased backlog: [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
 
 ## Monorepo commands (canonical app)
 
-From the **repository root** (after `npm install` — installs the **Collect-RX-main** workspace):
+From the **repository root** (after `npm ci` — installs the locked **Collect-RX-main** workspace):
 
 | Command | What it does |
 |--------|----------------|
@@ -30,7 +32,7 @@ The **repository root** `src/api` + `src/frontend` stack is a **prototype** with
 ## Quick start (canonical: Collect-RX-main)
 
 ```bash
-npm install              # at repo root — links the Collect-RX-main workspace
+npm ci                   # at repo root — installs the locked workspace
 npm run setup:collectrx  # .env, Postgres (Docker if available, else native), migrate, seed, prints login
 npm run dev
 ```

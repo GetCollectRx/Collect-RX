@@ -55,6 +55,7 @@ describe.skipIf(!dbReady)(
 
     afterAll(async () => {
       await prisma.callEscalation.deleteMany({ where: { practiceId: practice.id } });
+      await prisma.callQueue.deleteMany({ where: { practiceId: practice.id } });
       await prisma.workItem.deleteMany({ where: { practiceId: practice.id } });
       await prisma.insuranceClaim.deleteMany({ where: { practiceId: practice.id } });
       await prisma.pmsImportRun.deleteMany({ where: { practiceId: practice.id } });
@@ -147,12 +148,10 @@ describe.skipIf(!dbReady)(
       });
       expect(claim).toBeTruthy();
 
-      // Seed a queue entry so the write-off's queue-removal side effect is actually
-      // exercised below (CSV import alone does not create CallQueue rows — those are
-      // populated by the recovery loop service, out of scope for this workflow test).
-      await prisma.callQueue.create({
-        data: { practiceId: practice.id, claimId: claim!.id, scheduledFor: new Date() },
-      });
+      // CSV import now creates the eligible queue row atomically. Assert that
+      // invariant before exercising the write-off's queue-removal side effect.
+      await expect(prisma.callQueue.findUnique({ where: { claimId: claim!.id } }))
+        .resolves.toMatchObject({ practiceId: practice.id });
 
       const escalation = await createEscalation(prisma, {
         practiceId: practice.id,

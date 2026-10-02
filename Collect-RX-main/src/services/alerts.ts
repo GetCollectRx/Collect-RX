@@ -51,6 +51,29 @@ async function sendSmsAlert(message: string): Promise<void> {
   );
 }
 
+/**
+ * Send an SMS to an explicit phone number (as opposed to sendSmsAlert's fixed
+ * ALERT_SMS_TO ops list). Used for practice-facing alerts — e.g. V1
+ * human-assisted call handoffs — where the recipient is the practice's own
+ * escalation number, not an internal ops number.
+ */
+export async function sendPracticeSms(to: string, message: string): Promise<void> {
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = process.env;
+
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
+    console.warn('[alerts] Twilio env vars not set — skipping practice SMS');
+    return;
+  }
+  if (!to?.trim()) {
+    console.warn('[alerts] sendPracticeSms called with no destination number');
+    return;
+  }
+
+  const twilio = (await import('twilio')).default;
+  const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  await client.messages.create({ body: message, from: TWILIO_FROM_NUMBER, to: to.trim() });
+}
+
 // ---------------------------------------------------------------------------
 // Email via nodemailer
 // ---------------------------------------------------------------------------
