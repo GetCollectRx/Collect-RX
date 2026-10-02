@@ -24,8 +24,30 @@ const lastGateAlertSent = new Map<string, number>();
 
 export function practiceGateAlertsEnabled(): boolean {
   return ['1', 'true', 'yes'].includes(
-    (process.env.PRACTICE_GATE_ALERTS_ENABLED || process.env.OPS_ALERTS_ENABLED || '').trim().toLowerCase(),
+    (process.env.PRACTICE_GATE_ALERTS_ENABLED || '').trim().toLowerCase(),
   );
+}
+
+/**
+ * Recovery work is already visible in the dashboard and notification bell.
+ * External digests are opt-in so enabling infrastructure paging cannot also
+ * create a recurring practice-work SMS backlog.
+ */
+export function recoveryAttentionExternalAlertsEnabled(): boolean {
+  return ['1', 'true', 'yes'].includes(
+    (process.env.RECOVERY_ATTENTION_EXTERNAL_ALERTS_ENABLED || '').trim().toLowerCase(),
+  );
+}
+
+export function isDemoPracticeForExternalAlerts(practice: {
+  name: string;
+  settings?: unknown;
+}): boolean {
+  if (practice.name.trim().toLowerCase() === 'collectrx demo practice') return true;
+  if (!practice.settings || typeof practice.settings !== 'object' || Array.isArray(practice.settings)) {
+    return false;
+  }
+  return (practice.settings as Record<string, unknown>).demoMode === true;
 }
 
 function appBaseUrl(): string {
@@ -114,25 +136,7 @@ async function sendPracticeEmail(
   return true;
 }
 
-async function sendPracticeSms(message: string): Promise<boolean> {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = process.env;
-  const toRaw =
-    process.env.PRACTICE_GATE_SMS_TO?.trim() || process.env.ALERT_SMS_TO?.trim();
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || !toRaw) {
-    return false;
-  }
-  const twilio = (await import('twilio')).default;
-  const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-  const recipients = toRaw.split(',').map((n) => n.trim()).filter(Boolean);
-  await Promise.allSettled(
-    recipients.map((to) =>
-      client.messages.create({ body: message.slice(0, 1500), from: TWILIO_FROM_NUMBER, to }),
-    ),
-  );
-  return true;
-}
-
-/** SMS + email when a new blocking practice gate opens (cooldown per gate). */
+/** Optional email when a new blocking practice gate opens (cooldown per gate). */
 export async function notifyPracticeOnBlockingGate(
   prisma: PrismaClient,
   params: {
@@ -180,9 +184,6 @@ export async function notifyPracticeOnBlockingGate(
   if (await sendPracticeEmail(emailTo, `Gate opened — ${params.claimNumber}`, text).catch(() => false)) {
     channels.push('email');
   }
-  if (await sendPracticeSms(text).catch(() => false)) {
-    channels.push('sms');
-  }
 
   if (channels.length > 0) {
     lastGateAlertSent.set(key, Date.now());
@@ -198,7 +199,7 @@ export async function dispatchRecoveryPracticeAlerts(
   prisma: PrismaClient,
   practiceId: string,
 ): Promise<number> {
-  if (!opsAlertsEnabled()) return 0;
+  if (!opsAlertsEnabled() || !recoveryAttentionExternalAlertsEnabled()) return 0;
 
   const notifications = await listRecoveryNotifications(prisma, practiceId);
   const urgent = notifications.filter((n) => n.severity === 'warning');
@@ -214,6 +215,10 @@ export async function dispatchRecoveryPracticeAlerts(
     title: `${urgent.length} recovery item(s) need attention`,
     detail: `Practice ${practiceId}\n${detail}`,
     source: `practice:${practiceId}`,
+    // Medium-severity practice work belongs in the product. An explicitly
+    // enabled external digest may use email/webhook, but must never create an
+    // SMS task backlog for the practice or founder.
+    channels: ['email', 'webhook'],
   });
 
   return urgent.length;
