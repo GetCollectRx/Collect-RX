@@ -20,18 +20,13 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Prepare reproducible Docker build context
-        run: cp package-lock.json Collect-RX-main/
-
       - name: Verify locked dependencies
-        working-directory: Collect-RX-main
         run: npm ci --ignore-scripts --dry-run
 
       - name: Deploy to collect-rx-staging
-        working-directory: Collect-RX-main
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy -c fly.staging.toml -a collect-rx-staging --remote-only
+        run: flyctl deploy -c Collect-RX-main/fly.staging.toml -a collect-rx-staging --remote-only --dockerfile Collect-RX-main/Dockerfile.monorepo
 
       # P2.2 — automatic post-deploy gate (previously a manual step per
       # docs/operations/STAGING-SMOKE.md). See collectrx-prod-deploy.yml's
