@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { createHmac } from 'crypto';
+import Stripe from 'stripe';
 import { app, prisma } from '../src/server/index.js';
 import { handlePlatformBillingWebhook } from '../src/server/stripe/billing.js';
 import type Stripe from 'stripe';
@@ -61,6 +62,7 @@ let practiceA: { id: string; name: string };
 let practiceB: { id: string; name: string };
 let practiceAEmail = '';
 let practiceBEmail = '';
+let restoreStripeRetrieve: (() => void) | undefined;
 
 try {
   await prisma.$connect();
@@ -86,6 +88,28 @@ beforeAll(async () => {
   const practiceBSetup = await createPracticeWithOwnerForTests(prisma);
   practiceB = { id: practiceBSetup.practice.id, name: practiceBSetup.practice.name };
   practiceBEmail = practiceBSetup.email;
+
+  // Billing webhook handling intentionally fetches Stripe's current
+  // subscription state before applying an update. Keep this integration test
+  // offline while still exercising that production path through the real route.
+  const stripeForPrototype = new Stripe('sk_test_webhook_validation_offline');
+  const subscriptionsPrototype = Object.getPrototypeOf(stripeForPrototype.subscriptions) as {
+    retrieve: Stripe['subscriptions']['retrieve'];
+  };
+  const retrieveSpy = vi.spyOn(subscriptionsPrototype, 'retrieve').mockImplementation(async (subscriptionId) => ({
+    id: subscriptionId,
+    object: 'subscription',
+    customer: 'cus_idempotent_test',
+    status: 'active',
+    metadata: { practice_id: practiceA.id },
+    items: {
+      object: 'list',
+      data: [{ price: { id: 'price_idempotent_test' }, current_period_start: 1, current_period_end: 2 }],
+      has_more: false,
+      url: `/v1/subscriptions/${subscriptionId}/items`,
+    },
+  }) as never);
+  restoreStripeRetrieve = () => retrieveSpy.mockRestore();
 });
 
 afterAll(async () => {
@@ -93,6 +117,7 @@ afterAll(async () => {
   await cleanupPracticeWithUsers(prisma, practiceA.id);
   await cleanupPracticeWithUsers(prisma, practiceB.id);
   await prisma.$disconnect().catch(() => undefined);
+  restoreStripeRetrieve?.();
   vi.unstubAllEnvs();
 });
 
