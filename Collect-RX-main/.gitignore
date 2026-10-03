@@ -57,3 +57,7 @@ dist-electron/
 *.asar
 .staging-seed-credentials
 dist-macos/
+
+# Live-LLM eval output (conversation-robustness-eval and similar) — timestamped
+# JSON/Markdown reports generated locally, not build artifacts to version.
+eval-output/

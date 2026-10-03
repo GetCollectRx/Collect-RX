@@ -10,6 +10,8 @@
 | `COVERAGE-MATRIX.csv` | Carrier × category counts + P0/P1 pass tracking columns |
 | `TIER-SUMMARY.csv` | Counts by P0 / P1 / P2 |
 | `generate-scenario-master.mjs` | Regenerate after adding rows in code |
+| [`CONVERSATION-ROBUSTNESS-EVAL.md`](./CONVERSATION-ROBUSTNESS-EVAL.md) | How to run the `eval_conversation` harness (static validation, one scenario, full/recommended/release repeat counts, report comparison) — the actual release-validation framework for the `eval_conversation` rows below |
+| [`CONVERSATION-ROBUSTNESS-COVERAGE-MATRIX.csv`](./CONVERSATION-ROBUSTNESS-COVERAGE-MATRIX.csv) | Scenario-level coverage matrix against the unmerged 216-scenario framework (`f8eb299`, `claude/collectrx-launch-audit-5x4b6t`) — what was reused, what was rejected as duplicate, and why |
 
 ## Open in Google Sheets
 
