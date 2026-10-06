@@ -20,6 +20,8 @@ Every claim is tagged:
 
 No market-size numbers appear anywhere in this document by design.
 
+**Prior research this builds on (do not redo):** competitor matrix and CDCP context in `docs/strategy/CollectRx_Strategic_Analysis.md`; CDAnet/ITRANS access constraints in `specs/phase-9-carrier-side-integration.md`; carrier AI-call policy in `docs/compliance/carrier-tos-research.md`; data residency and provincial regimes in `docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md`, `PIPEDA-PROVINCIAL.md`, `Collect-RX-main/docs/compliance/Quebec-Law25-PIA.md` and `HIA-Alberta-Clause.md`. Section 17 records founder answers given after the first draft.
+
 ---
 
 ## 1. Headline findings (read this if nothing else)
@@ -48,7 +50,7 @@ No market-size numbers appear anywhere in this document by design.
 | Privacy officer | "Where does patient name and DOB go, who hears it, who records it, and where is it stored?" | PHI on calls, recordings, vendor DPAs open (PATH-TO-DELIVERY section E) |
 | Carrier rep | "I can't release claim details to an automated system" or "who am I speaking with, what is your provider number?" | Rep refusal, CARRIER_BLOCK |
 | PMS vendor | "Unsupported third-party data access; we may block the export path or charge for the API." | Local sync, scheduled exports |
-| Competitor | "We bundle claim status into the clearinghouse / PMS you already pay for." | Substitution of the carrier call entirely |
+| Competitor | Smilepass (Canadian, already on all major insurers for verification, markets "20+ hours" of hold time saved) adds AR follow-up; Toothy AI (YC W25, US) enters Canada (per `CollectRx_Strategic_Analysis.md`). | Substitution of the carrier call entirely |
 | Investor / acquirer | "Revenue depends on carriers tolerating automation and on CSV exports nobody controls. Where is the moat?" | Carrier dependency, data dependency |
 | Implementation partner (dental IT, billing consultant) | "Installing a scheduled agent on a front-desk PC is my liability when it breaks Windows updates." | Local sync jobs, Electron app |
 | Skeptical architect | "Claim identity is a free-text claim number. Nothing else holds." | Duplicate claims, patient matching, re-import |
@@ -388,7 +390,7 @@ Not legal advice. Items marked EXTERNAL-UNVERIFIED need counsel.
 | ID | Risk | Likelihood | Impact | Current control | Gap / action [REC] | Owner |
 |---|---|---|---|---|---|---|
 | C-01 | PHI to voice/AI subprocessors without signed agreements | Medium | High | Option B ephemeral variables (`PHI-VAPI-BOUNDARY.md`) | DPAs open (PATH section E). Sign before pilot. | Legal/Ops |
-| C-02 | Cross-border processing (US-hosted AI/voice providers) | High | Medium to High | Unknown | Disclose in privacy pack; obtain practice acknowledgement; assess Canadian-region options [EXTERNAL-UNVERIFIED: provincial rules differ, e.g., Quebec Law 25 transfer assessment] | Legal |
+| C-02 | Cross-border processing (US-hosted AI/voice providers) | High | Medium to High | Unknown | Disclose in privacy pack; obtain practice acknowledgement; prior research recommends Canadian-region model hosting (Azure Canada Central or AWS Canada, `CollectRx_Strategic_Analysis.md`); Quebec PIA and Alberta HIA clause drafts exist in `Collect-RX-main/docs/compliance/`; counsel still names the regime | Legal |
 | C-03 | Call recordings/transcripts contain name and DOB | High | High | Not verified | Default no audio retention; redacted summary only; retention period stated | Eng/Privacy |
 | C-04 | Deletion and breach workflows manual only | Certain | Medium | Manual runbook | Acceptable for pilot if disclosed; automated workflow blocked on counsel (HUMAN-DECISIONS item 2) | Legal |
 | C-05 | Unsupported-carrier claims stored without purpose | Medium | Medium | None (currently they fail, which is accidentally minimal) | If PR-09 ships, store token + amounts only | Eng |
@@ -426,10 +428,10 @@ Not legal advice. Items marked EXTERNAL-UNVERIFIED need counsel.
 | Threat | Mechanism | Severity | Response [REC] |
 |---|---|---|---|
 | Carrier portals | Free status check for many claims [FACT-DOC: portals exist for all six] | High | Target claims portals don't resolve; measure share (Section 10.4) |
-| Clearinghouse/EDI claim status | If carriers expose status electronically through existing claim networks, calls become unnecessary for those claims [EXTERNAL-UNVERIFIED: verify which carriers support electronic status inquiry via CDAnet/ITRANS; repo has `ITRANS-2.0-Migration.md`] | High | If available, use it as the first check before any call; calls become the escalation layer |
+| Clearinghouse/EDI claim status | Prior research (`specs/phase-9-carrier-side-integration.md`): CDAnet access is gated to CDA members and CDA-certified PMS software, so CollectRx cannot use it directly; the paths are becoming a certified vendor, partnering with a certified PMS, or per-carrier agreements. No carrier has been contacted. The threat is a certified PMS vendor using this rail for AR follow-up, not CollectRx being displaced by it today. | Medium | Keep the hybrid voice/data dispatch design from Phase 9; treat a certified-PMS partnership as the BD path |
 | PMS vendors bundling AR tools | Vendor ships AR follow-up workflow inside the PMS | Medium | Be PMS-agnostic; sell multi-PMS groups and billing companies |
 | Outsourced billing services | Humans do the calls with judgement | Medium | Partner channel rather than compete |
-| US AI-RCM vendors entering Canada | Same mechanism, more capital [EXTERNAL-UNVERIFIED: do a named competitor scan before fundraising] | Medium | Canadian carrier IVR library and carrier relationships as the asset |
+| Named competitors (from `CollectRx_Strategic_Analysis.md`) | Toothy AI (YC W25, US, critical), Smilepass (Canada, verification, high), DentalRobot (US, 12+ PMS write-backs, medium), Overjet (US, medium), Elementera AI (CA/US, low to medium) | High | Canadian carrier IVR library, outcome data, and Canadian PHI posture as the asset; sell AR recovery as distinct from verification |
 
 ---
 
@@ -464,3 +466,29 @@ Not legal advice. Items marked EXTERNAL-UNVERIFIED need counsel.
 3. Is the export you expect a full open-AR report or a date-ranged extract? (Determines PR-03.)
 4. Which PMS systems are in the first 10 target practices? (Determines PR-08 priority and recipes.)
 5. Are you willing to run a control group in pilots? (Determines whether recovered $ is ever attributable.)
+
+---
+
+## 17. Founder answers (added after first draft) and what they change
+
+| Question | Answer | Effect on this document |
+|---|---|---|
+| Which product leads? | The product is insurance AR recovery; the pain is money lost on aged claims plus staff time on the phone chasing them. | Taking staff off the phone points to AI conversation (Claims_Agent, already built) as the lead. Transfer-to-staff still puts staff on with the rep. **Pending explicit confirmation**; if confirmed, PR-07 closes as "AI conversation default" and the transfer rows in sections 5, 6 and 12 become an optional fallback, not the wedge. |
+| Do exports carry insurance payments? | Founder assumption: balance only. | Research (section 18) supports the assumption for outstanding-claims and aging reports. Payments live in a separate payments/collections report. PR-04 becomes: ingest a second scheduled export (insurance payments for the period) and match payments to claims. The importer already accepts an optional insurance-paid column (`parseExportRows.ts`). |
+| Full open AR or date range? | Full open AR; CollectRx only works claims past 30 days. | PR-03 simplifies: treat every upload as full. A claim missing from a later upload is presumed resolved in the PMS and is not dialed. Guardrail: if an unusually large share of open claims disappears at once (likely a filtered export), pause and ask instead of closing them. |
+| First 10 practices' PMS? | Unknown; product must be PMS-agnostic. | Agnostic is the right constraint. It means column mapping on our side plus a per-PMS export recipe, validated against a real sample export from each PMS before a practice on it goes live. Current registry: `abeldent`, `dentrix`, and generic CSV profiles. |
+| Control group? | Needed explanation. | See section 10.1; plain-language version in the reply to the founder. Decision still open. |
+
+## 18. Research: do PMS exports include insurance payments?
+
+Finding: **mostly no, for the report a practice would export for AR.** Outstanding-claims and insurance-aging reports carry the claim amount or insurance estimate and the aged balance; insurance payments are reported separately.
+
+| Source | What it shows | Confidence |
+|---|---|---|
+| Open Dental, Insurance Aging Report manual | Columns are insurance estimate buckets (0 to 30, 31 to 60, 61 to 90, over 90) and an estimate total; no payment column. Open Dental directs offices to the Outstanding Insurance Claims Report for follow-up. | Primary vendor doc (via search excerpt; direct fetch blocked by network policy) |
+| Open Dental, Outstanding Insurance Claims Report manual | Default columns: carrier, phone, type, assigned user, patient name, clinic, plus claim amounts; no payment received column cited. | Primary vendor doc (search excerpt) |
+| Dentrix Enterprise blog, claim aging and outstanding claims | Per claim: primary or secondary, date sent, tracer, re-sent, aged balance. | Primary vendor content (search excerpt) |
+| Ortho2 help, Insurance Claim Payments report | Payments are a separate report: payment date, actual paid, scheduled amount, percent paid, days from claim to payment. | Primary vendor doc, adjacent specialty |
+| Carestream SoftDent help | Outstanding-claims reports grouped by company or patient; separate collections reporting. | Primary vendor doc |
+
+Not found publicly: Tracker, ABELDent, Maxident, Power Practice, Dental Vision report column specs. Evidence to collect: one de-identified sample of (a) the outstanding claims report and (b) the insurance payments/deposit report from each PMS used by the first pilot practices.
