@@ -119,6 +119,8 @@ Five agents are orchestrated as a squad — they hand off to each other mid-call
 
 (Corrected 2026-07-30 — this section previously omitted Hold_Sentinel. See `Collect-RX-main/tasks/lessons.md` 2026-07-30 entry.)
 
+**Two calling modes, set per practice.** The squad above is the **autonomous** mode (full AR recovery). **V1, the product sold first, is Hold Sentinel human-assisted mode** (`humanAssistedMode`): IVR_Navigator, then Hold_Sentinel, then Claims_Scribe. When a rep answers, the call transfers to practice staff, who talk to the rep; Claims_Scribe listens and logs outcomes that build per-carrier playbooks. See [ADR 0003](docs/adr/0003-v1-hold-sentinel-wedge.md). Note: the code currently defaults new practices to autonomous mode.
+
 The squad receives UUID tokens in metadata — never real patient names, DOBs, or identifiers in metadata. Patient identifiers required for carrier lookup are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens on the backend before the call; PHI is never stored in logs or the database.
 
 ### Eligibility Engine (Phase 3)
