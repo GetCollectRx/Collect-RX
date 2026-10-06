@@ -47,11 +47,32 @@ export const TIERS: Record<BillingTier, TierConfig> = {
     trialDays: 30,
     infraCostPerMonth: 68, // 500 min x $0.135
     grossMargin: null, // Acquisition cost — not a revenue tier
-    description: 'Full access, 30 days, no card required',
+    description: 'Hold Sentinel plan features, 30 days, no card required',
+  },
+
+  // V1 wedge (ADR 0003, ADR 0004): priced for adoption and carrier-behaviour
+  // data, not margin. 1,000 minutes keeps in-plan delivery cost ($135) under
+  // the COGS breaker's 40% throttle line ($159.60); at 1,200 minutes the
+  // breaker would throttle at minute 1,182, before the pool ran out.
+  sentinel: {
+    name: 'Hold Sentinel',
+    price: 399,
+    includedMinutes: 1000,
+    overageRatePerMinute: 0.25,
+    dailyCapMinutes: 100,
+    hardStopAtLimit: false,
+    stripePriceId: env.STRIPE_PRICE_SENTINEL,
+    stripeOveragePriceId: env.STRIPE_OVERAGE_PRICE_SENTINEL,
+    infraCostPerMonth: 135, // 1,000 min x $0.135
+    stripeFeePerMonth: 14,
+    grossMargin: '63%',
+    targetCustomer: 'Any practice whose staff wait on hold with carriers',
+    description:
+      '1,000 minutes/month. CollectRx waits on hold and transfers the call to your staff when a representative answers.',
   },
 
   core: {
-    name: 'Core',
+    name: 'Recovery',
     price: 799,
     includedMinutes: 1200,
     overageRatePerMinute: 0.25, // Cost $0.135 — $0.115 margin per overage min

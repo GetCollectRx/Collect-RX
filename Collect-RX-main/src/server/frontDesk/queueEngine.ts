@@ -9,6 +9,8 @@ import { mapActiveCall } from './deskMappers.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import { CALL_TIMEOUTS } from '../../billing/tiers.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
+import { planTierForPractice } from '../plans/practiceEntitlements.js';
+import { effectiveHumanAssisted } from '../../billing/entitlements.js';
 import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
@@ -766,6 +768,13 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       select: { name: true, billingPhone: true, npi: true, taxId: true, practiceAddress: true },
     });
     const practiceSettings = await getPracticeSettings(prisma, practiceId);
+    // The plan, not only the practice's toggle, decides whether the AI may
+    // speak with the rep: a practice can't reach autonomous calling by
+    // flipping a setting its plan doesn't include.
+    const humanAssisted = effectiveHumanAssisted(
+      await planTierForPractice(prisma, practiceId),
+      practiceSettings.humanAssistedMode,
+    );
     const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
       (c) => c.carrierId === next.claim.carrierId,
     );
@@ -947,7 +956,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       // V1: practice staff speak with the rep; CollectRx AI only navigates
       // IVR / holds / listens. Never dials the fully-autonomous squad for
       // a human-assisted practice.
-      squadId:                practiceSettings.humanAssistedMode ? getHumanAssistedSquadId() : undefined,
+      squadId:                humanAssisted ? getHumanAssistedSquadId() : undefined,
       knownResubmissionChannel,
       knownDocumentationChannel,
       // Stable for this attempt — a retry of the same attempt (after an
@@ -1016,7 +1025,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           activeAgent: 'IVR_Navigator',
           // Excludes this call from CarrierLesson extraction (learning loop
           // webhook path) — that pipeline is scoped to the autonomous squad only.
-          isHumanAssisted: practiceSettings.humanAssistedMode ?? false,
+          isHumanAssisted: humanAssisted,
         },
       });
 

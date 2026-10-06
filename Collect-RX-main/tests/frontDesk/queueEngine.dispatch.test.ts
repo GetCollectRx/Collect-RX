@@ -35,6 +35,7 @@ vi.mock('../../src/carriers/adapter.js', () => ({
 vi.mock('../../src/vapi/client.js', () => ({
   initiateCall: (...args: unknown[]) => initiateCallMock(...args),
   endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
+  getHumanAssistedSquadId: () => 'squad-hold-sentinel',
   VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
 }));
 
@@ -52,6 +53,10 @@ vi.mock('../../src/server/frontDesk/deskMappers.js', () => ({
 
 vi.mock('../../src/server/plans/planBridge.js', () => ({
   canMakeCall: (...args: unknown[]) => canMakeCallMock(...args),
+}));
+
+vi.mock('../../src/server/plans/practiceEntitlements.js', () => ({
+  planTierForPractice: vi.fn(async () => 'core'),
 }));
 
 vi.mock('../../src/server/services/practiceSettingsService.js', () => ({
@@ -260,7 +265,8 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
       data: { status: 'BLOCKED' },
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
-    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+    // No plan includes autonomous calling, so every claim call uses Hold Sentinel.
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2', squadId: 'squad-hold-sentinel' });
   });
 
   it('escalates a max-attempts head claim and dispatches the next eligible claim', async () => {

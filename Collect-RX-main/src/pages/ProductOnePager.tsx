@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { TIERS } from '../billing/tiers'
-import { MARKETING_TIER_FEATURES } from '../website/pricingContent'
+import { MARKETING_TIER_FEATURES, PAID_TIER_ORDER } from '../website/pricingContent'
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 
@@ -421,7 +421,7 @@ export default function ProductOnePager() {
         <Lead>Minutes-based tiers. No setup fees for pilot partners.</Lead>
 
         <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          {(['core', 'growth', 'scale'] as const).map((id) => {
+          {PAID_TIER_ORDER.map((id) => {
             const plan = TIERS[id]
             const highlight = id === 'growth'
             return (
