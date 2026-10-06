@@ -31,7 +31,6 @@ import {
   missedHandoffToolResult,
   purposeFromCallMetadata,
 } from '../server/vapi/missedHandoff.js';
-import { sendPracticeSms } from '../services/alerts.js';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import { logger } from '../server/observability/logger.js';
 import {
@@ -311,13 +310,8 @@ async function handleStaffHandoffRequest(
       console.error('[vapi-webhook] request_staff_handoff notification failed:', notifyErr);
     }
 
-    // Dashboard polling alone is not real-time enough for a 'pick up now'
-    // signal, so also SMS the escalation number directly. Non-fatal if
-    // Twilio env vars are unset (sendPracticeSms no-ops with a warning).
-    void sendPracticeSms(
-      escalationPhone,
-      `CollectRx: rep on the line for claim ${claimLabel}${carrierLabel}${amountText}. Transferring now — pick up.`,
-    );
+    // No SMS to the practice (founder decision): the ringing staff line is
+    // the real-time signal, and the dashboard notification carries the context.
 
     return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
   } catch (err) {

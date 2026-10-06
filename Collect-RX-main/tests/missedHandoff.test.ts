@@ -27,7 +27,6 @@ vi.mock('../src/vapi/client', async (importOriginal) => ({
 }));
 vi.mock('../src/server/services/practiceSettingsService.js', () => ({ getPracticeSettings: getSettings }));
 vi.mock('../src/server/services/practiceNotificationService.js', () => ({ sendPracticeNotification: notify }));
-vi.mock('../src/services/alerts.js', () => ({ sendPracticeSms: vi.fn() }));
 vi.mock('../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: <T>(fn: () => T) => fn(),
 }));
