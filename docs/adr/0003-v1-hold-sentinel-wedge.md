@@ -33,4 +33,22 @@ The founder's mentor advised starting from the client's single biggest pain poin
 |---|---|
 | Default mode for new practices | Code defaults `humanAssistedMode` to `false` (autonomous). This contradicts the decision above until changed. |
 | Criteria for moving a practice or carrier from V1 to autonomous | Not defined. Needs evidence thresholds (for example, playbook coverage per carrier, outcome accuracy of autonomous calls vs. staff calls). |
-| Staff availability before transfer, and fallback when nobody answers | Not found in code review on 2026-10-06. |
+| Staff availability check before transfer | Not built. The transfer still fires as soon as a rep answers. |
+| Staff miss the handoff after the transfer connects (rings out) | Not covered by code. Needs Vapi warm transfer with a fallback plan, which requires Twilio numbers and a live test. See the standing rule below. |
+
+## Standing rule: missed handoff (decided 2026-10-06)
+
+Founder decision: if staff miss a handoff, the agent **always gets a reference number for the call**, and it reaches the practice as a message.
+
+This is the one exception to V1's rule that the AI never speaks to a rep. To keep it safe:
+
+- The agent says fixed text built in code (`src/server/vapi/missedHandoff.ts`), opening with the canonical CRTC disclosure (automated system, practice name, callback number, recording notice, purpose). It asks only for a reference number and does not discuss the claim.
+- If the practice has no callback number on file, the agent stays silent, because the disclosure cannot be given.
+- The agent logs the call with scenario `staff_unavailable`; the practice gets a dashboard notification with the reference number and rep name.
+
+What is covered in code today: the transfer cannot start (no staff line on file, or the transfer request fails). What is not: staff do not pick up after the transfer connects.
+
+Vapi dashboard changes required before this works on live calls (not in this repo):
+
+1. The assistant that receives the `request_staff_handoff` result must be allowed to speak the returned script.
+2. The `log_call_outcome` tool schema must accept the scenario value `staff_unavailable`.

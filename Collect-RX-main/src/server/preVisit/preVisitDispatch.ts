@@ -101,6 +101,7 @@ export async function dispatchPreVisitCall(
     appointmentVerificationId: payload.appointmentVerificationId,
     preVisitType: cdcpContext ? 'cdcp_predet' : 'eligibility',
     cdcpContext,
+    humanAssisted: settings.humanAssistedMode === true,
     patientName: phi.patientName,
     patientDob: phi.dateOfBirth,
     policyNumber: phi.subscriberId,

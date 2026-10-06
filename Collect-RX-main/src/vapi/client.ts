@@ -468,6 +468,11 @@ export interface VapiPreVisitCallParams {
   appointmentVerificationId: string;
   preVisitType: 'eligibility' | 'cdcp_predet';
   cdcpContext?: boolean;
+  /**
+   * V1 Hold Sentinel practices: dial the human-assisted squad so staff, not
+   * the AI, speak with the CDCP or carrier rep. Same rule as AR dispatch.
+   */
+  humanAssisted?: boolean;
   patientName: string;
   patientDob: string;
   policyNumber: string;
@@ -516,7 +521,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
       : 'an eligibility and coverage verification before a scheduled appointment';
 
   const payload = {
-    squadId: getPreVisitSquadId(),
+    squadId: params.humanAssisted ? getHumanAssistedSquadId() : getPreVisitSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: { number: carrierPhone },
     assistantOverrides: {
