@@ -590,6 +590,10 @@ export default function InsuranceClaimDetail() {
                     a.click()
                     URL.revokeObjectURL(url)
                     setActionMsg(`Evidence pack exported (checksum ${res.checksum.slice(0, 12)}…)`)
+                  } catch (e) {
+                    const msg = (e as Error).message
+                    setActionMsg(msg)
+                    showToast('err', msg)
                   } finally {
                     setExportingPack(false)
                   }

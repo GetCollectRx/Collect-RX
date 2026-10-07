@@ -104,7 +104,7 @@ Twilio (telephony — calls to carriers)
 ```
 
 Two subsystems live alongside the core AR flow and aren't captured above:
-- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Core/Growth/Scale tiers via Stripe Billing, overage handling, COGS breaker. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
+- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Hold Sentinel / Recovery (`core`) / Growth / Scale tiers via Stripe Billing, overage handling, COGS breaker. Plans also decide which features a practice can use (`src/billing/entitlements.ts`, [ADR 0004](docs/adr/0004-product-tiers.md)); enforce new features at the server, not only in the UI. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
 - **Marketing/growth engine** (`Collect-RX-main/src/server/marketing/`) — prospect harvesting, email campaign scheduler, AI outreach calls, reply intelligence, referral engine. Self-serve acquisition, separate from the carrier-calling product itself.
 
 ### Vapi Voice Squad

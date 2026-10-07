@@ -1821,6 +1821,8 @@ model FeeGuideEntry {
 /// Minutes-based billing tiers (src/billing/tiers.ts).
 enum BillingTier {
   trial
+  /// Hold Sentinel: entry plan (calls with staff handoff + CDCP tools). See src/billing/entitlements.ts.
+  sentinel
   core
   growth
   scale

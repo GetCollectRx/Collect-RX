@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router, Request, Response } from 'express';
-import { CarrierId, ClaimStatus, QueueStatus } from '@prisma/client';
+import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
@@ -36,6 +36,8 @@ import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
+import { practiceHasFeature } from '../server/plans/practiceEntitlements.js';
+import { FEATURES, featureLockedMessage } from '../billing/entitlements.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -1053,6 +1055,14 @@ router.patch('/practice-notifications/:id/read', async (req: Request, res: Respo
   }
 });
 
+/**
+ * Denial work on a CDCP claim is in every plan (CDCP is the entry point);
+ * on any other payer it is a Recovery plan feature.
+ */
+function denialFeatureFor(payerType: PayerType | null) {
+  return payerType === 'CDCP' ? FEATURES.CDCP_TOOLS : FEATURES.DENIAL_RECOVERY;
+}
+
 // ---------------------------------------------------------------------------
 // CSV-first denial, evidence, and underpayment operations. These records are
 // practice-scoped operational metadata; clinical attachments remain in the PMS.
@@ -1090,9 +1100,13 @@ router.get('/claims/:id/evidence', async (req: Request, res: Response) => {
     }
     const claim = await prisma.insuranceClaim.findFirst({
       where: { id: req.params.id, practiceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, payerType: true },
     });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const denialFeature = denialFeatureFor(claim.payerType);
+    if (!(await practiceHasFeature(prisma, practiceId, denialFeature))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(denialFeature) });
+    }
     const [items, submissions, exports] = await Promise.all([
       prisma.claimEvidenceItem.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { createdAt: 'asc' } }),
       prisma.claimSubmission.findMany({ where: { claimId: claim.id, practiceId }, orderBy: { submittedAt: 'desc' } }),
@@ -1112,6 +1126,10 @@ router.post('/claims/:id/evidence/:evidenceType/attest', async (req: Request, re
     }
     const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const denialFeature = denialFeatureFor(claim.payerType);
+    if (!(await practiceHasFeature(prisma, practiceId, denialFeature))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(denialFeature) });
+    }
     const evidenceType = req.params.evidenceType.trim().slice(0, 80);
     if (!evidenceType) return res.status(400).json({ success: false, error: 'evidence type required' });
     const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : null;
@@ -1142,6 +1160,10 @@ router.post('/claims/:id/submissions', async (req: Request, res: Response) => {
     }
     const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const denialFeature = denialFeatureFor(claim.payerType);
+    if (!(await practiceHasFeature(prisma, practiceId, denialFeature))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(denialFeature) });
+    }
     const method = typeof req.body?.method === 'string' ? req.body.method.trim().slice(0, 80) : '';
     if (!method) return res.status(400).json({ success: false, error: 'submission method required' });
     const submission = await prisma.claimSubmission.create({
@@ -1170,11 +1192,15 @@ router.get('/claims/:id/evidence-pack', async (req: Request, res: Response) => {
     const claim = await prisma.insuranceClaim.findFirst({
       where: { id: req.params.id, practiceId, deletedAt: null },
       select: {
-        id: true, claimNumber: true, carrierId: true, outstandingAmount: true, expectedAmount: true,
+        id: true, claimNumber: true, carrierId: true, outstandingAmount: true, expectedAmount: true, payerType: true,
         denialReasonCode: true, denialReasonText: true, appealDeadline: true, recoveryActions: { select: { actionType: true, status: true, title: true, deadline: true } },
       },
     });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
+    const denialFeature = denialFeatureFor(claim.payerType);
+    if (!(await practiceHasFeature(prisma, practiceId, denialFeature))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(denialFeature) });
+    }
     const [evidence, submissions, events] = await Promise.all([
       prisma.claimEvidenceItem.findMany({ where: { claimId: claim.id, practiceId }, select: { evidenceType: true, status: true, attestedAt: true } }),
       prisma.claimSubmission.findMany({ where: { claimId: claim.id, practiceId }, select: { method: true, referenceNumber: true, submittedAt: true } }),
@@ -1193,6 +1219,9 @@ router.get('/claims/:id/evidence-pack', async (req: Request, res: Response) => {
 router.post('/claims/:id/underpayments', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await practiceHasFeature(prisma, practiceId, FEATURES.UNDERPAYMENT_RECOVERY))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(FEATURES.UNDERPAYMENT_RECOVERY) });
+    }
     const claim = await prisma.insuranceClaim.findFirst({ where: { id: req.params.id, practiceId, deletedAt: null } });
     if (!claim) return res.status(404).json({ success: false, error: 'Claim not found' });
     const paidCents = Number(req.body?.paidCents);
@@ -1214,6 +1243,9 @@ router.post('/claims/:id/underpayments', async (req: Request, res: Response) => 
 router.get('/underpayments', async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
+    if (!(await practiceHasFeature(prisma, practiceId, FEATURES.UNDERPAYMENT_RECOVERY))) {
+      return res.status(403).json({ success: false, error: featureLockedMessage(FEATURES.UNDERPAYMENT_RECOVERY) });
+    }
     const data = await prisma.underpaymentCase.findMany({
       where: { practiceId, status: 'OPEN' },
       include: { claim: { select: { claimNumber: true, carrierId: true, outstandingAmount: true } } },
