@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { importClaims, syncWorkItems, syncCallQueue, ensureVendor } = vi.hoisted(() => ({
+const { importClaims, syncWorkItems, syncCallQueue, ensureVendor, closeMissing } = vi.hoisted(() => ({
   importClaims: vi.fn(),
   syncWorkItems: vi.fn(),
   syncCallQueue: vi.fn(),
   ensureVendor: vi.fn(),
+  closeMissing: vi.fn(),
+}));
+
+vi.mock('../src/server/pms/absentClaimHandler.js', () => ({
+  closeClaimsMissingFromFullExport: closeMissing,
 }));
 
 vi.mock('../src/server/pms/prismaClaimImporter.js', () => ({
@@ -44,12 +49,58 @@ describe('CSV-to-call queue remediation', () => {
       failed: 0,
       errors: [],
       importedBalanceTotal: 125,
+      sourceRowsAccounted: 1,
       paymentsVerified: 0,
       dollarsRecoveredSyncVerified: 0,
     });
     syncWorkItems.mockResolvedValue({ upserted: 1 });
     syncCallQueue.mockResolvedValue({ created: 1 });
     ensureVendor.mockResolvedValue(undefined);
+    closeMissing.mockResolvedValue({ closed: 2, held: 0, warning: null });
+  });
+
+  function transactionalPrisma() {
+    const tx = { pmsImportRun: { update: vi.fn().mockResolvedValue({}) } };
+    return {
+      pmsImportRun: {
+        create: vi.fn().mockResolvedValue({ id: 'run-3' }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      $transaction: vi.fn(async (callback: (client: unknown) => unknown) => callback(tx)),
+    };
+  }
+
+  it('never closes missing claims unless the file is marked as the full open AR', async () => {
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow],
+    });
+    expect(closeMissing).not.toHaveBeenCalled();
+    expect(result.claimsClosedAsMissing).toBe(0);
+  });
+
+  it('closes claims missing from a full export, using every claim number in the file', async () => {
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow],
+      exportScope: 'full',
+    });
+    expect(closeMissing).toHaveBeenCalledWith(expect.anything(), 'practice-1', new Set(['CLM-100']));
+    expect(result.claimsClosedAsMissing).toBe(2);
+  });
+
+  it('rejects a file whose rows for one claim name different carriers before writing anything', async () => {
+    const prisma = transactionalPrisma();
+    const result = await runPmsImportPipeline(prisma as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, { ...validRow, carrier_name: 'Manulife' }],
+    });
+    expect(result.status).toBe('validation_failed');
+    expect(result.errors[0]).toMatchObject({ claimNumber: 'CLM-100' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('commits claim, work-item, and eligible call-queue synchronization in one transaction', async () => {

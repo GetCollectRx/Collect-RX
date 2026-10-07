@@ -10,8 +10,10 @@ import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
 import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
 import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
 import { logger } from '../observability/logger.js';
-import { normalizePmsClaimRow } from './parseExportRows.js';
+import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { mapToCarrierId } from './carrierMap.js';
+import { mergeClaimRows } from './claimRowMerge.js';
+import { closeClaimsMissingFromFullExport, type AbsentClaimResult } from './absentClaimHandler.js';
 
 /** @deprecated Use PmsVendorId — kept for callers passing legacy slugs. */
 export type PmsSource = PmsVendorId;
@@ -24,7 +26,15 @@ export interface RunPmsImportOptions {
   /** Expected totals from export file header/summary (optional). */
   sourceRecordCount?: number;
   sourceBalanceTotal?: number;
+  /**
+   * 'full' means the file is the practice's complete open insurance AR, so a
+   * claim missing from it is presumed resolved in the PMS and is not called.
+   * Defaults to 'partial', which never closes claims.
+   */
+  exportScope?: ExportScope;
 }
+
+export type ExportScope = 'full' | 'partial';
 
 export interface RunPmsImportResult {
   runId: string;
@@ -38,6 +48,10 @@ export interface RunPmsImportResult {
   errors: { claimNumber?: string; error: string }[];
   paymentsVerified: number;
   dollarsRecoveredSyncVerified: number;
+  /** Claims closed because a full export no longer lists them. */
+  claimsClosedAsMissing: number;
+  /** Set when the mass-absence guardrail held closures for staff review. */
+  missingClaimsWarning: string | null;
   /** Set when Abeldent EDI version check detects legacy CDAnet v2 or ITRANS 1.x */
   ediMigrationRequired?: boolean;
   ediVersionStatus?: string;
@@ -49,9 +63,11 @@ function preflightImportRows(
   importFamily: Parameters<typeof normalizePmsClaimRow>[1],
 ): { claimNumber?: string; error: string }[] {
   const errors: { claimNumber?: string; error: string }[] = [];
+  const normalized: NormalizedPmsClaimRow[] = [];
   for (const raw of rows) {
     try {
       const row = normalizePmsClaimRow(raw, importFamily);
+      normalized.push(row);
       if (!mapToCarrierId(row.carrierName)) {
         errors.push({
           claimNumber: row.claimNumber,
@@ -63,6 +79,9 @@ function preflightImportRows(
     } catch (err) {
       errors.push({ error: (err as Error).message });
     }
+  }
+  for (const conflict of mergeClaimRows(normalized).conflicts) {
+    errors.push({ claimNumber: conflict.claimNumber, error: conflict.error });
   }
   return errors;
 }
@@ -128,6 +147,8 @@ export async function runPmsImportPipeline(
         errors: preflightErrors,
         paymentsVerified: 0,
         dollarsRecoveredSyncVerified: 0,
+        claimsClosedAsMissing: 0,
+        missingClaimsWarning: null,
       };
     }
 
@@ -144,7 +165,7 @@ export async function runPmsImportPipeline(
 
       const validation = validateImportTotals({
         sourceRecordCount: options.sourceRecordCount ?? options.rows.length,
-        importedRecordCount: importResult.imported + importResult.skipped,
+        importedRecordCount: importResult.sourceRowsAccounted,
         sourceBalanceTotal: options.sourceBalanceTotal ?? importResult.importedBalanceTotal,
         importedBalanceTotal: importResult.importedBalanceTotal,
       });
@@ -155,6 +176,19 @@ export async function runPmsImportPipeline(
             ...validation.messages,
             ...importResult.errors.map((entry) => entry.error),
           ].join('; ')}`,
+        );
+      }
+
+      let absent: AbsentClaimResult = { closed: 0, held: 0, warning: null };
+      if (options.exportScope === 'full') {
+        const claimNumbersInFile = new Set<string>();
+        for (const raw of options.rows) {
+          claimNumbersInFile.add(normalizePmsClaimRow(raw, importFamily).claimNumber);
+        }
+        absent = await closeClaimsMissingFromFullExport(
+          transactionalPrisma,
+          options.practiceId,
+          claimNumbersInFile,
         );
       }
 
@@ -177,7 +211,7 @@ export async function runPmsImportPipeline(
           errorLog: { validationMessages: [], rowErrors: [] },
         },
       });
-      return { importResult, validation };
+      return { importResult, validation, absent };
     });
 
     return {
@@ -192,6 +226,8 @@ export async function runPmsImportPipeline(
       errors: [],
       paymentsVerified: result.importResult.paymentsVerified,
       dollarsRecoveredSyncVerified: result.importResult.dollarsRecoveredSyncVerified,
+      claimsClosedAsMissing: result.absent.closed,
+      missingClaimsWarning: result.absent.warning,
       // EDI version guard results (Abeldent only)
       ...(ediGuardResult
         ? {

@@ -46,7 +46,10 @@ export default function CsvImportPage() {
     validationPassed: boolean | null
     runId?: string
     rowErrors: { row?: number; message?: string }[]
+    claimsClosedAsMissing: number
+    missingClaimsWarning: string | null
   } | null>(null)
+  const [fullExport, setFullExport] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -86,6 +89,7 @@ export default function CsvImportPage() {
     setError(null)
     const fd = new FormData()
     fd.append('file', file)
+    fd.append('exportScope', fullExport ? 'full' : 'partial')
     try {
       const r = await apiFetch(`/api/admin/sync/import/${vendor}`, { method: 'POST', body: fd })
       const j = await r.json().catch(() => ({})) as {
@@ -95,6 +99,8 @@ export default function CsvImportPage() {
         failed?: number
         validationPassed?: boolean
         runId?: string
+        claimsClosedAsMissing?: number
+        missingClaimsWarning?: string | null
       }
       if (!r.ok) throw new Error(j.error ?? 'Import failed')
       await apiFetch('/api/work-queue/sync', { method: 'POST' }).catch(() => undefined)
@@ -115,6 +121,8 @@ export default function CsvImportPage() {
         validationPassed: j.validationPassed ?? null,
         runId: j.runId,
         rowErrors,
+        claimsClosedAsMissing: j.claimsClosedAsMissing ?? 0,
+        missingClaimsWarning: j.missingClaimsWarning ?? null,
       })
       setStep('result')
       showToast('ok', `${j.imported ?? 0} claims imported`)
@@ -267,6 +275,21 @@ export default function CsvImportPage() {
                     ))}
                   </Tbody>
                 </Table>
+                <label htmlFor="csv-full-export" className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    id="csv-full-export"
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={fullExport}
+                    onChange={(e) => setFullExport(e.target.checked)}
+                  />
+                  <span>
+                    This file lists all of our open insurance claims.
+                    <span className="block text-xs text-gray-500">
+                      Open claims missing from the file are treated as resolved in your practice software, and CollectRx stops calling about them. Untick this for a partial or date-ranged export.
+                    </span>
+                  </span>
+                </label>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => void runImport()} disabled={!preview.ready || uploading}>
                     {uploading ? 'Importing…' : `Import ${preview.rowCount} claims`}
@@ -288,7 +311,15 @@ export default function CsvImportPage() {
                   <Badge>{result.skipped} skipped</Badge>
                   {result.failed > 0 && <Badge color="red">{result.failed} failed</Badge>}
                   {result.validationPassed === false && <Badge color="amber">Validation drift</Badge>}
+                  {result.claimsClosedAsMissing > 0 && (
+                    <Badge>{result.claimsClosedAsMissing} closed as resolved in your software</Badge>
+                  )}
                 </div>
+                {result.missingClaimsWarning && (
+                  <div className="crx-alert px-4 py-3 text-sm" role="alert">
+                    {result.missingClaimsWarning}
+                  </div>
+                )}
                 <p className="text-sm text-gray-600">
                   Claims are in your work queue. Eligible claims are scheduled for carrier-status follow-up during business hours (Mon–Fri 8am–5pm ET); claims that need staff action remain in the work queue.
                 </p>

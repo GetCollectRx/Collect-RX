@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { PaymentEvidence } from './paymentVerification.js';
 
 const PARTIAL_TRACE_EXTENSION_DAYS = 7;
 
@@ -13,9 +14,12 @@ export async function handlePartialPaymentSync(
     previousOutstanding: number;
     newOutstanding: number;
     amountRecoveredCents: number;
+    /** Null when nothing confirms the drop was an insurance payment. */
+    evidence?: PaymentEvidence;
   },
 ): Promise<void> {
   const { claimId, practiceId, previousOutstanding, newOutstanding, amountRecoveredCents } = params;
+  const evidence = params.evidence ?? null;
   const claim = await prisma.insuranceClaim.findUnique({
     where: { id: claimId },
     select: { recoveryRoute: true, paymentExpectedBy: true, status: true },
@@ -59,11 +63,16 @@ export async function handlePartialPaymentSync(
       actionType: 'PAYMENT_VERIFY_SYNC',
       status: 'OPEN',
       route: route === 'CALL_CARRIER' ? 'CALL_CARRIER' : 'WAIT_SYNC',
-      title: 'Partial payment — verify remaining balance',
-      detail: `$${(amountRecoveredCents / 100).toFixed(2)} received via PMS sync; $${newOutstanding.toFixed(2)} still outstanding. Trace extended ${PARTIAL_TRACE_EXTENSION_DAYS}d.`,
+      title: evidence
+        ? 'Partial payment — verify remaining balance'
+        : 'Balance reduced — confirm what was paid',
+      detail: evidence
+        ? `$${(amountRecoveredCents / 100).toFixed(2)} received via PMS sync; $${newOutstanding.toFixed(2)} still outstanding. Trace extended ${PARTIAL_TRACE_EXTENSION_DAYS}d.`
+        : `Balance dropped $${(amountRecoveredCents / 100).toFixed(2)} in the PMS with no insurance payment on record; $${newOutstanding.toFixed(2)} still outstanding. Trace extended ${PARTIAL_TRACE_EXTENSION_DAYS}d.`,
       scheduledRecallAt: paymentExpectedBy,
       metadata: {
         partial: true,
+        evidence,
         amountRecoveredCents,
         previousOutstanding,
         newOutstanding,
@@ -100,6 +109,7 @@ export async function handlePartialPaymentSync(
       metadata: {
         paymentExpectedBy: paymentExpectedBy.toISOString(),
         route,
+        evidence,
       },
     },
   });

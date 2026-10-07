@@ -30,8 +30,13 @@ vi.mock('../../src/server/plans/planBridge.js', () => ({
 vi.mock('../../src/server/adjudication/writeAdjudicationEvent.js', () => ({
   writeAdjudicationEvent: vi.fn(),
 }));
+vi.mock('../../src/server/audit/auditLog.js', () => ({
+  appendPhiAccessEvent: vi.fn(),
+}));
 
 import { dispatchPreVisitCall } from '../../src/server/preVisit/preVisitDispatch.js';
+import { piiVault } from '../../src/pii-vault.js';
+import { getPracticeSettings } from '../../src/server/services/practiceSettingsService.js';
 
 describe('dispatchPreVisitCall', () => {
   beforeEach(() => {
@@ -73,5 +78,42 @@ describe('dispatchPreVisitCall', () => {
       retryAt,
     });
     expect(initiatePreVisitCallMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])('sends CDCP calls through Hold Sentinel when humanAssistedMode is %s', async (mode, expected) => {
+    isWithinCallWindowMock.mockReturnValue(true);
+    initiatePreVisitCallMock.mockResolvedValue({ vapiCallId: 'call-1' });
+    vi.mocked(piiVault.detokenize).mockReturnValue({
+      success: true,
+      phi: { patientName: 'Test Patient', dateOfBirth: '1980-01-01', subscriberId: 'S1', groupPolicyNumber: 'G1' },
+    } as never);
+    vi.mocked(getPracticeSettings).mockResolvedValue({
+      carrierConfigs: [],
+      escalationPhoneNumber: '4165550100',
+      humanAssistedMode: mode,
+    } as never);
+    const prisma = {
+      appointmentVerification: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'verification-1', attemptCount: 0 }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      practice: { findUnique: vi.fn().mockResolvedValue({ name: 'CollectRx Demo Practice' }) },
+    };
+
+    await dispatchPreVisitCall(prisma as unknown as PrismaClient, 'PRE_VISIT_CDCP_PREDET', {
+      practiceId: 'practice-1',
+      patientToken: 'token-1',
+      carrierId: 'sun_life',
+      procedureCodes: ['D2740'],
+      appointmentAt: '2026-07-15T15:00:00.000Z',
+      appointmentVerificationId: 'verification-1',
+    });
+
+    expect(initiatePreVisitCallMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cdcpContext: true, humanAssisted: expected }),
+    );
   });
 });

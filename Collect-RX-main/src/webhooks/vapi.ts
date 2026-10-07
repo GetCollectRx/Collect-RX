@@ -24,7 +24,13 @@ import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPaylo
 import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
-import { sendPracticeSms } from '../services/alerts.js';
+import {
+  MISSED_HANDOFF_SCENARIO,
+  buildMissedHandoffScript,
+  missedHandoffMessage,
+  missedHandoffToolResult,
+  purposeFromCallMetadata,
+} from '../server/vapi/missedHandoff.js';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import { logger } from '../server/observability/logger.js';
 import {
@@ -158,7 +164,7 @@ function coerceBoolean(v: unknown): boolean | undefined {
 async function handleLogCallOutcome(
   vapiCallId: string | undefined,
   claimId: string | undefined,
-  claim: { practiceId: string; carrierId: string } | null,
+  claim: { practiceId: string; carrierId: string; claimNumber?: string | null } | null,
   metadataPracticeId: string | undefined,
   metadataCarrierId: string | undefined,
   args: Record<string, unknown>,
@@ -206,6 +212,24 @@ async function handleLogCallOutcome(
         },
       }),
     );
+    if (scenario === MISSED_HANDOFF_SCENARIO) {
+      const { subject, message } = missedHandoffMessage({
+        claimLabel: claim && 'claimNumber' in claim && typeof claim.claimNumber === 'string' ? claim.claimNumber : 'unknown',
+        carrierLabel: carrierId,
+        referenceNumber: coerceString(args.referenceNumber),
+        repName: coerceString(args.repName),
+      });
+      await runWithRlsBypass(() =>
+        sendPracticeNotification(prisma, {
+          practiceId,
+          type: 'LIVE_CALL_NEEDS_STAFF',
+          subject,
+          message,
+          claimId,
+          severity: 'warning',
+        }),
+      );
+    }
     return 'Logged.';
   } catch (err) {
     const code = (err as { code?: string } | null)?.code;
@@ -229,20 +253,37 @@ async function handleStaffHandoffRequest(
     outstandingAmount: unknown;
   } | null,
   metadataPracticeId: string | undefined,
+  callMetadata?: { claimId?: string; cdcpContext?: boolean; preVisitType?: string },
 ): Promise<string> {
   const practiceId = claim?.practiceId ?? metadataPracticeId;
   if (!vapiCallId || !practiceId) {
     console.error('[vapi-webhook] request_staff_handoff missing vapiCallId or practiceId');
     return 'HANDOFF FAILED — missing call or practice context. Stay silent and keep listening.';
   }
+  let missedHandoffResult = 'HANDOFF FAILED — no callback number on file. Stay silent and keep listening.';
   try {
     const settings = await runWithRlsBypass(() => getPracticeSettings(prisma, practiceId));
     const escalationPhone = settings.escalationPhoneNumber?.trim();
+    // The disclosure must give the rep a callback number, so the reference-number
+    // fallback is only possible when the practice has one on file.
+    const callbackPhone = settings.billingPhone?.trim() || escalationPhone;
+    if (callbackPhone) {
+      const practice = await runWithRlsBypass(() =>
+        prisma.practice.findUnique({ where: { id: practiceId }, select: { name: true } }),
+      );
+      missedHandoffResult = missedHandoffToolResult(
+        buildMissedHandoffScript({
+          practiceName: practice?.name ?? 'the dental practice',
+          practicePhone: callbackPhone,
+          purpose: purposeFromCallMetadata(callMetadata),
+        }),
+      );
+    }
     if (!escalationPhone) {
       console.error(
         `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
       );
-      return 'HANDOFF FAILED — no staff phone number on file. Stay silent and keep listening.';
+      return missedHandoffResult;
     }
 
     await transferVapiCall(vapiCallId, escalationPhone);
@@ -252,29 +293,30 @@ async function handleStaffHandoffRequest(
     const claimLabel = claim?.claimNumber ?? 'unknown';
     const carrierLabel = claim?.carrierId ? ` (${claim.carrierId})` : '';
 
-    await runWithRlsBypass(() =>
-      sendPracticeNotification(prisma, {
-        practiceId,
-        type: 'LIVE_CALL_NEEDS_STAFF',
-        subject: `Rep on the line — claim ${claimLabel}`,
-        message: `A live representative just picked up on claim ${claimLabel}${carrierLabel}${amountText}. The call is transferring to your escalation line now — pick up.`,
-        claimId,
-        severity: 'warning',
-      }),
-    );
+    // The transfer is already under way, so a notification failure must not
+    // fall through to the missed-handoff script and make the agent speak.
+    try {
+      await runWithRlsBypass(() =>
+        sendPracticeNotification(prisma, {
+          practiceId,
+          type: 'LIVE_CALL_NEEDS_STAFF',
+          subject: `Rep on the line — claim ${claimLabel}`,
+          message: `A live representative just picked up on claim ${claimLabel}${carrierLabel}${amountText}. The call is transferring to your escalation line now — pick up.`,
+          claimId,
+          severity: 'warning',
+        }),
+      );
+    } catch (notifyErr) {
+      console.error('[vapi-webhook] request_staff_handoff notification failed:', notifyErr);
+    }
 
-    // Dashboard polling alone is not real-time enough for a 'pick up now'
-    // signal, so also SMS the escalation number directly. Non-fatal if
-    // Twilio env vars are unset (sendPracticeSms no-ops with a warning).
-    void sendPracticeSms(
-      escalationPhone,
-      `CollectRx: rep on the line for claim ${claimLabel}${carrierLabel}${amountText}. Transferring now — pick up.`,
-    );
+    // No SMS to the practice (founder decision): the ringing staff line is
+    // the real-time signal, and the dashboard notification carries the context.
 
     return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
   } catch (err) {
     console.error('[vapi-webhook] request_staff_handoff failed:', err);
-    return 'HANDOFF FAILED — an error occurred. Stay silent and keep listening.';
+    return missedHandoffResult;
   }
 }
 
@@ -320,7 +362,13 @@ router.post('/', async (req: Request, res: Response) => {
         call?: {
           id?: string;
           assistantOverrides?: {
-            metadata?: { claimId?: string; practiceId?: string; carrierId?: string };
+            metadata?: {
+              claimId?: string;
+              practiceId?: string;
+              carrierId?: string;
+              cdcpContext?: boolean;
+              preVisitType?: string;
+            };
           };
         };
         toolWithToolCallList?: Array<{
@@ -381,6 +429,7 @@ router.post('/', async (req: Request, res: Response) => {
                 claimId,
                 claimContext,
                 callMetadata?.practiceId,
+                callMetadata,
               ),
             };
           }
