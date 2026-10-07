@@ -104,7 +104,7 @@ Twilio (telephony — calls to carriers)
 ```
 
 Two subsystems live alongside the core AR flow and aren't captured above:
-- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Core/Growth/Scale tiers via Stripe Billing, overage handling, COGS breaker. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
+- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Hold Sentinel / Recovery (`core`) / Growth / Scale tiers via Stripe Billing, overage handling, COGS breaker. Plans also decide which features a practice can use (`src/billing/entitlements.ts`, [ADR 0004](docs/adr/0004-product-tiers.md)); enforce new features at the server, not only in the UI. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
 - **Marketing/growth engine** (`Collect-RX-main/src/server/marketing/`) — prospect harvesting, email campaign scheduler, AI outreach calls, reply intelligence, referral engine. Self-serve acquisition, separate from the carrier-calling product itself.
 
 ### Vapi Voice Squad
@@ -118,6 +118,8 @@ Five agents are orchestrated as a squad — they hand off to each other mid-call
 - **Resolution_Closer** — confirms payment, closes the claim
 
 (Corrected 2026-07-30 — this section previously omitted Hold_Sentinel. See `Collect-RX-main/tasks/lessons.md` 2026-07-30 entry.)
+
+**Two calling modes, set per practice.** The squad above is the **autonomous** mode (full AR recovery). **V1, the product sold first, is Hold Sentinel human-assisted mode** (`humanAssistedMode`): IVR_Navigator, then Hold_Sentinel, then Claims_Scribe. When a rep answers, the call transfers to practice staff, who talk to the rep; Claims_Scribe listens and logs outcomes that build per-carrier playbooks. See [ADR 0003](docs/adr/0003-v1-hold-sentinel-wedge.md). New practices start in Hold Sentinel mode (`humanAssistedMode` defaults to `true`); a practice that explicitly turns it off keeps its choice. No SMS goes to the practice on handoff.
 
 The squad receives UUID tokens in metadata — never real patient names, DOBs, or identifiers in metadata. Patient identifiers required for carrier lookup are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens on the backend before the call; PHI is never stored in logs or the database.
 

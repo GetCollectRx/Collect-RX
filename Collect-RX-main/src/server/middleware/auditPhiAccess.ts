@@ -1,101 +1,55 @@
-/**
- * Middleware to audit PHI access.
- * Logs all requests to sensitive routes for compliance.
- */
-
 import type { Request, Response, NextFunction } from 'express';
+import type { PrismaClient } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
-import { logImmutableAuditEntry } from '../audit/immutableAuditLog.js';
+import { authUserId } from '../accessControl/types.js';
+import { practiceIdFromAuth } from '../accessControl/practiceContext.js';
+import { appendPhiAccessEvent, appendRequiredAuditLog } from '../audit/auditLog.js';
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    practiceId: string;
+function resourceId(req: Request): string {
+  return req.params.id || req.params.claimId || req.params.patientId || 'collection';
+}
+
+/**
+ * Mounted only after authenticate. Records a required access intent before a
+ * sensitive handler runs; audit-store failure returns 503 and no PHI operation
+ * executes.
+ */
+export function createAuditPhiAccessMiddleware(client: PrismaClient) {
+  return async function auditPhiAccess(req: Request, res: Response, next: NextFunction) {
+  const auth = req.auth ?? req.practiceAuth;
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+  const practiceId = practiceIdFromAuth(auth, req);
+  const actorId = authUserId(auth);
+  if (!practiceId || !actorId) {
+    return res.status(403).json({ error: 'A validated practice context is required for PHI access' });
+  }
+
+  const recordId = resourceId(req);
+  const route = `${req.baseUrl}${req.path}`;
+  try {
+    await appendRequiredAuditLog(client, {
+      practiceId,
+      userId: actorId,
+      action: 'phi.access.intent',
+      subjectType: 'ProtectedRoute',
+      subjectId: recordId,
+      details: { method: req.method, route },
+      req,
+    });
+    await appendPhiAccessEvent(client, {
+      practiceId,
+      actorId,
+      operation: `${req.method.toLowerCase()}:${route}`,
+      recordType: 'ProtectedRoute',
+      recordId,
+      purpose: 'authorized application access',
+      required: true,
+    });
+    return next();
+  } catch {
+    return res.status(503).json({ error: 'Required audit trail is unavailable; access was not performed' });
+  }
   };
 }
 
-// Routes that access PHI
-const SENSITIVE_ROUTES = [
-  '/api/insurance/claims',
-  '/api/calls',
-  '/api/patients',
-  '/api/recordings',
-  '/api/admin/audit',
-];
-
-/**
- * Middleware to audit all PHI access.
- * Should be mounted early in the middleware stack.
- */
-export function auditPhiAccessMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  // Check if this is a sensitive route
-  const isSensitiveRoute = SENSITIVE_ROUTES.some((route) => req.path.startsWith(route));
-
-  if (isSensitiveRoute) {
-    // Capture response for audit
-    const originalSend = res.send;
-
-    res.send = function (data: unknown) {
-      // Log PHI access after response (only if successful)
-      if (res.statusCode < 400 && req.user) {
-        logImmutableAuditEntry(prisma, {
-          practiceId: req.user.practiceId,
-          userId: req.user.id,
-          action: getActionFromMethod(req.method),
-          resourceType: getResourceType(req.path),
-          resourceId: extractResourceId(req),
-          ipAddress: req.ip || undefined,
-          userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
-          result: 'success',
-          details: `${req.method} ${req.path}`,
-        }).catch((error) => {
-          console.error('[audit] Failed to log PHI access', error);
-        });
-      }
-
-      // Send response
-      res.send = originalSend;
-      return res.send(data);
-    };
-  }
-
-  next();
-}
-
-function getActionFromMethod(method: string): 'read' | 'write' | 'delete' | 'export' | 'access_recording' {
-  switch (method.toUpperCase()) {
-    case 'GET':
-      return 'read';
-    case 'DELETE':
-      return 'delete';
-    case 'POST':
-    case 'PUT':
-    case 'PATCH':
-      return 'write';
-    default:
-      return 'read';
-  }
-}
-
-function getResourceType(
-  path: string
-): 'patient' | 'claim' | 'recording' | 'practice_setting' | 'other' {
-  if (path.includes('patients')) return 'patient';
-  if (path.includes('claims') || path.includes('insurance')) return 'claim';
-  if (path.includes('recordings') || path.includes('calls')) return 'recording';
-  if (path.includes('admin')) return 'practice_setting';
-  return 'other';
-}
-
-function extractResourceId(req: Request): string {
-  // Try common parameter names
-  if (req.params.id) return req.params.id;
-  if (req.params.claimId) return req.params.claimId;
-  if (req.params.patientId) return req.params.patientId;
-  if (req.body?.id) return req.body.id;
-  if (req.body?.claimId) return req.body.claimId;
-
-  // Fallback to path segment
-  const segments = req.path.split('/');
-  return segments[segments.length - 1] || 'unknown';
-}
+export const auditPhiAccessMiddleware = createAuditPhiAccessMiddleware(prisma);

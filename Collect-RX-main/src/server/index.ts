@@ -59,6 +59,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { correlationIdMiddleware } from './middleware/correlationId.js';
+import { authenticate } from './middleware/authenticate.js';
+import { auditPhiAccessMiddleware } from './middleware/auditPhiAccess.js';
 import { logger } from './observability/logger.js';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -115,6 +117,7 @@ import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
 import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
+import ontarioBillingRouter   from './routes/ontarioBillingRoutes.js';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
@@ -322,19 +325,40 @@ app.use(
 // Twilio's application/x-www-form-urlencoded voice webhook; both parsers are
 // needed, each only acts on its own content-type and leaves the other alone.
 // ─────────────────────────────────────────────────────────────────────────────
-app.use(
-  '/api/webhooks/hold-park',
-  webhookLimiter,
-  express.json(),
-  express.urlencoded({ extended: false }),
-  holdParkTestRouter,
-);
+const holdParkEngineeringHarnessEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true';
+
+if (process.env.NODE_ENV === 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true') {
+  throw new Error('HOLD_PARK_TEST_ENABLED is forbidden in production');
+}
+
+if (holdParkEngineeringHarnessEnabled) {
+  app.use(
+    '/api/webhooks/hold-park',
+    webhookLimiter,
+    express.json(),
+    express.urlencoded({ extended: false }),
+    holdParkTestRouter,
+  );
+}
 
 app.post(
   '/api/webhooks/sendgrid',
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   makeSendgridEventWebhookHandler(prisma),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo booking (Calendly / Cal.com) — RAW body MUST be mounted before
+// express.json(). Both providers sign the exact raw request bytes; verifying
+// against a re-serialized JSON object would fail even with the right secret.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/demo-booking',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  createDemoBookingWebhookRouter(prisma),
 );
 
 app.use(
@@ -349,12 +373,6 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(correlationIdMiddleware);
-
-app.use(
-  '/api/webhooks/demo-booking',
-  webhookLimiter,
-  createDemoBookingWebhookRouter(prisma),
-);
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -499,6 +517,10 @@ app.use('/api', anonStandardLimiter);
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
+// Required PHI access-intent audit. Audit-store failure prevents execution.
+app.use('/api/insurance', authenticate, auditPhiAccessMiddleware);
+app.use('/api/calls', authenticate, auditPhiAccessMiddleware);
+app.use('/api/admin/audit-log', authenticate, auditPhiAccessMiddleware);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
@@ -531,6 +553,7 @@ app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
+app.use('/api/ontario-billing', ontarioBillingRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
 app.use('/api/connector',  createConnectorRouter());
@@ -833,7 +856,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
-  attachHoldParkAudioStream(server);
+  if (holdParkEngineeringHarnessEnabled) {
+    attachHoldParkAudioStream(server);
+  }
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);

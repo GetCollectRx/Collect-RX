@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import type { DenialCategoryRow } from '../../services/insurance-denial-analytics.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -58,7 +59,7 @@ export async function sendDailyDigestEmail(opts: {
     '',
     `View full dashboard: ${dashboardUrl}`,
     '',
-    '— CollectRx Automated Digest',
+    FOUNDER_SIGNATURE_TEXT,
   ].join('\n');
 
   if (!sg) {
@@ -176,6 +177,7 @@ export async function sendDailyDigestEmail(opts: {
       <p style="color:#888;font-size:12px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">
         This is an automated daily digest from CollectRx. You can customize or disable these emails in your dashboard settings.
       </p>
+      <p style="color:#888;font-size:12px;margin-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
     </div>
   `;
 

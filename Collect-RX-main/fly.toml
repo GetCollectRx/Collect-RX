@@ -26,9 +26,10 @@
 # Before first deploy with this config, provision both volumes:
 #   fly volumes create collectrx_app_logs -a collect-rx -r yyz --size 1
 #   fly volumes create collectrx_worker_logs -a collect-rx -r yyz --size 1
-# Caveat: a volume-backed machine can't be freely multi-region/multi-instance
-# scaled without a volume per instance — fine at current min_machines_running
-# = 1, revisit if the app process group ever scales beyond one machine.
+# This is deliberately a single-instance, single-region topology, not HA.
+# A volume-backed machine cannot be freely multi-region/multi-instance scaled
+# without a volume per instance. Establish a tested HA design before making an
+# availability or failover claim.
 
 app = 'collect-rx'
 primary_region = 'yyz'
@@ -58,6 +59,21 @@ timeout = '10s'
 grace_period = '30s'
 method = 'GET'
 path = '/api/health/ready'
+
+# The worker is not publicly exposed, but its own health server must be checked
+# independently of the API process. This proves process + DB readiness; queue
+# consumption and Redis health remain separate operational monitoring gates.
+[[services]]
+internal_port = 3000
+protocol = 'tcp'
+processes = ['worker']
+
+  [[services.http_checks]]
+  interval = '15s'
+  timeout = '10s'
+  grace_period = '30s'
+  method = 'GET'
+  path = '/api/health/ready'
 
 [[vm]]
 processes = ['app']

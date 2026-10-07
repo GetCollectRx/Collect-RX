@@ -12,7 +12,10 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { createHmac } from 'crypto';
+import Stripe from 'stripe';
 import { app, prisma } from '../src/server/index.js';
+import { handlePlatformBillingWebhook } from '../src/server/stripe/billing.js';
+import type Stripe from 'stripe';
 import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
 
 function vapiWebhookSecret(): string {
@@ -59,6 +62,7 @@ let practiceA: { id: string; name: string };
 let practiceB: { id: string; name: string };
 let practiceAEmail = '';
 let practiceBEmail = '';
+let restoreStripeRetrieve: (() => void) | undefined;
 
 try {
   await prisma.$connect();
@@ -84,6 +88,28 @@ beforeAll(async () => {
   const practiceBSetup = await createPracticeWithOwnerForTests(prisma);
   practiceB = { id: practiceBSetup.practice.id, name: practiceBSetup.practice.name };
   practiceBEmail = practiceBSetup.email;
+
+  // Billing webhook handling intentionally fetches Stripe's current
+  // subscription state before applying an update. Keep this integration test
+  // offline while still exercising that production path through the real route.
+  const stripeForPrototype = new Stripe('sk_test_webhook_validation_offline');
+  const subscriptionsPrototype = Object.getPrototypeOf(stripeForPrototype.subscriptions) as {
+    retrieve: Stripe['subscriptions']['retrieve'];
+  };
+  const retrieveSpy = vi.spyOn(subscriptionsPrototype, 'retrieve').mockImplementation(async (subscriptionId) => ({
+    id: subscriptionId,
+    object: 'subscription',
+    customer: 'cus_idempotent_test',
+    status: 'active',
+    metadata: { practice_id: practiceA.id },
+    items: {
+      object: 'list',
+      data: [{ price: { id: 'price_idempotent_test' }, current_period_start: 1, current_period_end: 2 }],
+      has_more: false,
+      url: `/v1/subscriptions/${subscriptionId}/items`,
+    },
+  }) as never);
+  restoreStripeRetrieve = () => retrieveSpy.mockRestore();
 });
 
 afterAll(async () => {
@@ -91,6 +117,7 @@ afterAll(async () => {
   await cleanupPracticeWithUsers(prisma, practiceA.id);
   await cleanupPracticeWithUsers(prisma, practiceB.id);
   await prisma.$disconnect().catch(() => undefined);
+  restoreStripeRetrieve?.();
   vi.unstubAllEnvs();
 });
 
@@ -443,56 +470,57 @@ describe.skipIf(!dbReady)('Stripe webhook validation', () => {
   });
 
   // ─── Test 5: Idempotency — same event twice should not duplicate state changes ✓
+  // This test exercises handlePlatformBillingWebhook's real processedStripeEvent
+  // dedup logic (the P2002-catch path in billing.ts) directly, bypassing the HTTP
+  // route. The customer.subscription.updated branch always calls the live
+  // stripe.subscriptions.retrieve() to guard against out-of-order webhook delivery
+  // (billing.ts) — going through request(app).post('/api/stripe/webhook') here
+  // would make that call for real, which is both slow and dependent on a live,
+  // unexpired Stripe API key having no bearing on the dedup logic under test.
+  // Signature verification itself is already covered by the other tests in this
+  // describe block; this one is specifically about the dedup path.
   it('idempotent — duplicate event processed only once', async () => {
     const eventId = `evt_idempotent_test_${Date.now()}`;
     const epochNow = Math.floor(Date.now() / 1000);
-    const payload = JSON.stringify({
+    const subscriptionId = `sub_idempotent_test_${Date.now()}`;
+
+    const subscription = {
+      id: subscriptionId,
+      object: 'subscription',
+      customer: 'cus_idempotent_test',
+      status: 'active',
+      metadata: { practice_id: practiceA.id },
+      items: {
+        object: 'list',
+        data: [
+          {
+            id: 'si_idempotent_test',
+            object: 'subscription_item',
+            price: { id: 'price_idempotent_test' },
+            current_period_start: epochNow,
+            current_period_end: epochNow + 30 * 24 * 60 * 60,
+          },
+        ],
+      },
+    } as unknown as Stripe.Subscription;
+
+    const event = {
       id: eventId,
       object: 'event',
       type: 'customer.subscription.updated',
-      data: {
-        object: {
-          id: `sub_idempotent_test_${Date.now()}`,
-          object: 'subscription',
-          customer: 'cus_idempotent_test',
-          status: 'active',
-          metadata: { practice_id: practiceA.id },
-          items: {
-            data: [
-              {
-                price: { id: 'price_idempotent_test' },
-                current_period_start: epochNow,
-                current_period_end: epochNow + 30 * 24 * 60 * 60,
-              },
-            ],
-          },
-        },
-      },
-    });
+      data: { object: subscription },
+    } as unknown as Stripe.Event;
 
-    const signature = generateStripeSignature(payload, TEST_STRIPE_WEBHOOK_SECRET);
+    const stripe = {
+      subscriptions: { retrieve: vi.fn(async () => subscription) },
+    } as unknown as Stripe;
 
-    // Send first webhook
-    const res1 = await request(app)
-      .post('/api/stripe/webhook')
-      .set('Stripe-Signature', signature)
-      .set('Content-Type', 'application/json')
-      .send(payload);
+    const result1 = await handlePlatformBillingWebhook(event, prisma, stripe);
+    expect(result1.handled).toBe(true);
 
-    expect(res1.status).not.toBe(401);
-    expect(res1.body.handled).toBe(true);
-
-    // Send identical webhook again
-    const res2 = await request(app)
-      .post('/api/stripe/webhook')
-      .set('Stripe-Signature', signature)
-      .set('Content-Type', 'application/json')
-      .send(payload);
-
-    expect(res2.status).not.toBe(401);
-    // Second request should indicate duplicate
-    expect(res2.body.handled).toBe(true);
-    expect(res2.body.reason).toBe('duplicate_event');
+    const result2 = await handlePlatformBillingWebhook(event, prisma, stripe);
+    expect(result2.handled).toBe(true);
+    expect(result2.reason).toBe('duplicate_event');
   });
 });
 

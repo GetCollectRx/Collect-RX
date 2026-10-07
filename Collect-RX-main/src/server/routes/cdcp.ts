@@ -24,10 +24,6 @@ import {
 import {
   selectSubmissionStrategy,
 } from '../services/cdcp/cdanetSubmission.js';
-import {
-  getCdcpFeeCeiling,
-  apply2026FeeGuide,
-} from '../services/carrierRules.js';
 import type { CdcpDeniedClaim } from '../services/cdcp/types.js';
 import { logger } from '../observability/logger.js';
 
@@ -165,33 +161,14 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   });
 
   // ── GET /api/cdcp/fee-ceiling ───────────────────────────────────────────────
-  router.get('/fee-ceiling', (req: Request, res: Response) => {
-    try {
-      const { baseFee, province } = req.query as { baseFee: string; province: string };
-
-      if (!baseFee || !province) {
-        return res.status(400).json({ error: 'baseFee and province required' });
-      }
-
-      const base = parseFloat(baseFee);
-      if (isNaN(base) || base <= 0) {
-        return res.status(400).json({ error: 'baseFee must be a positive number' });
-      }
-
-      const fee2026 = apply2026FeeGuide(base, province);
-      const ceiling = getCdcpFeeCeiling(base, province);
-
-      res.json({
-        baseFee: base,
-        province,
-        fee2026: Math.round(fee2026 * 100) / 100,
-        cdcpCeiling: Math.round(ceiling * 100) / 100,
-        balanceBillingProhibitedAbove: Math.round(ceiling * 100) / 100,
-      });
-    } catch (err) {
-      logger.error('[CDCP] /fee-ceiling error', { error: err });
-      res.status(500).json({ error: 'Internal server error' });
-    }
+  // Disabled until an effective-dated official CDCP fee schedule is imported.
+  // Provincial association fee guides are not interchangeable with the CDCP
+  // established fees, and patients may owe additional charges above those fees.
+  router.get('/fee-ceiling', (_req: Request, res: Response) => {
+    res.status(503).json({
+      error: 'CDCP fee estimates are unavailable until a current official fee schedule is configured',
+      code: 'CDCP_FEE_SCHEDULE_NOT_CONFIGURED',
+    });
   });
 
   // ── GET /api/cdcp/reconsiderations ─────────────────────────────────────────

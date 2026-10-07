@@ -60,6 +60,7 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
   afterAll(async () => {
     for (const practiceId of practiceIds) {
       await prisma.pmsImportRun.deleteMany({ where: { practiceId } });
+      await prisma.callQueue.deleteMany({ where: { practiceId } });
       await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
     }
     if (ownerUserId) await prisma.user.deleteMany({ where: { id: ownerUserId } });

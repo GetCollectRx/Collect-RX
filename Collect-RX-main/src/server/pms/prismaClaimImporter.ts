@@ -2,6 +2,8 @@ import type { CarrierId, PrismaClient } from '@prisma/client';
 import type { PmsImportFamily } from '../../types/pms.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
+import { mergeClaimRows } from './claimRowMerge.js';
+import { reopenIfReappeared } from './absentClaimHandler.js';
 // Use the main PIIVault (AES-256-GCM, stores full PatientPHI objects).
 // NOTE: do NOT import from '../../services/pii-vault.js' — that is the legacy
 // simple tokenizer that stores only a patientId string and cannot provide PHI
@@ -13,6 +15,7 @@ import { detectUnderpayment, upsertUnderpaymentCase } from '../reconciliation/un
 import { evaluateSubmissionQuality } from '../reconciliation/submissionQualityGate.js';
 import { buildPmsT11DenialSignal, linkRecoveryActionToCdcpCase } from '../recovery/cdcpRecoveryBridge.js';
 import { upsertReconsiderationFromSignal } from '../canadianExpansion/autoReconsideration.js';
+import { validateTreatingDentistForClaim } from '../services/billing/validateTreatingDentist.js';
 
 export interface PrismaImportResult {
   imported: number;
@@ -20,6 +23,8 @@ export interface PrismaImportResult {
   failed: number;
   errors: { claimNumber?: string; error: string }[];
   importedBalanceTotal: number;
+  /** Export rows behind imported + skipped claims; differs from the claim count when rows were merged. */
+  sourceRowsAccounted: number;
   paymentsVerified: number;
   dollarsRecoveredSyncVerified: number;
 }
@@ -53,6 +58,7 @@ async function upsertInsuranceClaim(
   practiceId: string,
   row: NormalizedPmsClaimRow,
   carrierId: CarrierId,
+  treatingDentistId: string | undefined,
 ): Promise<
   | { outcome: 'imported'; claimId: string; previousOutstanding: number; newOutstanding: number }
   | { outcome: 'skipped' }
@@ -61,7 +67,7 @@ async function upsertInsuranceClaim(
     where: {
       practiceId_claimNumber: { practiceId, claimNumber: row.claimNumber },
     },
-    select: { id: true, outstandingAmount: true },
+    select: { id: true, outstandingAmount: true, recoveryRoute: true },
   });
 
   if (row.outstandingAmount <= 0) {
@@ -111,6 +117,7 @@ async function upsertInsuranceClaim(
       servicedAt: row.servicedAt,
       submittedAt: row.submittedAt,
       treatmentCodes: row.treatmentCodes ?? undefined,
+      treatingDentistId,
       status: 'PENDING',
       priority: daysOutstanding > 90 ? 'URGENT' : daysOutstanding > 60 ? 'HIGH' : 'NORMAL',
     },
@@ -124,6 +131,10 @@ async function upsertInsuranceClaim(
       // the claim points at the newly tokenized entry.
       patientToken,
       servicedAt: row.servicedAt ?? undefined,
+      // Only overwrite an already-set treatingDentistId when this import row
+      // actually carries one — a later re-import without the column must not
+      // erase a dentist assignment made by an earlier one that had it.
+      ...(treatingDentistId ? { treatingDentistId } : {}),
       // Update submittedAt and treatmentCodes if the new import has them and current row doesn't
       ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
       ...(row.treatmentCodes ? { treatmentCodes: row.treatmentCodes } : {}),
@@ -134,6 +145,10 @@ async function upsertInsuranceClaim(
       } : {}),
     },
   });
+
+  if (existing?.recoveryRoute === 'STOP') {
+    await reopenIfReappeared(prisma, practiceId, upserted.id);
+  }
 
   return {
     outcome: 'imported',
@@ -155,6 +170,7 @@ export async function importPmsClaimsToPrisma(
     failed: 0,
     errors: [],
     importedBalanceTotal: 0,
+    sourceRowsAccounted: 0,
     paymentsVerified: 0,
     dollarsRecoveredSyncVerified: 0,
   };
@@ -163,11 +179,30 @@ export async function importPmsClaimsToPrisma(
     claimId: string;
     previousOutstanding: number;
     newOutstanding: number;
+    insurancePaymentReported: boolean;
   }> = [];
 
+  const normalized: NormalizedPmsClaimRow[] = [];
   for (const raw of rows) {
     try {
-      const row = normalizePmsClaimRow(raw, importFamily);
+      normalized.push(normalizePmsClaimRow(raw, importFamily));
+    } catch (err) {
+      result.failed += 1;
+      result.errors.push({
+        claimNumber: getClaimNumberFromRaw(raw),
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  const merged = mergeClaimRows(normalized);
+  for (const conflict of merged.conflicts) {
+    result.failed += 1;
+    result.errors.push({ claimNumber: conflict.claimNumber, error: conflict.error });
+  }
+
+  for (const row of merged.rows) {
+    try {
       const carrierId = mapToCarrierId(row.carrierName);
       if (!carrierId) {
         result.failed += 1;
@@ -179,16 +214,34 @@ export async function importPmsClaimsToPrisma(
         });
         continue;
       }
-      const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId);
+      let treatingDentistId: string | undefined;
+      if (row.treatingDentistProviderNumber) {
+        const dentistCheck = await validateTreatingDentistForClaim(
+          prisma,
+          practiceId,
+          row.treatingDentistProviderNumber,
+        );
+        if (!dentistCheck.ok) {
+          result.failed += 1;
+          result.errors.push({ claimNumber: row.claimNumber, error: dentistCheck.error });
+          continue;
+        }
+        treatingDentistId = dentistCheck.dentistId;
+      }
+
+      const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId, treatingDentistId);
       if (outcome.outcome === 'skipped') {
         result.skipped += 1;
+        result.sourceRowsAccounted += merged.sourceRowCount.get(row.claimNumber) ?? 1;
       } else {
         result.imported += 1;
+        result.sourceRowsAccounted += merged.sourceRowCount.get(row.claimNumber) ?? 1;
         result.importedBalanceTotal += row.outstandingAmount;
         syncUpdates.push({
           claimId: outcome.claimId,
           previousOutstanding: outcome.previousOutstanding,
           newOutstanding: outcome.newOutstanding,
+          insurancePaymentReported: (row.insurancePaidAmount ?? 0) > 0,
         });
 
         const isT11 =
@@ -278,7 +331,7 @@ export async function importPmsClaimsToPrisma(
     } catch (err) {
       result.failed += 1;
       result.errors.push({
-        claimNumber: getClaimNumberFromRaw(raw),
+        claimNumber: row.claimNumber,
         error: (err as Error).message,
       });
     }
@@ -286,8 +339,9 @@ export async function importPmsClaimsToPrisma(
 
   const verified = await runPaymentVerificationBatch(prisma, practiceId, syncUpdates);
   result.paymentsVerified = verified.filter((v) => v.verified).length;
+  // Only verified payments count; partial and unconfirmed balance drops are tracked on the claim, not credited.
   result.dollarsRecoveredSyncVerified =
-    verified.reduce((s, v) => s + v.amountRecoveredCents, 0) / 100;
+    verified.filter((v) => v.verified).reduce((s, v) => s + v.amountRecoveredCents, 0) / 100;
 
   return result;
 }
