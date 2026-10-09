@@ -114,14 +114,13 @@ Standing rule: a client is never the first to exercise a capability (root `CLAUD
 - [ ] Full automated suite and e2e green on the exact commit being deployed
 - [ ] Staging runs that commit; migrations applied; smoke and product walkthrough pass
 - [ ] Import: realistic exports from each supported PMS family (line-level and claim-level, full and partial) produce correct balances, closures and zero false recoveries
-- [ ] Simulated carrier IVR for each supported carrier: CollectRx calls it from staging; IVR navigation, hold detection and handoff all pass
-- [ ] Live carrier lines: CollectRx calls each carrier from staging and proves IVR navigation and hold detection up to the point a claim is needed, with no claim data sent
-- [ ] Staff transfer to CollectRx's own phones: answered, declined and unanswered paths all behave as designed (warm transfer, missed-handoff script, reference number captured and delivered)
+- [ ] Contained call lab: the deployed squad calls a simulated carrier (IVR menu, hold queue, rep) for each supported carrier; IVR navigation, hold detection and handoff pass at the pre-registered rate over repeated runs. No real carrier is called
+- [ ] Simulated staff endpoint: answered, declined and unanswered transfer paths all behave as designed (warm transfer, missed-handoff script, reference number captured and delivered)
 - [ ] CARRIER_BLOCK drill on staging: block set mid-queue stops all dials to that carrier across practices
 - [ ] PHI boundary: after a full staging call cycle, Vapi metadata and logs contain no test patient identifiers
 - [ ] Billing limits on staging in Stripe test mode: trial caps, overage pause, plan locks, payment failure
 - [ ] Learning loop: a staging call log produces an updated carrier playbook
-- [ ] Anything that can only be proven with a real claim is listed here, with how CollectRx closes it without a client:
+- [ ] Every result above meets the empirical standard in the root `CLAUDE.md` (pre-registered criteria, repeated runs, stored evidence per commit and prompt version)
 
 ## G — Pilot cutover
 
