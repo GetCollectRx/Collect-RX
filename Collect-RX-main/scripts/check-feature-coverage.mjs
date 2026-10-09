@@ -10,14 +10,16 @@
  *   node scripts/check-feature-coverage.mjs --coverage <summary.json>
  *   node scripts/check-feature-coverage.mjs --coverage <summary.json> --raise-floors
  *
- * --raise-floors only ever raises a floor to the current whole-number coverage;
- * it never lowers one.
+ * --raise-floors only ever raises a floor, to one point below the current
+ * whole-number coverage: coverage varies slightly between machines, and a
+ * floor set at exactly the local figure fails in CI. It never lowers one.
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 const REGISTRY_PATH = join(ROOT, 'test-coverage', 'feature-registry.json');
+const ENVIRONMENT_TOLERANCE_POINTS = 1;
 
 function globToRegExp(glob) {
   let re = '';
@@ -112,7 +114,7 @@ function main() {
       if (pct + 1e-9 < feature.floor) {
         problems.push(`feature "${feature.id}" line coverage ${pct.toFixed(1)}% is below its floor ${feature.floor}%`);
       }
-      if (raise) feature.floor = Math.max(feature.floor, Math.floor(pct));
+      if (raise) feature.floor = Math.max(feature.floor, Math.floor(pct) - ENVIRONMENT_TOLERANCE_POINTS);
     }
     console.table(rows);
     if (raise) {
