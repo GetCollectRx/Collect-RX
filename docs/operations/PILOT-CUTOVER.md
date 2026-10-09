@@ -1,6 +1,6 @@
 # Pilot cutover — Group G
 
-**Prerequisite:** Groups C–F complete enough for a supervised pilot (staging proven; integrations live; compliance risk accepted or closed).
+**Prerequisite:** Groups C–F complete enough for a pilot (integrations live; compliance risk accepted or closed) **and group V (internal validation) complete.** A practice is never the first to exercise a capability; see the standing rule in the root `CLAUDE.md`.
 
 Product: Practice → Insurance only. **Do not** onboard patient pay / Connect.
 
@@ -20,7 +20,10 @@ Product: Practice → Insurance only. **Do not** onboard patient pay / Connect.
 4. [ ] Admin → Integrations all expected greens  
 5. [ ] Confirm `/billing` if subscription required for pilot  
 
-## Day 0 — supervised call path
+## Day 0 — prod configuration check
+
+Everything here was already proven on staging in group V. This step confirms prod is configured the same way; it is not the first test.
+
 
 1. [ ] Pick one eligible claim (age / attempts / hours rules OK)  
 2. [ ] Confirm **no CARRIER_BLOCK** for that carrier  
@@ -28,10 +31,11 @@ Product: Practice → Insurance only. **Do not** onboard patient pay / Connect.
 4. [ ] Verify metadata path: UUID tokens only (no patient name/DOB in Vapi metadata)  
 5. [ ] Outcome lands on claim (status / notes / escalation as designed)  
 
-## CARRIER_BLOCK drill
+## CARRIER_BLOCK procedure
+
+The drill itself runs in group V on staging. Before Day 0:
 
 - [ ] Know how to confirm a block in Admin / DB  
-- [ ] Confirm dispatch refuses that carrier while blocked  
 - [ ] Document who can clear a block and when  
 
 ## Week 1
@@ -43,7 +47,7 @@ Product: Practice → Insurance only. **Do not** onboard patient pay / Connect.
 
 ## Exit criteria (pilot success)
 
-- [ ] At least one full supervised insurance follow-up loop  
+- [ ] Value measured against the practice's baseline (staff time, claims moved)  
 - [ ] Zero unexplained PHI boundary violations  
 - [ ] Zero unacknowledged CARRIER_BLOCK events  
 - [ ] Backups + uptime still green  

@@ -167,6 +167,15 @@ A practice can be fully onboarded via CSV with no desktop app required. The Elec
 
 ---
 
+## Standing rule: clients are never the test
+
+**A paying client, a pilot practice, or any practice using CollectRx must never be the first to exercise a capability.** They are paying for something that works. Every capability is proven by CollectRx, internally, before any practice relies on it. (Founder rule, 2026-10-09.)
+
+- Never recommend a pilot, trial, "first practice" or "supervised first calls" as the way to find out whether something works. Pilots measure value (time saved, dollars recovered) of a product already proven to work.
+- Proof comes from CollectRx's own testing: automated tests, staging, simulated carrier IVRs, live calls placed by CollectRx to carrier lines up to the point a claim is needed, transfers to CollectRx's own phones, and drills (CARRIER_BLOCK, missed handoff, billing limits).
+- If something can only be proven with a real claim, say so plainly, name exactly what remains unproven, and propose how CollectRx closes that gap itself before any client sees it. Do not hand the gap to a client.
+- Launch readiness is tracked in group V (internal validation) of [`docs/operations/PATH-TO-DELIVERY.md`](docs/operations/PATH-TO-DELIVERY.md). Group G (pilot cutover) cannot start until V is complete.
+
 ## Critical safety rules
 
 ### PHI Boundary
