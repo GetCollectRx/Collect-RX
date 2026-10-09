@@ -18,7 +18,7 @@
     "worker": "npm run worker -w dental-ar-system",
     "dev:electron": "npm run dev:electron -w dental-ar-system",
     "build:collectrx": "npm run build -w dental-ar-system",
-    "test:collectrx": "npm run test -w dental-ar-system",
+    "test:collectrx": "npm run test:coverage -w dental-ar-system",
     "lint:collectrx": "npm run lint -w dental-ar-system",
     "typecheck:collectrx": "npm run typecheck -w dental-ar-system",
     "check:api": "node Collect-RX-main/scripts/check-api-coverage.mjs",
