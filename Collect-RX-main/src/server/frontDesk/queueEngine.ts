@@ -23,6 +23,7 @@ import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
+import { recordDispatchedCallAttempt } from './callAttemptRecording.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
@@ -1016,17 +1017,10 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
-      const attempt = await prisma.callAttempt.create({
-        data: {
-          claimId: next.claimId,
-          vapiCallId: vapiResult.vapiCallId,
-          initiatedAt: new Date(),
-          liveState: 'dialing',
-          activeAgent: 'IVR_Navigator',
-          // Excludes this call from CarrierLesson extraction (learning loop
-          // webhook path) — that pipeline is scoped to the autonomous squad only.
-          isHumanAssisted: humanAssisted,
-        },
+      const attempt = await recordDispatchedCallAttempt(prisma, {
+        claimId: next.claimId,
+        vapiCallId: vapiResult.vapiCallId,
+        isHumanAssisted: humanAssisted,
       });
 
       await prisma.$transaction([
