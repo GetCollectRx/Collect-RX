@@ -1012,3 +1012,56 @@ Consequences and decisions:
 - Real Vapi concurrency, squad-count and rate limits for this account, and Twilio per-number pacing: **[X]**, check the account, not documentation alone.
 - Whether payers throttle or flag by caller ID: **[X]**, unknown; the pool is mitigation, not proof.
 - Actual average call length per vertical: unknown until human-assisted calls are logged; the 15 minute figure above is an illustration.
+
+---
+
+## 16. Addendum: live Vapi account findings (read-only) compared with the repository
+
+Source: a Cowork browser session read the Vapi dashboard and public docs on 2026-10-10 and reported to the founder, who passed the report here. It is a **human transcription of rendered pages, not a machine export**. It made no edits and placed no calls. It covered the squad list, the human-assisted squad and its two tools, and parts of the docs. It did **not** reach the plan and concurrency limit, phone numbers, the autonomous squad, account webhook events, recording settings, or the Hold_Sentinel and IVR_Navigator configurations. Captured text is saved in `vapi-live/`. Tags: SEEN means reported as visible in the dashboard; CODE means verified here in the repository.
+
+### 16.1 Matches between the repository and the live account
+
+| Item | Result |
+|---|---|
+| Human-assisted squad id `bbe41279-5301-4b5d-aa43-d7b23eaab5e7` | SEEN, equals the fallback in `vapi/client.ts` `getHumanAssistedSquadId`. The fallback is therefore a real production id, not a placeholder. |
+| Members | SEEN: IVR_Navigator (start), Claims_Scribe, Hold_Sentinel. Matches the code comment "IVR_Navigator -> Hold_Sentinel -> Claims_Scribe". |
+| Webhook URL and auth | SEEN: `https://collect-rx.fly.dev/api/webhooks/vapi`, HMAC credential, 20 second tool timeout. CODE: `webhooks/vapi.ts` accepts `x-vapi-signature` or `x-vapi-secret`. |
+| Scribe scenario list | SEEN: ten values. CODE: identical to the keys of `SCENARIO_MAP` in `outcome/humanAssistedOutcomeResolver.ts`. |
+| `log_call_outcome` fields | SEEN: 2 required, 12 optional strings, 3 optional booleans. CODE: `handleLogCallOutcome` reads exactly those fields. No schema drift found. |
+| `request_staff_handoff` has no parameters | SEEN. CODE: the handler takes `vapiCallId`, `claimId` and `practiceId` from the call object (`call.assistantOverrides.metadata`), not from tool arguments, then calls `transferVapiCall(vapiCallId, escalationPhone)`. The concern raised in the report is answered: context comes from call metadata set at dispatch. |
+| Scribe prompt variables | CODE: every variable it references (`practice_name`, `claim_id`, `patient_token`, `policy_number`, `group_number`, `insurance_carrier`, `treatment_date`, `claim_submitted_date`, `days_outstanding`, `amount_billed`, `amount_expected`, `treatment_codes`, `claim_number`) is set in `initiateCall` `variableValues`. |
+
+Implication: the earlier claim that the human-assisted squad is "not version-controlled" stands (it lives only in the dashboard) but the repository and the dashboard agree on everything compared so far, so bringing it into the repo is a transcription and sync job, not a reverse-engineering job. Captured files are the starting point.
+
+### 16.2 New findings
+
+1. **Claims_Scribe has first message "Hello." (SEEN)** while its prompt forbids speaking. Whether the rep ever hears it depends on whether Vapi speaks a squad member's first message on handoff and on how the staff transfer is configured. Both are **[X]**. Treat as a defect to test with a call to the founder's own phone, never an insurer: either clear the first message or set it to never speak.
+2. **The staff handoff is a Vapi transfer to the practice's escalation phone** (CODE: `transferVapiCall` in `handleStaffHandoffRequest`), and Claims_Scribe's prompt tells it to keep listening through any transfer. Whether a transferred call still gives the Scribe audio depends on the Vapi transfer mode (warm, conference, or blind). **Unverified and central to the V1 product**, because the outcome log (`HumanAssistedCallLog`) and every playbook derived from it depend on the Scribe hearing the staff-rep conversation. Verify in staging with two of your own phones before building anything new on this path.
+3. **Unpublished state on the human-assisted squad (SEEN).** The control read "Published" at first and "Publish" later. Cause unknown; the session says it clicked nothing. Check the squad's draft diff and version history before anyone publishes.
+4. **Data minimization gap (CODE).** `initiateCall` injects the same `variableValues` into every squad, including `patient_name`, `patient_dob` and subscriber fields. The human-assisted prompts shown do not use them (SEEN: only token, policy and claim fields), but they are still sent. This is exactly the case the per-objective identity allowlist (section 5.10) fixes; it is no longer only theoretical.
+5. **Dental text is hardcoded in live assets.** The Scribe prompt says "dental practice" and uses EOB and fee-guide vocabulary; CODE: `handleStaffHandoffRequest` falls back to `'the dental practice'` in the missed-handoff script. Both join the de-dentalization list in section 15.3.
+6. **Hold and transition tracking ignores the Scribe.** CODE: `ALLOWED_AGENTS` in `webhooks/holdTransitionProcessor.ts` does not include Claims_Scribe, so transitions to it are discarded.
+7. **Six squads and at least 8 other assistants exist**, including a sales squad (Objection_Closer, Voicemail_Handler, Gatekeeper_Navigator, Sales_Qualifier), a TEST squad that simulates RBC's IVR, a "Dentist" squad from February, and a no-IVR test squad. CODE: the marketing path (`tryProcessProspectVapiWebhook`) shares the same webhook endpoint as claims calls. For a multi-industry product this is a risk (a webhook that serves claims, sales and tests needs strict routing by metadata, and test squads must not be dialable from production routes) and an asset (**Voicemail_Handler and Gatekeeper_Navigator are existing, working-in-some-form patterns for the voicemail and adjuster-gatekeeper cases in sections 6.3, 6.4 and 7.4**). Inspect them as design inputs; they were written for sales calls, so their wording must not be reused for insurer calls without review.
+8. **Squad concurrency of identifiers to a model provider.** The Scribe prompt places `{{policy_number}}` and `{{patient_token}}` in a prompt processed by a third-party model provider through Vapi. This is the existing Option B decision (`docs/compliance/PHI-VAPI-BOUNDARY.md`) applied to a squad that never speaks; confirm it is covered by the same review. Not a new boundary violation, but the Scribe could be run with the token only, since it never needs to speak identifiers aloud.
+
+### 16.3 Docs findings and what they change
+
+| Question | Reported answer | Effect on the design |
+|---|---|---|
+| Per-member overrides | The squads page describes `assistantOverrides` (per member, with fields such as voice and appended tools) and `memberOverrides` (applies to all members, example shows voice). The full list of overridable fields was not found. Naming differs from the draft ("membersOverrides"). | Per-call prompt assembly (section 7.2) is still **unverified**. The squad-per-call-profile approach stays the primary plan and per-call prompt override the optional optimization. |
+| Squad and assistant limits | No cap found on the squads page. | Not established. Account-level limits still need the dashboard or API. |
+| Handoff timing | Server events listed (`speech-update`, `transcript`, `status-update`, `end-of-call-report`) carry no per-member timing. | Measured hold time (section 11) cannot be derived from documented events today. Options: have each member write timestamped markers through a tool call or `analysis.collectrx.agentTransition` (the repo already reads that field), or use the call's transcript and per-message timestamps. Needs a staging test. |
+| Concurrency limit, voicemail detection, per-number guidance | NOT FOUND (guessed URLs returned 404). | Still open. Check the dashboard organization settings and the voicemail section of the docs index. |
+| `assistant-request` webhook | Must respond within 7.5 seconds and can return a `destination` that bypasses the assistant. | If dispatch ever moves to dynamic assistant selection at call time, that handler must be fast; keep it a pure lookup against precomputed grants. |
+
+### 16.4 Updates to earlier sections and work packages
+
+- Section 3.4 row "Human-assisted squad": reword to "exists in the dashboard, id confirmed; prompt and tool schema now captured in `vapi-live/`, not yet in version control or tests."
+- Section 13 item 1: partly answered as above; hold-time source and per-member prompt override remain open.
+- WP-5 gains: (a) sync script and tests for the human-assisted squad using the captured files; (b) resolve the first message; (c) staging test of Scribe audio after transfer.
+- New WP-0b (before WP-1, no code in the dispatch path): verify items 16.2.1 to 16.2.3 on staging with the founder's own phones, and record the result in this document. Everything the V1 learning loop and every future vertical's human-assisted mode depends on this.
+- WP-7 gains: per-squad variable allowlist applied to the human-assisted squad first.
+
+### 16.5 Still unknown
+
+Plan and concurrency limit; phone number count, provider and pacing; the autonomous squad's live prompts versus `vapi-squad-config.json` (a marker-phrase comparison is the cheapest check); account webhook events and secret presence; recording and retention settings; Hold_Sentinel and IVR_Navigator models, timeouts, voicemail detection; what each non-claims squad is wired to.
