@@ -210,7 +210,7 @@ In `recovery/paymentVerification.ts`:
 
 ### 4.1 Decision
 
-Extend the existing Express and Prisma monolith. Evidence that separate services are not justified: tenancy, RLS, webhook ledger, billing gates, worker queue (BullMQ) and observability already live in one deployable and are working infrastructure; the new concerns are data-model and policy concerns, not scaling or isolation concerns. A single Vapi concurrency bottleneck exists (`vapiSlotBudget`, one call per practice per tick), which is a tuning matter.
+Extend the existing Express and Prisma monolith. Evidence that separate services are not justified: tenancy, RLS, webhook ledger, billing gates, worker queue (BullMQ) and observability already live in one deployable and are working infrastructure; the new concerns are data-model and policy concerns, not scaling or isolation concerns. The original draft called the Vapi concurrency ceiling "a tuning matter." That was too dismissive for a multi-industry, many-tenant product; section 15 analyzes it and changes the dispatch design accordingly.
 
 Revisit only if (a) call dispatch needs independent scaling from the web tier, which `Dockerfile.worker` and BullMQ already allow, or (b) a vertical requires a different data residency posture.
 
@@ -942,3 +942,73 @@ None of these block the architecture. Each needs resolution before the dependent
 - FSRA HCAI page and system review: [fsrao.ca health claims auto insurance HCAI](https://www.fsrao.ca/industry/auto-insurance/health-claims-auto-insurance-hcai)
 - Form changes after July 1, 2026 (third-party summary, unverified): [practiceperfectemr.com HCAI update](https://practiceperfectemr.com/blog/hcai-update-july-1-2026/)
 - WSIB billing instructions and archived health care fees policy: [wsib.ca health care fees (archived)](https://www.wsib.ca/en/operational-policy-manual/health-care-fees-archived-december-5-2024), [TELUS WSIB direct billing](https://telus.com/health/health-professionals/allied-healthcare-professionals/wsib)
+
+---
+
+## 15. Addendum: many concurrent tenants and a dental-shaped squad
+
+Added after founder feedback that the product will be sold into many industries, with far more simultaneous clients than the initial dental build, and that the existing Vapi workflow is niche to dentistry. The first draft handled tenancy and data shape but under-treated throughput and the squad's dental coupling. Both are addressed here.
+
+### 15.1 Scale: what the dispatch engine does today [F]
+
+| Property | Observed | Location |
+|---|---|---|
+| One engine tick scans all practices sequentially, once per 60 seconds | Yes, ordered by least recently served | `queueEngine.ts:65-125`, `orderPracticesByFairness` |
+| One engine replica runs at a time | Single global lease row, 90 second TTL | `claimTickLease`, `queue_engine_lease` |
+| At most one call started per practice per tick, and one active call per practice | Yes (`activeAttempt` check, early `return` after a dispatch) | `queueEngine.ts` ~658 and end of candidate loop |
+| Fleet-wide concurrent call budget | `VAPI_MAX_CONCURRENT_CALLS` default 10 minus `VAPI_CONCURRENCY_RESERVE` default 2, so 8 slots | `vapiSlotBudget()` |
+| Per-payer concurrency ceiling | 5 per `CarrierId`, six dental carriers only | `billing/tiers.ts:174` |
+| Outbound identity | One `VAPI_PHONE_NUMBER_ID` for every tenant | `vapi/client.ts` `getPhoneNumberId`; `PHONE_NUMBER_SCALING.md` |
+| Per-tenant cost protection | COGS breaker, plan gates, usage periods | `billing/tiers.ts` |
+| Starvation protection | `lastServedAt` fairness ordering | `orderPracticesByFairness` |
+
+Arithmetic from those defaults, not a measurement: with 8 slots and calls that include real hold time (the code allows up to 45 minutes, `CALL_TIMEOUTS`), steady-state throughput is on the order of 8 calls per average call length. At a 15 minute average that is about 32 calls per hour fleet-wide, regardless of how many tenants exist. The queue then depends on `VAPI_CAPACITY_EXHAUSTED` deferrals of 15 minutes. That is adequate for a handful of dental practices and becomes a visible service-level problem as tenants multiply. Hold-heavy verticals (insurer claims queues) consume slots for the longest, and adjuster-led verticals consume them in a different pattern (many short voicemail attempts).
+
+The `PHONE_NUMBER_SCALING.md` statement that one Twilio number supports 100+ concurrent calls is the repository's own claim and is **[X]**; I did not verify it, and Vapi's own account concurrency limits are a separate ceiling.
+
+### 15.2 Changes to the design [P]
+
+1. **Replace the global 60 second scan with a due-task queue.** `recovery_tasks.next_due_at` is indexed; a worker claims due tasks with `FOR UPDATE SKIP LOCKED` and hands them to `dispatch()`. The repository already runs BullMQ workers (ADR 0002); use them for claim-and-dispatch instead of one process walking every tenant. Keep the global lease only as a fallback while migrating. Acceptance: with 500 synthetic tenants and a mock Vapi, tick-equivalent latency from "task due" to "dispatch attempted" stays inside a stated bound, and adding a second worker raises throughput without double dispatch.
+2. **Three nested concurrency budgets, all data-driven.** (a) Account budget: the Vapi plan limit, a configured number. (b) Payer-route budget: per `payer_program` and per `contact_route`, aggregated across tenants (counters only, no tenant identifiers exposed), so ten tenants calling the same auto insurer cannot look like an attack from one caller. (c) Tenant budget: by plan tier, so one large multi-location operator cannot consume the fleet. The current per-`CarrierId` constant becomes a `policy_packs` field.
+3. **Priority classes in the shared queue.** Retry after a confirmed commitment date and staff-scheduled callbacks outrank cold first attempts; accruing-charge tasks (storage, accommodation) outrank non-accruing ones. Fairness by tenant stays (generalize `lastServedAt`).
+4. **Outbound identity pool.** Move from one global number to a pool assigned per tenant or per vertical, with per-number pacing and a health signal (answer rate, block events). Risk of carriers flagging a shared caller ID grows with tenant count and with the number of industries hitting the same payers. Whether payers act on caller ID is **[X]** and unknown; the pool is cheap insurance and the schema (`phone_number_pool`, `call_attempts.phone_number_id`) is small.
+5. **Blocks become scope-aware.** Today `CarrierBlockEvent` is per practice and carrier, with organization siblings. With many tenants, a block signal should be recorded per `payer_program` and `contact_route`, and the fleet-level reaction (pause all tenants on that route) is a deliberate platform decision with an operator override, because one tenant's mistake must not silently stop everyone else, and a real automation-detection event must stop everyone. Both directions need a rule; I recommend: tenant-scoped block immediately, route-scoped block after a second tenant reports the same route within a window or on an operator decision.
+6. **Webhook and storage load.** `processed_vapi_webhooks`, `call_transcript_lines`, `phi_vault_entries` and `claim_recovery_events` grow per call. Add retention jobs and partitioning plans per table before onboarding volume; the existing retention settings are per practice and dental-oriented.
+7. **Noisy-neighbor tests as acceptance.** A load test that proves: one tenant with 10,000 due tasks does not delay another tenant's single task beyond a bound; one payer route at its budget defers only calls to that route; killing a worker mid-dispatch produces no duplicate and no lost task.
+
+### 15.3 Squad: the dental workflow is niche, so do not generalize it in place [F + P]
+
+Measured on `vapi-squad-config.json` (counts of dental or clinical vocabulary in each prompt):
+
+| Role | Prompt length | Dental/clinical terms |
+|---|---|---|
+| IVR_Navigator | 4,308 chars | "dental" 1, "patient" 2 |
+| Hold_Sentinel | 1,206 chars | none |
+| Claims_Agent | 17,542 chars | "patient" 18, "EOB" 5, "procedure" 4, "fee guide" 3, "x-ray" 2, "radiograph" 1, "dental" 1 |
+| Escalation_Closer | 1,495 chars | radiographic/clinical documentation is its entire purpose |
+| Resolution_Closer | 1,924 chars | "patient" 2 |
+
+Consequences and decisions:
+
+1. **Layers.** IVR_Navigator and Hold_Sentinel are nearly vertical-neutral. Reuse them after replacing the two dental words and moving carrier-specific hints to `contact_route.ivr_path`. They are the most reusable assets and also the largest labor saving.
+2. **Claims_Agent is a dental product, not a template.** Its 17.5k character prompt encodes dental scenarios (coverage maximum, EOB to the patient, fee guide year, x-ray escalation), dental authentication (policy, NPI, tax id, treatment codes) and dental etiquette. Editing it in place risks two failures at once: regressing the working dental calls, and importing dental assumptions into rehab, restoration and collision conversations where they would be wrong (for example, "the balance will be billed to the patient" when the legal debtor is a policyholder). **Freeze the dental prompt as `dental_v1`.** Build a vertical-neutral core from the behaviors that are demonstrably generic in it (refusal protocol, reference capture, contradiction handling, deadline lock-in, difficult-rep ladder, speaking identifiers, ending the call) and attach vertical scenario sections as separate packs. Promote a pack only when its golden transcripts pass; retire `dental_v1` into the same pack format last.
+3. **Do not assume one squad fits all.** The adjuster conversation (restoration, collision, MVA) is a person-to-person status discussion with voicemail and callbacks, not an IVR-first claims-line call. It may need a different member order (start at Hold_Sentinel or the rep agent), different tools, different voice settings and different timeouts. The design therefore allows **one squad definition per call profile** (`ivr_claims_line`, `adjuster_direct`, `provider_services`), each assembled from the same role library, rather than a single universal squad.
+4. **Squad-as-code.** The human-assisted squad exists only in the Vapi dashboard (section 3.4). With many verticals that is untenable: pack-driven squads must be defined in the repository, synced to Vapi by a script, versioned, and covered by tests (extend `vapiSquadConfig.test.ts`). The assistant model, temperature, transcriber and tool schemas are all part of the pack bundle. Whether a squad can be created and updated through Vapi's API in the way the repository needs, and the limits on squad and assistant counts, are **[X]**; confirm in staging before committing to the per-profile approach. Fallback: per-call `assistantOverrides` carrying the pack's prompt fragment (also **[X]**).
+5. **Evaluate before launch.** The repository already has conversation robustness evaluation (`src/services/analytics/conversation-robustness-eval.ts`) and an eight dimension automated evaluation. Each new pack must pass the same evaluation harness against simulated counterparts (the `voice-agent-sim/` directory exists) with no insurer contact. I did not assess how complete that harness is; treat that as a work item in WP-5, not an assumption.
+6. **Trigger for graduating from human-assisted mode** is per pack, not global, and is decided from logged calls (rep reachability, correct outcome capture rate, refusal rate, automation-suspicion flags). This keeps the dental autonomy decision (ADR 0003) separate from every other vertical.
+
+### 15.4 Revised work-package notes
+
+| Package | Addition |
+|---|---|
+| WP-1 | Dispatch service takes tasks from a claimed due-queue, not from the single tick scan; three nested budgets; pool-aware phone number |
+| WP-4 | Payer-route budgets and scope-aware blocks live in the registry |
+| WP-5 | Squad-as-code, per call profile; neutral core plus packs; frozen `dental_v1`; evaluation harness gate |
+| New WP-1b (after WP-1) | Load and noisy-neighbor test suite described in 15.2 item 7, run in CI against a mock Vapi |
+| WP-8 | A vertical cannot be enabled for a tenant until its pack has passed evaluation and its payer-route budget is configured |
+
+### 15.5 What still is not established
+
+- Real Vapi concurrency, squad-count and rate limits for this account, and Twilio per-number pacing: **[X]**, check the account, not documentation alone.
+- Whether payers throttle or flag by caller ID: **[X]**, unknown; the pool is mitigation, not proof.
+- Actual average call length per vertical: unknown until human-assisted calls are logged; the 15 minute figure above is an illustration.
