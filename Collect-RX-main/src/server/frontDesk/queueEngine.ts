@@ -1016,17 +1016,22 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
-      const attempt = await prisma.callAttempt.create({
-        data: {
+      // Upsert: call.started (vapiDeskEvents) can create this row first without
+      // isHumanAssisted. Setting it on update keeps a human-assisted call authorized
+      // for its staff handoff.
+      const attempt = await prisma.callAttempt.upsert({
+        where: { vapiCallId: vapiResult.vapiCallId },
+        create: {
           claimId: next.claimId,
           vapiCallId: vapiResult.vapiCallId,
           initiatedAt: new Date(),
           liveState: 'dialing',
           activeAgent: 'IVR_Navigator',
           // Excludes this call from CarrierLesson extraction (learning loop
-          // webhook path) — that pipeline is scoped to the autonomous squad only.
+          // webhook path) - that pipeline is scoped to the autonomous squad only.
           isHumanAssisted: humanAssisted,
         },
+        update: { isHumanAssisted: humanAssisted },
       });
 
       await prisma.$transaction([

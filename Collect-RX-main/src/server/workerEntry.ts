@@ -19,6 +19,7 @@ import { runWithRlsBypass, runWithPracticeRls } from './db/rlsContext.js';
 import { runWithCorrelationId } from './observability/correlationContext.js';
 import { AR_QUEUE_NAME } from './jobs/arQueue.js';
 import { runRulesEngineTick } from './rulesEngine.js';
+import { markStaleStaffHandoffsUnknown, STALE_HANDOFF_AFTER_MS } from '../webhooks/staffHandoff.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
@@ -164,6 +165,10 @@ const worker = new Worker(
     runWithRlsBypass(async () => {
       if (job.name === 'RULES_TICK') {
         await runRulesEngineTick(prisma);
+        const staleHandoffs = await markStaleStaffHandoffsUnknown(prisma, new Date(), STALE_HANDOFF_AFTER_MS);
+        if (staleHandoffs > 0) {
+          logger.warn('[worker] staff handoffs with no settlement marked OUTCOME_UNKNOWN; not retried', { count: staleHandoffs });
+        }
       } else if (job.name === 'TRIAGE_CREDENTIAL_HEALTH') {
         const checked = await runTriageCredentialHealthJob(prisma);
         logger.info('[worker] TRIAGE_CREDENTIAL_HEALTH checked credentials', { checked });
