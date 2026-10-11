@@ -221,7 +221,7 @@ function setupRoutePrisma(claim: typeof CLAIM, opts: { attempts?: number; flagPa
     practice: {
       findUnique: vi.fn(async () => ({ name: 'Demo Practice', billingPhone: null, npi: null, taxId: null, practiceAddress: '1 Main St' })),
     },
-    featureFlag: { findMany: vi.fn(async () => (opts.flagPaused ? [{ paused: true }] : [])) },
+    featureFlag: { findMany: vi.fn(async () => (opts.flagPaused ? [{ practiceId: null, paused: true }] : [])) },
     $transaction: vi.fn(async (arg: unknown) => {
       if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(routeTx(attempts));
       return Promise.all(arg as Promise<unknown>[]);

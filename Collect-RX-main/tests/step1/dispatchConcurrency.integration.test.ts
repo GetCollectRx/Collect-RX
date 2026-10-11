@@ -279,6 +279,26 @@ describe.skipIf(!dbReady)('one claim, one dial (real Postgres)', () => {
     }
   }, 30_000);
 
+  it('staged release: a global pause blocks manual dials, a practice enable row opens only that practice, removing the global row follows the default', async () => {
+    const claim = await newClaim({ queued: false });
+    await prisma.featureFlag.create({ data: { feature: 'dispatch.manual_shared_builder', paused: true, practiceId: null } });
+    try {
+      const blocked = await trigger(claim.id);
+      expect(blocked.status).toBe(503);
+      expect(blocked.body.code).toBe('MANUAL_DISPATCH_PAUSED');
+      expect(h.dials).toHaveLength(0);
+
+      await prisma.featureFlag.create({
+        data: { feature: 'dispatch.manual_shared_builder', paused: false, practiceId: setup.practice.id },
+      });
+      const opened = await trigger(claim.id);
+      expect(opened.status).toBe(200);
+      expect(h.dials.filter((d) => d.claimId === claim.id)).toHaveLength(1);
+    } finally {
+      await prisma.featureFlag.deleteMany({ where: { feature: 'dispatch.manual_shared_builder' } });
+    }
+  }, 30_000);
+
   it('treats an unclassified claim as PRIVATE and says so in the manual response', async () => {
     const claim = await newClaim({ payerType: null });
     const res = await trigger(claim.id);

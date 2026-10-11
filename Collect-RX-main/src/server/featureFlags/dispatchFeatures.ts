@@ -1,14 +1,23 @@
 import type { PrismaClient } from '@prisma/client';
 
 /**
- * Dispatch rollout flags. Same table as the CSV AR flags: a row in FeatureFlag, per
- * practice or global (practiceId null). The feature is ON unless a paused row
- * exists at either scope, so pausing any applicable row is the rollback.
+ * Dispatch rollout flags, stored in the same FeatureFlag table as the CSV AR
+ * flags: one row per practice, or a global row (practiceId null).
+ *
+ * Resolution, most specific first:
+ *   1. a row for this practice decides (paused = off, not paused = on);
+ *   2. otherwise a paused global row turns the feature off;
+ *   3. otherwise the feature is ON (no row at all means on).
+ *
+ * Because "no row" is on, a deploy that has no global pause row in place turns
+ * the feature on for every practice at once. A staged release therefore starts
+ * with a global pause row, enables practices one at a time with practice rows,
+ * and removes the global row last (docs/runbooks/manual-dispatch-rollback.md).
  */
 export const DISPATCH_FEATURES = {
   /**
    * The manual "Call now" route dials through the shared dispatch decision and
-   * call builder. While this is paused the route does not dial at all: the
+   * call builder. While this is off the route does not dial at all: the
    * previous manual path is intentionally not kept, because it could not
    * select the human-assisted squad.
    */
@@ -27,9 +36,9 @@ export async function isDispatchFeatureEnabled(
       feature,
       OR: [{ practiceId }, { practiceId: null }],
     },
-    select: { paused: true },
+    select: { practiceId: true, paused: true },
   });
-  // Kill-switch semantics: a paused row at either scope turns the feature off.
-  // No row means on (staged rollout uses explicit pause rows).
-  return !flags.some((flag) => flag.paused);
+  const practiceFlag = flags.find((flag) => flag.practiceId === practiceId);
+  if (practiceFlag) return !practiceFlag.paused;
+  return !flags.some((flag) => flag.practiceId === null && flag.paused);
 }
