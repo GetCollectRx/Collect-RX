@@ -1065,3 +1065,48 @@ Implication: the earlier claim that the human-assisted squad is "not version-con
 ### 16.5 Still unknown
 
 Plan and concurrency limit; phone number count, provider and pacing; the autonomous squad's live prompts versus `vapi-squad-config.json` (a marker-phrase comparison is the cheapest check); account webhook events and secret presence; recording and retention settings; Hold_Sentinel and IVR_Navigator models, timeouts, voicemail detection; what each non-claims squad is wired to.
+
+---
+
+## 17. Addendum: domain research results and the separate-workflows question
+
+Four research agents examined the four expansion groups on 2026-10-11. Reports: `domain-research/rehab-allied.md`, `property-restoration.md`, `collision-tow-storage.md`, `equipment-pharmacy-hearing.md`. **Evidence quality is limited:** every agent's page fetches failed (DNS errors or proxy 403), so all findings come from search-result excerpts. "VERIFIED" in those files means a search summary quoted a primary source, not that the page was read in full. Nothing below may become product logic until the primary text has been read (see the verification prompt in the session notes and section 13). All reports are inferences about what phone work exists; none observed a real call.
+
+### 17.1 What the research changes
+
+1. **Phone is the residual path, not the main path.** Most of these domains are electronic first: Ontario auto uses HCAI for submission, WSIB uses electronic billing through TELUS Health with portal status and remittance, ADP has been electronic-only since January 2022, ODB and TDP adjudicate in real time, NIHB runs through a pharmacy benefit manager, VAC through a portal. The pitch "we remove phone work" is true only for the remainder: payment trace and reissue, exception cases, adjuster-led files, and preauthorization. The architecture must therefore probe electronic evidence the tenant already has (the existing pre-call triage idea in `queueEngine.ts`, `probeClaimStatus`) before it places any call, and the sizing of each vertical must be done on that residual volume. This is an inference from search excerpts and the first thing human-assisted call logs should confirm or refute.
+2. **Preauthorization is a distinct call type with the better phone fit in the equipment/hearing group.** Examples reported: NIHB audiology prior approval, WSIB exception-level hearing aids, VAC grid exceptions, group predetermination. Its output is an approval reference and validity dates, not money. Keep the `preauthorizations` entity (section 6.5) and do not route it through AR logic, recovery attribution or aging windows.
+3. **Fit ranking from the equipment/pharmacy/hearing report (its inference):** hearing/audiology medium; orthotics/prosthetics medium (thin evidence); equipment/mobility weak to medium; pharmacy weak for AR with pockets in specialty prior auth and audit disputes; employer HR/disability none for AR. This agrees with the recommendation in section 6.5 to exclude employer HR/disability.
+4. **Who gets paid changes the data model.** Under Ontario SABS only a facility holding a valid FSRA licence at both service date and invoice date is paid directly; otherwise payment goes through the claimant. In property restoration the contractor works for the insured, not the insurer, and a direction to pay and an assignment are different instruments. In collision, the insurer can count as a person "lawfully entitled" to the vehicle before paying the insured (*409 Collision Centre v. Intact*, 2018 ONCA 394, secondary source). These confirm that `legal_debtor`, `payment_recipient` and the authorizing instrument must be separate, effective-dated facts (sections 5.5 and 5.6), and that `authorization_grants` needs `direction_to_pay`, `assignment` and `licence_status` kinds.
+5. **Legal edges are many and recurring.** Construction lien and prompt-payment rules, repair and storage liens (60-day repairer sale right; 15-day storer notice for Ontario-permit vehicles; insurer payment into court and a 3-day release), towing consent and published maximum rates, and SABS payment and response deadlines all recur. They share one design consequence: the squad collects facts and hands off; it never advises on, threatens, or performs a lien, notice or dispute step. Make "legal edge" an explicit forced-handoff trigger class (section 7.5) with per-domain phrase lists, and record the rule version used.
+6. **Cross-cutting blocker:** whether AI-voiced outbound calls to businesses fall under the CRTC automatic dialing-announcing device rules (a CRTC notice under review was cited, outcome not found), what an adjuster may disclose to a provider or billing agent, and whether CollectRx is a PHIPA agent. These affect every vertical and the existing dental product. Counsel, not engineering, decides.
+
+### 17.2 Do we need separate workflows? Yes, but not separate squads
+
+Evidence supports one shared call engine (IVR navigation, hold waiting, rep conversation, typed outcome, evidence capture, handoff, reconciliation) with distinct **workflow modules** around it. A workflow module is a named bundle of: the entity shape it creates (case, invoices, parties), the gates before a call, the objective pack, the follow-up rules, the forced-handoff triggers, and the reconciliation rule. The research yields these modules:
+
+| Module | Serves | What makes it separate | Entity shape |
+|---|---|---|---|
+| W1 Claims-line AR status | Dental (existing), extended health (rehab, hearing, orthotics) | Provider-services IVR, member and claim identifiers, EOB-style outcomes | one case, one receivable per claim |
+| W2 Auto-insurer provider invoice trace | Ontario MVA rehab | Adjuster-led, OCF-18 and OCF-21 identifiers, licensed-facility rule, 10-business-day and 30-day clocks as parameters, remittance covering many invoices, represented-claimant and tribunal stop rules | one case, many invoices, many-to-many remittance |
+| W3 Government program status and exceptions | WSIB, ADP, NIHB, VAC, ODB (where phone is used at all) | Program-specific helplines, mostly electronic status first, exception approvals | per program; weak evidence of volume |
+| W4 Property restoration | Contractors, accommodation providers | Contractor works for the insured, joint payee cheques, holdbacks, supplements, scope disputes, adjuster or TPA as the contact, accommodation authorizations with nightly accrual | one case, progress and final invoices, accruals, holdback segments |
+| W5 Collision, tow and storage | Shops, towers, storage yards | Several businesses on one claim, accruing storage with authorization end dates, lien and consent rules, deductible owed by owner | one case, repair plus supplement plus tow plus storage plus deductible receivable |
+| W6 Preauthorization request | Hearing, orthotics, equipment, specialty drug | No receivable; output is a reference and validity period; clinical support documents | no receivable; `preauthorizations` |
+
+Why not separate squads per module: the roles (navigate, wait, converse, close, scribe) are the same; what differs is data, gates, prompts and outcome schema. Where call profiles truly differ (adjuster direct line versus IVR claims line), section 15.3 already allows one squad definition per call profile built from the same role library. Rule: add a module when entity shape, gates or legal edges differ, not when only wording differs.
+
+### 17.3 Revisions to earlier sections
+
+- Section 6 matrix: replace "automation tier" cells with the per-module split above, and add a column "electronic-first path that must be checked before a call."
+- Section 6.2: the MVA clocks (10 business days for an OCF-18 response, 30 days to pay an invoice, 1 percent monthly interest) are now cited from excerpts of FSCO and FSRA material; the 2026 interest rate, deemed-approval rules and the HCAI form-version rule remain unconfirmed.
+- Section 10, WP-8: first vertical candidates reorder by evidence as W1 extended health and W2 MVA (clear payment trace need, shared engine), then W5 and W4 (phone-heavy but legally loaded), then W6 preauthorization (distinct, strong phone fit, no AR attribution), with W3 and pharmacy last. This is an engineering reading of weak evidence, not a commercial recommendation.
+- Section 13: add the five cross-domain unknowns in 17.4.
+
+### 17.4 Verification required before building any module
+
+1. Read the primary text for: SABS (response and payment clocks, interest, deemed approvals, licensed-facility rule), HCAI release and form-version rule, WSIB billing and payment timing, Ontario Construction Act prompt-payment rules and any 2026 change, Repair and Storage Liens Act and its regulation, Towing and Storage Safety and Enforcement Act, ADP, NIHB and VAC provider rules.
+2. Determine whether providers can see payment status in HCAI or portals (decides whether MVA payment trace needs phone).
+3. Obtain counsel opinions on the CRTC rules, PHIPA agent status, and what insurers may disclose to a provider or contractor.
+4. Observe real calls in human-assisted mode to measure voicemail rate, hold time, who answers, and what the counterpart will disclose. No source yet establishes these.
+5. Confirm for each module which electronic channel a tenant already has, so the pre-call probe has something to read.
