@@ -683,7 +683,7 @@ describe('runDeskQueueTick resilience', () => {
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });
 
-  it('defers a claim with a longer cooldown and a distinct code when the Vapi outcome is ambiguous (timeout/network)', async () => {
+  it('holds a claim for staff, with no automatic retry, when the Vapi outcome is ambiguous (timeout/network)', async () => {
     const failing = queueEntry('1');
     const eligible = queueEntry('2');
     const prisma = tickPrisma([failing, eligible]);
@@ -695,16 +695,25 @@ describe('runDeskQueueTick resilience', () => {
 
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
-    const deferCall = prisma.callQueue.update.mock.calls.find(
-      ([args]: [{ where: { id: string }; data: Record<string, unknown> }]) =>
-        args.where.id === 'q-1' && args.data.scheduledFor instanceof Date,
-    );
-    if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
-    const [{ data }] = deferCall as [{ data: { dispatchDeferralCode: string; scheduledFor: Date } }];
-    expect(data.dispatchDeferralCode).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
-    // Ambiguous cooldown (60min) must be longer than the confirmed-failure cooldown (15min).
-    const deferredMinutes = (data.scheduledFor.getTime() - Date.now()) / 60_000;
-    expect(deferredMinutes).toBeGreaterThan(45);
+    // Held, not released: the reservation is never given back for another dial.
+    expect(releaseMock).not.toHaveBeenCalledWith(prisma, expect.objectContaining({ claimId: 'claim-1' }));
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'ESCALATED' } });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: expect.objectContaining({
+        status: 'ESCALATED',
+        dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+        attempts: { increment: 1 },
+      }),
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        status: 'open',
+        reason: expect.stringContaining('did not confirm whether this call was placed'),
+      }),
+    });
+    // The other candidate is unaffected.
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
     expect(initiateCallMock.mock.calls[1][0]).toMatchObject({ claimId: 'claim-2' });
   });
@@ -776,5 +785,74 @@ describe('runDeskQueueTick claim reservation', () => {
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
     expect(validateDispatchMock.mock.calls[0][1]).toMatchObject({ payerType: 'PRIVATE', humanAssisted: true });
+  });
+});
+
+describe('runDeskQueueTick after a call was created but could not be recorded', () => {
+  function recordingFails() {
+    const prisma = tickPrisma([queueEntry('1')]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    prisma.callAttempt.upsert.mockRejectedValue(new Error('attempt row could not be written'));
+    return prisma;
+  }
+
+  it('REGRESSION: call created + attempt not persisted + cancellation fails: never releases the claim, leaves an actionable escalation', async () => {
+    const prisma = recordingFails();
+    endVapiCallMock.mockRejectedValue(new Error('Vapi unavailable'));
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(endVapiCallMock).toHaveBeenCalledWith('vapi-1');
+    expect(releaseMock).not.toHaveBeenCalled();
+    expect(prisma.insuranceClaim.update).toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'ESCALATED' } });
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: expect.objectContaining({
+        status: 'ESCALATED',
+        dispatchDeferralCode: 'VAPI_CALL_NOT_CANCELLED',
+        attempts: { increment: 1 },
+      }),
+    });
+    expect(prisma.callEscalation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: 'claim-1',
+        status: 'open',
+        reason: expect.stringContaining('Vapi call id: vapi-1'),
+      }),
+    });
+  });
+
+  it('does not touch the claim again if holding it also fails (it stays non-dialable, and the failure is logged)', async () => {
+    const prisma = recordingFails();
+    endVapiCallMock.mockRejectedValue(new Error('Vapi unavailable'));
+    prisma.insuranceClaim.update.mockImplementation(async ({ data }: { data: { status?: string } }) => {
+      if (data.status === 'ESCALATED') throw new Error('db down');
+      return {};
+    });
+
+    await expect(runDeskQueueTick(prisma as unknown as PrismaClient)).resolves.toBeUndefined();
+
+    expect(releaseMock).not.toHaveBeenCalled();
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the claim, and counts the attempt, only when Vapi accepted the request to end the call', async () => {
+    const prisma = recordingFails();
+    endVapiCallMock.mockResolvedValue(undefined);
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(endVapiCallMock).toHaveBeenCalledWith('vapi-1');
+    expect(prisma.callQueue.update).toHaveBeenCalledWith({
+      where: { id: 'q-1' },
+      data: expect.objectContaining({ attempts: { increment: 1 } }),
+    });
+    expect(releaseMock).toHaveBeenCalledWith(prisma, {
+      claimId: 'claim-1',
+      queueEntryId: 'q-1',
+      priorClaimStatus: 'IN_QUEUE',
+    });
+    expect(prisma.callEscalation.create).not.toHaveBeenCalled();
   });
 });

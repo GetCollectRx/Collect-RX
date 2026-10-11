@@ -21,6 +21,7 @@ import logger from '../observability/logger.js';
 import { recordDispatchedCallAttempt } from './callAttemptRecording.js';
 import { escalateClaimForGuard } from './dispatchEscalation.js';
 import { releaseSchedulerSlot, reserveSchedulerSlot } from './dispatchReservation.js';
+import { holdClaimForUnresolvedCall } from './dispatchUnresolved.js';
 import { resolveDispatchMode } from './dispatchDecision.js';
 import {
   buildVapiCallParams,
@@ -189,10 +190,6 @@ const DEFER_PHI_TOKEN_MS = 30 * 60 * 1000;      // vault re-tokenization is auto
 const DEFER_STAFF_ACTION_MS = 4 * 60 * 60 * 1000; // staff must fix data or settings
 const DEFER_CLAIM_AGE_MS = 24 * 60 * 60 * 1000;   // claim gains a day per day
 const DEFER_DISPATCH_FAILURE_MS = 15 * 60 * 1000; // Vapi error — retry after transient outage
-// Ambiguous outcome (request timed out / network failure — Vapi may or may not
-// have created the call) gets a longer cooldown than a confirmed rejection:
-// retrying too soon risks dialing the carrier twice for the same attempt.
-const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
 // Fleet-wide carrier concurrency limiting — when a carrier's active call
 // count hits its per-carrier ceiling, defer new attempts for the carrier.
@@ -954,15 +951,30 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           error: dispatchErr,
         },
       );
+      if (ambiguous) {
+        // A call may exist. Releasing the claim would let a later tick dial the
+        // carrier again, and the vendor idempotency key is not relied on here.
+        // Hold it for a person instead; no automatic retry.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
+          claimId: next.claimId,
+          queueEntryId: next.id,
+          claimNumber: next.claim.claimNumber,
+          carrierId: next.claim.carrierId,
+          outstandingAmount: next.claim.outstandingAmount,
+          kind: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+          countAttempt: true,
+          attemptNumber: next.attempts + 1,
+        });
+        continue;
+      }
       await releaseReservation();
       await deferQueueEntry(
         prisma,
         next.id,
-        ambiguous ? DEFER_AMBIGUOUS_DISPATCH_MS : DEFER_DISPATCH_FAILURE_MS,
-        ambiguous ? 'VAPI_DISPATCH_OUTCOME_UNKNOWN' : 'TRANSIENT_DISPATCH_FAILURE',
-        ambiguous
-          ? 'Vapi did not confirm whether the call was created before timing out. Verify in the Vapi dashboard before the next automatic retry.'
-          : 'The system will retry during the next scheduled dispatch window.',
+        DEFER_DISPATCH_FAILURE_MS,
+        'TRANSIENT_DISPATCH_FAILURE',
+        'The system will retry during the next scheduled dispatch window.',
       );
       continue;
     }
@@ -1005,20 +1017,50 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         claimId: next.claimId,
         error: postDispatchErr,
       });
+      let cancelled = false;
       try {
         await endVapiCall(vapiResult.vapiCallId);
+        cancelled = true;
       } catch (cancelErr) {
         logger.error('[deskQueueEngine] CRITICAL: orphan Vapi call — cancel also failed', {
           vapiCallId: vapiResult.vapiCallId,
           cancelError: cancelErr,
         });
       }
-      await releaseReservation().catch((releaseErr) => {
-        logger.error('[deskQueueEngine] could not release the claim after a failed post-dispatch write', {
+      if (cancelled) {
+        // Vapi accepted the request to end the call, so the claim can go back
+        // to the pool. The call did reach Vapi, so the attempt still counts.
+        await prisma.callQueue
+          .update({ where: { id: next.id }, data: { attempts: { increment: 1 }, lastAttemptAt: new Date() } })
+          .then(() => releaseReservation())
+          .catch((releaseErr) => {
+            logger.error('[deskQueueEngine] could not release the claim after a cancelled call', {
+              claimId: next.claimId,
+              error: releaseErr,
+            });
+          });
+      } else {
+        // The call may still be live with no record of it. Never release the
+        // claim for another automatic dial; leave an actionable escalation.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
           claimId: next.claimId,
-          error: releaseErr,
+          queueEntryId: next.id,
+          claimNumber: next.claim.claimNumber,
+          carrierId: next.claim.carrierId,
+          outstandingAmount: next.claim.outstandingAmount,
+          kind: 'VAPI_CALL_NOT_CANCELLED',
+          vapiCallId: vapiResult.vapiCallId,
+          countAttempt: true,
+          attemptNumber: next.attempts + 1,
+        }).catch((holdErr) => {
+          logger.error('[deskQueueEngine] CRITICAL: could not hold the claim for an uncancelled call', {
+            claimId: next.claimId,
+            vapiCallId: vapiResult.vapiCallId,
+            error: holdErr,
+          });
         });
-      });
+      }
     }
 
     // One call per practice per tick — a call was dispatched (or attempted),

@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   dialDelayMs: 0,
   triageGate: null as null | Promise<void>,
   triageEntered: null as null | (() => void),
+  dialError: null as null | 'ambiguous',
+  cancelFails: false,
+  recordingFails: false,
 }));
 
 vi.mock('../../src/vapi/client.js', async (importOriginal) => {
@@ -20,17 +23,32 @@ vi.mock('../../src/vapi/client.js', async (importOriginal) => {
   const dial = async (params: { claimId: string; idempotencyKey?: string; squadId?: string }) => {
     h.dials.push({ claimId: params.claimId, idempotencyKey: params.idempotencyKey, squadId: params.squadId });
     if (h.dialDelayMs) await new Promise((r) => setTimeout(r, h.dialDelayMs));
+    if (h.dialError === 'ambiguous') throw new actual.VapiAmbiguousOutcomeError('POST', '/call', new Error('timeout'));
     return {
       vapiCallId: `vapi-conc-${Math.random().toString(36).slice(2, 12)}`,
       status: 'queued' as const,
       createdAt: new Date().toISOString(),
     };
   };
+  const end = async () => {
+    if (h.cancelFails) throw new Error('Vapi unavailable');
+  };
   return {
     ...actual,
     initiateCall: dial,
-    endVapiCall: vi.fn(async () => undefined),
-    vapiClient: { ...actual.vapiClient, initiateCall: dial, endVapiCall: vi.fn(async () => undefined) },
+    endVapiCall: end,
+    vapiClient: { ...actual.vapiClient, initiateCall: dial, endVapiCall: end },
+  };
+});
+
+vi.mock('../../src/server/frontDesk/callAttemptRecording.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/server/frontDesk/callAttemptRecording.js')>();
+  return {
+    ...actual,
+    recordDispatchedCallAttempt: (...args: Parameters<typeof actual.recordDispatchedCallAttempt>) => {
+      if (h.recordingFails) throw new Error('attempt row could not be written');
+      return actual.recordDispatchedCallAttempt(...args);
+    },
   };
 });
 
@@ -139,6 +157,9 @@ describe.skipIf(!dbReady)('one claim, one dial (real Postgres)', () => {
     h.dialDelayMs = 0;
     h.triageGate = null;
     h.triageEntered = null;
+    h.dialError = null;
+    h.cancelFails = false;
+    h.recordingFails = false;
     await prisma.queueEngineLease.deleteMany({ where: { id: 'global' } });
     await prisma.callAttempt.deleteMany({ where: { claim: { practiceId: setup.practice.id } } });
     await prisma.callQueue.deleteMany({ where: { practiceId: setup.practice.id } });
@@ -287,6 +308,92 @@ describe.skipIf(!dbReady)('one claim, one dial (real Postgres)', () => {
     expect(escalations[0].reason).toBe('Maximum automated call attempts reached');
     expect(h.dials).toHaveLength(0);
   }, 30_000);
+
+  describe('a call that may exist is held for staff, never released for another automatic dial', () => {
+    const dialsFor = (claimId: string) => h.dials.filter((d) => d.claimId === claimId).length;
+
+    async function expectHeld(claimId: string, code: string, reasonPart: string) {
+      const { claim, queue, attempts } = await stateOf(claimId);
+      expect(claim?.status).toBe('ESCALATED');
+      expect(queue?.status).toBe('ESCALATED');
+      expect(queue?.dispatchDeferralCode).toBe(code);
+      expect(queue?.attempts).toBe(1);
+      expect(attempts).toHaveLength(0);
+      const escalations = await prisma.callEscalation.findMany({ where: { claimId, status: 'open' } });
+      expect(escalations).toHaveLength(1);
+      expect(escalations[0].reason).toContain(reasonPart);
+    }
+
+    it('scheduler: an ambiguous dispatch outcome is held, and neither later ticks nor a manual click dial it again', async () => {
+      const claim = await newClaim();
+      h.dialError = 'ambiguous';
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+      await expectHeld(claim.id, 'VAPI_DISPATCH_OUTCOME_UNKNOWN', 'did not confirm whether this call was placed');
+
+      h.dialError = null;
+      await runDeskQueueTick(prisma);
+      await runDeskQueueTick(prisma);
+      const manual = await trigger(claim.id);
+      expect(manual.status).toBe(422);
+      expect(dialsFor(claim.id)).toBe(1);
+    }, 30_000);
+
+    it('scheduler: call created + attempt not persisted + cancellation fails is held with the call id, and never re-dialed', async () => {
+      const claim = await newClaim();
+      h.recordingFails = true;
+      h.cancelFails = true;
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+      await expectHeld(claim.id, 'VAPI_CALL_NOT_CANCELLED', 'Vapi call id: vapi-conc-');
+
+      h.recordingFails = false;
+      h.cancelFails = false;
+      await runDeskQueueTick(prisma);
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+    }, 30_000);
+
+    it('scheduler: call created + attempt not persisted + cancellation accepted releases the claim and counts the attempt', async () => {
+      const claim = await newClaim();
+      h.recordingFails = true;
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+      const { claim: after, queue } = await stateOf(claim.id);
+      expect(after?.status).toBe('PENDING');
+      expect(queue?.status).toBe('PENDING');
+      expect(queue?.attempts).toBe(1);
+      expect(await prisma.callEscalation.count({ where: { claimId: claim.id } })).toBe(0);
+    }, 30_000);
+
+    it('manual: an ambiguous dispatch outcome is held and the scheduler does not dial it', async () => {
+      const claim = await newClaim({ queued: false });
+      h.dialError = 'ambiguous';
+      const res = await trigger(claim.id);
+      expect(res.status).toBe(409);
+      expect(dialsFor(claim.id)).toBe(1);
+      await expectHeld(claim.id, 'VAPI_DISPATCH_OUTCOME_UNKNOWN', 'did not confirm whether this call was placed');
+
+      h.dialError = null;
+      await runDeskQueueTick(prisma);
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+    }, 30_000);
+
+    it('manual: call created + attempt not persisted + cancellation fails is held with the call id', async () => {
+      const claim = await newClaim({ queued: false });
+      h.recordingFails = true;
+      h.cancelFails = true;
+      const res = await trigger(claim.id);
+      expect(res.status).toBe(500);
+      await expectHeld(claim.id, 'VAPI_CALL_NOT_CANCELLED', 'Vapi call id: vapi-conc-');
+
+      h.recordingFails = false;
+      h.cancelFails = false;
+      await runDeskQueueTick(prisma);
+      expect(dialsFor(claim.id)).toBe(1);
+    }, 30_000);
+  });
 
   it('T5: recording the same dispatched call twice leaves one attempt row and keeps the human-assisted flag', async () => {
     const claim = await newClaim();

@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   canMakeCall: vi.fn(),
   haOverride: { value: null as boolean | null },
   telusPhone: { value: '+18005550111' as string | null },
+  compensate: vi.fn(),
   routePrisma: {} as Record<string, unknown>,
   logger: { warn: vi.fn(), error: vi.fn(), audit: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
@@ -113,7 +114,7 @@ vi.mock('../../src/server/middleware/ownerPracticeApi.js', () => ({
   useOwnerPracticeApiAuthOnly: () => {},
 }));
 vi.mock('../../src/server/insurance/manualDispatchCompensation.js', () => ({
-  compensateFailedManualDispatch: vi.fn().mockResolvedValue({ terminationError: null }),
+  compensateFailedManualDispatch: (...a: unknown[]) => h.compensate(...a),
 }));
 
 import { runDeskQueueTick } from '../../src/server/frontDesk/queueEngine.js';
@@ -228,7 +229,7 @@ function setupRoutePrisma(claim: typeof CLAIM, opts: { attempts?: number; flagPa
   });
   return p as unknown as {
     insuranceClaim: { update: ReturnType<typeof vi.fn> };
-    callQueue: { update: ReturnType<typeof vi.fn> };
+    callQueue: { update: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     callAttempt: { upsert: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -264,6 +265,7 @@ beforeEach(() => {
   h.completeness.mockReturnValue({ ok: true, missing: [], warnings: [] });
   h.initiateCall.mockResolvedValue({ vapiCallId: 'vapi-1', status: 'queued' });
   h.createEscalation.mockResolvedValue({});
+  h.compensate.mockResolvedValue({ terminationError: null, restored: true });
 });
 
 describe('T1 parity: same claim through the scheduled path and the manual route', () => {
@@ -434,5 +436,71 @@ describe('manual route refusals after the slot is reserved give the slot back', 
     setupRoutePrisma({ ...CLAIM, carrierId: 'telus_adjudicare' });
     await trigger();
     expect(h.initiateCall.mock.calls[0][0].carrierPhone).toBe('+18005550111');
+  });
+});
+
+describe('a call that may exist is held for staff, never released for another automatic dial', () => {
+  it('manual: an ambiguous dispatch outcome (timeout) holds the claim, counts the attempt and opens an escalation', async () => {
+    const { VapiAmbiguousOutcomeError } = await import('../../src/vapi/client.js');
+    h.initiateCall.mockRejectedValue(new VapiAmbiguousOutcomeError('POST', '/call', new Error('timeout')));
+    const route = setupRoutePrisma({ ...CLAIM });
+
+    const res = await trigger();
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('VAPI_DISPATCH_OUTCOME_UNKNOWN');
+    expect(route.insuranceClaim.update).toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'ESCALATED' } });
+    expect(route.insuranceClaim.update).not.toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'IN_QUEUE' } });
+    expect(route.callQueue.updateMany).toHaveBeenCalledWith({
+      where: { claimId: 'claim-1' },
+      data: expect.objectContaining({ status: 'ESCALATED', dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN' }),
+    });
+    expect(route.callQueue.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'PENDING', attempts: { decrement: 1 } } }),
+    );
+    expect(h.createEscalation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ claimId: 'claim-1', reason: expect.stringContaining('did not confirm whether this call was placed') }),
+    );
+  });
+
+  it('manual: a confirmed rejection still gives the slot and the attempt back', async () => {
+    h.initiateCall.mockRejectedValue(new Error('400 bad request'));
+    const route = setupRoutePrisma({ ...CLAIM });
+
+    const res = await trigger();
+
+    expect(res.status).toBe(500);
+    expect(route.insuranceClaim.update).toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'IN_QUEUE' } });
+    expect(route.callQueue.update).toHaveBeenCalledWith({ where: { claimId: 'claim-1' }, data: { status: 'PENDING', attempts: { decrement: 1 } } });
+    expect(h.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('manual REGRESSION: call created + attempt not persisted + cancellation fails holds the claim with the call id', async () => {
+    const route = setupRoutePrisma({ ...CLAIM });
+    route.callAttempt.upsert.mockRejectedValue(new Error('attempt row could not be written'));
+    h.compensate.mockResolvedValue({ terminationError: new Error('Vapi unavailable'), restored: false });
+
+    const res = await trigger();
+
+    expect(res.status).toBe(500);
+    expect(h.compensate).toHaveBeenCalledTimes(1);
+    expect(route.insuranceClaim.update).toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'ESCALATED' } });
+    expect(h.createEscalation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ claimId: 'claim-1', reason: expect.stringContaining('Vapi call id: vapi-1') }),
+    );
+  });
+
+  it('manual: call created + attempt not persisted + cancellation accepted restores the slot (no hold)', async () => {
+    const route = setupRoutePrisma({ ...CLAIM });
+    route.callAttempt.upsert.mockRejectedValue(new Error('attempt row could not be written'));
+    h.compensate.mockResolvedValue({ terminationError: null, restored: true });
+
+    const res = await trigger();
+
+    expect(res.status).toBe(500);
+    expect(route.insuranceClaim.update).not.toHaveBeenCalledWith({ where: { id: 'claim-1' }, data: { status: 'ESCALATED' } });
+    expect(h.createEscalation).not.toHaveBeenCalled();
   });
 });

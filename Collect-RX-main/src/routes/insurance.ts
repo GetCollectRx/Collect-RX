@@ -35,6 +35,7 @@ import { piiVault } from '../pii-vault.js';
 import { checkPatientDataCompleteness } from '../server/frontDesk/patientDataCompleteness.js';
 import { recordDispatchedCallAttempt } from '../server/frontDesk/callAttemptRecording.js';
 import { escalateClaimForGuard, isEscalatingGuardCode } from '../server/frontDesk/dispatchEscalation.js';
+import { holdClaimForUnresolvedCall } from '../server/frontDesk/dispatchUnresolved.js';
 import { loadCarrierActiveCounts, resolveDispatchMode } from '../server/frontDesk/dispatchDecision.js';
 import {
   buildVapiCallParams,
@@ -856,29 +857,27 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       );
     } catch (vapiErr) {
       const ambiguous = vapiErr instanceof VapiAmbiguousOutcomeError;
-      // Confirmed rejection: Vapi told us no call was created — safe to
-      // release the slot AND the attempt so the next click isn't wasted.
-      // Ambiguous (timeout/network): Vapi may have created the call — release
-      // CALLING so the claim isn't stuck, but keep the attempt counted rather
-      // than letting an unconfirmed outcome be retried for free up to 3 times.
-      await prisma.$transaction([
-        prisma.insuranceClaim.update({
-          where: { id: claimId },
-          data: { status: claim.status },
-        }),
-        prisma.callQueue.update({
-          where: { claimId },
-          data: ambiguous
-            ? {
-                status: 'PENDING',
-                dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
-                dispatchDeferralNextAction:
-                  'Verify in the Vapi dashboard whether this call was actually placed before retrying.',
-                dispatchDeferredAt: new Date(),
-              }
-            : { status: 'PENDING', attempts: { decrement: 1 } },
-        }),
-      ]);
+      if (ambiguous) {
+        // Timeout or network failure: a call may exist. Putting the claim back
+        // in the pool would let the scheduler dial it again, and the vendor
+        // idempotency key is not relied on. Keep the attempt counted and hold
+        // the claim for staff; no automatic retry.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
+          claimId,
+          queueEntryId: null,
+          claimNumber: claim.claimNumber,
+          carrierId: claim.carrierId,
+          outstandingAmount: claim.outstandingAmount,
+          kind: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+          countAttempt: false,
+          attemptNumber,
+        });
+        throw vapiErr;
+      }
+      // Confirmed rejection: Vapi told us no call was created, so the slot and
+      // the attempt can both be given back and the next click isn't wasted.
+      await releaseReservedSlot();
       throw vapiErr;
     }
 
@@ -892,12 +891,34 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         isHumanAssisted: mode.humanAssisted,
       });
     } catch (persistenceError) {
-      const { terminationError } = await compensateFailedManualDispatch(prisma, {
+      const { terminationError, restored } = await compensateFailedManualDispatch(prisma, {
         claimId,
         vapiCallId: vapiResult.vapiCallId,
         reservation: reserved.reservation,
         terminateCall: (callId) => vapiClient.endVapiCall(callId),
       });
+      if (!restored) {
+        // The call may still be live with no record of it. Never release the
+        // claim for another automatic dial; leave an actionable escalation.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
+          claimId,
+          queueEntryId: null,
+          claimNumber: claim.claimNumber,
+          carrierId: claim.carrierId,
+          outstandingAmount: claim.outstandingAmount,
+          kind: 'VAPI_CALL_NOT_CANCELLED',
+          vapiCallId: vapiResult.vapiCallId,
+          countAttempt: false,
+          attemptNumber,
+        }).catch((holdErr) => {
+          logger.error('[POST /insurance/queue/trigger/:claimId] CRITICAL: could not hold the claim for an uncancelled call', {
+            claimId,
+            vapiCallId: vapiResult.vapiCallId,
+            holdErr,
+          });
+        });
+      }
       logger.error('[POST /insurance/queue/trigger/:claimId] post-dispatch persistence failed', {
         claimId,
         vapiCallId: vapiResult.vapiCallId,
