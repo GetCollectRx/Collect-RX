@@ -28,7 +28,7 @@ TSSEA 2021 (consolidation July 1, 2026 to Oct 7, 2026): s. 20(1) consent before 
 WSIB (billing tips updated May 14, 2025; service bundles updated March 11, 2025): "Submit billing within five business days from the date you delivered the service."; "You can only bill for services during the ongoing bundle twice annually, at a minimum of 180 days apart."; "We will process payment for the ongoing bundle fee once we receive the completed form and you have submitted a bill for it." No payment timing in days.
 
 ## HCAI (excerpt tool)
-- OCF-21B web user manual (no version or updated date; copyright 2026): the word "status" does not appear. No sentence says a provider can see that an insurer paid. p. 26: "Payment Received from Auto Insurer – any payments received by an Insurer can be entered here." (a field the facility fills in). Terms payment status, reconciliation, remittance, EOB, explanation of benefits do not appear.
+- OCF-21B web user manual (no version or updated date; copyright 2026): the word "status" does not appear. No sentence says a provider can see that an insurer paid. p. 26: "Payment Received from Auto Insurer - any payments received by an Insurer can be entered here." (a field the facility fills in). Terms payment status, reconciliation, remittance, EOB, explanation of benefits do not appear.
 - Release 3.35 bulletin (April 15, 2026): new versions of all OCF forms available from July 1, 2026; text changes include the first-payor rule; go live June 29, 2026. No rule found on whether new versions apply by submission date or policy renewal date.
 
 ## CRTC (excerpt tool; page date modified 2014-03-31)
