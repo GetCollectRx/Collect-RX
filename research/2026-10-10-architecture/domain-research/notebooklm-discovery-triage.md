@@ -66,3 +66,29 @@ Method limits: every primary host (ontario.ca, fsrao.ca, hcaiinfo.ca, crtc.gc.ca
 1. Correct the NotebookLM 38(11) text before anyone encodes a deemed-approval rule. It is a payable-period rule with a disputed scope.
 2. The HCAI "Paid" status is, so far, unsupported. MVA payment trace likely still needs the adjuster; confirm in the OCF-21B manual (hcaiinfo.ca) and the provider worklist screens.
 3. The CRTC question stays open and needs counsel. Opening disclosure of identity and purpose is supported and matches the existing disclosure design.
+
+## NotebookLM second pass: triage (2026-10-11)
+
+Input: four domain tables with "exact quotes" from the loaded sources, plus an analysis section. Checked against our own documents and three follow-up searches. Quotes were not independently re-read on primary pages; the confidence labels in the tables are NotebookLM's own and are not accepted at face value.
+
+### Problems with the output
+1. **The "contradicted" list is invented framing.** Each "previous assumption" it says we made (all SABS benefits mandatory, holdbacks released only at completion, RSLA exclusively governing storage, implied consent for PHI to insurers) does not appear in our proposal or reports. The July 2026 SABS optionality change and TSSEA primacy were already recorded in the rehab and collision reports. No real contradiction with our documents was found.
+2. **Quotes often do not support the finding beside them.** Examples: the HCAI "statuses ... Paid" claim is attached to a quote that lists no statuses; the "non-payment reasons" quote for MVA/WSIB is about eProvider Reporting; the phone-contact claim for restoration is attached to a quote about monthly invoices; the tow "phone" claim is attached to the 200 metre rule.
+3. **The SABS s. 38(11) "confirmed" item repeats the wrong reading** (liability for services delivered before notice), with no quote. Our verification pass found the regulation text runs from the 11th business day after receipt until notice is given.
+4. **HCAI "Paid" status remains unsupported.** Again no quote lists it. A follow-up search found only Submitted and the adjudication outcomes (approved, partially approved, declined) from third-party and HCAI adjudication guidance, and no definition of the full worklist status set.
+5. **Domain 4 "quoted" items are not traceable**: no page or section for several VAC and ADP statements. Treat as leads.
+
+### Findings that stand as leads worth carrying (still need a primary read)
+- Contact numbers for WSIB payment inquiries and the TELUS Health help desk, with a quote. These are real phone paths for WSIB payment questions, which is evidence for a phone objective in the WSIB module, but a staff-facing hotline is a different thing from an insurer adjuster line. Do not hardcode numbers; store as `contact_routes` with verification.
+- Construction Act: 28 day payment, 14 day notice, 10 percent holdback, annual holdback release from January 1, 2026. A follow-up search corroborates that the Bill 216 and Bill 60 amendments took effect January 1, 2026, annual holdback release, and a **seven day deemed-proper-invoice rule** (law-firm sources; subsection placement differs between s. 6.1(2) and s. 6.2). This reconciles the restoration agent's earlier single-source note. Still verify on e-Laws.
+- TSSEA and O. Reg. 427/15: consent, published rates, itemized invoice, 200 metre rule, 15 day notice, TSSEA prevailing over the RSLA. Consistent with the collision report.
+- VAC: 18 month claim limit (12 for rehabilitation), audit redress windows of 15 working days, 60 days and 15 working days. New, needs a primary read.
+- WSIB hearing bundles: 5 business days to submit; ongoing bundle billing every 180 days. New, needs a primary read.
+- **PHIPA express consent.** The IPC consent page (via search) states that express consent is needed when a custodian discloses to a non-custodian such as an insurance company, unless PHIPA allows it without consent. Providing information to the custodian's agent is a use, not a disclosure. Design consequence below.
+
+### Design consequences accepted into the proposal
+- `authorization_grants` gains a `patient_consent` kind with an evidence reference (for example the consent the provider already holds that lets the insurer receive and discuss health information), in addition to the billing agent letter. A call for a PHIPA custodian cannot assume the insurer will talk; the grant records what consent exists, and the objective pack's forced-handoff list includes "counterpart refuses to confirm without the patient's consent."
+- Whether CollectRx qualifies as the custodian's agent is a legal determination (counsel). The architecture records the contract basis (`authorization_grants.document_ref`) either way.
+
+### Still unresolved after this pass
+HCAI provider-visible statuses (read the OCF-21B manual); the exact SABS s. 38(11) and invoice payment sections on e-Laws; whether CRTC rules reach calls to businesses and the 10 second rule; every statute subsection number; how any of the Construction Act rules apply when an insurer, not the owner, pays the contractor.

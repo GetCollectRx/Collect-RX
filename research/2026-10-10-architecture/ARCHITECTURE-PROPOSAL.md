@@ -1110,3 +1110,13 @@ Why not separate squads per module: the roles (navigate, wait, converse, close, 
 3. Obtain counsel opinions on the CRTC rules, PHIPA agent status, and what insurers may disclose to a provider or contractor.
 4. Observe real calls in human-assisted mode to measure voicemail rate, hold time, who answers, and what the counterpart will disclose. No source yet establishes these.
 5. Confirm for each module which electronic channel a tenant already has, so the pre-call probe has something to read.
+
+### 17.5 Update after source verification passes (2026-10-11)
+
+Two verification passes are recorded in `domain-research/notebooklm-discovery-triage.md`. Net effect on this proposal:
+
+- The `authorization_grants` table (section 5.6) gains `patient_consent` as a grant kind. Rationale: IPC guidance (via search excerpt) says a custodian disclosing to a non-custodian such as an insurer needs express consent unless PHIPA permits otherwise; whether CollectRx acts as the custodian's agent is for counsel.
+- Do not encode a SABS deemed-approval rule from the "pay for services provided before notice" reading. The regulation text excerpt describes a payable period from the 11th business day after receipt until notice, and the scope is disputed (*Aviva v. Catic*, 2022 ONSC 6000).
+- The HCAI provider "Paid" status is unsupported in every check so far. MVA payment trace keeps its phone objective until the OCF-21B manual says otherwise.
+- The seven day deemed-proper-invoice rule and annual holdback release (Construction Act, in force January 1, 2026, per multiple law-firm sources) are real inputs for the restoration policy pack, to be confirmed on e-Laws. They govern owner to contractor payment; their application when an insurer funds the work is still unknown.
+- No claim in sections 3 to 16 about the live code or the Vapi account was affected by the domain sources.
