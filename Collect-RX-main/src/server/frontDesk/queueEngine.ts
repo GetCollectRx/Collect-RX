@@ -20,6 +20,7 @@ import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
 import { recordDispatchedCallAttempt } from './callAttemptRecording.js';
 import { escalateClaimForGuard } from './dispatchEscalation.js';
+import { releaseSchedulerSlot, reserveSchedulerSlot } from './dispatchReservation.js';
 import { resolveDispatchMode } from './dispatchDecision.js';
 import {
   buildVapiCallParams,
@@ -911,6 +912,28 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       continue;
     }
 
+    // Take the claim under the claim row lock, the same lock the manual route
+    // takes. The upfront guard and everything since (triage, PHI, lookups) can
+    // be stale: a manual click may have dialed this claim in the meantime.
+    const reservation = await reserveSchedulerSlot(prisma, {
+      practiceId,
+      claimId: next.claimId,
+      queueEntryId: next.id,
+    });
+    if (!reservation.ok) {
+      logger.warn('[deskQueueEngine] claim taken by another dispatcher: not dialing', {
+        claimId: next.claimId,
+        reason: reservation.reason,
+      });
+      continue;
+    }
+    const releaseReservation = () =>
+      releaseSchedulerSlot(prisma, {
+        claimId: next.claimId,
+        queueEntryId: next.id,
+        priorClaimStatus: reservation.priorClaimStatus,
+      });
+
     // C-3: Vapi call is dispatched first (we need the vapiCallId it returns).
     // All subsequent DB writes are wrapped so that if they fail, we immediately
     // cancel the live Vapi call rather than leaving an orphan call with no DB record.
@@ -931,6 +954,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           error: dispatchErr,
         },
       );
+      await releaseReservation();
       await deferQueueEntry(
         prisma,
         next.id,
@@ -989,6 +1013,12 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
           cancelError: cancelErr,
         });
       }
+      await releaseReservation().catch((releaseErr) => {
+        logger.error('[deskQueueEngine] could not release the claim after a failed post-dispatch write', {
+          claimId: next.claimId,
+          error: releaseErr,
+        });
+      });
     }
 
     // One call per practice per tick — a call was dispatched (or attempted),

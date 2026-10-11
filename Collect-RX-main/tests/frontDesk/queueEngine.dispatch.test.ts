@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
+const reserveMock = vi.fn();
+const releaseMock = vi.fn();
 const validateDispatchMock = vi.fn();
 const checkCarrierBlockMock = vi.fn();
 const initiateCallMock = vi.fn();
@@ -37,6 +39,14 @@ vi.mock('../../src/vapi/client.js', () => ({
   endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
   getHumanAssistedSquadId: () => 'squad-hold-sentinel',
   VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
+}));
+
+// The scheduler takes the claim under a row lock through raw SQL; these tests
+// use a fake Prisma client, so the reservation is replaced here. Its real
+// behavior is covered against Postgres in tests/step1/dispatchConcurrency.integration.test.ts.
+vi.mock('../../src/server/frontDesk/dispatchReservation.js', () => ({
+  reserveSchedulerSlot: (...args: unknown[]) => reserveMock(...args),
+  releaseSchedulerSlot: (...args: unknown[]) => releaseMock(...args),
 }));
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
@@ -181,6 +191,7 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
       findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
       create: vi.fn(async () => ({ id: 'attempt-1' })),
+      upsert: vi.fn(async () => ({ id: 'attempt-1' })),
       update: vi.fn(async () => ({})),
     },
     insuranceClaim: {
@@ -237,6 +248,8 @@ beforeEach(() => {
   probeClaimStatusMock.mockResolvedValue(null);
   detokenizeMock.mockReturnValue(phiSuccess());
   initiateCallMock.mockResolvedValue({ vapiCallId: 'vapi-1' });
+  reserveMock.mockResolvedValue({ ok: true, priorClaimStatus: 'IN_QUEUE' });
+  releaseMock.mockResolvedValue(undefined);
   completenessMock.mockReturnValue({ ok: true, missing: [], warnings: [] });
   raiseGateMock.mockResolvedValue({ raised: true });
 });
@@ -710,5 +723,58 @@ describe('runDeskQueueTick resilience', () => {
 
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-1' });
+  });
+});
+
+describe('runDeskQueueTick claim reservation', () => {
+  it('does not dial a claim another dispatcher already took, and moves on to the next candidate', async () => {
+    const taken = queueEntry('1');
+    const next = queueEntry('2');
+    const prisma = tickPrisma([taken, next]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    reserveMock
+      .mockResolvedValueOnce({ ok: false, reason: 'A call is already in progress for this claim' })
+      .mockResolvedValueOnce({ ok: true, priorClaimStatus: 'IN_QUEUE' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+    expect(reserveMock).toHaveBeenCalledWith(prisma, { practiceId: 'p1', claimId: 'claim-1', queueEntryId: 'q-1' });
+  });
+
+  it('gives the claim back when the dial fails, before deferring it', async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    initiateCallMock.mockRejectedValueOnce(new Error('vapi down'));
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(releaseMock).toHaveBeenCalledWith(prisma, {
+      claimId: 'claim-1',
+      queueEntryId: 'q-1',
+      priorClaimStatus: 'IN_QUEUE',
+    });
+  });
+
+  it('records the dispatched attempt as human-assisted for a Hold Sentinel practice', async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.callAttempt.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { vapiCallId: 'vapi-1' },
+      create: expect.objectContaining({ claimId: 'claim-1', isHumanAssisted: true }),
+    }));
+  });
+
+  it('passes the claim payer type and the resolved mode to the guard', async () => {
+    const prisma = tickPrisma([queueEntry('1', { payerType: 'PRIVATE' })]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock.mock.calls[0][1]).toMatchObject({ payerType: 'PRIVATE', humanAssisted: true });
   });
 });
