@@ -44,3 +44,25 @@ HCAI "worklist status tracking for providers (Submitted, Received, Approved, Par
 ## Reported gaps (agree with ours)
 
 No single payment deadline statute across sectors. No standalone AI-calling statute; ADAD rules apply by definition, with 2026 consultations ongoing.
+
+## Verification pass 1 (2026-10-11, cloud session)
+
+Method limits: every primary host (ontario.ca, fsrao.ca, hcaiinfo.ca, crtc.gc.ca, wsib.ca, canlii.org, laws-lois.justice.gc.ca, ipc.on.ca, veterans.gc.ca, sac-isc.gc.ca, storyblok manual PDFs) returned no response from this environment (proxy block). Only web search excerpts were available, so nothing below is verified against a full primary page. Results are labelled by what the excerpts support.
+
+| Claim | Result |
+|---|---|
+| SABS s. 38(11), NotebookLM wording: insurer pays for goods and services "provided prior to giving notice of refusal" | **Wrong as stated.** An excerpt reproducing the regulation says the insurer pays for goods, services, assessments and examinations in the plan relating to the period starting on the 11th business day after receipt and ending on the day it gives the s. 38(8) notice. Scope is contested: *Aviva General Insurance Co. v. Catic*, 2022 ONSC 6000 records an insurer arguing it covers only services actually incurred in that window. Holding not confirmed. Sources are law-firm blogs and decision summaries. |
+| SABS s. 38(8): response within 10 business days | Consistent across excerpts (law firm sources). Not read on e-Laws. |
+| SABS s. 51: interest 1 percent per month compounded monthly | **Supported by a CanLII consolidation excerpt** (rate cut from 2 percent at the 2010 rewrite, per a law-firm overview). Section 51(3) variant says amounts on an invoice are not overdue while a provider fails a subsection (2) requirement; wording differs between consolidations. Current e-Laws text not read. |
+| SABS: 30 days to pay an invoice, cited to "s. 51" | **Section number unconfirmed.** An earlier FSRA material excerpt supports the 30 day period, but no excerpt located the provision. Do not cite "s. 51" for it. |
+| HCAI worklist shows a "Paid" status | **Not supported.** Excerpts show the provider worklist exposes the provider invoice number; insurers record decisions as approved, partially approved or declined; third-party guides list Approved, Partially Approved, Declined, Successfully Delivered. The 2026 OCF-21B manual excerpt shows payments received and overdue amounts as fields the provider enters on the next invoice, not as HCAI statuses. This leans toward the rehab agent's finding: HCAI does not tell a provider whether it was paid. Not conclusive without the manual. |
+| CRTC: AI voice calls fall under the ADAD rules | **Secondary only** (vendor and law-firm blogs treating synthesized voice as ADAD). CRTC Notice 2026-132 is a compliance and enforcement consultation reviewing the rules, including whether the ADAD definition should cover AI explicitly; consultation open. |
+| CRTC: non-solicitation ADAD calls must open with caller identification and purpose | **Supported by an excerpt of CRTC 2026-132 para. 29.** |
+| CRTC: 10 second disconnect rule | **Not found in CRTC text.** A vendor summary only. The repo's own compliance note (CRTC UTR Part IV) cites it; read Part IV. |
+| CRTC: rules apply to calls to businesses | **No source found** either way. Stays an open legal question. |
+| All other items in the triage lists | Not re-checked. Still unverified. |
+
+### What this changes
+1. Correct the NotebookLM 38(11) text before anyone encodes a deemed-approval rule. It is a payable-period rule with a disputed scope.
+2. The HCAI "Paid" status is, so far, unsupported. MVA payment trace likely still needs the adjuster; confirm in the OCF-21B manual (hcaiinfo.ca) and the provider worklist screens.
+3. The CRTC question stays open and needs counsel. Opening disclosure of identity and purpose is supported and matches the existing disclosure design.
