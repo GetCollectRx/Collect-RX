@@ -1120,3 +1120,24 @@ Two verification passes are recorded in `domain-research/notebooklm-discovery-tr
 - The HCAI provider "Paid" status is unsupported in every check so far. MVA payment trace keeps its phone objective until the OCF-21B manual says otherwise.
 - The seven day deemed-proper-invoice rule and annual holdback release (Construction Act, in force January 1, 2026, per multiple law-firm sources) are real inputs for the restoration policy pack, to be confirmed on e-Laws. They govern owner to contractor payment; their application when an insurer funds the work is still unknown.
 - No claim in sections 3 to 16 about the live code or the Vapi account was affected by the domain sources.
+
+### 17.6 Corrections and design changes from primary reads (2026-10-11)
+
+A browser session read e-Laws, HCAI, WSIB and CRTC pages directly (`domain-research/primary-source-read-2026-10-11.md`). This supersedes conflicting statements in sections 6, 17.1 and the domain reports.
+
+Corrections:
+1. **Licensed-facility rule is not in O. Reg. 34/10.** The regulation has `s. 48(2)`: insurers may arrange direct invoicing and must pay the invoice submitter directly when the person entitled has so directed in writing. The licensed-facility limitation comes from HCAI and FSRA guidance. The rehab report's phrasing is wrong; cite the guidance, not the regulation.
+2. **The 30 day invoice payment rule is s. 38(15)**, not s. 51. Interest is s. 51(3), 1 percent per month compounded monthly.
+3. **s. 38(11) verified verbatim:** payment for the plan from the 11th business day after receipt to the notice date, and the insurer cannot assert the Minor Injury Guideline. It is a policy-pack parameter for the MVA module, not a basis for the agent to assert deemed approval to a counterpart.
+4. **HCAI does not show payment (manual excerpt).** MVA payment trace stays a phone objective. Payment received is a provider-entered field on the next invoice.
+5. **RSLA 15 days is notice of intention to sell**, not a storer's lien notice. Do not encode a 15 day storer-notice rule until O. Reg. 427/15's prescribed periods are read in full. This stays a staff-only legal edge.
+6. **Construction Act 2026 amendments are unresolved.** The page read shows no change to ss. 6.4 to 6.6 or 22 from the 2025 amendment, and the "O. Reg. 264/25" reference was not found. Treat the seven day deemed-proper rule and annual holdback release as unverified until s. 6.1 and s. 26 are read.
+
+Design changes:
+1. **Direction to pay is statutory in SABS.** `authorization_grants.grant_kind = direction_to_pay` must capture the written direction and its evidence, because s. 48(2)(c) conditions direct payment on it. The MVA module's gate should refuse payment-recipient assumptions without it.
+2. **PHIPA agent status can be lost by our own learning loop.** The definition requires acting "for the purposes of the custodian, and not the agent's own purposes." Cross-tenant knowledge that serves CollectRx (carrier lessons, submission channels, human-assisted profiles, section 5.11) and any use of call content for product improvement may be the agent's own purposes. Consequences: (a) health-custodian tenants default to tenant-scoped knowledge only; (b) platform promotion requires de-identified, non-case-specific facts about payer behavior, never content derived from a patient file; (c) the agreement with the tenant states permitted purposes; (d) counsel decides whether this is enough. This applies to the existing dental product as well and should be raised now.
+3. **Calling hours are per recipient and per rule.** The CRTC ADAD text read gives weekday hours of 9:00 a.m. to 9:30 p.m. (weekend hours not captured); the product's 8:00 to 17:00 Eastern window is stricter and stays. For Canada-wide expansion, policy packs carry the recipient's local time zone, not a global Eastern window.
+4. **Opening identification** ("a clear message identifying the person on whose behalf") matches the existing disclosure design and becomes a tested requirement of every objective pack's first utterance.
+5. WSIB hearing timing (5 business days to submit, 180 day ongoing-bundle spacing) are policy-pack parameters for the WSIB module; no payment timing in days exists, so the follow-up trigger comes from observed practice.
+
+Still open after primary reads: HCAI worklist screens, the 3.35 form-version rule, CRTC applicability to calls to businesses and the 2026-132 outcome, Construction Act s. 6.1 and s. 26, O. Reg. 427/15 period sections, TSSEA published-rate provisions, any insurer-as-recipient text.

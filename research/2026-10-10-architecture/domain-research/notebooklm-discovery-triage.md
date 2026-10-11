@@ -92,3 +92,24 @@ Input: four domain tables with "exact quotes" from the loaded sources, plus an a
 
 ### Still unresolved after this pass
 HCAI provider-visible statuses (read the OCF-21B manual); the exact SABS s. 38(11) and invoice payment sections on e-Laws; whether CRTC rules reach calls to businesses and the 10 second rule; every statute subsection number; how any of the Construction Act rules apply when an insurer, not the owner, pays the contractor.
+
+
+## Primary read results (2026-10-11): verdicts
+
+Full text in `primary-source-read-2026-10-11.md`.
+
+| Item | Verdict |
+|---|---|
+| s. 38(11) | **Verified verbatim.** NotebookLM's "services provided before notice" reading was wrong; the text runs from the 11th business day after receipt to the notice date, and also bars the insurer from asserting the Minor Injury Guideline. |
+| 30 day invoice payment | **Verified, but the section is s. 38(15), not s. 51.** Other 30 day provisions exist (s. 39 area, s. 41(2)); one section number not captured. |
+| 1 percent monthly interest | **Verified at s. 51(3).** |
+| Licensed-facility direct payment | **Not in the regulation text.** The regulation says the insurer may arrange direct invoicing (s. 48(2)(a)) and must pay the invoice submitter directly when the person entitled has directed so in writing (s. 48(2)(c)). The licensed-facility rule comes from HCAI and FSRA guidance (earlier search excerpt of an HCAI bulletin), not from O. Reg. 34/10. Our rehab report cited it as if statutory; correct that. |
+| HCAI "Paid" status | **Not supported.** The 2026 OCF-21B manual excerpt has no "status" wording and no way for a provider to see insurer payment; payment received is a provider-entered field. MVA payment trace keeps its phone objective. Residual uncertainty: the manual may omit worklist screens. |
+| Construction Act 28, 14, 7, 35 days, 10 percent holdback | **Verified verbatim.** |
+| Construction Act 7 day deemed-proper invoice, annual holdback release, "O. Reg. 264/25" | **Not verified.** s. 6.1 and s. 26 not read; e-Laws shows last amendment 2025 c. 14 Sched. 2 touching other sections; O. Reg. 264/25 not found. The restoration report's single-source mention of it should be treated as probably wrong until shown. Law-firm sources claiming the changes are in force January 1, 2026 conflict with the page the browser read. Read s. 6.1 and s. 26 directly. |
+| RSLA 15 day rule | **Corrected meaning.** s. 15(2) is notice of intention to sell, at least 15 days before sale. The collision report's "storer must give lien notice within 15 days" is not what s. 15(2) says. O. Reg. 427/15 prescribes periods of 60 and 15 days for different vehicle classes; which applies to what is unconfirmed. |
+| TSSEA s. 20, 23, 27, 60; O. Reg. 427/15 storage cap | **Verified.** Published-rates and 200 metre provisions not captured. |
+| WSIB 5 business days and 180 days | **Verified verbatim.** No payment timing in days. |
+| PHIPA "agent" | **Verified verbatim**, including "and not the agent's own purposes". |
+| CRTC | Opening identification, weekday hours 9:00 a.m. to 9:30 p.m., and a 10 second disconnect provision exist in Part IV (partial). Whether Part IV applies to calls to businesses is still unanswered. Rules page last modified 2014; no AI-specific text; 2026-132 review status unknown. |
+| HCAI 3.35 form-version rule | Not found. Forms updated from July 1, 2026; rule on which version applies unresolved. |
