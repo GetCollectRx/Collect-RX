@@ -264,6 +264,22 @@ describe.skipIf(!dbReady)('DEC-9 (b) checkpoint (real Postgres)', () => {
     expect((await decide(theirs.id, { decision: 'MAYBE' })).status).toBe(400);
   }, 30_000);
 
+  it('only the practice owner can read or decide: every other role gets 403 and nothing changes', async () => {
+    await enforce(setup.practice.id);
+    await evaluateDispatchCheckpoint(prisma, setup.practice.id, 'sun_life');
+    const checkpoint = await prisma.dispatchCheckpoint.findFirstOrThrow({ where: { practiceId: setup.practice.id } });
+    for (const role of ['office_manager', 'billing_coordinator', 'front_desk', 'accountant', 'associate_dentist'] as const) {
+      const cookieFor = `${COOKIE_NAME}=${signUserToken({ userId: setup.user.id, practiceId: setup.practice.id, role })}`;
+      const read = await request(app).get('/api/dispatch-checkpoints').set('Cookie', cookieFor);
+      const write = await request(app)
+        .post(`/api/dispatch-checkpoints/${checkpoint.id}/decision`)
+        .set('Cookie', cookieFor)
+        .send({ decision: 'APPROVED' });
+      expect([role, read.status, write.status]).toEqual([role, 403, 403]);
+    }
+    expect((await prisma.dispatchCheckpoint.findUniqueOrThrow({ where: { id: checkpoint.id } })).status).toBe('PENDING');
+  }, 30_000);
+
   it('the audit trail rejects updates and deletes at the database', async () => {
     await enforce(setup.practice.id);
     await evaluateDispatchCheckpoint(prisma, setup.practice.id, 'sun_life');

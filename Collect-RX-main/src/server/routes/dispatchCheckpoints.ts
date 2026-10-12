@@ -1,7 +1,11 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { prisma } from '../../lib/prisma';
-import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
-import { practiceIdFromSession, queryPracticeConflictsSession } from '../middleware/requirePracticeSession.js';
+import { authenticate } from '../middleware/authenticate.js';
+import {
+  practiceIdFromSession,
+  queryPracticeConflictsSession,
+  requirePracticeContext,
+} from '../middleware/requirePracticeSession.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { authUserId } from '../accessControl/types.js';
 import { appendAuditLog } from '../audit/auditLog.js';
@@ -12,14 +16,27 @@ import {
 } from '../frontDesk/dispatchCheckpoint.js';
 
 /**
- * DEC-9 (b) checkpoint API. Owner-only (front desk gets 403): approving
- * automated calling to a carrier is a practice-owner decision.
+ * DEC-9 (b) checkpoint API. Practice owner only: approving automated calling to
+ * a carrier is a practice-owner decision. Checks the literal session role,
+ * because requirePracticeOwner() lets every non-front-desk role through
+ * (office manager, billing coordinator, accountant, associate dentist, ...).
  *
  *   GET  /api/dispatch-checkpoints                  checkpoints for the session practice
  *   POST /api/dispatch-checkpoints/:id/decision     { decision: 'APPROVED' | 'REVOKED', notes? }
  */
+function requirePracticeOwnerRole(req: Request, res: Response, next: NextFunction): void {
+  const auth = req.auth ?? req.practiceAuth;
+  if (auth?.role !== 'practice_owner') {
+    res.status(403).json({ success: false, error: 'Only the practice owner can manage carrier approvals' });
+    return;
+  }
+  next();
+}
+
 const router = Router();
-useOwnerPracticeApi(router);
+router.use(authenticate);
+router.use(requirePracticeContext);
+router.use(requirePracticeOwnerRole);
 
 router.get('/', async (req: Request, res: Response) => {
   try {
