@@ -1,5 +1,7 @@
 /** Lightweight client-side CSV preview — mirrors server header alias names for UX only. */
 
+import { resolveRowPayerType, type PayerTypeValue } from './payerTypeInput'
+
 const REQUIRED_HINTS = [
   'claim_number',
   'id',
@@ -43,6 +45,68 @@ function splitCsvLine(line: string): string[] {
   return out
 }
 
+const PAYER_TYPE_KEYS = ['payer_type', 'payer_program', 'plan_type', 'funding_type']
+const PLAN_NAME_KEYS = [
+  'carrier_name',
+  'carrier',
+  'insurance_carrier',
+  'insurance_company',
+  'insurance',
+  'primary_insurance',
+  'ins_carrier',
+  'ins_company',
+  'plan_name',
+  'carrier_code',
+]
+
+export type PayerTypeSummary = {
+  /** Rows classified by their own Payer Type cell or a plan name that says CDCP. */
+  counts: Record<PayerTypeValue, number>
+  /** Rows that carry no program of their own and need the file-level choice. */
+  unclassified: number
+  /** Rows the server would reject: an unrecognized value, or a cell that conflicts with the plan name. `row` is the spreadsheet row (header is row 1). */
+  problems: { row: number; message: string }[]
+}
+
+function firstCell(row: Record<string, string>, keys: string[]): string {
+  for (const k of keys) {
+    const v = row[k]
+    if (v && v.trim() !== '') return v
+  }
+  return ''
+}
+
+/** Classify every row the way the server will, so the screen can say so before importing. */
+export function summarizePayerTypes(rows: Record<string, string>[]): PayerTypeSummary {
+  const summary: PayerTypeSummary = { counts: { PRIVATE: 0, CDCP: 0, PROVINCIAL: 0 }, unclassified: 0, problems: [] }
+  rows.forEach((row, i) => {
+    const resolved = resolveRowPayerType(firstCell(row, PAYER_TYPE_KEYS), firstCell(row, PLAN_NAME_KEYS))
+    if (!resolved.ok) {
+      summary.problems.push({ row: i + 2, message: resolved.error })
+    } else if (resolved.value) {
+      summary.counts[resolved.value] += 1
+    } else {
+      summary.unclassified += 1
+    }
+  })
+  return summary
+}
+
+/**
+ * Why this file cannot be imported yet, or null. A file is ready when no row is
+ * invalid and every row has a program, either its own or the one chosen for the
+ * file. There is no default: with unclassified rows, the person must choose.
+ */
+export function payerTypeBlockReason(summary: PayerTypeSummary, chosen: string): string | null {
+  if (summary.problems.length > 0) {
+    return `${summary.problems.length} row${summary.problems.length === 1 ? ' has' : 's have'} a payer type problem. Fix the file and choose it again.`
+  }
+  if (summary.unclassified > 0 && !chosen) {
+    return `Choose a payer program for the ${summary.unclassified} row${summary.unclassified === 1 ? '' : 's'} that ${summary.unclassified === 1 ? 'has' : 'have'} none.`
+  }
+  return null
+}
+
 export type CsvPreviewResult = {
   headers: string[]
   normalizedHeaders: string[]
@@ -51,6 +115,7 @@ export type CsvPreviewResult = {
   missingRequired: string[]
   missingRecommended: string[]
   ready: boolean
+  payerTypes: PayerTypeSummary
 }
 
 export function previewCsvFile(text: string, previewLimit = 5): CsvPreviewResult {
@@ -64,6 +129,7 @@ export function previewCsvFile(text: string, previewLimit = 5): CsvPreviewResult
       missingRequired: REQUIRED_HINTS.slice(0, 3),
       missingRecommended: RECOMMENDED_HINTS,
       ready: false,
+      payerTypes: { counts: { PRIVATE: 0, CDCP: 0, PROVINCIAL: 0 }, unclassified: 0, problems: [] },
     }
   }
 
@@ -98,6 +164,7 @@ export function previewCsvFile(text: string, previewLimit = 5): CsvPreviewResult
     missingRequired,
     missingRecommended,
     ready: missingRequired.length === 0,
+    payerTypes: summarizePayerTypes(parseCsvFile(text)),
   }
 }
 

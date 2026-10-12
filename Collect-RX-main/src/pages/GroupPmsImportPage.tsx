@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
-import { parseCsvFile } from '../lib/csvClientPreview'
+import { parseCsvFile, payerTypeBlockReason, summarizePayerTypes } from '../lib/csvClientPreview'
 import type { PmsVendorCatalogEntry } from '../types/pms'
 
 interface PracticeOption {
@@ -12,6 +12,8 @@ interface ImportRow {
   practiceId: string
   pmsVendor: string
   file: File | null
+  /** Program for this file's rows that name none; no default. */
+  payerType: string
 }
 
 interface ImportResult {
@@ -42,14 +44,14 @@ export default function GroupPmsImportPage() {
       .then(([p, v]) => {
         setPractices(p.practices)
         setVendors(v.vendors)
-        setRows(p.practices.length ? [{ practiceId: p.practices[0].id, pmsVendor: 'other', file: null }] : [])
+        setRows(p.practices.length ? [{ practiceId: p.practices[0].id, pmsVendor: 'other', file: null, payerType: '' }] : [])
       })
       .catch(e => setLoadError((e as Error).message))
       .finally(() => setLoading(false))
   }, [])
 
   function addRow() {
-    setRows(rs => [...rs, { practiceId: practices[0]?.id ?? '', pmsVendor: 'other', file: null }])
+    setRows(rs => [...rs, { practiceId: practices[0]?.id ?? '', pmsVendor: 'other', file: null, payerType: '' }])
   }
 
   function removeRow(index: number) {
@@ -74,8 +76,23 @@ export default function GroupPmsImportPage() {
       const imports = await Promise.all(withFiles.map(async (r) => {
         // r.file is guaranteed set — withFiles was filtered above.
         const text = await r.file!.text()
-        return { practiceId: r.practiceId, pmsVendor: r.pmsVendor, records: parseCsvFile(text) }
+        const records = parseCsvFile(text)
+        const summary = summarizePayerTypes(records)
+        return {
+          practiceId: r.practiceId,
+          pmsVendor: r.pmsVendor,
+          records,
+          summary,
+          chosen: r.payerType,
+        }
       }))
+      for (const entry of imports) {
+        const reason = payerTypeBlockReason(entry.summary, entry.chosen)
+        if (reason) {
+          setSubmitError(`${practices.find(p => p.id === entry.practiceId)?.name ?? 'A selected practice'}: ${reason}`)
+          return
+        }
+      }
       const empty = imports.filter(i => i.records.length === 0)
       if (empty.length > 0) {
         setSubmitError(`No data rows found in the file for ${practices.find(p => p.id === empty[0].practiceId)?.name ?? 'a selected practice'}.`)
@@ -85,7 +102,14 @@ export default function GroupPmsImportPage() {
       const res = await apiFetch('/api/group/pms-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imports }),
+        body: JSON.stringify({
+          imports: imports.map(({ practiceId, pmsVendor, records, summary, chosen }) => ({
+            practiceId,
+            pmsVendor,
+            records,
+            ...(summary.unclassified > 0 ? { defaultPayerType: chosen } : {}),
+          })),
+        }),
       })
       const body = await res.json() as { error?: string; results?: ImportResult[] }
       if (!res.ok) { setSubmitError(body.error ?? 'Batch import failed'); return }
@@ -129,6 +153,17 @@ export default function GroupPmsImportPage() {
                 >
                   <option value="other">Other / CSV export</option>
                   {vendors.map(v => <option key={v.id} value={v.id}>{v.displayName}</option>)}
+                </select>
+                <select
+                  value={row.payerType}
+                  onChange={e => updateRow(i, { payerType: e.target.value })}
+                  aria-label="Payer program for rows without one"
+                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="">Program for rows without one</option>
+                  <option value="PRIVATE">Private insurance</option>
+                  <option value="CDCP">CDCP</option>
+                  <option value="PROVINCIAL">Provincial program</option>
                 </select>
                 <input
                   type="file"

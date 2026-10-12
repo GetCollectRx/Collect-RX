@@ -20,6 +20,8 @@
  *
  * Optional:
  *   ABELDENT_SCHEMA_MAP      Path to schema-map.json (see schema-map.example.json + discover-schema.cjs)
+ *   COLLECTRX_DEFAULT_PAYER_TYPE  PRIVATE | CDCP | PROVINCIAL. The funding program of this practice's AbelDent
+ *                            claims. Required for the server to accept NEW claims; there is no default.
  */
 
 'use strict';
@@ -33,6 +35,7 @@ const {
   mergeMap,
   buildClaimsQuery,
 } = require('./abeldentQueryTemplates.cjs');
+const { buildClaimsImportBody } = require('./claimsImportBody.cjs');
 
 // Config
 const SERVER = process.env.ABELDENT_SERVER || String.raw`(local)\ABELDENT`;
@@ -188,7 +191,7 @@ async function runClaimsSync() {
   try {
     const rows = await fetchFromAbeldent();
     const result = await postToApi(
-      { records: rows, pmsVendor: 'abeldent', pmsSource: 'abeldent' },
+      buildClaimsImportBody(rows, process.env),
       '/api/connector/claims/import',
     );
     sendStatus('ok', `Synced ${result.imported ?? rows.length} claims`);
