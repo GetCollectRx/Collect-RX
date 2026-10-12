@@ -182,6 +182,7 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 - Claims over 90 days old: in autonomous mode, skip AI and escalate to a human immediately. In Hold Sentinel mode (every practice today) age alone does not block; authorization, the recovery gate (open practice blockers, escalations, future recall dates) and the attempt cap decide, and the reason is logged (DEC-2)
 - Payer program: only private-insurance claims are dialed. CDCP and provincial claims are refused at dispatch on every path. A claim with no payer type is treated as PRIVATE and logged as unclassified; new claims must be classified on import (DEC-10). See `Collect-RX-main/src/carriers/payerProgram.ts`
 - The manual "Call now" route and the scheduler share one dispatch decision, call builder and claim reservation (`src/server/frontDesk/dispatch*.ts`). The manual route can be paused with the `dispatch.manual_shared_builder` feature flag; see `docs/runbooks/manual-dispatch-rollback.md`
+- Staff checkpoint at first use per practice and carrier (DEC-9 b): behind the `dispatch.approval_checkpoint` flag, default off. When on, no path dials a carrier until the practice owner approves it; see `docs/runbooks/dispatch-approval-checkpoint.md`
 - Billing/usage limits (trial caps, overage-pending, payment failure) also pause calling — see the Billing lifecycle section in `docs/operations/PATH-TO-DELIVERY.md`
 
 ---

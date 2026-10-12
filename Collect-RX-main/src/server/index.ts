@@ -128,6 +128,7 @@ import dashboardRouter from './routes/dashboardRoutes';
 import adminRouter from './routes/adminRoutes';
 import pmsSyncRouter from './routes/pmsSyncRoutes.js';
 import pmsApiRouter from './routes/pmsApiRoutes.js';
+import dispatchCheckpointsRouter from './routes/dispatchCheckpoints.js';
 import workQueueRouter from '../routes/workQueue.js';
 import { createCdcpRouter } from './routes/cdcp.js';
 import preVisitRouter from './routes/preVisitRoutes.js';
@@ -567,6 +568,7 @@ registerCampaignRoutes(app, prisma);
 app.use('/api/admin',      adminRouter);
 app.use('/api/admin/sync', pmsSyncRouter);
 app.use('/api/pms', pmsApiRouter);
+app.use('/api/dispatch-checkpoints', dispatchCheckpointsRouter);
 app.use('/api/work-queue', workQueueRouter);
 // Phase 5: CDCP Reconsideration & High-Precision Adjudication
 app.use('/api/cdcp',       createCdcpRouter(prisma));

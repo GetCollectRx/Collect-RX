@@ -14,6 +14,7 @@
 
 import type { CarrierId, ClaimStatus, PayerType, PrismaClient } from '@prisma/client';
 import { evaluatePayerProgram } from './payerProgram.js';
+import { evaluateDispatchCheckpoint } from '../server/frontDesk/dispatchCheckpoint.js';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
@@ -468,6 +469,13 @@ export async function validateDispatch(
       code: 'PAYER_PROGRAM_NOT_ENABLED',
       reason: `${payerProgram.reason} (${payerProgram.effectivePayerType}, ${payerProgram.policyRef})`,
     };
+  }
+
+  // Staff checkpoint at first use per practice and carrier (DEC-9 b). Not
+  // enforced unless the dispatch.approval_checkpoint flag is on for the practice.
+  const checkpoint = await evaluateDispatchCheckpoint(prisma, practiceId, carrierId);
+  if (!checkpoint.allowed) {
+    return { allowed: false, code: checkpoint.code, reason: checkpoint.reason };
   }
 
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);

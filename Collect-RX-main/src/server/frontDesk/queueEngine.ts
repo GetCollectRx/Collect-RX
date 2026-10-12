@@ -431,6 +431,17 @@ async function settleBlockedCandidate(
           'This claim\'s payer program is not dialed by the carrier-call workflow. Reclassify the claim or handle it outside carrier calling.',
       );
       return 'skip';
+    case 'PENDING_DISPATCH_APPROVAL':
+      // Needs a staff decision, not a retry: park the entry (no attempt is
+      // counted) until the checkpoint is approved, then it dials normally.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        'PENDING_DISPATCH_APPROVAL',
+        guardReason ?? 'Approve the carrier checkpoint for this practice to start calling.',
+      );
+      return 'skip';
     case 'CLAIM_TOO_YOUNG':
       await deferQueueEntry(
         prisma,
