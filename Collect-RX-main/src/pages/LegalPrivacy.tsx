@@ -13,7 +13,7 @@ export default function LegalPrivacy() {
       </header>
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-4 text-sm leading-relaxed">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Privacy policy</h1>
-        <p className="text-gray-500 dark:text-gray-400">Last updated: April 25, 2026 (template, have counsel review before production)</p>
+        <p className="text-gray-500 dark:text-gray-400">Last updated: August 19, 2026 (template, have counsel review before production)</p>
         <p>
           This policy describes how CollectRx handles information in the product. Your practice is typically the
           “organization” using the service; patients should also receive notices from you as required by law.
@@ -28,6 +28,15 @@ export default function LegalPrivacy() {
         <p>
           We use essential cookies and browser storage (e.g. for sign-in state and theme). You can control browser
           cookies in your device settings. Some features require storage to function.
+        </p>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white pt-2">Data deletion and breach notification</h2>
+        <p>
+          If you need personal health information deleted, or you believe a breach may have
+          occurred, this is currently handled manually rather than through an automated,
+          self-serve flow: contact your CollectRx account representative or support, and a
+          scoped deletion or breach response will be carried out under supervision and logged.
+          An automated deletion/breach-notification workflow is planned but not yet built —
+          this page will be updated when it ships.
         </p>
         <h2 className="text-base font-semibold text-gray-900 dark:text-white pt-2">Subprocessors</h2>
         <p>
