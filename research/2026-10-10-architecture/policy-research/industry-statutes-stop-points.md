@@ -1,0 +1,37 @@
+# Industry statutes that force a stop or human hand-off
+
+Status: IN PROGRESS (written early; sections are appended as sources are read). Date of reads: 2026-10-13.
+
+Method and tags
+- VERIFIED = statute text read in full for that section from the e-Laws page fetched by curl on 2026-10-13 (https://www.ontario.ca/laws/...). e-Laws consolidation currency is stated on each page; the text read is the consolidation in force on the read date. This is page text, not a legal opinion.
+- SEARCH-EXCERPT = seen only in a search result or partial excerpt. Not to be encoded without a human reading the page.
+- UNVERIFIED = from memory, secondary sources, or inferred. Not to be encoded.
+- canlii.org returned HTTP 403 to curl through the proxy, so no CanLII case text was read. All case-law statements are UNVERIFIED.
+- Nothing here is legal advice. Each row ends in a hand-off or a policy-pack parameter; counsel questions are in section 2.
+
+## 1. Per-industry tables
+
+### 1.1 Property restoration and emergency housing (Construction Act, R.S.O. 1990, c. C.30)
+URL: https://www.ontario.ca/laws/statute/90c30 (consolidation seen: from January 1, 2026; last amendment 2025, c. 14, Sched. 2)
+
+| Trigger | Deadline | Source | Agent may | Agent must stop / hand off | Policy-pack data | Acceptance test | Tag |
+|---|---|---|---|---|---|---|---|
+| Written bill is missing a s. 6.1(1) item | Owner has 7 days after receiving the invoice to notify the contractor in writing of the deficiency; otherwise the invoice is deemed proper | s. 6.1(2) | Ask the payer whether a deficiency notice was sent and when the invoice was received | Never state that an invoice is "deemed proper" as a legal conclusion; hand off to staff | invoice_received_at, deficiency_notice_at, proper_invoice_fields checklist (items 1 to 6.1 of s. 6.1(1)) | Given received_at and no notice by day 7, system flags "deemed proper candidate" for human review, never asserts it on a call | VERIFIED |
+| Proper invoice received by an owner | Pay within 28 days of receipt | s. 6.4(1) | Ask payment status and expected date | Do not threaten statutory consequences | owner_pay_due = received + 28d | Date arithmetic test across month ends | VERIFIED |
+| Owner disputes a proper invoice | Notice of non-payment, in prescribed form and manner, within 14 days of receipt, specifying amount and all reasons | s. 6.4(2), (3) | Ask whether a notice of non-payment was issued and request a copy | If a notice exists or the payer disputes: stop negotiating, hand off. Adjudication is a legal decision | nonpayment_notice_deadline = received + 14d | Call outcome "dispute asserted" forces handoff task and halts further automated calls | VERIFIED |
+| Contractor paid by owner | Contractor pays subcontractors within 7 days of receiving payment | s. 6.5(1), (2) | Record payment date | Payment between contractor and subcontractor is outside an insurer-facing call | sub_pay_due = payment_received + 7d | n/a | VERIFIED |
+| Owner has not paid | Contractor pays subs within 35 days of giving the proper invoice to owner unless notice of non-payment (with undertaking to start adjudication within 21 days) | s. 6.5(4), (5)(a)(iii), (7) | Track dates only | Any adjudication undertaking is a human legal task | day35, day21_adjudication_undertaking | Timeline generator emits day 35 | VERIFIED |
+| Sub to sub-sub | Pay within 7 days of payment, or 42 days after proper invoice given to owner if the contractor did not pay | s. 6.6(5) | Track | Same | day42 | n/a | VERIFIED |
+| Late payment | Interest at the prejudgment rate (Courts of Justice Act s. 127(2)) or the greater contract rate | s. 6.9; s. 13.19(3) | Quote that interest may apply, as a question only | Do not compute or demand interest on a call | interest_rate_source | Agent never states a number for interest | VERIFIED |
+| Holdback | Payer retains 10 per cent of price of services or materials as supplied | s. 22(1) | Ask if holdback was applied | Do not release or waive holdback | holdback_pct = 10 | n/a | VERIFIED |
+| Anniversary of contract date | Owner publishes a notice of annual release of holdback within 14 days after each anniversary; pays accrued holdback at least 60 and not later than 74 days after the notice is published, unless a lien is preserved or perfected as described | s. 26(2) to (4) | Compute and display reminders | Any lien in play is a stop; hand off | anniversary_date, notice_deadline = +14d, pay_window = notice +60d to +74d | Given contract date, system emits three dated tasks | VERIFIED |
+| Contractor to sub holdback | Within 14 days of receiving holdback from owner | s. 26(5) | Track | none | +14d | n/a | VERIFIED |
+| Holdback not payable until circumstances cease | Within 14 days after the circumstances preventing payment cease | s. 26(7) | Track | Whether the circumstances ceased is a legal question | +14d | n/a | VERIFIED |
+| Final holdback | Owner pays within 14 days after liens have expired or been satisfied, discharged or provided for | s. 26(8) | Track | Lien status is a registry/legal question | +14d | n/a | VERIFIED |
+| Dispute to adjudicate (Part II.1) | Notice of adjudication cannot be given more than 90 days after the contract is completed, abandoned or terminated (subcontracts: 90 days after earliest of that date, certified completion under s. 33, last supply) | s. 13.5(3), (3.1) | Surface the date as a warning | Agent never gives the notice, never advises whether to adjudicate | contract_end_date, sub_last_supply_date, adj_deadline = +90d | Date shown to staff 30 days before deadline | VERIFIED |
+| Adjudication determination | Pay within 15 days after determination communicated; adjudicator decides within 30 days after documents (s. 13.13(1)) | s. 13.19(2); s. 13.13(1) | Track | A determination is binding until court/arbitration/agreement (s. 13.15(1)): hand off | +15d | n/a | VERIFIED |
+| Lien expiry | Contractor lien expires at end of 60 days after the earlier of publication of the certificate or declaration of substantial performance and completion, abandonment or termination (s. 31(2)(a)); other cases s. 31(2)(b) | s. 31(2) | Show date to staff | Never advise on preserving a lien | lien_expiry computed with the substantial_performance_published date | Staff-only alert | VERIFIED |
+| Preserved lien | Must be perfected before the end of the 90 days following the last day on which it could have been preserved | s. 36(2) | Show date to staff | Lien perfection is a court action. Hand off | perfect_by | Staff-only alert | VERIFIED |
+| Premises destroyed | Insurance proceeds received by the owner or a mortgagee take the place of the premises and are distributed by the Part priorities | s. 83 | Do not discuss | Any question on who gets insurance proceeds: hand off to counsel | flag only | Phrase "proceeds go to the contractor" never appears in agent output | VERIFIED |
+
+Applicability limit (VERIFIED as to text, UNVERIFIED as to application): Part I.1 duties are written between "owner" and "contractor". The Act defines "owner" as a person with an interest in a premises at whose request services were supplied (s. 1(1); I read the definition begins at that line, not the full definition). An insurer funding a claim is not obviously an "owner". Whether a restoration firm invoicing an insurer is a "contractor" invoicing an "owner" is a question for counsel (section 2, Q1). Until answered, the policy pack should treat these dates as tracking aids and never as claims against the insurer.
