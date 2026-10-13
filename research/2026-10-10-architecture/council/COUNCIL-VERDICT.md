@@ -1,6 +1,6 @@
 # Council verdict (2026-10-13)
 
-Six independent reviewers judged the 13 propositions in COUNCIL-BRIEF.md: staff engineer, voice-AI reliability, privacy and compliance, product and go-to-market, operations, finance and data integrity. Reports are in this folder. **The privacy and compliance report had not arrived when this was written; its findings are not included.** Claims marked CHECKED were re-run or re-read by the author after the reports came in. Others are the reviewers' code readings and need a fixture or test before anyone relies on them.
+Six independent reviewers judged the 13 propositions in COUNCIL-BRIEF.md: staff engineer, voice-AI reliability, privacy and compliance, product and go-to-market, operations, finance and data integrity. Reports are in this folder. All six reports are included; the privacy and compliance report is summarized in section 8. Claims marked CHECKED were re-run or re-read by the author after the reports came in. Others are the reviewers' code readings and need a fixture or test before anyone relies on them.
 
 ## 1. Where the council agrees
 
@@ -68,4 +68,20 @@ Six independent reviewers judged the 13 propositions in COUNCIL-BRIEF.md: staff 
 3. **Reproduce the reaper freeze** in a test with eight stale attempts.
 
 ## 7. Open questions the council cannot answer
-Whether payers accept automated callers (untested and binary); real call length and hold time; whether success fees trigger collection-agency licensing in Ontario (counsel); the privacy and compliance review (pending); whether the July BUILD-HANDOFF note ("zero active practices") is current.
+Whether payers accept automated callers (untested and binary); real call length and hold time; whether success fees trigger collection-agency licensing in Ontario (counsel); whether the July BUILD-HANDOFF note ("zero active practices") is current.
+
+## 8. Privacy and compliance reviewer (arrived last)
+
+Report: privacy-compliance.md. Confidence: high on code and the PHIPA text, medium or low on CRTC, Criminal Code and PIPEDA points (marked for counsel).
+
+1. **The PHIPA agent risk exists in shipping dental code today.** CHECKED: `humanAssistedProfiles.ts` selects call records by carrier only (no practice filter), sends them to the Anthropic API, and stores the result by carrier. `CarrierSubmissionChannel` is global, last writer wins, and its text is injected into other tenants' prompts. The reviewer also notes that the legal prompt in the repo says CollectRx "owns anonymized analytics". The agent definition requires acting for the custodian's purposes and not the agent's own. This needs counsel now, whatever happens with expansion.
+2. **P13 is right in direction but conflates scope with purpose and covers only custodians.** Proposal: a knowledge ledger where every record carries a purpose tag (customer service versus product improvement), a source scope, and a de-identification state.
+3. **Human-assisted mode does not meet the repo's own disclosure decision**: the decision requires a recording and transcription notice at rep contact, and the Scribe is silent (and says "Hello." at entry). The schema even flags when a rep suspects automation. Fixable cheaply; not demonstrably compliant as built.
+4. **Allowlists are necessary but not sufficient.** Variables go to every squad member, availability is not use, and what the rep says back is unbounded. Suggested: a late-bound "reveal identifier" tool so an identifier is released only when the rep asks for that specific one.
+5. **The transcript scrubber has no name or address patterns**, so "PHI never stored" is overstated; vehicle, property and employer identifiers are untouched by it.
+6. **Third parties:** Deepgram and ElevenLabs are missing from the PHI boundary record; business agreements with Vapi and Twilio are unchecked; the data-residency headers may be inert (low confidence).
+7. **Expansion removes the carrier phone allowlist**, which creates misdial risk (a wrong number receiving patient or claimant identifiers).
+8. **P9 opposed for privacy reasons:** W1 extends the custodian exposure (more health-custodian customers on the same shared-knowledge path).
+9. **Review-once is only partly achievable.** Knowledge ingestion, disclosure rules by counterpart class, and the subprocessor register must be part of the core, not modules.
+
+Effect on the sequence: add to stage 0 (1) a counsel review of the cross-practice synthesis and global channel memory, (2) a fix for the human-assisted recording notice and the Scribe first message, (3) the subprocessor register including Deepgram and ElevenLabs, and (4) name and address scrubbing patterns.
