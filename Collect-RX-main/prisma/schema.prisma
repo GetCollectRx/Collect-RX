@@ -72,6 +72,8 @@ model Practice {
   notifications                  PracticeNotification[]
   deletionRequests               PHIPADeletionRequest[]
   breachNotifications            PHIPABreachNotification[]
+  consentAttestations PracticeConsentAttestation[]
+  agentPermissions PracticeAgentPermission[]
   phiVaultEntries                PhiVaultEntry[]
   triageCredential               TriageCredential?
   triageAudits                   TriageAudit[]
@@ -2172,6 +2174,45 @@ model PHIPABreachNotification {
   @@index([notifiedAt])
   @@index([createdAt(sort: Desc)])
   @@map("phipa_breach_notifications")
+}
+
+/// Practice attestation that patients' express, knowledgeable consent covers
+/// insurer communications (PHIPA ss. 18(3)(a), 18(5), 29(a); policy research HP#9).
+/// Append-only history: revoking or superseding sets a timestamp, never deletes.
+/// Wording is read from src/server/compliance/consent-attestation.json (PENDING_COUNSEL).
+model PracticeConsentAttestation {
+  id               String    @id @default(uuid())
+  practiceId       String    @map("practice_id")
+  textVersion      String    @map("text_version")
+  signerName       String    @map("signer_name")
+  signerRole       String    @map("signer_role")
+  attestedByUserId String?   @map("attested_by_user_id")
+  attestedAt       DateTime  @default(now()) @map("attested_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokedByUserId  String?   @map("revoked_by_user_id")
+  revocationReason String?   @map("revocation_reason")
+  supersededAt     DateTime? @map("superseded_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, attestedAt(sort: Desc)])
+  @@map("practice_consent_attestations")
+}
+/// Per-practice agent permission scoped to one purpose. secondaryUseAllowed is
+/// stored for W3 and later readers; no code path in this release can set it true.
+model PracticeAgentPermission {
+  id                  String    @id @default(uuid())
+  practiceId          String    @map("practice_id")
+  purpose             String
+  secondaryUseAllowed Boolean   @default(false) @map("secondary_use_allowed")
+  grantedAt           DateTime  @default(now()) @map("granted_at")
+  grantedByUserId     String?   @map("granted_by_user_id")
+  revokedAt           DateTime? @map("revoked_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@unique([practiceId, purpose])
+  @@map("practice_agent_permissions")
 }
 
 enum CarrierLessonCategory {

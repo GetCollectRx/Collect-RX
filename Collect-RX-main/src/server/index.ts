@@ -147,6 +147,7 @@ import { drainGuardrailAuditOutbox } from '../workers/guardrailAuditWorker.js';
 import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventWebhook.js';
 
 import { createFrontDeskRouter } from './routes/frontDeskApi.js';
+import { createConsentAttestationRouter } from './routes/consentAttestationRoutes.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
@@ -540,6 +541,7 @@ app.use('/api/group',      createGroupAdminRouter(prisma));
 app.use('/api/admin/organizations', createOrgAdminRouter(prisma));
 app.use('/api/public', createPublicUnsubscribeRouter(prisma));
 app.use('/api/billing',    createBillingRouter(prisma));
+app.use('/api/compliance/consent-attestation', createConsentAttestationRouter(prisma));
 app.use('/api/gocardless', gocardlessRouter);
 app.use('/api/insurance',  insuranceRouter);
 app.use('/api/calls',      createFrontDeskRouter());

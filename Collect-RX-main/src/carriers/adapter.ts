@@ -17,6 +17,7 @@ import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
+import { checkConsentDispatchGate } from '../server/compliance/consentAttestation.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -425,6 +426,10 @@ export async function validateDispatch(
   // 2. Fleet-wide per-carrier concurrency ceiling
   const concurrencyGuard = checkCarrierConcurrency(carrierId, carrierActiveCounts);
   if (!concurrencyGuard.allowed) return concurrencyGuard;
+
+  // 2b. Practice consent attestation and agent permission (flag-gated; off = no query)
+  const consentGate = await checkConsentDispatchGate(prisma, practiceId);
+  if (!consentGate.allowed) return { allowed: false, code: consentGate.code, reason: consentGate.reason };
 
   // 3. Carrier approved but payment not received — follow up in practice AR, not another carrier dial
   if (claimStatus === 'APPROVED_PENDING_PAYMENT') {
