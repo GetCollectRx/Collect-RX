@@ -34,6 +34,7 @@ Workspace notes, stated plainly:
 4. **Knowledge sharing is unsafe for multi-industry use.** `CarrierSubmissionChannel` has one global slot per carrier and channel type, overwritten by whichever tenant's call last stated a destination (`schema.prisma:2248`, `submissionChannelMemory.ts`). A case-specific adjuster fax number would become "known channel" text injected into other tenants' calls.
 5. **Recommended architecture:** extend the existing modular monolith. No new services. Add four bounded modules inside `Collect-RX-main/src/server/`: a Case and Receivable ledger, a Payer and Contact registry, a single Dispatch service, and Objective Packs (versioned prompt, tool and outcome-schema bundles per call objective). Keep the five-role squad grammar.
 6. **First implementation work package:** WP-0 (a small safety patch to the manual trigger), then WP-1 (one dispatch service with intents wired into production). Both are behavior-preserving for dentistry and are prerequisites for everything else. Details in section 10.
+7. **Policy update (section 18, 2026-10-13):** the policy research found privacy control gaps in the dental product itself, so hardening dental (Stage 0) comes before WP-1 and before any new vertical. Compliance is decided at tenant, data-field and workflow level, not by one standard, which adds a profile gate to the dispatch service. Module order is revised on compliance load (section 18.5). Sections 5 to 17 stand unless section 18 says otherwise.
 
 ---
 
@@ -750,6 +751,8 @@ Risk notes from the code that affect the order: `CarrierId` is used in about 119
 
 Dependencies shown as `needs`. Each package ends with rollback.
 
+Sequence note (section 18.5): Stage 0 privacy controls and the three defect fixes precede WP-1. The profile gate in section 18.2 becomes a step of the WP-1 dispatch service.
+
 ### WP-0: Manual trigger safety patch (small, immediate, no new architecture)
 
 Scope: in `routes/insurance.ts` trigger route, apply `effectiveHumanAssisted` and pass `squadId`, set `isHumanAssisted` on the attempt, use the TELUS resolver and refuse the placeholder number, and apply plan `essentialOnly`. Reuse functions already used by the scheduler.
@@ -1141,3 +1144,157 @@ Design changes:
 5. WSIB hearing timing (5 business days to submit, 180 day ongoing-bundle spacing) are policy-pack parameters for the WSIB module; no payment timing in days exists, so the follow-up trigger comes from observed practice.
 
 Still open after primary reads: HCAI worklist screens, the 3.35 form-version rule, CRTC applicability to calls to businesses and the 2026-132 outcome, Construction Act s. 6.1 and s. 26, O. Reg. 427/15 period sections, TSSEA published-rate provisions, any insurer-as-recipient text.
+
+---
+
+## 18. Addendum: policy-informed revision (2026-10-13)
+
+Inputs: the six policy research files and `policy-research/SYNTHESIS.md`, `CAPACITY-MODEL-REVIEW.md`, and the open items from section 17.6. Evidence tags carry over: anything marked (S) is VERIFIED statute text read on 2026-10-13 from e-Laws, Justice Laws, Alberta King's Printer or BC Laws; (X) is search excerpt or unverified. CRTC, vendor, IPC, FSRA, HCAI and CanLII pages could not be read in the sandbox. Nothing here changed application code.
+
+### 18.1 What the policy research changes
+
+| Finding | Consequence for this design | Where it lands |
+|---|---|---|
+| Dental, the baseline, has privacy control gaps (consent attestation, agent permission, vendor agreements, retention never run, no breach workflow, cross-tenant learning) (S for statute, F for code) | Hardening dental is a prerequisite stage, not a side task. New verticals copy a template that does not exist yet | 18.5 Stage 0 |
+| Regime depends on tenant status, data field and workflow, not one standard (S: PHIPA ss. 2, 3, 4, 17) | Add a compliance profile layer and a preflight gate to the dispatch service | 18.2 |
+| Custodian status differs by customer group (S for text, application unresolved) | Tenant gets a counsel-set `regime_determination`; undetermined behaves as custodian | 18.2 |
+| CDSA does not reach corporate insurer debtors on the text of Reg. 74 s. 19.7; reaches individuals, sole proprietors, partners, guarantors (S) | Debtor-kind gate is a Core control | 18.4 |
+| Adjuster licence offence and motor/SABS negotiation ban turn on what the agent says (S: Insurance Act ss. 1(1), 397, 398) | Scope limit enforced in objective packs and tool schemas, transcript lint, no percentage fees on SABS invoices | 18.4, 18.7 |
+| Many statutory clocks verified for SABS, Construction Act, RSLA, TSSEA, Insurance Act, Limitations Act (S); some unreadable (ADP, ODSP, VAC) | Policy packs carry evidence tags; unverified parameter is a hard stop for its module | 18.3 |
+| Vendor chain has no confirmed Canadian region; Vapi HIPAA and ZDR reported exclusive and org-level (X) | Possible two-organization route split; confirm before designing around it | 18.6 |
+| Carrier concurrency cap of 5 binds before Vapi slots (F from capacity review) | `contact_routes` gains per-route capacity fields | 18.8 |
+| COGS breaker and one-call-per-practice cap contradict daily-minute promises (F from capacity review) | Fix before selling any daily-minute guarantee | 18.8 |
+
+### 18.2 Compliance profile layer [P]
+
+One new Core component, no new service: a profile resolver and a preflight gate inside the dispatch service (section 10, WP-1).
+
+Data:
+
+- `regime_determination` per tenant: `tenant_kind`, `provinces[]`, `custodian_status` (`CONFIRMED | PRESUMED | NOT_CUSTODIAN | UNDETERMINED`), `privacy_regimes[]`, `basis_ref`, `determined_by`, `determined_at`, `review_due_at`. Counsel sets the decision rule; engineering applies it. `UNDETERMINED` is handled as `CONFIRMED`.
+- `data_class` on every vault field and import column: `HEALTH | PERSONAL | FINANCIAL | GENERAL`. A class can raise handling inside a profile and never lower it.
+- Workflow manifest: each module declares `requires { profiles, grants[], payer_kinds[], pack_status }`.
+- No new attestation table. Consent attestation, agent permission, letter of authority and direction to pay are all rows in `authorization_grants` (section 5.6) with kinds `patient_consent_attestation`, `agent_permission`, `loa`, `direction_to_pay`. Each carries scope, signer, signer role, wording version, evidence reference, effective and revoked dates. This avoids one table per obligation.
+
+Preflight order in the dispatch service, extending WP-1: lock, authorization, **profile gate**, policy, block (CARRIER_BLOCK), concurrency, entitlement, mode, route, intent, call. The profile gate fails closed with a reason code and a next action shown to staff:
+
+| Code | Condition | Applies to |
+|---|---|---|
+| `ATTESTATION_MISSING` | Health profile tenant has no valid consent attestation (PHIPA ss. 18(3)(a), 18(5)) | Health |
+| `AGENT_PERMISSION_MISSING` | No purpose-scoped permission on file (PHIPA s. 17) | Health |
+| `GRANT_MISSING_OR_EXPIRED` | Workflow requires a letter of authority, direction to pay or licence record that is absent, expired or revoked | Per workflow |
+| `DEBTOR_KIND_UNKNOWN_OR_INDIVIDUAL` | Payer entity type not a corporation (Reg. 74 s. 19.7) | All |
+| `POLICY_PACK_UNVERIFIED` | A blocking parameter in the workflow's pack is not VERIFIED and counsel-signed | Per workflow |
+| `QC_PIA_MISSING` | Quebec tenant lacks impact assessment and agreement references per outbound vendor | Quebec |
+| `OUTSIDE_RECIPIENT_WINDOW` | Outside the intersection of legal hours and the route's staffed hours in the recipient's local time | All (defer, not block) |
+| `ROUTE_CAPACITY_SATURATED` | Per-route concurrency or pacing limit reached | All (defer, not block) |
+
+Province overlays key on tenant location and on data-subject location; Quebec is gated only after counsel resolves whether a Quebec patient of an Ontario tenant triggers it.
+
+### 18.3 Counterpart clusters and data-class tiers (the redraw)
+
+The earlier plan grouped by industry. The policy research shows compliance load follows two other axes: who the counterpart is, and what data class the case carries. Industries then map onto both.
+
+| Counterpart cluster | Members | Licensing and scope envelope | Typical data class |
+|---|---|---|---|
+| Group insurers | Dental, extended health, rehab (EHB), hearing, orthotics | Status only; CDSA out for corporate payers (S) | HEALTH |
+| Auto insurers and adjusters | MVA rehab, collision, tow, storage | Adjuster ban and s. 398 for motor and SABS (S); TSSEA collectability rules for tow and storage (S) | HEALTH (rehab), PERSONAL and FINANCIAL (collision) |
+| Property insurers and adjusting firms | Restoration, emergency housing | Adjuster definition and "agent of the property insured" exclusion unresolved (S text, application open) | PERSONAL and FINANCIAL |
+| Government programs | WSIB, ADP, ODSP, VAC, NIHB, ODB | WSIB: practitioners may not bill the worker (S); others unverified | HEALTH |
+
+Workflow modules from section 17.2, now with their compliance load:
+
+| Module | Profile | Counterpart cluster | Statutes verified (S) | Blocks launch |
+|---|---|---|---|---|
+| W1 Claims-line AR status | Health | Group insurers | Insurance Act s. 300 conditions text; PHIPA | Tier 0 privacy gaps; counsel Q1 to Q7 in SYNTHESIS 12 |
+| W2 MVA invoice trace | Health + SABS pack | Auto | O. Reg. 34/10 ss. 38, 46.2, 48, 49, 51, 54, 56, 62, 64 | Counsel on ss. 397 and 398; FSRA authorization guidance unread; direction-to-pay grant |
+| W3 Government program status | Health | Government | WSIA s. 33; ODSPA appeal text | ADP, ODSP vendor billing, VAC unverified: cannot launch |
+| W4 Property restoration | Commercial | Property | Construction Act ss. 6.1 to 6.9, 13.5 to 13.20, 22, 26, 31 to 36, 83 | Whether Part I.1 reaches an insurer-funded invoice; adjuster definition fit |
+| W5 Collision, tow, storage | Commercial | Auto | RSLA ss. 3, 4, 15 to 18, 24; O. Reg. 427/15; TSSEA ss. 20 to 32, 60; Insurance Act ss. 258, 259.1, 262 | TSSEA published-rate source; consent and invoice evidence from the tenant |
+| W6 Preauthorization | Health | Group or government | None verified | Counsel; no source read |
+
+### 18.4 Core v1 slim: what is shared, what is deferred
+
+The bloat rule: a component enters Core only if two or more modules need it, or a statute requires it. Everything else waits for the first module that needs it.
+
+| Component | Needed to harden dental | Needed by two or more modules | Verdict |
+|---|---|---|---|
+| Single dispatch service with intents (WP-1) | Yes (duplicate call risk, mode divergence) | Yes | Core |
+| `authorization_grants` (with the new kinds above) | Yes (attestation, permission) | Yes | Core |
+| `regime_determination` and `data_class` | Yes | Yes | Core |
+| Profile gate in preflight | Yes | Yes | Core |
+| Debtor-kind gate | Yes (patient contact boundary, CDSA) | Yes | Core |
+| Breach register with required report fields | Yes (PIPEDA, PHIPA) | Yes | Core |
+| Retention job coverage with dry run and legal hold | Yes | Yes | Core |
+| Sub-processor register and CI check | Yes | Yes | Core |
+| Truthful notice constant | Yes | Yes | Core |
+| `contact_routes` with capacity fields | Partly (carrier cap) | Yes | Core, minimal first |
+| `payment_allocations` and attribution classes (WP-2) | Yes (honest recovery number) | Yes | Core, parallel track |
+| `insurance_cases`, `receivables`, `receivable_lines` (WP-3) | No | Yes | Defer to Stage 2 |
+| `parties`, `case_party_roles`, `remittances`, `accrual_schedules` | No | Only W4, W5 | Defer to the module that needs them |
+| `preauthorizations`, `callback_expectations` | No | Only W6 | Defer |
+| `policy_packs` with evidence tags | No | Yes | Core mechanism, packs deferred per module |
+| Objective packs with typed outcomes (WP-5) | Partly | Yes | Core after WP-1 |
+| Knowledge scoping with tenant flags | Yes (learning default-deny) | Yes | Core |
+
+This replaces the 23-table M1 step with two waves: Wave A (Core, serves dental) and Wave B (per-module ledger tables, created when that module's gates are green).
+
+### 18.5 Revised stage plan
+
+| Stage | Contents | Exit gate |
+|---|---|---|
+| 0 | Fix the three verified defects (reference-number regex, carrier timeout keys, reaper after early return); WP-0 manual trigger patch; Tier 0 privacy controls (SYNTHESIS 10): attestation and agent permission, learning default-deny, breach register, variable allowlist, truthful notices, retention coverage with dry run, sub-processor register, Quebec gate, audit coverage; doc corrections; fix COGS breaker and per-client concurrency ceiling before any daily-minute promise (18.8) | Controls implemented behind flags, tests green; counsel placeholders listed; no claim of compliance made |
+| 1 | WP-1 dispatch service with profile gate; WP-2 payment allocation; vendor answers (VAPI-QUESTIONS) and Cowork verification (COWORK-VERIFICATION-PROMPT) completed and filed | Vendor route decision recorded; unverified claims re-tagged |
+| 2 | Ledger (WP-3), registry with route capacity (WP-4), objectives and typed outcomes (WP-5), knowledge scoping (WP-6), identity bundles (WP-7) | Dental parity tests pass; Wave B tables still empty |
+| 3 | First non-dental module, human-assisted only | Per-module gate below |
+| 4 | Further modules; graduation to autonomous mode per module by measured criteria (WP-9) | Measured, not assumed |
+
+Per-module launch gate (all required): profile gate codes implemented for that module; every blocking policy parameter VERIFIED and counsel-signed; objective pack with scope lint and golden transcripts; counsel questions that block that module answered; vendor route decision recorded for its data class; an RLS test for each new table; human-assisted graduation criteria written down.
+
+Module order, revised on compliance load. This is an engineering and compliance reading, not a commercial one; the commercial order is Khalid's.
+
+1. W1 extended health for allied health. Same counterparts and profile as dental, so the least new compliance work.
+2. W5 collision, tow, storage. Commercial profile (no PHIPA), most statutory clocks verified. Depends on TSSEA published-rate source and tenant consent and invoice evidence.
+3. W4 restoration. Commercial profile, but applicability of the Construction Act to insurer-funded invoices is unresolved, and the adjuster-definition fit is open.
+4. W2 MVA. Moved later than section 17.3 had it. It combines the health profile, the highest licensing exposure (ss. 397, 398), the direction-to-pay requirement and the unread FSRA authorization guidance.
+5. W6 preauthorization, then W3 government programs. W3 cannot launch while ADP, ODSP vendor billing and VAC are unverified.
+
+### 18.6 Vendor route [P, pending vendor answers]
+
+If written answers confirm the reports in `vendors-ai-governance-standards.md` rows 1 and 2 (HIPAA mode org-level; ZDR and HIPAA exclusive), then health and commercial workflows need separate Vapi organizations, and the health route cannot depend on Vapi-side analysis output. Outcomes for that route come from server-received tool calls such as `log_call_outcome`. If no Canadian region exists at any vendor (rows 9, 13, 14, 16), all product and privacy copy must drop any residency claim. Architecture hook: the dispatch service selects the Vapi organization credentials by data class; nothing else changes. Do not build this until V1 to V6 are answered in writing.
+
+### 18.7 Pitch boundary updates (extends section 12.2)
+
+Do not say: "HIPAA compliant" (US law, inapplicable); "PHIPA compliant" or "PIPEDA compliant" (the research found open gaps and no counsel sign-off); "Canadian data residency" or "data stays in Canada" (no vendor region confirmed; only Fly compute is claimed); "we do not record calls" without "transcripts are produced" (Vapi still generates and stores transcripts under current settings); "we collect your invoices" or similar, which could read as a collection agency holding out (CDSA s. 2.1 looks at substance); any fee based on a percentage of an insurer payment on SABS invoices.
+
+Can say, because the repo supports it: patient identifiers are passed as ephemeral call variables and never in call metadata (F); audio recording is disabled per call (F); identifiers are encrypted at rest with AES-256-GCM (F); calls are limited to carrier numbers (F). State each as a fact with its limits, not as a compliance conclusion.
+
+### 18.8 Capacity and financial prerequisites (from the capacity review)
+
+- Add to `contact_routes`: validated simultaneous-call limit, call-start pacing, operating hours and cutoff, recipient time zone, block and answer-rate signals, effective date and evidence. The fixed carrier limit of 5 becomes the default until a route is validated.
+- Replace the fleet constant with a capacity configuration verified against the vendor-reported subscription limit; the shared reserve scales with total slots.
+- Per-client concurrency ceiling replaces the all-or-nothing practice lock, keeping claim-level idempotency. Without it no practice can exceed about 540 minutes a day, so a 600-minute Scale reservation cannot be delivered.
+- COGS breaker must count authorized overage revenue and overage must be pre-authorized with a spend limit; otherwise Hold Sentinel pauses near 1,773 minutes and Scale near 11,107 against a 12,000-minute reservation.
+- Do not sell a fixed daily-minute guarantee until these ship and per-route concurrency is measured. The hourly per-carrier concurrency log is the first measurement.
+
+### 18.9 Open items from section 17.6, status now
+
+| Item | Status |
+|---|---|
+| Construction Act ss. 6.1 and 26 | Read (S). 7 day deficiency notice (s. 6.1(2)); annual holdback notice within 14 days of the anniversary, payment 60 to 74 days after publication (s. 26). Applicability to insurer-funded invoices open |
+| O. Reg. 427/15 period sections | Read (S). Vehicle storer notice 15 days with an HTA permit, 60 days without. RSLA s. 15 notice of intention to sell remains 15 days; section 17.6 item 5 conflated them and is superseded |
+| TSSEA published-rate provisions | Read (S) in the statute (s. 28, s. 32 overcharge not collectable). The location of the published list and regulations unread |
+| HCAI worklist screens, form-version rule | Still open |
+| CRTC applicability to business calls; 2026-132 | Still open. 2026-132 is a Notice of Consultation (X) |
+| Insurer-as-recipient text | Still open |
+
+### 18.10 Decisions needed
+
+From Khalid:
+1. Accept Stage 0 as the next work, including the privacy controls, before any new vertical.
+2. Module order in 18.5, or your commercial order.
+3. Whether to open the separate PR for the three verified defects now.
+
+From counsel (unblocks, in order): SYNTHESIS section 12 items 1 to 7 (all launches), then the module-specific items.
+
+From vendors: VAPI-QUESTIONS V1 to V6.

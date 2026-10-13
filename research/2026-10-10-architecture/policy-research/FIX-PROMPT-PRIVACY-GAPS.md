@@ -47,6 +47,7 @@ W1. Documentation corrections only (no code). Fix, citing the statute text in he
 
 W2. Consent attestation and agent permission record (HP#1, HP#9, SYNTHESIS H1, H2).
    - Add a tenant-scoped, versioned record: practice attests that patients' express, knowledgeable consent covers insurer communications; separate record of agent permission scoped to purpose "claim status inquiry" with a secondary-use permission flag defaulting to false. Store attestation text version, signer name and role, timestamp. Wording is PENDING_COUNSEL, read from config.
+   - Shape the record to match the planned authorization_grants table so it migrates without rework: kind (patient_consent_attestation, agent_permission), scope, signer name, signer role, wording version, evidence reference, effective_from, effective_to, revoked_at. See ARCHITECTURE-PROPOSAL.md section 5.6 and 18.2 on the research branch.
    - Enforce in dispatch preflight (queueEngine scheduled path AND the manual trigger path, which diverge; fix both through one shared check): practices with the health profile and no valid attestation are not dispatched; log a deferral code and show the next action in the existing dispatch deferral fields.
    - Flag defaults OFF in code but add a migration-safe backfill plan in the PR (do not backfill attestations; existing practices must attest).
    - Write audit events for attestation create, revoke and version change.
