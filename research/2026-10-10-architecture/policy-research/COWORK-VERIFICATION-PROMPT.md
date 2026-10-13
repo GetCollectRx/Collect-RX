@@ -80,6 +80,13 @@ Claims to check:
  V6 No vendor in this list offers a Canadian processing region for voice or LLM inference (check each; say which, if any, does).
  V7 Fly.io lists no Canadian sub-processor.
 
+BATCH 3B: ANTI-SPAM LAW (company's own marketing).
+Pages: Canada's Anti-Spam Legislation, S.C. 2010, c. 23 on laws-lois.justice.gc.ca (ss. 1, 6, 10, 13) and the CRTC and Competition Bureau CASL guidance on implied consent for business-to-business messages.
+Extract exact text on: definition of commercial electronic message; consent required before sending; the implied consent categories including conspicuous publication of an electronic address and business relationships; identification and unsubscribe requirements; penalties.
+Claims to check:
+ S1 A commercial electronic message may be sent only with express or implied consent; an unsubscribe link alone is not sufficient.
+ S2 Penalties include administrative monetary penalties (record the maximum amounts and quote).
+
 BATCH 3: ONTARIO PRIVACY REGULATOR AND HEALTH GUIDANCE.
 Pages:
  a. Information and Privacy Commissioner of Ontario (ipc.on.ca): "AI Scribes: Key Considerations for the Health Sector" (January 2026), guidance on electronic service providers and agents under PHIPA, breach reporting guidance, and annual statistics reporting.

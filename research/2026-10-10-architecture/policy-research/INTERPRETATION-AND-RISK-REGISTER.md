@@ -14,7 +14,7 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 - Adopted reading: when CollectRx makes claim-status calls for a practice, it acts for the custodian's purposes and is an agent. Any use of that content for CollectRx's own purposes (carrier lessons shared across practices, product improvement) is outside the agent definition.
 - Contrary reading: CollectRx is a non-agent electronic service provider, which carries narrower duties and a similar bar on own-purpose use.
 - Both readings agree on one point: own-purpose use of identifiable content is not permitted. So the control that holds under either: practice-scoped agent permission, purpose limit, learning off by default.
-- Risk accepted by proceeding: PHIPA offences up to $200,000 and 1 year for an individual, up to $1,000,000 for an organization (s. 72, VERIFIED); administrative penalty cap $500,000 for an organization (O. Reg. 329/04). Exposure sits with the custodian first, then CollectRx as agent.
+- Risk accepted by proceeding: PHIPA offences up to $200,000 or 1 year for a natural person, up to $1,000,000 otherwise (s. 72(2), VERIFIED); the offences in s. 72(1)(a) require wilfulness. Officers, employees and agents who authorized the offence, or had authority to prevent it and knowingly refrained, are parties to it (s. 72(3), VERIFIED). Administrative penalty cap $500,000 for an organization (O. Reg. 329/04). Exposure sits with the custodian first, then CollectRx as agent, then individuals under s. 72(3).
 - Unread: IPC decisions on agents and vendors.
 - Decision: ______ (sign / change)  Date: ______  Re-read by: ______
 
@@ -73,7 +73,7 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 
 ## R8. Is a call to an insurer a "collection" activity (CDSA)?
 
-- Text read (VERIFIED): CDSA s. 1(1) definition of collection agency; Reg. 74 s. 19.7: the Act does not apply to collecting a debt from a person other than an individual, including an individual who owns a sole proprietorship, is a partner, or has given a personal guarantee. s. 24: no person shall knowingly use an unregistered agency.
+- Text read (VERIFIED): CDSA s. 1(1) definition of collection agency; Reg. 74 s. 19.7: the Act does not apply to collecting a debt from a person other than an individual, including an individual who owns a sole proprietorship, is a partner, or has given a personal guarantee. s. 24: no person shall knowingly use an unregistered agency. Penalties: s. 28(2.2) individual up to $50,000 or imprisonment up to two years less a day, or both; corporation up to $250,000; s. 28(2) an officer or director who knowingly concurs is guilty.
 - Adopted reading: calls to an incorporated insurer about a client's receivable fall outside the Act on the text. Calls to individuals do not.
 - Contrary reading: the real debtor is the patient; a regulator could look through to substance (s. 2.1).
 - Default control: debtor-kind gate; no patient contact.
@@ -81,12 +81,16 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 
 ## R9. Adjuster licensing and the motor/SABS negotiation ban
 
-- Text read (VERIFIED): Insurance Act s. 1(1) "adjuster"; s. 397 offence for acting as an adjuster without a licence; s. 398 bans negotiating or attempting to negotiate for compensation a settlement of a motor vehicle claim on behalf of a claimant, including SABS claims; lawyers excepted.
+- Text read (VERIFIED): Insurance Act s. 1(1) "adjuster"; s. 397(7) offence for acting as an adjuster without a licence (penalty under s. 447(3): first conviction up to $250,000, subsequent up to $500,000; s. 447(4) directors and officers up to $100,000 and $200,000); s. 398 bans negotiating or attempting to negotiate for compensation a settlement of a motor vehicle claim on behalf of a claimant, including SABS claims; lawyers excepted.
 - Adopted reading: status and date inquiries are not negotiating or adjusting; arguing coverage, disputing a decision or proposing an amount would be.
 - Contrary reading: any follow-up on a SABS invoice "for compensation" is within s. 398.
 - Default control: scope limit in prompts and tool schemas; transcript lint; flat fees, never a percentage of an insurer payment on SABS invoices.
 - Unread: FSRA guidance; this is the row where the unread source matters most.
 - Decision: ______
+
+## Reviewer outcome (2026-10-13)
+
+See RISK-REGISTER-REVIEW-RESULT.md. Dispositions: R1 accept; R2 modify (add warranty and indemnity, do not collect proof of consent); R3 keep reading, add consent fallback; R4 accept as a go-live condition; R5 accept with a sharper default; R6 accept; R7 modify (no blanket 24 hour purge of vault data); R8 accept; R9 accept control; R10 stays blocked. Several reviewer citations were wrong and are listed there.
 
 ## R10. CRTC rules
 
