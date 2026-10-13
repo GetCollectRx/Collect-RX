@@ -6,6 +6,8 @@ Context to give Vapi: Canadian customer; health-adjacent data (patient name, dat
 
 Priority 1 questions decide the architecture. Do not build around any reported answer until it is in writing.
 
+L1 update 2026-10-13: Vapi's public docs now answer parts of V2 and V3 (HIPAA mode is organization-level and API-unsettable; HIPAA and ZDR are mutually exclusive; ZDR requires no separate purchase; ZDR stores no recordings, transcripts, summaries or structured outputs). Public docs are not a contract: ask Vapi to confirm these in writing, and ask V2 (two organizations under one contract) and the HIPAA price, which the docs do not answer. Evidence: EVIDENCE-LOG-2026-10-13.md E18.
+
 ## A. Residency and platform structure (priority 1)
 
 | # | Question | What the answer decides |

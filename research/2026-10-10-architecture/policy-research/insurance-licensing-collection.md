@@ -1,5 +1,15 @@
 # Insurance, licensing and collection law: policy research (draft 2, 2026-10-13)
 
+## L1 verification update (2026-10-13)
+
+See CORRECTIONS.md and EVIDENCE-LOG-2026-10-13.md (E12). Where this addendum and a row disagree, this addendum wins.
+
+| Row | New tag | Statement |
+|---|---|---|
+| 22, first sentence | VERIFIED | FSRA: "Your FSRA licence is your authorization to receive payment directly from auto insurers for listed expenses resulting from statutory accident benefit claims." FSRA regulates HSP billing practices under O. Reg. 90/14 and Insurance Act s.288.4 |
+| 22, billing agent question | NOT FOUND | No FSRA text read on whether a third-party billing agent may chase payment or discuss a file, or whether insured authorization is required. Cowork batch R5 |
+| Section 6, adjuster licensing | VERIFIED | FSRA: "Public adjusters and independent adjusters need to be licensed by FSRA. Insurance company adjusters do not need a licence." Adjusters must be sponsored by an adjusting firm |
+
 Status: not legal advice. Counsel must confirm every conclusion. Tags: VERIFIED = read as page text from ontario.ca/laws via curl through the configured proxy on 2026-10-13 (consolidation currency as shown on each page); SEARCH-EXCERPT = seen only in a search or fetch summary; UNVERIFIED = recalled or inferred, no source read this session.
 
 Naming correction (VERIFIED): "Ontario Reg 74/05" is not the Collection and Debt Settlement Services Act regulation. https://www.ontario.ca/laws/regulation/r05074 is O. Reg. 74/05, Sheet Metal Worker under the Trades Qualification and Apprenticeship Act. The CDSA General regulation is R.R.O. 1990, Reg. 74 (https://www.ontario.ca/laws/regulation/900074, last amendment O. Reg. 127/22). This file uses the latter.
