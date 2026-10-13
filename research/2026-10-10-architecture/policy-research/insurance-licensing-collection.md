@@ -1,4 +1,4 @@
-# Insurance, licensing and collection law: policy research (draft 1, 2026-10-13)
+# Insurance, licensing and collection law: policy research (draft 2, 2026-10-13)
 
 Status: not legal advice. Counsel must confirm every conclusion. Tags: VERIFIED = read as page text from ontario.ca/laws via curl through the configured proxy on 2026-10-13 (consolidation currency as shown on each page); SEARCH-EXCERPT = seen only in a search or fetch summary; UNVERIFIED = recalled or inferred, no source read this session.
 
@@ -37,6 +37,7 @@ Customer groups: DENT (dental practices, current product), MVA (rehab/health pro
 | 19 | Calls to insurers must carry a clear identification of the principal. CRTC text per prior pass; applicability to business-to-business calls unresolved. | CRTC Part IV s. 4(d) per prior pass | SEARCH-EXCERPT (prior pass) | ALL | Opening utterance names the client and states automated calling | First-utterance test per objective pack | Dental opening exists at src/vapi/client.ts ("automated calling system ... on behalf of ${practiceName}, a dental practice"). Hardcodes "dental practice"; no per-vertical copy |
 | 20 | Letter of authority from the client business to act for it with an insurer. No statute found requiring one; it is an insurer privacy and practice requirement and a PHIPA/PIPEDA agent paper trail. | n/a | UNVERIFIED | ALL | `authorization_grants` kind `loa` per payer per tenant, with scope (status inquiry only), expiry, signer, revocation | Call blocked when LOA absent, expired or revoked; revocation takes effect before next dial | NOT PRESENT |
 | 21 | Patient consent to disclose PHI to the insurer through the agent. Express consent unless PHIPA permits. | IPC guidance via prior pass | SEARCH-EXCERPT | DENT, MVA | `patient_consent` grant kind or documented reliance on custodian's consent | Detokenised identifiers refused when grant missing | NOT PRESENT |
+| 22 | Only FSRA-licensed health service providers (HSPs) can receive direct payment from auto insurers for SABS goods and services; unlicensed providers still submit forms through HCAI but are not paid directly. Licensed HSPs must follow O. Reg. 90/14 (business systems and practices). FSRA flagged unsigned OCF-21 invoices and stale HCAI rosters as compliance issues. Whether a third-party billing agent may submit or chase for a licensed HSP was NOT found. | FSRA HSP pages via search: https://www.fsrao.ca/industry/health-service-providers/publications/2024-2026-health-service-provider-compliance-report ; https://www.fsrao.ca/announcements/ensuring-fair-treatment-people-claiming-auto-accident-benefits | SEARCH-EXCERPT (fsrao.ca returns 403 to curl; pages not read) | MVA | Tenant onboarding captures FSRA HSP licence number and status; MVA module refuses payment-trace on invoices where tenant is unlicensed; never alter or submit OCF forms on the tenant's behalf | Unlicensed tenant cannot enable MVA payment objective; no code path writes HCAI | NOT PRESENT |
 
 ## 2. Success fee and contingency pricing (analysis, mostly UNVERIFIED)
 
@@ -72,7 +73,9 @@ Customer groups: DENT (dental practices, current product), MVA (rehab/health pro
 9. Are call recordings and AI disclosure at the start of calls required in Ontario for business-to-business calls (two-party versus one-party consent under the Criminal Code)?
 10. Quebec, Alberta, BC: see section 5.
 
-## 5. Other provinces (brief, all UNVERIFIED, from memory, nothing fetched yet)
+## 5. Other provinces (brief)
+
+Search pass 2026-10-13 found no source answering whether each province's collection licensing covers only consumer debts (SEARCH-EXCERPT only: BC Debt Collection and Repayment Regulation has an exemptions-from-licensing section, text cut off, https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/295_2004 ; Quebec regulation under the Act respecting the collection of certain debts, https://www.legisquebec.gouv.qc.ca ; Alberta collector licence page https://alberta.ca/collector-licence). Everything below remains UNVERIFIED memory.
 
 - Quebec: Debt Collection Act / Act respecting the collection of certain debts (Loi sur le recouvrement de certaines créances) licensing is by the OPC for collection of debts owed by consumers; business debts reportedly outside. Adjusters are regulated under the Act respecting the distribution of financial products and services (AMF; claims adjusters). French-language rules apply to scripts.
 - Alberta: Collection and Debt Repayment Practices Regulation and Fair Trading Act: collection agency licensing; business-debt scope not confirmed. Adjusters under the Insurance Act (Alberta) licensing; Alberta auto has a different benefit regime (no SABS).
@@ -88,8 +91,10 @@ Customer groups: DENT (dental practices, current product), MVA (rehab/health pro
 | Insurance Act ss. 1(1), 392.2, 397, 398, 438, 439 | https://www.ontario.ca/laws/statute/90i08 | Adjuster, agent, public adjuster, unfair practices |
 | Authority rules under Insurance Act s. 121.0.1 on unfair or deceptive acts | FSRA site (URL not verified) | s. 438 defines them by reference to these rules |
 | O. Reg. 34/10 ss. 32, 38, 44, 48, 49, 51, 62, 64 | https://www.ontario.ca/laws/regulation/100034 | Direction to pay, assignment, authorised representative |
-| FSRA Automobile Insurance Claims Handling guidance and SABS Guideline on invoices and the central processing agency | FSRA site (URLs not verified) | Not fetched this session |
+| FSRA Automobile Insurance Claims Handling guidance and SABS Guideline on invoices and the central processing agency | FSRA site (URLs not verified; fsrao.ca returns 403 to curl, read in a browser) | Not fetched this session |
 | HCAI manuals | https://www.hcai.ca (URL not verified) | Provider access and who may submit |
 | Insurance Act s. 267.8 | https://www.ontario.ca/laws/statute/90i08 | Referenced by SABS s. 62(2) |
 
-Pending in this draft: FSRA guidance pages, HCAI, CRTC applicability, other provinces. Draft 2 will update the SEARCH-EXCERPT rows.
+Also read (human): FSRA adjuster licensing pages (SEARCH-EXCERPT: independent and public adjusters need FSRA licence, insurer staff adjusters exempt, individuals must be sponsored by an adjusting firm; https://fsrao.ca/licensing/individual-adjuster/apply-new-insurance-adjuster-licence) and O. Reg. 90/14.
+
+Not completed: FSRA claims-handling guidance on insured authorization was not found (search returned nothing relevant; fsrao.ca blocks curl with 403), HCAI pages (hcai.ca returned an 85 byte stub), CRTC applicability to business calls. Treat as open.
