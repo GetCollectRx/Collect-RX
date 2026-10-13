@@ -72,6 +72,7 @@ model Practice {
   notifications                  PracticeNotification[]
   deletionRequests               PHIPADeletionRequest[]
   breachNotifications            PHIPABreachNotification[]
+  breachRegisterEntries          BreachRegisterEntry[]
   /// Default-deny learning (policy research HP#14, PS#15): this practice's
   /// transcripts may feed cross-tenant lesson extraction. Off until the
   /// practice opts in.
@@ -2178,6 +2179,54 @@ model PHIPABreachNotification {
   @@index([notifiedAt])
   @@index([createdAt(sort: Desc)])
   @@map("phipa_breach_notifications")
+}
+
+/// Breach register (policy research HP#2, HP#3, HP#4, PS#12, PS#13). Records every
+/// incident, not only high-risk ones. Fields follow Breach of Security Safeguards
+/// Regulations SOR/2018-64 s. 2(1)(a) to (g). Free-text fields are scanned for
+/// identifiers at write time. Rows are kept for at least 24 months and are not
+/// purged by the retention job. Patient notification belongs to the custodian.
+model BreachRegisterEntry {
+  id                       String    @id @default(uuid())
+  practiceId               String    @map("practice_id")
+  /// LOSS | THEFT | UNAUTHORIZED_ACCESS | UNAUTHORIZED_USE | UNAUTHORIZED_DISCLOSURE | OTHER
+  category                 String
+  /// ON | AB | BC | QC | OTHER. Drives which notice duties counsel applies.
+  province                 String
+  /// s. 2(1)(a): circumstances of the breach
+  circumstances            String
+  /// s. 2(1)(b): period, start
+  periodStart              DateTime  @map("period_start")
+  /// s. 2(1)(b): period, end (null while the incident is still open)
+  periodEnd                DateTime? @map("period_end")
+  discoveredAt             DateTime  @map("discovered_at")
+  /// s. 2(1)(c): personal information involved, as data element categories only
+  dataElements             String    @map("data_elements")
+  /// s. 2(1)(d): number of individuals affected
+  individualsCount         Int       @map("individuals_count")
+  /// Opaque patient tokens (UUIDs), never names or identifiers
+  affectedTokens           String[]  @map("affected_tokens")
+  /// s. 2(1)(e): steps taken to reduce the risk of harm
+  stepsToReduceHarm        String    @map("steps_to_reduce_harm")
+  /// s. 2(1)(f): steps notifying individuals and others
+  notificationSteps        String    @map("notification_steps")
+  /// s. 2(1)(g): contact role for this breach. A role, not a person's name.
+  contactRole              String    @map("contact_role")
+  vendorsInvolved          String?   @map("vendors_involved")
+  rrosHAssessment          String?   @map("rros_assessment")
+  realRiskOfSignificantHarm Boolean? @map("real_risk_of_significant_harm")
+  custodianNotifiedAt      DateTime? @map("custodian_notified_at")
+  regulatorNotifiedAt      DateTime? @map("regulator_notified_at")
+  closedAt                 DateTime? @map("closed_at")
+  /// Earliest date a purge may consider this row. Set to at least 24 months after recording or closure.
+  retainUntil              DateTime  @map("retain_until")
+  recordedAt               DateTime  @default(now()) @map("recorded_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  @@index([practiceId, discoveredAt(sort: Desc)])
+  @@map("breach_register_entries")
 }
 
 enum CarrierLessonCategory {
