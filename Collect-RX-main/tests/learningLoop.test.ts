@@ -7,6 +7,8 @@ import {
 import { probeClaimStatus } from '../src/server/triage/claimStatusProbe.js';
 import { shouldProposeLessons } from '../src/webhooks/vapiNormalizer.js';
 
+const PRACTICE_ID = 'practice-1';
+
 function anthropicResponse(lessons: unknown) {
   return {
     ok: true,
@@ -20,7 +22,18 @@ function lessonPrisma(overrides: Record<string, unknown> = {}) {
     callAttempt: {
       findUnique: vi.fn().mockResolvedValue({
         transcriptText: 'x'.repeat(300),
-        claim: { carrierId: 'rbc' },
+        claim: { carrierId: 'rbc', practiceId: PRACTICE_ID },
+      }),
+    },
+    practice: {
+      findUnique: vi.fn().mockResolvedValue({
+        name: 'Synthetic Learning Practice',
+        billingPhone: null,
+        faxNumber: null,
+        npi: null,
+        taxId: null,
+        learningContribution: true,
+        learningConsumption: true,
       }),
     },
     carrierLesson: {
@@ -92,7 +105,7 @@ describe('extractLessonsFromCall', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { prisma } = lessonPrisma();
     (prisma.callAttempt.findUnique as unknown as ReturnType<typeof vi.fn>)
-      .mockResolvedValue({ transcriptText: 'short', claim: { carrierId: 'rbc' } });
+      .mockResolvedValue({ transcriptText: 'short', claim: { carrierId: 'rbc', practiceId: PRACTICE_ID } });
     expect(await extractLessonsFromCall(prisma, 'attempt-1')).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -101,6 +114,9 @@ describe('extractLessonsFromCall', () => {
 describe('getApprovedNavigationNotes', () => {
   it('formats approved recommendations for the ivr instructions variable', async () => {
     const prisma = {
+      practice: {
+        findUnique: vi.fn().mockResolvedValue({ name: 'Synthetic Learning Practice', learningConsumption: true, learningContribution: false }),
+      },
       carrierLesson: {
         findMany: vi.fn().mockResolvedValue([
           { recommendation: 'Press two for fax-back' },
@@ -108,15 +124,18 @@ describe('getApprovedNavigationNotes', () => {
         ]),
       },
     } as unknown as PrismaClient;
-    const notes = await getApprovedNavigationNotes(prisma, 'rbc');
+    const notes = await getApprovedNavigationNotes(prisma, 'rbc', PRACTICE_ID);
     expect(notes).toBe(' | LEARNED: Press two for fax-back | Say representative to skip the menu');
   });
 
   it('returns empty string when nothing is approved', async () => {
     const prisma = {
+      practice: {
+        findUnique: vi.fn().mockResolvedValue({ name: 'Synthetic Learning Practice', learningConsumption: true, learningContribution: false }),
+      },
       carrierLesson: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as PrismaClient;
-    expect(await getApprovedNavigationNotes(prisma, 'rbc')).toBe('');
+    expect(await getApprovedNavigationNotes(prisma, 'rbc', PRACTICE_ID)).toBe('');
   });
 });
 

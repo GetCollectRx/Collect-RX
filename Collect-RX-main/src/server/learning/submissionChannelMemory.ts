@@ -20,8 +20,12 @@
  */
 
 import type { CarrierChannelType, CarrierId, PrismaClient } from '@prisma/client';
+import { logger } from '../observability/logger.js';
+import { LEARNING_CONTRIBUTION_DISABLED, loadPracticeLearningPolicy } from './learningPolicy.js';
 
 export interface SubmissionChannelObservation {
+  /** Practice whose call produced the observation. Required so the contribution flag is checked. */
+  practiceId: string;
   carrierId: CarrierId;
   channelType: CarrierChannelType;
   submissionMethod: string;
@@ -41,6 +45,15 @@ export async function recordSubmissionChannelObservation(
   const method = obs.submissionMethod.trim();
   const destination = obs.submissionDestination.trim();
   if (!method || !destination) return;
+
+  const policy = await loadPracticeLearningPolicy(prisma, obs.practiceId);
+  if (!policy.learningContribution) {
+    logger.info('[submissionChannelMemory] skipped', {
+      reasonCode: LEARNING_CONTRIBUTION_DISABLED,
+      carrierId: obs.carrierId,
+    });
+    return;
+  }
 
   const existing = await prisma.carrierSubmissionChannel.findUnique({
     where: { carrierId_channelType: { carrierId: obs.carrierId, channelType: obs.channelType } },
@@ -81,7 +94,10 @@ export async function getKnownSubmissionChannel(
   prisma: PrismaClient,
   carrierId: CarrierId,
   channelType: CarrierChannelType,
+  practiceId: string,
 ): Promise<string> {
+  const policy = await loadPracticeLearningPolicy(prisma, practiceId);
+  if (!policy.learningConsumption) return '';
   const row = await prisma.carrierSubmissionChannel.findUnique({
     where: { carrierId_channelType: { carrierId, channelType } },
   });

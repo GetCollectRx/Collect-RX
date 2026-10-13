@@ -72,6 +72,12 @@ model Practice {
   notifications                  PracticeNotification[]
   deletionRequests               PHIPADeletionRequest[]
   breachNotifications            PHIPABreachNotification[]
+  /// Default-deny learning (policy research HP#14, PS#15): this practice's
+  /// transcripts may feed cross-tenant lesson extraction. Off until the
+  /// practice opts in.
+  learningContribution           Boolean                   @default(false) @map("learning_contribution")
+  /// Default-deny learning: this practice may read shared, approved lessons.
+  learningConsumption            Boolean                   @default(false) @map("learning_consumption")
   phiVaultEntries                PhiVaultEntry[]
   triageCredential               TriageCredential?
   triageAudits                   TriageAudit[]

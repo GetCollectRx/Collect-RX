@@ -1,4 +1,5 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
+import { loadPracticeLearningPolicy } from './learningPolicy.js';
 
 export interface CarrierIntelligenceFeedItem {
   id: string;
@@ -15,6 +16,9 @@ export async function getPracticeCarrierIntelligenceFeed(
   practiceId: string,
   limit = 20,
 ): Promise<CarrierIntelligenceFeedItem[]> {
+  const policy = await loadPracticeLearningPolicy(prisma, practiceId);
+  if (!policy.learningConsumption) return [];
+
   const lessons = await prisma.carrierLesson.findMany({
     where: { status: 'APPROVED' },
     orderBy: [{ reviewedAt: 'desc' }, { confidence: 'desc' }],
