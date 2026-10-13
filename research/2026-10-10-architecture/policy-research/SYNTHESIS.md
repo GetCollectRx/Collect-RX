@@ -232,6 +232,8 @@ Subject access export (F6), Alberta and BC specifics, annual incident exports (H
 
 ## 12. Counsel questions, grouped by what they block
 
+Founder direction 2026-10-13: these are interpretation questions on public law, not a lawyer gate. Positions are recorded in INTERPRETATION-AND-RISK-REGISTER.md; counsel is optional.
+
 The six files hold roughly 70 questions with overlap. Deduplicated and ordered by the module each one blocks.
 
 Blocks all launches, including current dental:
