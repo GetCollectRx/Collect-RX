@@ -1,6 +1,6 @@
 # Industry statutes that force a stop or human hand-off
 
-Status: IN PROGRESS (written early; sections are appended as sources are read). Date of reads: 2026-10-13.
+Status: COMPLETE FIRST PASS. Date of reads: 2026-10-13. Written early and appended section by section.
 
 Method and tags
 - VERIFIED = statute text read in full for that section from the e-Laws page fetched by curl on 2026-10-13 (https://www.ontario.ca/laws/...). e-Laws consolidation currency is stated on each page; the text read is the consolidation in force on the read date. This is page text, not a legal opinion.
@@ -114,3 +114,63 @@ URL: https://www.ontario.ca/laws/statute/02l24 (consolidation seen: from Decembe
 | Auto bodily injury action | Written notice of intention to sue within 120 days after the incident (court may extend); insured must forward the notice to its insurer within 7 days | Insurance Act s. 258.3(1)(b), (2) | Out of scope for the agent; hand off | VERIFIED |
 | SABS dispute | Two years from refusal | O. Reg. 34/10 s. 56 | See table 1.3 | VERIFIED |
 | Business-day arithmetic | Reference day excluded, last day included; 5 p.m. local cutoff | O. Reg. 34/10 s. 64(24), (25) (SABS only) | Use per statute; do not assume the same for other statutes | VERIFIED |
+
+### 1.5 Equipment, pharmacy, hearing and disability (WSIA/WSIB, ODSP, ADP, Veterans Affairs, group and individual accident and sickness plans)
+
+| Trigger | Deadline / rule | Source | Agent may | Agent must stop / hand off | Policy-pack data | Acceptance test | Tag |
+|---|---|---|---|---|---|---|---|
+| WSIB health care bill | Board may set a time for billing and reduce the amount by a penalty percentage if the bill is late (s. 33(4)). Operational policy "Health Care Fees" (applies to decisions on or after December 5, 2024): bills within 6 months of service date; 6 to 9 months: 25 percent reduction; 10 to 12 months: 50 percent; over 12 months: 100 percent; late penalties are not appealable internally or to WSIAT | WSIA s. 33(4) at https://www.ontario.ca/laws/statute/97w16 ; policy at https://www.wsib.ca/en/operational-policy-manual/health-care-fees | Track service date and submission date; warn staff at month 5 | Never promise payment of a late bill; hand off | service_date, billed_at, penalty_band | Band boundaries tested at 6, 9, 10, 12 months | VERIFIED (page text via curl) |
+| WSIB billing tip (5 business days) and ongoing bundle spacing (180 days) | Per earlier primary read (WSIB billing tips). This conflicts in tone with the 6 month outer limit; they may be different instruments (billing tips versus policy penalties) | primary-source-read-2026-10-11 | Use 5 business days as an internal target only | Treat the 6 month policy as the outer limit; counsel/WSIB to confirm which governs | both values as separate params | n/a | VERIFIED earlier (excerpt tool); relationship UNVERIFIED |
+| Provider billing the worker | No health care practitioner shall request a worker to pay for health care or any related service provided under the insurance plan | WSIA s. 33(5) | Never ask the worker to pay | Hard stop: any WSIB-covered file where a patient balance appears: no patient-facing contact | wsib_covered (bool) forces patient_contact = false | Patient-payment objective disabled on WSIB files | VERIFIED |
+| Suing for more than the fee schedule | No action lies against the Board for more than the fee schedule; no action lies against anyone other than the Board for payment for health care provided to a worker | WSIA s. 33(6) | none | Collection on WSIB files runs only through the Board. Hand off any request to pursue the employer or worker | n/a | No "employer" call objectives on WSIB health care | VERIFIED |
+| WSIB decision objection | Objection filed within 30 days for decisions on return to work or a labour market re-entry plan, within 6 months otherwise, or a longer period the Board permits | WSIA s. 120(1) | Surface the date to staff | Objections are filed by the worker, employer or other parties named in s. 120; whether a provider has standing is UNVERIFIED (Q9) | decision_date | n/a | VERIFIED |
+| ODSP decisions | Appealable Director decisions require an internal review first; request within 30 days of receiving the decision; review completed within 30 days of the Director's receipt of the request; then appeal to the Social Benefits Tribunal | ODSPA ss. 19 to 23; O. Reg. 222/98 ss. 58, 59 at https://www.ontario.ca/laws/statute/97o25b and https://www.ontario.ca/laws/regulation/980222 | Track only | The recipient holds these rights. Agent never advises | decision_received_at | n/a | VERIFIED (statute/reg text). Prescribed time to appeal after review not read: UNVERIFIED |
+| ODSP health benefits billing and recipient-pays | I did not find a statutory deadline for vendor claims, nor a no-balance-billing rule, in the ODSPA or O. Reg. 222/98 sections searched | n/a | Do not call ODSP on a vendor's behalf until counsel and a human read the ODSP vendor/policy directives | Hard stop for the module until a human reads the directives | n/a | n/a | UNVERIFIED |
+| Assistive Devices Program (ADP) | Search found no vendor claim deadline in days. Electronic claim submission is required in stages from December 2020; registration as vendor and secure enrolment (GO Secure, MC-EDT) are preconditions. The vendor manual and device policy manuals are not read | https://www.ontario.ca/document/assistive-devices-program-health-care-professionals (title only, search result) | none | Hard stop for the module until a human reads the vendor manual (patient share, authorization, claim time limits, audit recovery) | n/a | n/a | SEARCH-EXCERPT (existence of e-claims), everything else UNVERIFIED |
+| Veterans Affairs Canada provider billing | Not found. The search returned nothing on VAC. | n/a | none | Hard stop for the module until a human reads VAC provider billing pages | n/a | n/a | UNVERIFIED |
+| Individual accident and sickness policy claims (Insurance Act statutory conditions) | Written notice of claim not later than 30 days after the claim arises; proof within 90 days; late notice or proof does not invalidate if given as soon as reasonably possible and in no event later than one year; insurer furnishes proof forms within 15 days after notice; non-loss-of-time money paid within 60 days after proof; initial loss-of-time benefits within 30 days after proof | Insurance Act s. 300 statutory conditions 7, 8, 10, 11 | Ask whether notice and proof dates were met and when forms were furnished | Late notice or proof is a stop; hand off | claim_arose_at, notice_at, proof_at, forms_furnished_at | Day counts tested | VERIFIED (text). Whether these conditions govern a given group extended health plan: UNVERIFIED (Q10) |
+| Forms of proof and action | Insurer must furnish proof forms not later than 60 days after notice of loss (property type contracts); no action until 60 days after proof | Insurance Act ss. 135, 136 | Track | Never threaten action | proof_forms_by | n/a | VERIFIED |
+| Third party interest | Insurer adjusts with insured and with persons having an interest indicated in the contract | Insurance Act s. 262 | Ask who the payee is | Payee ambiguity is a stop | payee_list | n/a | VERIFIED |
+
+Note on dental and group plan billing: those products and their calls are outside this file; the existing dental product constraints in CLAUDE.md apply.
+
+## 2. Questions for counsel
+
+| # | Question | Why it matters |
+|---|---|---|
+| Q1 | Does Construction Act Part I.1 (prompt payment) bind or benefit a restoration contractor invoicing an insurer, or only the owner/contractor chain? Is the insurer ever the "owner" or "payer"? | Decides whether the 28 day, 14 day and 7 day clocks are usable in a call script or only as internal tracking |
+| Q2 | Who may give or rely on a s. 6.1(2) deficiency notice (7 days) when the invoice goes to an insurer under an adjuster's claim? | Deemed-proper rule |
+| Q3 | Are the 2026 holdback release rules (s. 26) relevant to claims funded by insurance proceeds (see also s. 83)? | Whether the agent may mention holdback or only track it |
+| Q4 | Can the agent mention interest, statutory deadlines or limitation periods to a counterpart at all without being seen to give legal advice or to threaten? | A policy-wide speech rule |
+| Q5 | Does an insurer-facing collections agent for a tow or storage client risk RSLA or TSSEA non-compliance if the client lacks consent or invoice records (amounts not collectable under TSSEA s. 32(1))? | Whether to require evidence of consent and invoice before any payment demand |
+| Q6 | Where are the TSSEA published rates (s. 28(6)) and prescribed maximum amounts, and may the agent quote them? | The pack needs a data source |
+| Q7 | Does an insurer's oral acknowledgment of a liquidated debt on a call to the claimant's agent restart the limitation period (Limitations Act s. 13(1), (9))? Should call recordings be retained as evidence? | Retention and logging policy |
+| Q8 | For property and auto physical damage claims, does Insurance Act s. 148 condition 14 (one year) or s. 259.1 or the Limitations Act govern the policy form in play? | Choice of deadline |
+| Q9 | Does a provider or its agent have standing to object under WSIA s. 120, and what is the WSIB provider dispute route for unpaid or penalised bills? | WSIB module hand-off path |
+| Q10 | Do Insurance Act s. 300 statutory conditions apply to group extended health and disability plans, or does a different regime or contract govern? | Group plan clocks |
+| Q11 | Is a PHIPA agent relationship and consent in place for health information shared with an insurer (already open in ARCHITECTURE-PROPOSAL 17.6)? | Gate to all rehab and equipment calls |
+| Q12 | Does the case law on SABS s. 38(11) (reported as Aviva v. Catic, 2022 ONSC 6000, UNVERIFIED) change what may be said on calls? | Whether to retire the "38(11) candidate" flag |
+
+## 3. Primary pages a human must read in full
+
+| Page | URL | Why |
+|---|---|---|
+| Construction Act, Part I.1 (ss. 6.1 to 6.9), s. 22, s. 26, Part II.1, ss. 31 to 36, s. 83 | https://www.ontario.ca/laws/statute/90c30 | All restoration clocks; prescribed forms are in regulations not fetched |
+| Construction Act regulations (prescribed notice of non-payment, adjudication) | not fetched | Form and manner of the s. 6.4(2) notice |
+| Repair and Storage Liens Act (Parts I, III, IV) | https://www.ontario.ca/laws/statute/90r25 | Lien, notice, sale, dispute |
+| O. Reg. 427/15 | https://www.ontario.ca/laws/regulation/150427 | Notice periods (15 or 60 days) and TSSEA compliance list |
+| TSSEA 2021 ss. 20 to 32, 60 and its regulations (consent, invoice, estimate, rate rules) | https://www.ontario.ca/laws/statute/21t26 | Regulations not fetched |
+| Insurance Act ss. 148, 258 to 262, 279 to 281, 300 | https://www.ontario.ca/laws/statute/90i08 | Statutory conditions, auto, SABS dispute, accident and sickness |
+| O. Reg. 34/10 ss. 32 to 56, 64 | https://www.ontario.ca/laws/regulation/100034 | All SABS clocks |
+| Limitations Act, 2002 | https://www.ontario.ca/laws/statute/02l24 | Basic and ultimate periods, acknowledgment |
+| WSIA ss. 33, 37, 120 and WSIB Health Care Fees policy | https://www.ontario.ca/laws/statute/97w16 ; https://www.wsib.ca/en/operational-policy-manual/health-care-fees | Billing, penalties |
+| ODSPA Part II and O. Reg. 222/98 | https://www.ontario.ca/laws/statute/97o25b ; https://www.ontario.ca/laws/regulation/980222 | Internal review, appeal |
+| ADP vendor manual and device policy manuals | not fetched (files.ontario.ca not reachable from the sandbox) | Claim time limits, patient share |
+| VAC provider billing pages | not found | Whole module |
+| CRTC rules and Notice 2026-132 | see primary-source-read-2026-10-11.md | Calling rules (outside this task) |
+| Case law (Aviva v. Catic 2022 ONSC 6000 and any prompt-payment decisions) | CanLII returned 403 | Cannot be read from the sandbox |
+
+## 4. Access notes
+- ontario.ca/laws returned HTTP 200 to curl through the proxy for every URL used; text was extracted locally. canlii.org returned 403. files.ontario.ca did not resolve.
+- Several e-Laws pages carry "Note: on a day to be named" amendments not in force (for example, Consumer Protection Act, 2023 references in RSLA ss. 3 and 4). The policy pack should store a statute_version and consolidation date for each parameter and re-verify on a schedule.
+- The Insurance Act text is a 1.3 MB page; section numbers cited were read from the extracted text, but I did not read every neighbouring section.
