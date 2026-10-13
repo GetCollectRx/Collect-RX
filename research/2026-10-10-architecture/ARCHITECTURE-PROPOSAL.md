@@ -1298,3 +1298,55 @@ From Khalid:
 From counsel (unblocks, in order): SYNTHESIS section 12 items 1 to 7 (all launches), then the module-specific items.
 
 From vendors: VAPI-QUESTIONS V1 to V6.
+
+---
+
+## 19. Addendum: plan fitted to stated constraints (2026-10-13)
+
+Khalid's answers to assumption-clearing questions, recorded as given and not verified by me:
+
+| Question | Answer |
+|---|---|
+| Real patient data flowing through the product today? | Nothing live |
+| Priority for the next 90 days | Prove the multi-industry story, and raise money (not first paying dental customers) |
+| Privacy lawyer | No budget for counsel |
+| Evidence of demand outside dental | Public data and market research only; no pilots, no operator access |
+
+### 19.1 What follows from the answers
+
+1. **Pre-launch means Stage 0 can default to strict.** With nothing live, new privacy controls can ship fail-closed by default instead of off-by-default. The fix prompt keeps a verification step: confirm from the repo and deployment config that no non-test practice exists before relying on this; if that cannot be confirmed, controls stay flag-off.
+2. **No live calls in any new industry.** With no pilots and no counsel, nothing health-related and nothing in a new vertical should place a real call. The research left licensing (Insurance Act ss. 397 and 398), PHIPA agent status, CRTC applicability and several statutory applications unresolved, and none of them can be closed without a legal opinion. Every new-industry artifact in the next 90 days is therefore non-operational: documents, models, and a prototype on synthetic data against a mock Vapi.
+3. **No vendor add-on spend.** With no counsel budget, paying for Vapi HIPAA mode or ZDR is not realistic and, with nothing live, not needed. Option C in the earlier vendor discussion (standard plan, signed DPA if offered, minimized variables) is the only path; record that choice and its residual risk.
+4. **Raising money and having no counsel are in tension.** An investor evaluating a health-adjacent AI voice product will ask for the legal posture. The research shows at least seven questions that block every launch (SYNTHESIS section 12). A diligence process will find that no one has answered them. The honest fix is not to hide this; it is to present counsel as a funded milestone in the use of proceeds, ranked by what it unblocks, and to show the engineering that makes each answer enforceable. A bounded, fixed-scope legal engagement on the seven blocking questions is the cheapest credible step if any money can be found before the raise. I have no price information.
+5. **Public data supports a ceiling, not a floor.** Public sources can size the number of operators and the statutory deadlines that create follow-up work. They cannot show that operators want AI phone follow-up, that counterparts will talk to it, or what share of the work is still phone-based. The earlier domain research already suggests phone is the residual path in most of these industries (section 17.1). Present demand as a model with explicit assumptions, not as evidence.
+
+### 19.2 What each 90-day artifact does and does not prove
+
+| Artifact | Proves | Does not prove |
+|---|---|---|
+| Hardened dental core (Stage 0) | The shipping product handles the obligations the research found; credible diligence answers | Counsel agrees; vendor assurances exist |
+| Compliance gate demo on synthetic cases (a call is refused for a missing attestation, an individual debtor, an unverified rule, a closed window) | The product can enforce legal edges in code, which is the differentiating claim | That the rules encoded are legally right |
+| One non-dental module end to end on synthetic data and a mock Vapi | The shared engine handles a different entity shape, counterpart and policy pack without forking | That a real adjuster or tow operator will engage with the call |
+| Public-data demand model with stated assumptions | Order of magnitude of operators and recurring deadline-driven work | Willingness to pay; share of work that is still phone-based |
+| Regulatory map and pitch boundary | You know where the risk is and what not to say | Any legal conclusion |
+
+Choice of demo module. W5 collision, tow and storage best demonstrates breadth: several invoices on one claim, accruing storage, a commercial (non-PHIPA) profile, verified statutory clocks, TSSEA collectability rules, and a different counterpart than dental. W1 allied health is the lowest-compliance-load module but looks too similar to dental to prove the multi-industry point. The cost: W5 needs the ledger and multi-invoice work from WP-3 and the registry and objective-pack work from WP-4 and WP-5, built as a thin vertical slice rather than the full programme. That slice is the largest engineering item in the plan.
+
+### 19.3 Revised 90-day sequence
+
+| Track | Work | Operational? |
+|---|---|---|
+| A. Harden | Stage 0: three defect fixes, manual-trigger patch, privacy controls strict by default after the pre-launch check | Code, no live data |
+| B. Slice | WP-1 dispatch with profile gate; the minimum ledger, registry, objective pack and policy pack needed for W5; mock-Vapi end-to-end tests; the refusal demo | Code and synthetic data only |
+| C. Evidence | Public-data demand model per module; list of assumptions; source list tagged VERIFIED or UNVERIFIED | Documents |
+| D. Verify | Cowork primary-source reads; vendor questions to Vapi (free); file answers | Documents |
+| E. Counsel milestone | Rank the blocking questions; draft a fixed-scope brief and a use-of-proceeds line | Documents |
+
+Do not do in this window: any live call in a new industry; any marketing copy that says compliant, HIPAA, or Canadian-resident; any fee model tied to a percentage of insurer payments on accident-benefit invoices; any claim of demand beyond what Track C supports.
+
+### 19.4 Unknowns that remain
+
+1. Raise stage and audience (changes what diligence will ask first).
+2. Who builds besides Claude Code sessions, and how much review time Khalid has.
+3. Whether any dental practice has committed to launch, in writing or otherwise (this decides whether Stage 0 is for diligence only or for a real date).
+4. Whether the product is intended to operate as a tool the practice runs (staff on the line, Hold Sentinel) or as an agent acting for the practice. The legal characterization differs and no source settles it.

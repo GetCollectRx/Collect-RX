@@ -21,6 +21,7 @@ HARD RULES
  - Migrations are additive only (new tables, new nullable columns, defaults that preserve current behaviour). Preserve FORCE RLS: read src/server/db/rlsContext.ts and the existing policies, and add policies for every new tenant table. Never edit an applied migration.
  - Fail closed. A missing attestation, permission, or PIA reference blocks dispatch with a logged reason code and a visible deferral message. Do not add silent defaults that allow calls.
  - Every new behaviour ships behind a flag that defaults to the CURRENT behaviour, except where a workstream says otherwise, so merging cannot change production. Name the flag, document it, and write the enable steps in the PR.
+   Exception (founder statement 2026-10-13, not verified by me): no practice is live with real patient data. Before relying on it, check the repo, seeds and deployment config (fly.toml, environment settings, migrations) for any non-test practice or live Vapi configuration. If you can show there is none, the new fail-closed controls (W2, W3, W6, W9) may default ON. If you cannot confirm it, keep every flag off by default and say so in the PR.
  - Destructive operations (retention purge, deletion) must have dry-run mode and must not be enabled by this work.
  - PHI never in logs, error messages, test fixtures or snapshots. Use synthetic data only. Add a log-scan test where you touch logging.
  - Standing rule: no hardcoded practice names, emails or credentials anywhere, including tests and docs.
