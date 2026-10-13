@@ -2,6 +2,8 @@
 ## CollectRx Legal Compliance Framework — v1.1
 ### Alberta Health Information Act (HIA) — AI Scribe Technology and Custodianship
 
+> Reviewed against research 2026-10-13; not legal advice; see policy-research/SYNTHESIS.md.
+
 **Document Version:** 1.1  
 **Supersedes:** v1.0 (PHIPA/PIPEDA only)  
 **Jurisdiction:** Alberta  
@@ -27,23 +29,22 @@ This clause updates the CollectRx Legal Compliance Framework to address:
 
 ### 2.1 Legal Classification
 
-Under **HIA Section 66**, a custodian may not use an affiliate to collect, use, or disclose health information unless:
-- The affiliate uses the health information only as authorized by the custodian
-- The affiliate protects health information in a manner consistent with the HIA
-- The affiliate reports unauthorized disclosures to the custodian
+Under **HIA s. 60.1(1)**, an affiliate must notify the custodian as soon as practicable of any loss of, or unauthorized access to or disclosure of, health information. Under **HIA s. 66(2)**, a custodian that engages an information manager needs a written agreement with it. The affiliate definition in s. 1(1)(a) includes an information manager and persons acting under a contract or agency relationship (VERIFIED in `policy-research/health-privacy.md`, row 19).
 
-**CollectRx's position:** CollectRx is an **affiliate** of Alberta dental practices (custodians). CollectRx processes health information (patient claim data, procedure codes, eligibility information) on behalf of practices.
+The duties summarized below are the intended design. Counsel must confirm the wording against the statute (PENDING_COUNSEL).
 
-### 2.2 Affiliate Agreement Requirement
+**CollectRx's position:** CollectRx is an **affiliate** and information manager of Alberta dental practices (custodians). CollectRx processes health information (patient claim data, procedure codes, eligibility information) on behalf of practices.
 
-Before processing any Alberta patient health information, CollectRx must execute a written **HIA Affiliate Agreement** with each Alberta dental practice. This agreement must specify:
+### 2.2 Information Manager Agreement Requirement
+
+Before processing any Alberta patient health information, CollectRx must have a written information manager agreement under HIA s. 66(2) with each Alberta dental practice. Earlier drafts called this an "HIA Affiliate Agreement"; that name is not a statutory instrument. The agreement must specify:
 - The health information CollectRx may access
 - The purposes for which it may be used
 - Security safeguards in place
 - Breach notification obligations
 - The custodian's right to audit CollectRx's compliance
 
-**Template:** CollectRx's standard Service Agreement is updated in v1.1 to include an HIA Affiliate Schedule for Alberta customers.
+**Template:** an information manager schedule for Alberta customers is to be added to CollectRx's standard Service Agreement. It is not yet drafted (PENDING_COUNSEL).
 
 ---
 
@@ -64,7 +65,7 @@ CollectRx's Vapi voice agents **do not qualify as AI scribes** under the OIPC de
 - They call **insurance carriers** — not patients
 - They do not transcribe patient-provider clinical interactions
 - They do not generate clinical documentation
-- Patient PHI is tokenized before reaching any AI component
+- Patient name, DOB and policy numbers reach the voice agents only as ephemeral call variables at dispatch. They are not tokenized away before reaching the voice agent (see `PHI-VAPI-BOUNDARY.md`)
 
 **However:** The CDCP Reconsideration Agent (Phase 5) references clinical evidence summaries during calls to Sun Life. CollectRx takes the position that this does not constitute AI scribe activity because:
 - Clinical notes are summarized by the practice's staff, not transcribed by the AI
@@ -86,14 +87,16 @@ If CollectRx introduces any feature that listens to patient-provider interaction
 
 Alberta dentists using CollectRx remain the **custodians** of patient health information and retain full custodianship obligations under HIA, including:
 
+Only HIA ss. 1(1)(a), 1(1)(p.1), 60.1, 66 and 107 were read for this document. Every other section number in the table below is unverified and is PENDING_COUNSEL. The "CollectRx's Role" column describes intended product behaviour, not a statutory conclusion.
+
 | Obligation | HIA Section | CollectRx's Role |
 |-----------|------------|-----------------|
-| Safeguard health information | s. 60 | CollectRx provides AES-256 encryption, tokenization, audit logs |
-| Notify patients of collection | s. 19 | Practice responsible for patient disclosure |
-| Limit collection to what is necessary | s. 13 | CollectRx collects only claim-relevant data |
-| Retain for minimum required period | s. 35 | 10 years for health information (HIA Regulation) |
-| Notify OIPC of privacy breach | s. 60.1 | CollectRx notifies practice within 24 hours; practice notifies OIPC |
-| Respond to access requests | s. 7-12 | Practice handles; CollectRx provides data extract within 48 hours |
+| Safeguard health information | s. 60 (not read) | CollectRx provides AES-256 encryption, tokenization, audit logs |
+| Notify patients of collection | s. 19 (not read) | Practice responsible for patient disclosure |
+| Limit collection to what is necessary | s. 13 (not read) | CollectRx collects only claim-relevant data |
+| Retain for minimum required period | s. 35 (not read) | Retention period not set; "10 years" figure is unverified (PENDING_COUNSEL) |
+| Notify custodian of a privacy breach | s. 60.1(1) (affiliate duty) | CollectRx notifies practice; practice's own duty to notify the OIPC is not read (PENDING_COUNSEL) |
+| Respond to access requests | s. 7-12 (not read) | Practice handles; CollectRx's extract turnaround is a proposed SLA (PENDING_COUNSEL) |
 
 ---
 
@@ -104,7 +107,9 @@ Alberta HIA does not prohibit storage of health information outside Alberta, but
 - Equivalent protection to HIA standards
 - Disclosure in the privacy notice that information may be stored outside Alberta
 
-CollectRx's PostgreSQL deployment is hosted on Fly.io in `yyz` (Toronto, Canada) — confirmed via `fly postgres list` / `fly status` on 2026-07-05. CollectRx previously ran on Railway; that deployment has been fully decommissioned. All Alberta patient data resides in this Canadian instance.
+CollectRx's PostgreSQL deployment is hosted on Fly.io in `yyz` (Toronto, Canada), confirmed via `fly postgres list` / `fly status` on 2026-07-05. CollectRx previously ran on Railway; that deployment has been fully decommissioned. Alberta patient records stored in the database reside in this Canadian instance.
+
+This statement covers the database only. Voice, telephony and model sub-processors in the call chain process data outside this instance. Their residency is not established by any vendor contract in the repository (PENDING_COUNSEL; see `policy-research/SYNTHESIS.md`, section 9).
 
 ---
 
@@ -112,12 +117,10 @@ CollectRx's PostgreSQL deployment is hosted on Fly.io in `yyz` (Toronto, Canada)
 
 If a privacy breach occurs involving Alberta patient health information:
 
-1. CollectRx notifies the Alberta dental practice (custodian) within **24 hours**
-2. Practice assesses whether the breach creates a **real risk of significant harm** to patients
-3. If yes: Practice notifies:
-   - Affected patients (without delay)
-   - Alberta OIPC (without delay)
-4. CollectRx provides a full incident report within **72 hours** of detection
+1. CollectRx notifies the Alberta dental practice (custodian) as soon as practicable, as HIA s. 60.1(1) requires. The **24 hour** target is a proposed contract SLA, not a statutory period (PENDING_COUNSEL)
+2. Practice assesses whether the breach creates a **real risk of significant harm** to patients. The threshold and the practice's notice duties are not read in this document (PENDING_COUNSEL)
+3. If yes: Practice notifies affected patients and the Alberta OIPC, per the custodian duties counsel confirms
+4. CollectRx provides a full incident report within **72 hours** of detection. This is a proposed contract SLA, not a statutory period (PENDING_COUNSEL)
 
 ---
 
@@ -134,5 +137,5 @@ If a privacy breach occurs involving Alberta patient health information:
 
 - *Health Information Act*, RSA 2000, c H-5 (Alberta)
 - Alberta OIPC: https://www.oipc.ab.ca
-- OIPC Order H-2023-001 (AI in Healthcare — guidance)
+- OIPC Order H-2023-001 (AI in Healthcare guidance). Not read for this document (PENDING_COUNSEL)
 - CDCP Provider Agreement, Sun Life Financial

@@ -1,8 +1,10 @@
 # PHI / Vapi Boundary — Decision Record
 
-**Status:** Closed (Option B)  
+> Reviewed against research 2026-10-13; not legal advice; see policy-research/SYNTHESIS.md.
+
+**Status:** Option B selected. Engineering controls listed below. Legal and vendor controls are open (unchecked), so this record is not closed  
 **Date:** 2026-06-20  
-**Owner:** CollectRx engineering + legal counsel (BAA execution pending)
+**Owner:** CollectRx engineering + legal counsel (written agreements with Vapi and Twilio pending)
 
 ---
 
@@ -12,7 +14,7 @@ CollectRx uses **Option B: Ephemeral PHI via Vapi call variables** with strict c
 
 Carriers routinely require patient name and date of birth to locate a claim during a
 provider-line call. A PHI-free-only design (Option A) would fail on a material share of
-calls. Option B is required for the product to work while staying PHIPA/PIPEDA-aligned.
+calls. Option B is selected because the product needs these identifiers to locate a claim. Whether this design satisfies PHIPA and PIPEDA is a counsel question (PENDING_COUNSEL; see `policy-research/health-privacy.md` and `policy-research/private-sector-privacy.md`).
 
 ---
 
@@ -42,8 +44,8 @@ calls. Option B is required for the product to work while staying PHIPA/PIPEDA-a
 
 ## Controls (legal / operator — before production scale)
 
-- [ ] Signed **BAA/DPA** with Vapi covering Canadian PHI
-- [ ] Signed **BAA/DPA** with Twilio (telephony transit)
+- [ ] Signed written agreement with Vapi covering PHI processing and out-of-Ontario transfer (PHIPA s. 50; PENDING_COUNSEL). Canadian processing is not established; no Canadian region is confirmed in the vendor research
+- [ ] Signed written agreement with Twilio covering telephony transit (PENDING_COUNSEL)
 - [ ] Confirm Vapi transcript retention policy in writing
 - [ ] Privacy Impact Assessment updated to reference ephemeral PHI transit
 
