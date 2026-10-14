@@ -86,6 +86,9 @@ jobs:
       - name: Grant CI test role RLS bypass (integration tests use platform-level DB access)
         run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
 
+      - name: Traceability check (legal policy matrix references real files)
+        run: node Collect-RX-main/scripts/check-traceability.cjs
+
       - name: Typecheck
         run: npm run typecheck:collectrx
 
