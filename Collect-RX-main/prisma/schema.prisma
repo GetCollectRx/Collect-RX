@@ -2174,6 +2174,7 @@ model PHIPABreachNotification {
   stepsToReduceHarm    String?   @map("steps_to_reduce_harm")
   notificationSteps    String?   @map("notification_steps")
   contactName          String?   @map("contact_name")
+  annualCategories     String[] @default([]) @map("annual_categories")
   realRiskOfSignificantHarm Boolean? @map("real_risk_of_significant_harm")
   custodianNotifiedAt  DateTime? @map("custodian_notified_at")
 

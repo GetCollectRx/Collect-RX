@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BREACH_CATEGORIES,
+  ANNUAL_REPORT_CATEGORIES,
+  BREACH_RETENTION_MONTHS,
   buildBreachPacket,
   scanForIdentifiers,
   validateRegisterEntry,
-  yearlyCategoryCounts,
+  yearlyAnnualCounts,
   type BreachRegisterInput,
 } from '../../src/server/compliance/breachRegister';
 
@@ -19,11 +20,40 @@ const base: BreachRegisterInput = {
   stepsToReduceHarm: 'Mailbox purged; recipient attested deletion',
   notificationSteps: 'Custodian notified same day with packet',
   contactName: 'Privacy contact (role)',
+  annualCategories: ['DISCLOSED_WITHOUT_AUTHORITY'],
 };
+
+describe('constants', () => {
+  it('uses the 24-month retention from SOR/2018-64 s.6(1)', () => {
+    expect(BREACH_RETENTION_MONTHS).toBe(24);
+  });
+
+  it('lists the five O. Reg. 329/04 s.6.4(1) annual categories in statute order', () => {
+    expect([...ANNUAL_REPORT_CATEGORIES]).toEqual([
+      'STOLEN',
+      'LOST',
+      'USED_WITHOUT_AUTHORITY',
+      'DISCLOSED_WITHOUT_AUTHORITY',
+      'EHR_COLLECTED_WITHOUT_AUTHORITY',
+    ]);
+  });
+});
 
 describe('validateRegisterEntry', () => {
   it('accepts a complete entry', () => {
     expect(validateRegisterEntry(base)).toEqual({ ok: true });
+  });
+
+  it('requires at least one annual category', () => {
+    const r = validateRegisterEntry({ ...base, annualCategories: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.missing).toContain('annualCategories');
+  });
+
+  it('rejects an unknown annual category code', () => {
+    const r = validateRegisterEntry({ ...base, annualCategories: ['MISLAID'] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reasons).toContain('annualCategories contains unknown code MISLAID');
   });
 
   it('reports each missing required field', () => {
@@ -32,10 +62,14 @@ describe('validateRegisterEntry', () => {
     if (!r.ok) expect(r.missing.sort()).toEqual(['circumstances', 'contactName', 'occurredFrom'].sort());
   });
 
-  it('rejects an unknown category and an unknown data element code', () => {
+  it('rejects an unknown register category and an unknown data element code', () => {
     const r = validateRegisterEntry({ ...base, notificationType: 'OTHER', dataElements: ['SSN'] });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reasons).toEqual(expect.arrayContaining([expect.stringContaining('five register categories'), expect.stringContaining('unknown code SSN')]));
+    if (!r.ok) {
+      expect(r.reasons).toEqual(
+        expect.arrayContaining([expect.stringContaining('register categories'), expect.stringContaining('unknown code SSN')]),
+      );
+    }
   });
 
   it('rejects an impossible period and a discovery before the event', () => {
@@ -70,11 +104,11 @@ describe('scanForIdentifiers', () => {
 });
 
 describe('buildBreachPacket', () => {
-  it('contains tokens and categories only, never the free-text identifiers it was given', () => {
+  it('contains tokens and codes only, never the free-text identifiers it was given', () => {
     const packet = buildBreachPacket({ ...base, affectedPatientTokens: ['tok_a1', 'tok_b2'], vendorsInvolved: ['Twilio'] });
     const json = JSON.stringify(packet);
     expect(packet.affectedPatientTokens).toEqual(['tok_a1', 'tok_b2']);
-    expect(packet.category).toBe('DATA_EXPOSURE');
+    expect(packet.annualCategories).toEqual(['DISCLOSED_WITHOUT_AUTHORITY']);
     expect(scanForIdentifiers(json)).toEqual([]);
   });
 
@@ -83,17 +117,18 @@ describe('buildBreachPacket', () => {
   });
 });
 
-describe('yearlyCategoryCounts', () => {
-  it('returns all five categories, zero-filled, and counts only the requested year', () => {
+describe('yearlyAnnualCounts', () => {
+  it('zero-fills all five categories and counts a record once per category it carries', () => {
     const rows = [
-      { notificationType: 'DATA_EXPOSURE', discoveredAt: new Date('2026-01-02T00:00:00Z') },
-      { notificationType: 'DATA_EXPOSURE', discoveredAt: new Date('2025-12-31T23:59:00Z') },
-      { notificationType: 'POLICY_VIOLATION', discoveredAt: new Date('2026-06-01T00:00:00Z') },
+      { annualCategories: ['LOST', 'STOLEN'], discoveredAt: new Date('2026-01-02T00:00:00Z') },
+      { annualCategories: ['LOST'], discoveredAt: new Date('2025-12-31T23:59:00Z') },
+      { annualCategories: ['USED_WITHOUT_AUTHORITY'], discoveredAt: new Date('2026-06-01T00:00:00Z') },
     ];
-    const counts = yearlyCategoryCounts(rows, 2026);
-    expect(Object.keys(counts).sort()).toEqual([...BREACH_CATEGORIES].sort());
-    expect(counts.DATA_EXPOSURE).toBe(1);
-    expect(counts.POLICY_VIOLATION).toBe(1);
-    expect(counts.DELETION_BREACH).toBe(0);
+    const counts = yearlyAnnualCounts(rows, 2026);
+    expect(Object.keys(counts).sort()).toEqual([...ANNUAL_REPORT_CATEGORIES].sort());
+    expect(counts.LOST).toBe(1);
+    expect(counts.STOLEN).toBe(1);
+    expect(counts.USED_WITHOUT_AUTHORITY).toBe(1);
+    expect(counts.DISCLOSED_WITHOUT_AUTHORITY).toBe(0);
   });
 });

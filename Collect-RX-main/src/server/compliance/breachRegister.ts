@@ -1,16 +1,31 @@
 /**
  * Breach register and custodian packet (privacy control W4).
  *
- * Implements the register fields named in policy-research (HP#2, HP#3, HP#4)
- * and the yearly per-category counts named in the W4 spec (O. Reg. 329/04 s.6.4,
- * citation to be confirmed by counsel). This module is pure: it validates
- * input, scans free text for direct identifiers, and builds the practice-facing
- * packet. It does not notify patients; the custodian does that.
+ * Sources (primary text read 2026-10-13, via the Ontario and Justice Canada
+ * e-Laws pages; quotes are from page text, tagged EXCERPT in the evidence log):
+ *   - SOR/2018-64 s.2(1)(a) to (g): required content of a breach report.
+ *   - SOR/2018-64 s.6(1): breach record kept 24 months after the day the
+ *     organization determines the breach occurred.
+ *   - O. Reg. 329/04 s.6.4(1), items 1 to 5: annual report categories for a
+ *     health information custodian (stolen, lost, used without authority,
+ *     disclosed without authority, collected through the EHR without authority).
  *
- * PENDING_COUNSEL: the category-to-count mapping and the retention floor
- * (BREACH_RETENTION_MONTHS) are engineering placeholders until counsel confirms.
+ * This module is pure. It validates input, scans free text for direct
+ * identifiers, builds the custodian packet, and counts annual categories.
+ * It does not notify patients or the Commissioner; the custodian does that.
  */
 
+/** O. Reg. 329/04 s.6.4(1) items 1 to 5. Each breach record carries the ones that apply. */
+export const ANNUAL_REPORT_CATEGORIES = [
+  'STOLEN',
+  'LOST',
+  'USED_WITHOUT_AUTHORITY',
+  'DISCLOSED_WITHOUT_AUTHORITY',
+  'EHR_COLLECTED_WITHOUT_AUTHORITY',
+] as const;
+export type AnnualReportCategory = (typeof ANNUAL_REPORT_CATEGORIES)[number];
+
+/** Internal classification kept from the first slice. Not a statutory list. */
 export const BREACH_CATEGORIES = [
   'DELETION_BREACH',
   'DATA_EXPOSURE',
@@ -20,10 +35,10 @@ export const BREACH_CATEGORIES = [
 ] as const;
 export type BreachCategory = (typeof BREACH_CATEGORIES)[number];
 
-/** PENDING_COUNSEL. Floor used by the retention job exemption (W7 reads this). */
+/** SOR/2018-64 s.6(1): 24 months after the day the organization determines the breach occurred. */
 export const BREACH_RETENTION_MONTHS = 24;
 
-/** Required register fields, one per item in the spec's (a) to (g) list. */
+/** Required register fields, one per item in SOR/2018-64 s.2(1)(a) to (g). */
 export const REQUIRED_REGISTER_FIELDS = [
   'circumstances',
   'occurredFrom',
@@ -33,6 +48,7 @@ export const REQUIRED_REGISTER_FIELDS = [
   'stepsToReduceHarm',
   'notificationSteps',
   'contactName',
+  'annualCategories',
 ] as const;
 export type RequiredRegisterField = (typeof REQUIRED_REGISTER_FIELDS)[number];
 
@@ -47,6 +63,7 @@ export interface BreachRegisterInput {
   stepsToReduceHarm?: string | null;
   notificationSteps?: string | null;
   contactName?: string | null;
+  annualCategories?: string[] | null;
   realRiskOfSignificantHarm?: boolean | null;
   custodianNotifiedAt?: Date | null;
 }
@@ -55,13 +72,7 @@ export type ValidationResult =
   | { ok: true }
   | { ok: false; missing: RequiredRegisterField[]; reasons: string[] };
 
-const DATA_ELEMENT_CODES = [
-  'CONTACT',
-  'HEALTH_RECORD',
-  'INSURANCE_IDENTIFIER',
-  'BILLING',
-  'OTHER',
-] as const;
+const DATA_ELEMENT_CODES = ['CONTACT', 'HEALTH_RECORD', 'INSURANCE_IDENTIFIER', 'BILLING', 'OTHER'] as const;
 
 const IDENTIFIER_PATTERNS: Array<{ name: string; re: RegExp }> = [
   { name: 'email', re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/ },
@@ -79,7 +90,7 @@ export function validateRegisterEntry(input: BreachRegisterInput): ValidationRes
   const reasons: string[] = [];
 
   if (!BREACH_CATEGORIES.includes(input.notificationType as BreachCategory)) {
-    reasons.push('notificationType is not one of the five register categories');
+    reasons.push('notificationType is not one of the register categories');
   }
   if (!input.circumstances?.trim()) missing.push('circumstances');
   if (!input.occurredFrom) missing.push('occurredFrom');
@@ -91,6 +102,7 @@ export function validateRegisterEntry(input: BreachRegisterInput): ValidationRes
   if (!input.stepsToReduceHarm?.trim()) missing.push('stepsToReduceHarm');
   if (!input.notificationSteps?.trim()) missing.push('notificationSteps');
   if (!input.contactName?.trim()) missing.push('contactName');
+  if (!input.annualCategories || input.annualCategories.length === 0) missing.push('annualCategories');
 
   if (input.occurredFrom && input.occurredTo && input.occurredFrom > input.occurredTo) {
     reasons.push('occurredFrom is after occurredTo');
@@ -106,6 +118,11 @@ export function validateRegisterEntry(input: BreachRegisterInput): ValidationRes
   for (const code of input.dataElements ?? []) {
     if (!(DATA_ELEMENT_CODES as readonly string[]).includes(code)) {
       reasons.push(`dataElements contains unknown code ${code}`);
+    }
+  }
+  for (const code of input.annualCategories ?? []) {
+    if (!(ANNUAL_REPORT_CATEGORIES as readonly string[]).includes(code)) {
+      reasons.push(`annualCategories contains unknown code ${code}`);
     }
   }
 
@@ -126,6 +143,7 @@ export function validateRegisterEntry(input: BreachRegisterInput): ValidationRes
 
 export interface BreachPacket {
   category: BreachCategory;
+  annualCategories: AnnualReportCategory[];
   discoveredAt: string;
   occurredFrom: string | null;
   occurredTo: string | null;
@@ -139,7 +157,7 @@ export interface BreachPacket {
   custodianNotifiedAt: string | null;
 }
 
-/** Builds the practice-facing packet. Contains tokens and categories only. */
+/** Builds the practice-facing packet. Contains tokens and codes only. */
 export function buildBreachPacket(
   input: BreachRegisterInput & { affectedPatientTokens?: string[]; vendorsInvolved?: string[] },
 ): BreachPacket {
@@ -149,6 +167,7 @@ export function buildBreachPacket(
   }
   return {
     category: input.notificationType as BreachCategory,
+    annualCategories: [...(input.annualCategories ?? [])] as AnnualReportCategory[],
     discoveredAt: input.discoveredAt.toISOString(),
     occurredFrom: input.occurredFrom?.toISOString() ?? null,
     occurredTo: input.occurredTo?.toISOString() ?? null,
@@ -163,16 +182,22 @@ export function buildBreachPacket(
   };
 }
 
-/** Yearly counter for the five categories. Every category is present, even at zero. */
-export function yearlyCategoryCounts(
-  rows: Array<{ notificationType: string; discoveredAt: Date }>,
+/**
+ * O. Reg. 329/04 s.6.4(1) annual counts for one calendar year (UTC). A record
+ * contributes one count to each annual category it carries. Every category is
+ * present, zero-filled.
+ */
+export function yearlyAnnualCounts(
+  rows: Array<{ annualCategories: string[]; discoveredAt: Date }>,
   year: number,
-): Record<BreachCategory, number> {
-  const out = Object.fromEntries(BREACH_CATEGORIES.map((c) => [c, 0])) as Record<BreachCategory, number>;
+): Record<AnnualReportCategory, number> {
+  const out = Object.fromEntries(ANNUAL_REPORT_CATEGORIES.map((c) => [c, 0])) as Record<AnnualReportCategory, number>;
   for (const r of rows) {
     if (r.discoveredAt.getUTCFullYear() !== year) continue;
-    if ((BREACH_CATEGORIES as readonly string[]).includes(r.notificationType)) {
-      out[r.notificationType as BreachCategory] += 1;
+    for (const c of r.annualCategories) {
+      if ((ANNUAL_REPORT_CATEGORIES as readonly string[]).includes(c)) {
+        out[c as AnnualReportCategory] += 1;
+      }
     }
   }
   return out;

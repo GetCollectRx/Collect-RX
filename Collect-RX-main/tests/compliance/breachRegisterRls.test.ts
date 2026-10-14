@@ -14,6 +14,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../src/lib/prisma.js';
 import { createPracticeForTests, cleanupPracticeWithUsers } from '../factories/practice.js';
 import { runWithRlsBypass } from '../../src/server/db/rlsContext.js';
@@ -25,7 +26,7 @@ let practiceB = '';
 let rowA = '';
 let rowB = '';
 
-async function asAppRole<T>(practiceId: string | null, fn: (tx: any) => Promise<T>): Promise<T> {
+async function asAppRole<T>(practiceId: string | null, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL ROLE ${ROLE}`);
     if (practiceId) {

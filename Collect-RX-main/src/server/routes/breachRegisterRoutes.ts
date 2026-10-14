@@ -29,14 +29,16 @@ import { blockAuditorWrites, blockFrontDeskReports, requireBillingOps } from '..
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import {
+  ANNUAL_REPORT_CATEGORIES,
   BREACH_CATEGORIES,
   buildBreachPacket,
   validateRegisterEntry,
-  yearlyCategoryCounts,
+  yearlyAnnualCounts,
   type BreachRegisterInput,
 } from '../compliance/breachRegister.js';
 
 const DATA_ELEMENTS = ['CONTACT', 'HEALTH_RECORD', 'INSURANCE_IDENTIFIER', 'BILLING', 'OTHER'] as const;
+const ANNUAL_CATEGORIES = ANNUAL_REPORT_CATEGORIES;
 
 const createBody = z.object({
   notificationType: z.enum(BREACH_CATEGORIES),
@@ -52,6 +54,7 @@ const createBody = z.object({
   notificationSteps: z.string().max(4000).optional().nullable(),
   contactName: z.string().max(200).optional().nullable(),
   affectedPatientToken: z.string().max(128).optional().nullable(),
+  annualCategories: z.array(z.enum(ANNUAL_CATEGORIES)).optional().nullable(),
   realRiskOfSignificantHarm: z.boolean().optional().nullable(),
   custodianNotifiedAt: z.coerce.date().optional().nullable(),
 });
@@ -64,6 +67,7 @@ const patchBody = z
     contactName: z.string().max(200).optional().nullable(),
     numberOfIndividuals: z.number().int().min(0).optional().nullable(),
     dataElements: z.array(z.enum(DATA_ELEMENTS)).optional().nullable(),
+    annualCategories: z.array(z.enum(ANNUAL_CATEGORIES)).optional().nullable(),
     realRiskOfSignificantHarm: z.boolean().optional().nullable(),
     custodianNotifiedAt: z.coerce.date().optional().nullable(),
     remediationCompleted: z.coerce.date().optional().nullable(),
@@ -91,6 +95,7 @@ function toRegisterInput(row: {
   occurredFrom: Date | null;
   occurredTo: Date | null;
   dataElements: string[] | null;
+  annualCategories: string[] | null;
   numberOfIndividuals: number | null;
   stepsToReduceHarm: string | null;
   notificationSteps: string | null;
@@ -105,6 +110,7 @@ function toRegisterInput(row: {
     occurredFrom: row.occurredFrom,
     occurredTo: row.occurredTo,
     dataElements: row.dataElements,
+    annualCategories: row.annualCategories,
     numberOfIndividuals: row.numberOfIndividuals,
     stepsToReduceHarm: row.stepsToReduceHarm,
     notificationSteps: row.notificationSteps,
@@ -150,6 +156,7 @@ export function createBreachRegisterRouter(): Router {
       occurredFrom: b.occurredFrom,
       occurredTo: b.occurredTo,
       dataElements: b.dataElements,
+      annualCategories: b.annualCategories,
       numberOfIndividuals: b.numberOfIndividuals,
       stepsToReduceHarm: b.stepsToReduceHarm,
       notificationSteps: b.notificationSteps,
@@ -175,6 +182,7 @@ export function createBreachRegisterRouter(): Router {
           occurredTo: b.occurredTo ?? null,
           discoveredAt: b.discoveredAt,
           dataElements: b.dataElements ?? [],
+          annualCategories: b.annualCategories ?? [],
           numberOfIndividuals: b.numberOfIndividuals ?? null,
           stepsToReduceHarm: b.stepsToReduceHarm ?? null,
           notificationSteps: b.notificationSteps ?? null,
@@ -218,10 +226,14 @@ export function createBreachRegisterRouter(): Router {
         sendError(res, 422, 'register entry incomplete', { missing: check.missing, reasons: check.reasons });
         return;
       }
-      const { dataElements, ...rest } = parsed.data;
+      const { dataElements, annualCategories, ...rest } = parsed.data;
       const row = await prisma.pHIPABreachNotification.update({
         where: { id: existing.id },
-        data: dataElements ? { ...rest, dataElements } : rest,
+        data: {
+          ...rest,
+          ...(dataElements ? { dataElements } : {}),
+          ...(annualCategories ? { annualCategories } : {}),
+        },
       });
       await appendPhiAccessEvent(prisma, {
         practiceId,
@@ -280,13 +292,13 @@ export function createBreachRegisterRouter(): Router {
     try {
       const rows = await prisma.pHIPABreachNotification.findMany({
         where: { practiceId },
-        select: { notificationType: true, createdAt: true, discoveredAt: true },
+        select: { annualCategories: true, createdAt: true, discoveredAt: true },
       });
-      const counts = yearlyCategoryCounts(
-        rows.map((r) => ({ notificationType: r.notificationType, discoveredAt: r.discoveredAt ?? r.createdAt })),
+      const counts = yearlyAnnualCounts(
+        rows.map((r) => ({ annualCategories: r.annualCategories, discoveredAt: r.discoveredAt ?? r.createdAt })),
         year,
       );
-      res.json({ success: true, data: { year, counts } });
+      res.json({ success: true, data: { year, source: 'O. Reg. 329/04 s.6.4(1)', counts } });
     } catch (err) {
       sendError(res, 500, apiErrorMessageForResponse(err));
     }

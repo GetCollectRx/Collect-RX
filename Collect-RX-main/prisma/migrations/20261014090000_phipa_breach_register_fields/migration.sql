@@ -11,5 +11,6 @@ ALTER TABLE "phipa_breach_notifications"
   ADD COLUMN IF NOT EXISTS "steps_to_reduce_harm" TEXT,
   ADD COLUMN IF NOT EXISTS "notification_steps" TEXT,
   ADD COLUMN IF NOT EXISTS "contact_name" TEXT,
+  ADD COLUMN IF NOT EXISTS "annual_categories" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   ADD COLUMN IF NOT EXISTS "real_risk_of_significant_harm" BOOLEAN,
   ADD COLUMN IF NOT EXISTS "custodian_notified_at" TIMESTAMP(3);
