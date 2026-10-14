@@ -28,7 +28,7 @@ CollectRx staff and anyone adding a dependency, API key, squad provider or model
 4. **Changes.** A change of model, voice, transcriber, telephony number source or hosting region is a vendor change: update the register before the change merges. Track model deprecations (Anthropic labels Claude Sonnet 4.5 deprecated, VERIFIED).
 5. **Logs.** Never write personal information to stdout or logs. Fly.io's own support tooling may process "platform log lines, which include whatever your application writes to stdout" with AI vendors (VERIFIED, Fly sub-processors page).
 6. **Review.** Re-read each vendor's terms and region pages every 6 months and on any notice of change.
-7. **No residency claims.** Do not claim or imply Canadian data residency for the service; only Fly.io application compute in Toronto is supported by the facts read.
+7. **No residency claims.** Do not claim or imply that the service keeps data in Canada; only Fly.io application compute in Toronto is supported by the facts read.
 
 ## Vendor facts as of 2026-10-13
 
