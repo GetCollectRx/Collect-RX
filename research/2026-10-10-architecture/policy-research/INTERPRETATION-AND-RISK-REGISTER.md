@@ -34,7 +34,7 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 - Contrary reading: sub-processor hosting is a separate disclosure that needs consent under s. 50(1)(a).
 - Default control: record each vendor's region; disclose US processing in the practice-facing notice; do not claim Canadian residency anywhere.
 - Unread: every vendor page (Vapi, Anthropic, ElevenLabs, Deepgram, Google, Twilio, Fly); needed to state regions as fact.
-- L1 update 2026-10-13 (VERIFIED, EVIDENCE-LOG E19 to E21): Anthropic inference geo is "global" or "us" only and workspace geo is "us" only; ElevenLabs stores in the U.S. by default (EU and India isolated environments are Enterprise only); Fly.io lists no Canadian sub-processor and keeps backups with AWS in the United States. Vapi, Twilio, Deepgram and Google regions still unread. The register reading is unchanged; the facts behind the practice-facing disclosure are now firmer.
+- L1 update 2026-10-13 (VERIFIED, EVIDENCE-LOG E19 to E21): Anthropic inference geo is "global" or "us" only and workspace geo is "us" only; ElevenLabs stores in the U.S. by default (EU, India and Singapore isolated environments are Enterprise only); Fly.io lists no Canadian sub-processor and keeps backups with AWS in the United States. Vapi, Twilio, Deepgram and Google regions still unread. The register reading is unchanged; the facts behind the practice-facing disclosure are now firmer.
 - Risk accepted: moderate; turns on a reading of "reasonably necessary" that has not been tested in anything I read.
 - Decision: ______
 
