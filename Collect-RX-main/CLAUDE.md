@@ -227,12 +227,13 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time
+  - Open founder decision (D1): the CRTC ADAD window in UTR Part IV s.4(b) starts at 9:00 a.m. recipient local time, so 8:00 to 8:59 Eastern falls outside it if the ADAD rules apply. See policy-research/CORRECTIONS.md A1 (PR #126). The code still uses 08:00.
 - Maximum 3 call attempts per claim
 - Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
 - Claims over 90 days old: skip AI, escalate to human immediately
 
-### CRTC Compliance — AI Disclosure
-CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure of automated nature, practice name, and callback number is mandatory within 10 seconds of a live representative answering. The compliance decision, canonical disclosure script, and list of invalid Validation Playbook language are recorded in `docs/compliance/crtc-disclosure-decision.md`. Any instruction to sound human or evade identification is invalid for Canadian operations.
+### CRTC: automated-call identification and AI disclosure
+CollectRx treats carrier calls as possible non-solicitation ADAD calls under CRTC Unsolicited Telecommunications Rules Part IV s.4 (whether an LLM voice agent is an ADAD is open in CRTC Notice of Consultation 2026-132). Part IV s.4(d) requires the call to begin with a clear message identifying the person on whose behalf it is made, a brief description of its purpose, an email or postal address and a local or toll-free number; s.4(b) limits calls to 9:00 a.m. to 9:30 p.m. weekdays in the recipient's local time; s.4(h) requires disconnecting within 10 seconds after the recipient hangs up. The current rules contain no 10 second deadline for the disclosure itself. Disclosing the automated nature of the call is CollectRx product policy. Source text and open items: `research/2026-10-10-architecture/policy-research/CRTC-UTR-CARRIER-AND-SALES-CALLS.md` (PR #127). The compliance decision, canonical disclosure script, and list of invalid Validation Playbook language are recorded in `docs/compliance/crtc-disclosure-decision.md`. Any instruction to sound human or evade identification is invalid for Canadian operations.
 
 ---
 
