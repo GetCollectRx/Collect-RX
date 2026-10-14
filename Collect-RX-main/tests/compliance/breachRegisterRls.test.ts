@@ -113,7 +113,7 @@ describe('phipa_breach_notifications RLS', () => {
     await expect(
       asAppRole(practiceA, (tx) =>
         tx.$executeRaw`INSERT INTO "phipa_breach_notifications"
-          ("id", "practice_id", "notification_type", "description", "notification_deadline", "created_at")
+          ("id", "practice_id", "notificationType", "description", "notification_deadline", "created_at")
           VALUES (${randomUUID()}, ${practiceB}, 'POLICY_VIOLATION', 'cross-tenant attempt', now(), now())`,
       ),
     ).rejects.toThrow(/row-level security|violates/i);
