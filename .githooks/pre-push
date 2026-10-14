@@ -38,6 +38,9 @@ npm run typecheck:collectrx
 step "lint"
 npm run lint:collectrx
 
+step "policy lint"
+node Collect-RX-main/scripts/policy-lint.cjs
+
 step "test"
 npm run test:collectrx
 

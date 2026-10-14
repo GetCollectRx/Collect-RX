@@ -95,6 +95,9 @@ jobs:
       - name: Lint
         run: npm run lint:collectrx
 
+      - name: Policy lint (claims in docs and copy, dashes in policy docs)
+        run: node Collect-RX-main/scripts/policy-lint.cjs
+
       - name: Semgrep SAST
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/src" returntocorp/semgrep \

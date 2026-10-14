@@ -1,0 +1,27 @@
+{
+  "description": "Policy lint rules. Implements the no-claims rule in docs/legal-policy/README.md and policy 07. A claim of compliance, certification, Canadian residency or no recording is a legal conclusion the product cannot support; write 'implements control X for obligation Y' instead.",
+  "forbiddenClaims": [
+    { "id": "compliance-claim", "pattern": "\\bcompliant\\b", "message": "Compliance claim. Describe the control and the obligation instead." },
+    { "id": "certification-claim", "pattern": "\\bcertified\\b", "message": "Certification claim. CollectRx holds no certification." },
+    { "id": "residency-claim", "pattern": "\\bdata\\s+(stays|remains|resides|is\\s+stored\\s+only)\\s+in\\s+canada\\b", "message": "Residency claim. No vendor Canadian processing region is confirmed." },
+    { "id": "residency-claim-2", "pattern": "\\bcanadian\\s+data\\s+residency\\b", "message": "Residency claim. No vendor Canadian processing region is confirmed." },
+    { "id": "no-recording-claim", "pattern": "\\bwe\\s+(do\\s+not|don't|never)\\s+record\\b", "message": "Recording claim. Transcripts and vendor logs exist; state what is actually stored." }
+  ],
+  "claimScope": [
+    "**/*.md",
+    "Collect-RX-main/src/pages/**/*.tsx",
+    "Collect-RX-main/src/components/**/*.tsx",
+    "Collect-RX-main/src/server/marketing/**/*.ts",
+    "Collect-RX-main/index.html",
+    ".github/PULL_REQUEST_TEMPLATE.md"
+  ],
+  "excludePaths": [
+    "node_modules/**",
+    "**/node_modules/**",
+    "research/**",
+    "Collect-RX-main/scripts/policy-lint-rules.json"
+  ],
+  "strictDashScope": ["Collect-RX-main/docs/legal-policy/**"],
+  "strictClaimScope": ["Collect-RX-main/docs/legal-policy/**"],
+  "allowMarker": "policy-lint-allow"
+}
