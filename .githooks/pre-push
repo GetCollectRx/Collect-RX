@@ -29,6 +29,9 @@ npm audit --omit=dev --audit-level=high
 step "prisma generate"
 npm run db:generate:collectrx
 
+step "traceability check"
+node Collect-RX-main/scripts/check-traceability.cjs
+
 step "typecheck"
 npm run typecheck:collectrx
 
