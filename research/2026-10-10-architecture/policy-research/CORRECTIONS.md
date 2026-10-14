@@ -66,7 +66,7 @@ Date: 2026-10-13. Author: Claude (legal and policy workstream), for Khalid. Stat
 | CLAUDE.md "within 10 seconds" disclosure | CONTRADICTED | See A3 |
 | COWORK V3 (Vapi Core 10 concurrent calls, $10 per line) | NOT CHECKED | Pricing page not read |
 | COWORK V4 (Twilio 1 CPS) | NOT CHECKED | |
-| COWORK V6 (no vendor offers Canadian region) | PARTIAL | Confirmed for Anthropic (E19), ElevenLabs default storage US with EU and India isolated environments only (E21), Fly sub-processors (E20). Not read: Vapi regions, Twilio, Deepgram, Google |
+| COWORK V6 (no vendor offers Canadian region) | PARTIAL | Confirmed for Anthropic (E19), ElevenLabs default storage US with EU, India and Singapore isolated environments only (E21; Singapore added in L2 after a full read), Fly sub-processors (E20). Not read: Vapi regions, Twilio, Deepgram, Google |
 
 ## D. Still unverified after this pass (moved to the Cowork reading list in section E)
 

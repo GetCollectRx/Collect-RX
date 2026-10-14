@@ -11,7 +11,7 @@ Vendor pages were read in Chrome this session (EVIDENCE-LOG-2026-10-13.md E18 to
 | 3 | CONTRADICTED (ZDR) | "ZDR does not require a separate purchase." HIPAA price still unknown |
 | New | VERIFIED | Vapi default: "By default, Vapi records your calls and stores logs and transcriptions." |
 | 9 | VERIFIED | inference_geo: "global" or "us"; workspace geo "us" only; unsupported on Sonnet 4.5 (labelled deprecated) and Haiku 4.5 |
-| 13 | VERIFIED (quoted sentences, keyword scan) | ElevenLabs: data residency is an Enterprise feature; default storage in the U.S.; isolated environments EU and India; processing may occur outside the selected location. No Canada |
+| 13 | VERIFIED (quoted sentences, keyword scan) | ElevenLabs: data residency is an Enterprise feature; default storage in the U.S.; isolated environments EU, India and Singapore (corrected in L2; the L1 keyword scan missed Singapore); processing may occur outside the selected location. No Canada |
 | 17 | VERIFIED | Fly sub-processors (last updated 2026-09-24): US, UK, Germany only; AWS backups US; Fly's internal AI tooling may process "platform log lines, which include whatever your application writes to stdout" |
 | 18 | VERIFIED (status) | Bill C-36 (Protecting Privacy and Consumer Data Act) at second reading; no federal AI regulation statute found in force |
 | 24 | VERIFIED | 2026-132 explicitly asks about AI and synthesized voices (Q2, Q10, Q11) |
