@@ -1,14 +1,17 @@
 /**
  * Breach register and custodian packet (privacy control W4).
  *
- * Sources (primary text read 2026-10-13, via the Ontario and Justice Canada
- * e-Laws pages; quotes are from page text, tagged EXCERPT in the evidence log):
- *   - SOR/2018-64 s.2(1)(a) to (g): required content of a breach report.
- *   - SOR/2018-64 s.6(1): breach record kept 24 months after the day the
- *     organization determines the breach occurred.
- *   - O. Reg. 329/04 s.6.4(1), items 1 to 5: annual report categories for a
- *     health information custodian (stolen, lost, used without authority,
- *     disclosed without authority, collected through the EHR without authority).
+ * Sources, read as raw page text on 2026-10-14 (not via a summarizing fetch):
+ *   - SOR/2018-64 (Breach of Security Safeguards Regulations, justice-laws page,
+ *     current to 2026-09-21): s.2(1)(a) to (g) required content of a breach
+ *     report; s.6(1) breach record kept 24 months after the day the organization
+ *     determines the breach has occurred.
+ *   - O. Reg. 329/04 s.6.4(1), items 1 to 5 (ontario.ca page): annual report to
+ *     the Commissioner by a health information custodian: stolen, lost, used
+ *     without authority, disclosed without authority, collected through the EHR
+ *     without authority.
+ * Not verified: the PHIPA statute sections governing custodian notification
+ * timing. No code here depends on them.
  *
  * This module is pure. It validates input, scans free text for direct
  * identifiers, builds the custodian packet, and counts annual categories.
