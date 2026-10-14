@@ -1,0 +1,295 @@
+{
+  "note": "Grandfathered policy-lint findings. Remove entries as files are fixed; never add new ones by hand.",
+  "entries": [
+    {
+      "key": ".claude/agents/pre-launch-audit.md|compliance-claim|555e0c12612333db",
+      "file": ".claude/agents/pre-launch-audit.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": ".claude/agents/pre-launch-audit.md|compliance-claim|c3a932bfa5930ab1",
+      "file": ".claude/agents/pre-launch-audit.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/competitive-intelligence 2.md|compliance-claim|b91e80c1eedccff3",
+      "file": "agents/competitive-intelligence 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/competitive-intelligence.md|compliance-claim|b91e80c1eedccff3",
+      "file": "agents/competitive-intelligence.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/compliance-checker.md|compliance-claim|505390f707604671",
+      "file": "agents/compliance-checker.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/compliance-checker.md|compliance-claim|8596386c4f487958",
+      "file": "agents/compliance-checker.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/frontend-auditor.md|compliance-claim|da39505c60e7fe96",
+      "file": "agents/frontend-auditor.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response 2.md|compliance-claim|1e6c2565fa6faec0",
+      "file": "agents/incident-response 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response 2.md|compliance-claim|3396d214e6080dc2",
+      "file": "agents/incident-response 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response 3.md|compliance-claim|1e6c2565fa6faec0",
+      "file": "agents/incident-response 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response 3.md|compliance-claim|3396d214e6080dc2",
+      "file": "agents/incident-response 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response.md|compliance-claim|1e6c2565fa6faec0",
+      "file": "agents/incident-response.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/incident-response.md|compliance-claim|3396d214e6080dc2",
+      "file": "agents/incident-response.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/outreach/gtm-strategist.md|compliance-claim|d81df22b8ef8a892",
+      "file": "agents/outreach/gtm-strategist.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "agents/vapi-squad-auditor.md|compliance-claim|66899eda846ba037",
+      "file": "agents/vapi-squad-auditor.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP 2.md|compliance-claim|421b585eff68d12d",
+      "file": "CAMPAIGN_SETUP 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP 2.md|compliance-claim|a565aa76bdbac9f6",
+      "file": "CAMPAIGN_SETUP 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP 3.md|compliance-claim|421b585eff68d12d",
+      "file": "CAMPAIGN_SETUP 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP 3.md|compliance-claim|a565aa76bdbac9f6",
+      "file": "CAMPAIGN_SETUP 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP.md|compliance-claim|421b585eff68d12d",
+      "file": "CAMPAIGN_SETUP.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "CAMPAIGN_SETUP.md|compliance-claim|a565aa76bdbac9f6",
+      "file": "CAMPAIGN_SETUP.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/competitive-intelligence.md|compliance-claim|b91e80c1eedccff3",
+      "file": "Collect-RX-main/agents/competitive-intelligence.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/compliance-checker.md|compliance-claim|016d8b81967449f0",
+      "file": "Collect-RX-main/agents/compliance-checker.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/compliance-checker.md|compliance-claim|505390f707604671",
+      "file": "Collect-RX-main/agents/compliance-checker.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/compliance-checker.md|compliance-claim|9e8b348be7a12350",
+      "file": "Collect-RX-main/agents/compliance-checker.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/frontend-auditor.md|compliance-claim|da39505c60e7fe96",
+      "file": "Collect-RX-main/agents/frontend-auditor.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/incident-response.md|compliance-claim|1e6c2565fa6faec0",
+      "file": "Collect-RX-main/agents/incident-response.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/agents/incident-response.md|compliance-claim|3396d214e6080dc2",
+      "file": "Collect-RX-main/agents/incident-response.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/docs/compliance/ITRANS-2.0-Migration.md|compliance-claim|f9e5a68d8d643bf7",
+      "file": "Collect-RX-main/docs/compliance/ITRANS-2.0-Migration.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/docs/compliance/LEGAL-REVIEW-PROMPT.md|residency-claim-2|58f97cce810f47e9",
+      "file": "Collect-RX-main/docs/compliance/LEGAL-REVIEW-PROMPT.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "Collect-RX-main/docs/marketing/MARKETING-AGENTS-PLAN.md|compliance-claim|9e6b028a082eb13b",
+      "file": "Collect-RX-main/docs/marketing/MARKETING-AGENTS-PLAN.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/docs/prd/phase-0-platform-foundation.md|compliance-claim|b4d6353b5346b46b",
+      "file": "Collect-RX-main/docs/prd/phase-0-platform-foundation.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Collect-RX-main/Product Requirement Document/phase-0-platform-foundation.md|compliance-claim|b4d6353b5346b46b",
+      "file": "Collect-RX-main/Product Requirement Document/phase-0-platform-foundation.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "DEMO_PLAYBOOK.md|compliance-claim|979d776ae3e5e8a0",
+      "file": "DEMO_PLAYBOOK.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "DEMO_PLAYBOOK.md|compliance-claim|a1a860897e0756b4",
+      "file": "DEMO_PLAYBOOK.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/compliance/HIPAA-GAP-REVIEW-TEMPLATE.md|compliance-claim|2add725cf8e29eaa",
+      "file": "docs/compliance/HIPAA-GAP-REVIEW-TEMPLATE.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md|compliance-claim|6ff279d6233398a0",
+      "file": "docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md|compliance-claim|8ca4506d6ad1ca8d",
+      "file": "docs/compliance/LAUNCH-DATA-PROTECTION-CA-US.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/compliance/Vendor_DPA_Review_Checklist 2.md|residency-claim-2|728816a7fd7d6012",
+      "file": "docs/compliance/Vendor_DPA_Review_Checklist 2.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "docs/compliance/Vendor_DPA_Review_Checklist.md|residency-claim-2|728816a7fd7d6012",
+      "file": "docs/compliance/Vendor_DPA_Review_Checklist.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "docs/pilot/INTERNAL-SETUP-RUNBOOK 2.md|certification-claim|0c978536aef11684",
+      "file": "docs/pilot/INTERNAL-SETUP-RUNBOOK 2.md",
+      "rule": "certification-claim"
+    },
+    {
+      "key": "docs/pilot/INTERNAL-SETUP-RUNBOOK.md|certification-claim|0c978536aef11684",
+      "file": "docs/pilot/INTERNAL-SETUP-RUNBOOK.md",
+      "rule": "certification-claim"
+    },
+    {
+      "key": "docs/pilot/PILOT-KIT 2.md|compliance-claim|790bda976431e27d",
+      "file": "docs/pilot/PILOT-KIT 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/pilot/PILOT-KIT 3.md|compliance-claim|790bda976431e27d",
+      "file": "docs/pilot/PILOT-KIT 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/pilot/PILOT-KIT.md|compliance-claim|790bda976431e27d",
+      "file": "docs/pilot/PILOT-KIT.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "docs/strategy/CollectRx_Strategic_Analysis 2.md|residency-claim-2|ee4d8298d3913b45",
+      "file": "docs/strategy/CollectRx_Strategic_Analysis 2.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "docs/strategy/CollectRx_Strategic_Analysis 3.md|residency-claim-2|ee4d8298d3913b45",
+      "file": "docs/strategy/CollectRx_Strategic_Analysis 3.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "docs/strategy/CollectRx_Strategic_Analysis.md|residency-claim-2|ee4d8298d3913b45",
+      "file": "docs/strategy/CollectRx_Strategic_Analysis.md",
+      "rule": "residency-claim-2"
+    },
+    {
+      "key": "docs/strategy/PRESSURE-TEST-2026-10-06.md|certification-claim|0179807b6b57604c",
+      "file": "docs/strategy/PRESSURE-TEST-2026-10-06.md",
+      "rule": "certification-claim"
+    },
+    {
+      "key": "docs/strategy/PRESSURE-TEST-2026-10-06.md|compliance-claim|f150889cb07c73b9",
+      "file": "docs/strategy/PRESSURE-TEST-2026-10-06.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "outreach/README 2.md|compliance-claim|bd4962163ffec388",
+      "file": "outreach/README 2.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "outreach/README 3.md|compliance-claim|bd4962163ffec388",
+      "file": "outreach/README 3.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "outreach/README.md|compliance-claim|bd4962163ffec388",
+      "file": "outreach/README.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "PHONE_NUMBER_SCALING.md|compliance-claim|ee13c8088d698b0b",
+      "file": "PHONE_NUMBER_SCALING.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "Product Requirement Document/phase-0-platform-foundation.md|compliance-claim|b4d6353b5346b46b",
+      "file": "Product Requirement Document/phase-0-platform-foundation.md",
+      "rule": "compliance-claim"
+    },
+    {
+      "key": "specs/phase-9-carrier-side-integration.md|certification-claim|1a391cca9bcd287a",
+      "file": "specs/phase-9-carrier-side-integration.md",
+      "rule": "certification-claim"
+    },
+    {
+      "key": "specs/phase-9-carrier-side-integration.md|certification-claim|21064efaba95dbeb",
+      "file": "specs/phase-9-carrier-side-integration.md",
+      "rule": "certification-claim"
+    },
+    {
+      "key": "specs/phase-9-carrier-side-integration.md|certification-claim|7d09492a5c2b0d2a",
+      "file": "specs/phase-9-carrier-side-integration.md",
+      "rule": "certification-claim"
+    }
+  ]
+}
