@@ -21,6 +21,9 @@
  *     ClaimEvidenceItem, ClaimSubmission, EvidencePackExport, UnderpaymentCase;
  *     sets PracticeNotification.claimId to null)
  *
+ * Exempt by design (W4): the PHIPA breach register is kept at least 24 months
+ * and is never swept here. Covered by tests/compliance/breachRetentionExemption.test.ts.
+ *
  * Known scope gap: does not sweep bare (non-@relation, no FK) claimId string
  * columns on EmrSyncOutbox, AdjudicationEvent, ReconciliationLog, or
  * CallEscalation — those don't block deletion (no FK constraint) but are left

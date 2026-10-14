@@ -148,6 +148,7 @@ import { makeSendgridEventWebhookHandler } from './sendgrid/handleSendgridEventW
 
 import { createFrontDeskRouter } from './routes/frontDeskApi.js';
 import { createPracticeReportsRouter, createPortfolioRouter } from './routes/practiceReportsApi.js';
+import { createBreachRegisterRouter } from './routes/breachRegisterRoutes.js';
 import { createPlatformPersonaAdminRouter } from './routes/platformPersonaAdminApi.js';
 import { createEarlyAccessRouter } from './routes/earlyAccessRoutes.js';
 import { createDesktopReleasesRouter } from './routes/desktopReleasesRoutes.js';
@@ -546,6 +547,10 @@ app.use('/api/calls',      createFrontDeskRouter());
 app.use('/api/calls',      callsRouter);
 app.use('/api/desk',       createFrontDeskRouter());
 app.use('/api/practices',  createPracticeReportsRouter());
+// W4 breach register: off unless PHIPA_BREACH_REGISTER_ENABLED=true (default keeps current route surface).
+if (process.env.PHIPA_BREACH_REGISTER_ENABLED === 'true') {
+  app.use('/api/practices', createBreachRegisterRouter());
+}
 app.use('/api/practices',  createTriageCredentialRouter());
 app.use('/api/reports',    createPortfolioRouter());
 app.use('/api/carriers',   carriersRouter);
