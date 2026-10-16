@@ -6,10 +6,10 @@ import type { PrismaClient } from '@prisma/client';
  *
  * Resolution, most specific first:
  *   1. a row for this practice decides (paused = off, not paused = on);
- *   2. otherwise a paused global row turns the feature off;
- *   3. otherwise the feature is ON (no row at all means on).
+ *   2. otherwise a global row decides (paused = off, not paused = on);
+ *   3. otherwise the feature's default applies (most are ON; see DEFAULT_OFF).
  *
- * Because "no row" is on, a deploy that has no global pause row in place turns
+ * Because "no row" is on for a default-on feature, a deploy that has no global pause row in place turns
  * the feature on for every practice at once. A staged release therefore starts
  * with a global pause row, enables practices one at a time with practice rows,
  * and removes the global row last (docs/runbooks/manual-dispatch-rollback.md).
@@ -22,9 +22,19 @@ export const DISPATCH_FEATURES = {
    * select the human-assisted squad.
    */
   MANUAL_SHARED_BUILDER: 'dispatch.manual_shared_builder',
+  /**
+   * DEC-9 (b): staff approve a carrier once per practice before the first call
+   * to it. DEFAULT OFF: with no row the checkpoint is not enforced, so a deploy
+   * never stalls calling. Turn it on per practice with a practice row whose
+   * paused column is false; a global row with paused = false turns it on for
+   * every practice without its own row.
+   */
+  APPROVAL_CHECKPOINT: 'dispatch.approval_checkpoint',
 } as const;
 
 export type DispatchFeature = (typeof DISPATCH_FEATURES)[keyof typeof DISPATCH_FEATURES];
+
+const DEFAULT_OFF: ReadonlySet<DispatchFeature> = new Set([DISPATCH_FEATURES.APPROVAL_CHECKPOINT]);
 
 export async function isDispatchFeatureEnabled(
   prisma: PrismaClient,
@@ -40,5 +50,9 @@ export async function isDispatchFeatureEnabled(
   });
   const practiceFlag = flags.find((flag) => flag.practiceId === practiceId);
   if (practiceFlag) return !practiceFlag.paused;
-  return !flags.some((flag) => flag.practiceId === null && flag.paused);
+  // The unique index does not constrain NULL practice ids, so more than one
+  // global row can exist: any paused one wins.
+  const globalFlags = flags.filter((flag) => flag.practiceId === null);
+  if (globalFlags.length > 0) return !globalFlags.some((flag) => flag.paused);
+  return !DEFAULT_OFF.has(feature);
 }

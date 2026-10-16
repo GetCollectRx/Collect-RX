@@ -1231,6 +1231,56 @@ model CallQueue {
   @@map("call_queue")
 }
 
+/// DEC-9 (b): a staff checkpoint at first use per practice and carrier. Until a
+/// practice has APPROVED the checkpoint for a carrier, validateDispatch() refuses
+/// every dial to that carrier for that practice on every path (scheduler and
+/// manual). One row per practice and carrier; the full decision history is in
+/// DispatchCheckpointEvent. Enforced only while the `dispatch.approval_checkpoint`
+/// flag is on for the practice (default off).
+enum DispatchCheckpointStatus {
+  PENDING
+  APPROVED
+  REVOKED
+
+  @@map("dispatch_checkpoint_status")
+}
+
+model DispatchCheckpoint {
+  id              String                   @id @default(uuid())
+  practiceId      String                   @map("practice_id")
+  carrierId       CarrierId                @map("carrier_id")
+  status          DispatchCheckpointStatus @default(PENDING)
+  requestedAt     DateTime                 @default(now()) @map("requested_at")
+  decidedByUserId String?                  @map("decided_by_user_id")
+  decidedAt       DateTime?                @map("decided_at")
+  notes           String?
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([practiceId, carrierId])
+  @@index([practiceId, status])
+  @@map("dispatch_checkpoints")
+}
+
+/// Append-only audit trail for DispatchCheckpoint (WHO / WHAT / WHEN / ACTION).
+/// Rows are never updated or deleted; the database rejects both.
+model DispatchCheckpointEvent {
+  id              String    @id @default(uuid())
+  practiceId      String    @map("practice_id")
+  checkpointId    String    @map("checkpoint_id")
+  carrierId       CarrierId @map("carrier_id")
+  /// REQUESTED, APPROVED or REVOKED.
+  action          String
+  actorUserId     String?   @map("actor_user_id")
+  /// Open queue entries for the carrier when the decision was made (what the reviewer was looking at).
+  queuedClaimsAtDecision Int? @map("queued_claims_at_decision")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([practiceId, createdAt])
+  @@index([checkpointId, createdAt])
+  @@map("dispatch_checkpoint_events")
+}
+
 /// Outbound events for practice EMR / PMS connectors (AbelDent, etc.). Worker drains `processedAt IS NULL`.
 model EmrSyncOutbox {
   id          String    @id @default(uuid())

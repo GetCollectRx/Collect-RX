@@ -27,9 +27,19 @@ function authorizedSettings() {
   };
 }
 
-function makePrisma(claimOverrides: Record<string, unknown> = {}, blockingAction: unknown = null) {
+function makePrisma(
+  claimOverrides: Record<string, unknown> = {},
+  blockingAction: unknown = null,
+  checkpoint: { enforced: boolean; status?: 'PENDING' | 'APPROVED' | 'REVOKED' } = { enforced: false },
+) {
   return {
     carrierBlockEvent: { findFirst: async () => null },
+    featureFlag: {
+      findMany: async () => (checkpoint.enforced ? [{ practiceId: 'practice-1', paused: false }] : []),
+    },
+    dispatchCheckpoint: {
+      findUnique: async () => (checkpoint.status ? { status: checkpoint.status } : null),
+    },
     organizationPractice: { findMany: async () => [] },
     insuranceClaim: {
       findUnique: async () => ({
@@ -131,5 +141,34 @@ describe('claim age rules (WP1 acceptance, DEC-2)', () => {
     );
     expect(guard.allowed).toBe(false);
     expect(guard.code).toBe('RECOVERY_GATE');
+  });
+});
+
+describe('approval checkpoint in validateDispatch (DEC-9 b)', () => {
+  const checkpointParams = () => params({ payerType: 'PRIVATE' });
+
+  it('does nothing while the flag is off', async () => {
+    const guard = await validateDispatch(makePrisma({}, null, { enforced: false }), checkpointParams());
+    expect(guard.allowed).toBe(true);
+  });
+  it('allows an approved carrier', async () => {
+    const guard = await validateDispatch(makePrisma({}, null, { enforced: true, status: 'APPROVED' }), checkpointParams());
+    expect(guard.allowed).toBe(true);
+  });
+  it('refuses a pending carrier with the checkpoint code', async () => {
+    const guard = await validateDispatch(makePrisma({}, null, { enforced: true, status: 'PENDING' }), checkpointParams());
+    expect(guard).toMatchObject({ allowed: false, code: 'PENDING_DISPATCH_APPROVAL' });
+  });
+  it('refuses a revoked carrier and says so', async () => {
+    const guard = await validateDispatch(makePrisma({}, null, { enforced: true, status: 'REVOKED' }), checkpointParams());
+    expect(guard.allowed).toBe(false);
+    expect(guard.reason).toMatch(/stopped by staff/);
+  });
+  it('checks the payer program first: a CDCP claim is refused as CDCP, not as pending approval', async () => {
+    const guard = await validateDispatch(
+      makePrisma({}, null, { enforced: true, status: 'PENDING' }),
+      params({ payerType: 'CDCP' }),
+    );
+    expect(guard.code).toBe('PAYER_PROGRAM_NOT_ENABLED');
   });
 });

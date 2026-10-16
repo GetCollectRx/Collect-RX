@@ -41,3 +41,26 @@ describe('isDispatchFeatureEnabled', () => {
     expect(await enabled([{ practiceId: null, paused: false }, { practiceId: null, paused: true }])).toBe(false);
   });
 });
+
+describe('isDispatchFeatureEnabled for a default-off feature (approval checkpoint)', () => {
+  const checkpointEnabled = (rows: Row[], practiceId = 'p1') => {
+    const prisma = { featureFlag: { findMany: vi.fn(async () => rows) } };
+    return isDispatchFeatureEnabled(prisma as unknown as PrismaClient, practiceId, DISPATCH_FEATURES.APPROVAL_CHECKPOINT);
+  };
+  it('is OFF with no row, so a deploy never stalls calling', async () => {
+    expect(await checkpointEnabled([])).toBe(false);
+  });
+  it('a practice row that is not paused turns it on for that practice only', async () => {
+    expect(await checkpointEnabled([{ practiceId: 'p1', paused: false }])).toBe(true);
+    expect(await checkpointEnabled([], 'p2')).toBe(false);
+  });
+  it('a global row that is not paused turns it on for every practice without its own row', async () => {
+    expect(await checkpointEnabled([{ practiceId: null, paused: false }], 'p2')).toBe(true);
+  });
+  it('a paused practice row beats an enabled global row', async () => {
+    expect(await checkpointEnabled([{ practiceId: null, paused: false }, { practiceId: 'p1', paused: true }])).toBe(false);
+  });
+  it('a paused global row keeps it off', async () => {
+    expect(await checkpointEnabled([{ practiceId: null, paused: true }])).toBe(false);
+  });
+});
