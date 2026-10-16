@@ -1,4 +1,4 @@
-import type { ClaimStatus, PrismaClient } from '@prisma/client';
+import type { ClaimStatus, Prisma, PrismaClient } from '@prisma/client';
 
 /**
  * Most PMS aging reports list only open balances, so a claim the practice
@@ -38,11 +38,18 @@ export interface AbsentClaimResult {
   warning: string | null;
 }
 
-export async function closeClaimsMissingFromFullExport(
+interface OpenClaimRow {
+  id: string;
+  claimNumber: string;
+  outstandingAmount: Prisma.Decimal;
+  recoveryRoute: string | null;
+}
+
+async function findMissingOpenClaims(
   prisma: PrismaClient,
   practiceId: string,
   claimNumbersInFile: ReadonlySet<string>,
-): Promise<AbsentClaimResult> {
+): Promise<{ open: number; missing: OpenClaimRow[]; held: boolean }> {
   const open = await prisma.insuranceClaim.findMany({
     where: {
       practiceId,
@@ -53,16 +60,53 @@ export async function closeClaimsMissingFromFullExport(
     },
     select: { id: true, claimNumber: true, outstandingAmount: true, recoveryRoute: true },
   });
-
   const missing = open.filter((claim) => !claimNumbersInFile.has(claim.claimNumber));
+  const held = missing.length >= MASS_ABSENCE_MIN_CLAIMS && missing.length / open.length > MASS_ABSENCE_SHARE;
+  return { open: open.length, missing, held };
+}
+
+export interface AbsentClaimPreview {
+  openClaims: number;
+  /** Open claims this file does not list. */
+  missingClaims: number;
+  /** True when the mass-absence guardrail would hold the update instead of changing anything. */
+  wouldHold: boolean;
+  /** A few claim numbers so staff can recognise what is about to stop being called. */
+  sampleClaimNumbers: string[];
+}
+
+/**
+ * What a full export would do, using the same selection as the real update, so
+ * the count staff confirm is the count that is applied. Changes nothing.
+ */
+export async function previewAbsentClaims(
+  prisma: PrismaClient,
+  practiceId: string,
+  claimNumbersInFile: ReadonlySet<string>,
+): Promise<AbsentClaimPreview> {
+  const { open, missing, held } = await findMissingOpenClaims(prisma, practiceId, claimNumbersInFile);
+  return {
+    openClaims: open,
+    missingClaims: missing.length,
+    wouldHold: held,
+    sampleClaimNumbers: missing.slice(0, 5).map((claim) => claim.claimNumber),
+  };
+}
+
+export async function closeClaimsMissingFromFullExport(
+  prisma: PrismaClient,
+  practiceId: string,
+  claimNumbersInFile: ReadonlySet<string>,
+): Promise<AbsentClaimResult> {
+  const { open, missing, held } = await findMissingOpenClaims(prisma, practiceId, claimNumbersInFile);
   if (missing.length === 0) return { closed: 0, held: 0, warning: null };
 
-  if (missing.length >= MASS_ABSENCE_MIN_CLAIMS && missing.length / open.length > MASS_ABSENCE_SHARE) {
+  if (held) {
     return {
       closed: 0,
       held: missing.length,
       warning:
-        `${missing.length} of ${open.length} open claims are missing from this file. ` +
+        `${missing.length} of ${open} open claims are missing from this file. ` +
         'That usually means the export was filtered, so no claims were closed. ' +
         'Re-export the full open insurance AR, or import this file as a partial export.',
     };
