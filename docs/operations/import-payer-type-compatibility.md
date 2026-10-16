@@ -47,7 +47,16 @@ The wizard no longer assumes the file lists every open claim. The operator must 
 
 API callers are unchanged: `exportScope` defaults to `partial`, and `confirmedMissingCount` is optional. Only the wizard ever sent `full`; Sync ops, the group batch import and the AbelDent connector never did.
 
-Not yet done (slice 2, needs a decision): a "Not in latest file" state that pauses calls on missing claims until staff confirm, instead of marking them resolved; a staff list to confirm or restore them; and no automatic release of held claims. Reappearance restore already exists for claims closed this way.
+### Claims not in the latest file (DEC-14, slice 2)
+
+A claim a confirmed full export leaves out is paused (recovery route STOP, event `ABSENT_FROM_FULL_EXPORT`) and listed under **Not in latest file** (`/not-in-latest-file`, practice owner menu). Nothing resolves or resumes it on a timer, because absence from a file is not evidence the claim was paid. The practice owner can:
+
+- **Confirm resolved**: the claim stays closed (event `ABSENT_CONFIRMED_RESOLVED`, with the deciding user id).
+- **Put back into follow-up**: the claim returns to the route it had before (event `ABSENT_RESTORED_BY_STAFF`) and the call queue is re-synced.
+
+Rules: only a claim whose newest event is still `ABSENT_FROM_FULL_EXPORT` can be decided, so a second decision is a no-op; another practice's claim ids are skipped; the list carries claim number, carrier, amount, days outstanding and the date it was left out, and no patient information. A claim that reappears in a later file with a balance resumes on its own (`REAPPEARED_IN_EXPORT`) unless staff already confirmed it resolved. API: `GET /api/claims-not-in-latest-file` and `POST /api/claims-not-in-latest-file/decision`, both requiring the literal `practice_owner` session role.
+
+Existing data: practices that already ran full exports have claims marked `ABSENT_FROM_FULL_EXPORT`. Those claims were closed without a decision, so they appear in this list on release and need the owner's review. Check how many exist per practice before release.
 
 ## Release prerequisites for this area
 

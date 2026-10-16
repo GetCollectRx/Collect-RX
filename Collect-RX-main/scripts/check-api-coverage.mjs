@@ -60,6 +60,7 @@ const SERVER_PREFIXES = [
   '/api/cdcp/',
   '/api/work-queue/',
   '/api/pms/',
+  '/api/claims-not-in-latest-file/',
   '/api/benefits/',
   '/api/patients/',
   '/api/balances',
