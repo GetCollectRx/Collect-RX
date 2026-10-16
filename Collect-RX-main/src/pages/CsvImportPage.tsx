@@ -49,7 +49,15 @@ export default function CsvImportPage() {
     claimsClosedAsMissing: number
     missingClaimsWarning: string | null
   } | null>(null)
-  const [fullExport, setFullExport] = useState(true)
+  // No default: the practice must say whether this file lists all of its open claims or only some.
+  const [scope, setScope] = useState<'' | 'full' | 'partial'>('')
+  const [absence, setAbsence] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ready'; openClaims: number; missingClaims: number; wouldHold: boolean; sampleClaimNumbers: string[] }
+  >({ status: 'idle' })
+  const [absenceConfirmed, setAbsenceConfirmed] = useState(false)
   // No default: the practice must say which payer program the file's claims belong to.
   const [payerType, setPayerType] = useState<'' | 'PRIVATE' | 'CDCP' | 'PROVINCIAL'>('')
   const [loading, setLoading] = useState(true)
@@ -74,6 +82,9 @@ export default function CsvImportPage() {
   const onFilePick = useCallback(async (f: File | null) => {
     setFile(f)
     setResult(null)
+    setScope('')
+    setAbsence({ status: 'idle' })
+    setAbsenceConfirmed(false)
     if (!f) {
       setPreview(null)
       setStep('prepare')
@@ -85,13 +96,48 @@ export default function CsvImportPage() {
     setStep('preview')
   }, [])
 
+  const loadAbsence = useCallback(async (f: File) => {
+    setAbsence({ status: 'loading' })
+    setAbsenceConfirmed(false)
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      const res = await apiFetchJson<{
+        success: boolean
+        data: { openClaims: number; missingClaims: number; wouldHold: boolean; sampleClaimNumbers: string[] }
+      }>(`/api/admin/sync/import/${vendor}/absence-preview`, { method: 'POST', body: fd })
+      setAbsence({ status: 'ready', ...res.data })
+    } catch (e) {
+      setAbsence({ status: 'error', message: (e as Error).message })
+    }
+  }, [vendor])
+
+  const chooseScope = (next: 'full' | 'partial') => {
+    setScope(next)
+    setAbsenceConfirmed(false)
+    if (next === 'full' && file) void loadAbsence(file)
+    else setAbsence({ status: 'idle' })
+  }
+
+  const scopeBlockReason = (): string | null => {
+    if (scope === '') return 'Say whether this file lists all of your open insurance claims or only some of them.'
+    if (scope === 'partial') return null
+    if (absence.status === 'loading' || absence.status === 'idle') return 'Checking which open claims are not in this file.'
+    if (absence.status === 'error') return absence.message
+    if (absence.missingClaims > 0 && !absence.wouldHold && !absenceConfirmed) {
+      return `Confirm that CollectRx should stop calling about the ${absence.missingClaims} open claims that are not in this file.`
+    }
+    return null
+  }
+
   const runImport = async () => {
-    if (!file || !preview?.ready || payerTypeBlockReason(preview.payerTypes, payerType)) return
+    if (!file || !preview?.ready || payerTypeBlockReason(preview.payerTypes, payerType) || scopeBlockReason()) return
     setUploading(true)
     setError(null)
     const fd = new FormData()
     fd.append('file', file)
-    fd.append('exportScope', fullExport ? 'full' : 'partial')
+    fd.append('exportScope', scope)
+    if (scope === 'full' && absence.status === 'ready') fd.append('confirmedMissingCount', String(absence.missingClaims))
     if (preview.payerTypes.unclassified > 0) fd.append('defaultPayerType', payerType)
     try {
       const r = await apiFetch(`/api/admin/sync/import/${vendor}`, { method: 'POST', body: fd })
@@ -105,7 +151,10 @@ export default function CsvImportPage() {
         claimsClosedAsMissing?: number
         missingClaimsWarning?: string | null
       }
-      if (!r.ok) throw new Error(j.error ?? 'Import failed')
+      if (!r.ok) {
+        if (r.status === 409 && scope === 'full') void loadAbsence(file)
+        throw new Error(j.error ?? 'Import failed')
+      }
       await apiFetch('/api/work-queue/sync', { method: 'POST' }).catch(() => undefined)
 
       let rowErrors: { row?: number; message?: string }[] = []
@@ -324,25 +373,62 @@ export default function CsvImportPage() {
                     </span>
                   </label>
                 )}
-                <label htmlFor="csv-full-export" className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                  <input
-                    id="csv-full-export"
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={fullExport}
-                    onChange={(e) => setFullExport(e.target.checked)}
-                  />
-                  <span>
-                    This file lists all of our open insurance claims.
-                    <span className="block text-xs text-gray-500">
-                      Open claims missing from the file are treated as resolved in your practice software, and CollectRx stops calling about them. Untick this for a partial or date-ranged export.
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">What does this file cover?</legend>
+                  <label htmlFor="csv-scope-full" className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input id="csv-scope-full" type="radio" name="csv-scope" className="mt-0.5" checked={scope === 'full'} onChange={() => chooseScope('full')} />
+                    <span>
+                      All of our open insurance claims.
+                      <span className="block text-xs text-gray-500">
+                        Open claims missing from the file are treated as resolved in your practice software, and CollectRx stops calling about them. You will see how many before anything changes.
+                      </span>
                     </span>
-                  </span>
-                </label>
+                  </label>
+                  <label htmlFor="csv-scope-partial" className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input id="csv-scope-partial" type="radio" name="csv-scope" className="mt-0.5" checked={scope === 'partial'} onChange={() => chooseScope('partial')} />
+                    <span>
+                      Only some of them, such as one provider or a date range.
+                      <span className="block text-xs text-gray-500">Claims missing from the file are left alone.</span>
+                    </span>
+                  </label>
+                </fieldset>
+                {scope === 'full' && absence.status === 'loading' && (
+                  <p className="text-sm text-gray-500">Checking which open claims are not in this file…</p>
+                )}
+                {scope === 'full' && absence.status === 'error' && (
+                  <p className="text-sm text-red-600" role="alert" data-testid="absence-error">{absence.message}</p>
+                )}
+                {scope === 'full' && absence.status === 'ready' && absence.missingClaims === 0 && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300" data-testid="absence-none">
+                    Every open claim ({absence.openClaims}) is in this file. No claims will stop being called.
+                  </p>
+                )}
+                {scope === 'full' && absence.status === 'ready' && absence.missingClaims > 0 && absence.wouldHold && (
+                  <p className="text-sm text-amber-700 dark:text-amber-400" role="alert" data-testid="absence-hold">
+                    {absence.missingClaims} of {absence.openClaims} open claims are not in this file. That usually means the export was filtered, so no claims will be changed. Choose "only some of them" if this is a filtered file.
+                  </p>
+                )}
+                {scope === 'full' && absence.status === 'ready' && absence.missingClaims > 0 && !absence.wouldHold && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200" data-testid="absence-confirm">
+                    <p>
+                      {absence.missingClaims} of your {absence.openClaims} open claims are not in this file. If you continue, CollectRx stops calling about them.
+                      {absence.sampleClaimNumbers.length > 0 && (
+                        <span className="block text-xs mt-1">For example: {absence.sampleClaimNumbers.join(', ')}</span>
+                      )}
+                    </p>
+                    <label htmlFor="csv-absence-confirm" className="mt-2 flex items-start gap-2">
+                      <input id="csv-absence-confirm" type="checkbox" className="mt-0.5" checked={absenceConfirmed} onChange={(e) => setAbsenceConfirmed(e.target.checked)} />
+                      <span>Yes, these {absence.missingClaims} claims are resolved. Stop calling about them.</span>
+                    </label>
+                  </div>
+                )}
+                {scopeBlockReason() && scope !== '' && absence.status !== 'error' && (
+                  <p className="sr-only">{scopeBlockReason()}</p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => void runImport()}
-                    disabled={!preview.ready || uploading || payerTypeBlockReason(preview.payerTypes, payerType) !== null}
+                    disabled={!preview.ready || uploading || payerTypeBlockReason(preview.payerTypes, payerType) !== null || scopeBlockReason() !== null}
                   >
                     {uploading ? 'Importing…' : `Import ${preview.rowCount} claims`}
                   </Button>

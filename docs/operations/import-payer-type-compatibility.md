@@ -41,9 +41,13 @@ A file can mix private, CDCP and provincial rows. Rows with an explicit value or
 4. Update any scripted callers.
 5. Existing null-program claims: no action required; they remain visibly flagged. A later backfill is a separate decision.
 
-## Known limitation, not fixed in Step 1
+## Full export confirmation (DEC-14, slice 1)
 
-The wizard's "full export" box is checked by default. A full export closes claims that are absent from the file (DEC-14, Step 2). Operators importing a partial file must untick it. This was observed during UI testing and is unchanged here.
+The wizard no longer assumes the file lists every open claim. The operator must choose "all of our open insurance claims" or "only some of them", with neither preselected. On "all", the wizard asks the server which open claims the file does not list (`POST /api/admin/sync/import/:vendor/absence-preview`, which changes nothing), shows the count and a few claim numbers, and requires an explicit confirmation before Import is enabled. The import sends the confirmed count back; if the count differs at import time the server returns 409 `ABSENT_CLAIMS_CHANGED` and imports nothing. The mass-absence guard (10 or more claims and over half of all open claims) still holds a filtered file even when confirmed.
+
+API callers are unchanged: `exportScope` defaults to `partial`, and `confirmedMissingCount` is optional. Only the wizard ever sent `full`; Sync ops, the group batch import and the AbelDent connector never did.
+
+Not yet done (slice 2, needs a decision): a "Not in latest file" state that pauses calls on missing claims until staff confirm, instead of marking them resolved; a staff list to confirm or restore them; and no automatic release of held claims. Reappearance restore already exists for claims closed this way.
 
 ## Release prerequisites for this area
 

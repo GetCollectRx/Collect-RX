@@ -13,7 +13,12 @@ import { logger } from '../observability/logger.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { mergeClaimRows } from './claimRowMerge.js';
-import { closeClaimsMissingFromFullExport, type AbsentClaimResult } from './absentClaimHandler.js';
+import {
+  closeClaimsMissingFromFullExport,
+  previewAbsentClaims,
+  type AbsentClaimPreview,
+  type AbsentClaimResult,
+} from './absentClaimHandler.js';
 
 /** @deprecated Use PmsVendorId — kept for callers passing legacy slugs. */
 export type PmsSource = PmsVendorId;
@@ -33,6 +38,12 @@ export interface RunPmsImportOptions {
    */
   exportScope?: ExportScope;
   /**
+   * The number of open claims staff confirmed would stop being called, from
+   * the absence preview. When set on a full export and the count at import time
+   * is different, nothing is imported (AbsentClaimsChangedError).
+   */
+  confirmedMissingCount?: number;
+  /**
    * Payer program for every row that has no "Payer Type" value of its own.
    * Required for any row that would create a NEW claim (DEC-10 classification).
    */
@@ -40,6 +51,37 @@ export interface RunPmsImportOptions {
 }
 
 export type ExportScope = 'full' | 'partial';
+
+export class AbsentClaimsChangedError extends Error {
+  constructor(
+    readonly confirmed: number,
+    readonly actual: number,
+  ) {
+    super(
+      `${confirmed} claims were confirmed as not in the file, but ${actual} are missing now. ` +
+        'Open claims changed since you reviewed them. Review the file again before importing.',
+    );
+  }
+}
+
+/** Claim numbers a file lists, normalised the way the import does. */
+export function claimNumbersInRows(
+  rows: Record<string, unknown>[],
+  importFamily: Parameters<typeof normalizePmsClaimRow>[1],
+): Set<string> {
+  const numbers = new Set<string>();
+  for (const raw of rows) numbers.add(normalizePmsClaimRow(raw, importFamily).claimNumber);
+  return numbers;
+}
+
+/** What a full export of these rows would do to this practice's open claims. Changes nothing. */
+export async function previewFullExportAbsence(
+  prisma: PrismaClient,
+  options: { practiceId: string; pmsSource?: string | null; rows: Record<string, unknown>[] },
+): Promise<AbsentClaimPreview> {
+  const { importFamily } = await resolvePmsImport(prisma, options.practiceId, options.pmsSource);
+  return previewAbsentClaims(prisma, options.practiceId, claimNumbersInRows(options.rows, importFamily));
+}
 
 export interface RunPmsImportResult {
   runId: string;
@@ -187,9 +229,12 @@ export async function runPmsImportPipeline(
 
       let absent: AbsentClaimResult = { closed: 0, held: 0, warning: null };
       if (options.exportScope === 'full') {
-        const claimNumbersInFile = new Set<string>();
-        for (const raw of options.rows) {
-          claimNumbersInFile.add(normalizePmsClaimRow(raw, importFamily).claimNumber);
+        const claimNumbersInFile = claimNumbersInRows(options.rows, importFamily);
+        if (options.confirmedMissingCount !== undefined) {
+          const now = await previewAbsentClaims(transactionalPrisma, options.practiceId, claimNumbersInFile);
+          if (now.missingClaims !== options.confirmedMissingCount) {
+            throw new AbsentClaimsChangedError(options.confirmedMissingCount, now.missingClaims);
+          }
         }
         absent = await closeClaimsMissingFromFullExport(
           transactionalPrisma,

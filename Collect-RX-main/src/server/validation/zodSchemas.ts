@@ -187,6 +187,8 @@ export const pmsImportBodySchema = z
     /** @deprecated Use pmsVendor */
     pmsSource: z.string().trim().optional(),
     exportScope: z.enum(['full', 'partial']).optional(),
+    /** Claims staff confirmed as missing from a full export; a different count at import time rejects the import. */
+    confirmedMissingCount: z.coerce.number().int().min(0).optional(),
     /** Payer program for rows with no Payer Type of their own; required for new claims. */
     defaultPayerType: z.string().trim().optional(),
   })
