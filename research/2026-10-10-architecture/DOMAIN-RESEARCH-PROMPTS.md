@@ -90,6 +90,38 @@ OUTPUT
 A single markdown file named after the industry. Then a claims table (claim, tag, source, date) and a list of pages you could not access.
 ```
 
+Ready-to-paste INDUSTRY blocks (one per chat; replace the INDUSTRY placeholder with exactly one of these before sending):
+
+Dental:
+```text
+INDUSTRY: Dental practices in Ontario (solo practices, group practices and dental service organizations, specialty practices). Payers: private group benefit insurers and administrators (Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare as a clearinghouse for several plans), the federal Canadian Dental Care Plan, Healthy Smiles Ontario, ODSP and Ontario Works dental benefits, and the Non-Insured Health Benefits program. Cover direct billing, patient reimbursement, assignment, dual coverage, pretreatment estimates and predeterminations.
+```
+
+Auto rehabilitation and allied health:
+```text
+INDUSTRY: Auto rehabilitation and allied health clinics in Ontario (physiotherapy, chiropractic, massage therapy, occupational therapy, psychology, other regulated and non-regulated providers; multidisciplinary clinics and sole practitioners). Payers: auto insurers under Ontario's Statutory Accident Benefits Schedule (treatment plans and invoices submitted through the health claims system), WSIB for workplace injuries, private extended health and group plans, and any other payer you find. Cover insured-person versus provider billing, direct payment rules, who is paid directly, and licensing conditions for provider payment.
+```
+
+Property restoration and emergency housing:
+```text
+INDUSTRY: Property restoration and emergency housing businesses in Ontario (water, fire and mold mitigation contractors, reconstruction contractors, contents handling, and emergency or temporary accommodation providers for displaced insureds). Payers: home and commercial property insurers, adjusting firms and third-party administrators, insurer-managed contractor networks, and insureds paying deductibles. Cover adjuster-led files, estimates and supplements, progress and final invoices, holdbacks, joint-payee cheques, direction to pay versus assignment, and how construction payment rules interact with insurer funding.
+```
+
+Collision, tow and storage:
+```text
+INDUSTRY: Collision repair shops, towing operators and vehicle storage yards in Ontario. Payers: auto insurers (collision, comprehensive and third-party liability claims), insurer direct-repair programs, police-directed tow programs, vehicle owners for deductibles and uninsured amounts. Cover multiple businesses working on one claim, repairs plus supplements plus towing plus accruing storage, lien and consent rules for repair, towing and storage, published towing rates, total losses, and who is paid when the insurer and the owner both have rights.
+```
+
+Equipment, pharmacy, hearing and disability programs:
+```text
+INDUSTRY: Providers of medical and assistive equipment, hearing care (audiologists and hearing instrument practitioners), orthotics and prosthetics, pharmacies, and disability-related goods and services in Ontario. Payers: the Assistive Devices Program, ODSP, WSIB, Veterans Affairs Canada, the Non-Insured Health Benefits program, Ontario Drug Benefit and related drug programs, and private group and disability plans. Cover preauthorization and prior approval as a distinct process, vendor registration and electronic claims requirements, patient share rules, and audit and recovery.
+```
+
+Optional sixth:
+```text
+INDUSTRY: Identify one insurance-facing industry in Ontario that is missing from this list: one where businesses regularly wait on insurers or insurer-funded programs to be paid for goods or services. Name it, justify the choice with sources, then complete the template for it.
+```
+
 Optional parallel sources the researcher may use if available: Statistics Canada business counts; FSRA statistics and published reports; Licence Appeal Tribunal published caseload data; Ontario Ministry of Health ADP and ODB provider manuals; WSIB provider policies; insurer provider manuals; trade association guides; billing software vendor documentation; published complaint and ombudsman data.
 
 ---
