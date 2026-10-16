@@ -12,6 +12,7 @@ import { appendAuditLog } from '../audit/auditLog.js';
 import {
   CheckpointNotFoundError,
   decideDispatchCheckpoint,
+  listCheckpointHistory,
   listDispatchCheckpoints,
 } from '../frontDesk/dispatchCheckpoint.js';
 
@@ -22,6 +23,7 @@ import {
  * (office manager, billing coordinator, accountant, associate dentist, ...).
  *
  *   GET  /api/dispatch-checkpoints                  checkpoints for the session practice
+ *   GET  /api/dispatch-checkpoints/:id/history      decision history, newest first
  *   POST /api/dispatch-checkpoints/:id/decision     { decision: 'APPROVED' | 'REVOKED', notes? }
  */
 function requirePracticeOwnerRole(req: Request, res: Response, next: NextFunction): void {
@@ -49,6 +51,19 @@ router.get('/', async (req: Request, res: Response) => {
     return res.json({ success: true, data });
   } catch (err) {
     console.error('[GET /dispatch-checkpoints]', err);
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/:id/history', async (req: Request, res: Response) => {
+  try {
+    const data = await listCheckpointHistory(prisma, practiceIdFromSession(req), req.params.id);
+    return res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof CheckpointNotFoundError) {
+      return res.status(404).json({ success: false, error: err.message });
+    }
+    console.error('[GET /dispatch-checkpoints/:id/history]', err);
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });

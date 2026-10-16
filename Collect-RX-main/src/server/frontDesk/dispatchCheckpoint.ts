@@ -153,3 +153,44 @@ export async function decideDispatchCheckpoint(
     return updated;
   });
 }
+
+export interface CheckpointHistoryEntry {
+  id: string;
+  action: string;
+  createdAt: Date;
+  actorName: string | null;
+  queuedClaimsAtDecision: number | null;
+  notes: string | null;
+}
+
+/** Decision history for one checkpoint, newest first. Actor names come from this practice's own users only. */
+export async function listCheckpointHistory(
+  prisma: PrismaClient,
+  practiceId: string,
+  checkpointId: string,
+): Promise<CheckpointHistoryEntry[]> {
+  const checkpoint = await prisma.dispatchCheckpoint.findFirst({
+    where: { id: checkpointId, practiceId },
+    select: { id: true },
+  });
+  if (!checkpoint) throw new CheckpointNotFoundError();
+
+  const events = await prisma.dispatchCheckpointEvent.findMany({
+    where: { checkpointId, practiceId },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  const actorIds = [...new Set(events.map((e) => e.actorUserId).filter((id): id is string => Boolean(id)))];
+  const users = actorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: actorIds }, practiceId }, select: { id: true, displayName: true } })
+    : [];
+  const names = new Map(users.map((u) => [u.id, u.displayName]));
+  return events.map((e) => ({
+    id: e.id,
+    action: e.action,
+    createdAt: e.createdAt,
+    actorName: e.actorUserId ? (names.get(e.actorUserId) ?? null) : null,
+    queuedClaimsAtDecision: e.queuedClaimsAtDecision,
+    notes: e.notes,
+  }));
+}

@@ -11,7 +11,7 @@ Staff approve automated calling to a carrier once per practice, before the first
 - Manual route: HTTP 422 with `code: PENDING_DISPATCH_APPROVAL`.
 - Audit trail: `dispatch_checkpoint_events` is append-only (the database rejects UPDATE and DELETE). Each event records the action, the acting user id, the time, the number of queued claims for the carrier at decision time, and optional notes. No claim or patient data is stored.
 - Staff page: **Carrier approvals** (`/carrier-approvals`, in the practice owner's "After visit" menu). Lists each carrier with its status and the number of claims waiting, with Approve and Stop calling actions behind a confirmation that takes an optional note.
-- API: `GET /api/dispatch-checkpoints`, `POST /api/dispatch-checkpoints/:id/decision` with `{ "decision": "APPROVED" | "REVOKED", "notes": "..." }`. Both require the literal `practice_owner` session role; every other role gets 403 (the generic owner middleware lets office managers, billing coordinators, accountants and others through, so this route checks the role itself).
+- API: `GET /api/dispatch-checkpoints`, `GET /api/dispatch-checkpoints/:id/history`, `POST /api/dispatch-checkpoints/:id/decision` with `{ "decision": "APPROVED" | "REVOKED", "notes": "..." }`. Both require the literal `practice_owner` session role; every other role gets 403 (the generic owner middleware lets office managers, billing coordinators, accountants and others through, so this route checks the role itself).
 
 ## Default is OFF
 
@@ -69,7 +69,7 @@ WHERE feature = 'dispatch.approval_checkpoint' AND practice_id IS NULL;
 
 ## Not in this change
 
-- The page shows current status only. A per-carrier decision history (who decided and when) is in `dispatch_checkpoint_events` and is not displayed yet.
+- Decision history is on the page (History link per carrier, desktop width) and at `GET /api/dispatch-checkpoints/:id/history`: action, who, when, claims waiting at the time, note. The link is not shown at phone width.
 - Permission shape: practice owner only. Whether office managers or billing roles may also approve is a product decision.
 - The measure for DEC-9 (staff review minutes in the value metric) can be taken from the event timestamps; no report reads them yet.
 - Retention: events carry no PHI but are append-only, so practice deletion does not remove them. Confirm that is acceptable before release.

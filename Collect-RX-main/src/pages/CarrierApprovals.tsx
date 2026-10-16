@@ -19,6 +19,21 @@ interface Checkpoint {
   queuedClaims: number
 }
 
+interface HistoryEntry {
+  id: string
+  action: string
+  createdAt: string
+  actorName: string | null
+  queuedClaimsAtDecision: number | null
+  notes: string | null
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  REQUESTED: 'Approval requested',
+  APPROVED: 'Approved',
+  REVOKED: 'Calling stopped',
+}
+
 interface Pending {
   checkpoint: Checkpoint
   decision: 'APPROVED' | 'REVOKED'
@@ -61,6 +76,9 @@ export default function CarrierApprovals() {
   const [pending, setPending] = useState<Pending | null>(null)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [historyFor, setHistoryFor] = useState<Checkpoint | null>(null)
+  const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const { toast, showToast } = useToast()
 
   const load = useCallback(async () => {
@@ -82,6 +100,20 @@ export default function CarrierApprovals() {
   useEffect(() => {
     void load()
   }, [load])
+
+  async function openHistory(checkpoint: Checkpoint) {
+    setHistoryFor(checkpoint)
+    setHistory(null)
+    setHistoryError(null)
+    try {
+      const res = await apiFetchJson<{ success: boolean; data: HistoryEntry[] }>(
+        `/api/dispatch-checkpoints/${encodeURIComponent(checkpoint.id)}/history`,
+      )
+      setHistory(res.data)
+    } catch (e) {
+      setHistoryError((e as Error).message)
+    }
+  }
 
   function open(checkpoint: Checkpoint, decision: Pending['decision']) {
     setNotes('')
@@ -168,6 +200,13 @@ export default function CarrierApprovals() {
                         {fmtDate(item.decidedAt ?? item.requestedAt)}
                       </span>
                       {item.notes && <span className="block max-w-[260px] truncate">{item.notes}</span>}
+                      <button
+                        type="button"
+                        className="mt-1 text-xs text-crx-600 underline dark:text-crx-400"
+                        onClick={() => void openHistory(item)}
+                      >
+                        History
+                      </button>
                     </Td>
                     <Td className="hidden md:table-cell">
                       <ActionButton item={item} onOpen={open} />
@@ -179,6 +218,34 @@ export default function CarrierApprovals() {
           </TableContainer>
         </Card>
       </DataState>
+
+      <Modal
+        open={historyFor !== null}
+        onClose={() => setHistoryFor(null)}
+        title={historyFor ? `${carrierLabel(historyFor.carrierId)} history` : 'History'}
+        footer={<Button variant="secondary" onClick={() => setHistoryFor(null)}>Close</Button>}
+      >
+        {historyError && <p className="text-sm text-red-600 dark:text-red-400">{historyError}</p>}
+        {!historyError && history === null && <p className="text-sm text-gray-500">Loading…</p>}
+        {history && history.length === 0 && <p className="text-sm text-gray-500">No decisions recorded yet.</p>}
+        {history && history.length > 0 && (
+          <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            {history.map((h) => (
+              <li key={h.id}>
+                <span className="font-medium">{ACTION_LABEL[h.action] ?? h.action}</span>
+                {h.actorName ? ` by ${h.actorName}` : ''}
+                <span className="block text-xs text-gray-500 dark:text-gray-400">
+                  {fmtDate(h.createdAt)}
+                  {h.queuedClaimsAtDecision !== null && h.action !== 'REQUESTED'
+                    ? `, ${h.queuedClaimsAtDecision} claim${h.queuedClaimsAtDecision === 1 ? '' : 's'} waiting`
+                    : ''}
+                </span>
+                {h.notes && <span className="block">{h.notes}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
 
       <Modal
         open={pending !== null}

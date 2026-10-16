@@ -275,9 +275,29 @@ describe.skipIf(!dbReady)('DEC-9 (b) checkpoint (real Postgres)', () => {
         .post(`/api/dispatch-checkpoints/${checkpoint.id}/decision`)
         .set('Cookie', cookieFor)
         .send({ decision: 'APPROVED' });
-      expect([role, read.status, write.status]).toEqual([role, 403, 403]);
+      const history = await request(app).get(`/api/dispatch-checkpoints/${checkpoint.id}/history`).set('Cookie', cookieFor);
+      expect([role, read.status, write.status, history.status]).toEqual([role, 403, 403, 403]);
     }
     expect((await prisma.dispatchCheckpoint.findUniqueOrThrow({ where: { id: checkpoint.id } })).status).toBe('PENDING');
+  }, 30_000);
+
+  it('history lists decisions newest first with the deciding user, and stays inside the practice', async () => {
+    await enforce(setup.practice.id);
+    await enforce(other.practice.id);
+    await evaluateDispatchCheckpoint(prisma, setup.practice.id, 'sun_life');
+    await evaluateDispatchCheckpoint(prisma, other.practice.id, 'sun_life');
+    const mine = await prisma.dispatchCheckpoint.findFirstOrThrow({ where: { practiceId: setup.practice.id } });
+    const theirs = await prisma.dispatchCheckpoint.findFirstOrThrow({ where: { practiceId: other.practice.id } });
+    await decide(mine.id, { decision: 'APPROVED', notes: 'Reviewed' });
+    await decide(mine.id, { decision: 'REVOKED' });
+
+    const res = await request(app).get(`/api/dispatch-checkpoints/${mine.id}/history`).set('Cookie', cookie());
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((e: { action: string }) => e.action)).toEqual(['REVOKED', 'APPROVED', 'REQUESTED']);
+    expect(res.body.data[1]).toMatchObject({ actorName: setup.user.displayName, notes: 'Reviewed' });
+    expect(res.body.data[2].actorName).toBeNull();
+
+    expect((await request(app).get(`/api/dispatch-checkpoints/${theirs.id}/history`).set('Cookie', cookie())).status).toBe(404);
   }, 30_000);
 
   it('the audit trail rejects updates and deletes at the database', async () => {

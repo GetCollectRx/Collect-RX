@@ -19,6 +19,8 @@ async function withBypass<T>(prisma: PrismaClient, work: (tx: PrismaClient) => P
 }
 
 test.describe('Carrier approvals page', () => {
+  // Both tests rewrite the same practice's checkpoint rows, so they cannot run in parallel.
+  test.describe.configure({ mode: 'serial' })
   test.skip(!email || !practiceId, 'E2E_USER_EMAIL / E2E_PRACTICE_ID missing, check DATABASE_URL for e2e auto-seed')
 
   const prisma = new PrismaClient()
@@ -61,6 +63,13 @@ test.describe('Carrier approvals page', () => {
     await expect(row.getByText('Calling stopped')).toBeVisible()
     await expect(row.getByRole('button', { name: 'Approve' })).toBeVisible()
 
+    await row.getByRole('button', { name: 'History' }).click()
+    const history = page.getByRole('dialog')
+    await expect(history.getByText(/Calling stopped by/)).toBeVisible()
+    await expect(history.getByText(/Approved by/)).toBeVisible()
+    await expect(history.getByText('Reviewed carrier setup')).toBeVisible()
+    await history.getByRole('button', { name: 'Close', exact: true }).click()
+
     const events = await withBypass(prisma, (tx) =>
       tx.dispatchCheckpointEvent.findMany({
         where: { practiceId: practiceId!, carrierId: 'sun_life' },
@@ -69,5 +78,13 @@ test.describe('Carrier approvals page', () => {
     )
     expect(events.map((e) => e.action).slice(-2)).toEqual(['APPROVED', 'REVOKED'])
     expect(events.find((e) => e.action === 'APPROVED')?.actorUserId).toBeTruthy()
+  })
+
+  test('shows an empty state when no carrier has asked for approval', async ({ page }) => {
+    await withBypass(prisma, (tx) => tx.dispatchCheckpoint.deleteMany({ where: { practiceId: practiceId! } }))
+    await signInAsE2eUser(page, email!, password)
+    await page.goto('/carrier-approvals')
+    await expect(page.getByText('No carrier is waiting for approval').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
   })
 })
