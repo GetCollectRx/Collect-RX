@@ -58,7 +58,7 @@ Rules between layers: a layer may call down, never up. Modules (L6) call the eng
 | C1 | Tenancy and isolation | `practiceId` on every row, FORCE RLS using `app_rls_practice_allowed`, an RLS test per new table | Every module; statute (privacy) | Exists, 211 files use `practiceId` | extended by every build |
 | C2 | PII vault and identity bundles | AES-256-GCM vault, UUID tokens in metadata, identifiers as ephemeral call variables; generalized to bundle kinds (person, vehicle, property, claim reference) with a per-objective variable allowlist | Every module; PHI boundary | Vault exists and is patient-shaped | B8 |
 | C3 | Governance layer | `regime_determination` per tenant, `data_class` per field, `authorization_grants` (kinds: patient_consent_attestation, agent_permission, loa, direction_to_pay, licence_status, assignment), profile resolver, policy pack engine with evidence status | Every module; statute | Absent | B3 |
-| C4 | Ledger | `insurance_cases`, `receivables`, `receivable_lines`; Wave B adds `parties`, `case_party_roles`, `remittances`, `accrual_schedules` | Two or more modules (cases and receivables); the rest are module-owned | Case, invoice and work item merged in `InsuranceClaim` | B4 |
+| C4 | Ledger kernel | `insurance_cases`, `receivables`, `receivable_lines`, `payment_allocations` (many-to-many between payments and receivables), `import_sources`, `import_coverage`, and three minimal party roles on every case: legal debtor (payer), payment recipient, contact. Every insurance-facing module needs these, so the kernel is built first and dental is dual-written into it. Module-specific extensions (`parties` with extended roles such as claimant, mortgagee, tow operator; `remittances`; `accrual_schedules`; `preauthorizations`; `callback_expectations`) stay in Wave B | Every module: a case, what is owed on it, what was paid against it, and who the debtor, recipient and contact are | Case, invoice and work item merged in `InsuranceClaim` | B4a (kernel), B4b (extensions) |
 | C5 | Registry | `payers`, `payer_programs`, `contact_routes` (scope, hours, recipient time zone, validated concurrency, call-start pacing, block signals, evidence) | Every module; statute (hours) and capacity | Static `CARRIER_PHONE_MAP`, flat carrier cap 5 | B5 |
 | C6 | Work engine | `recovery_tasks` shadowing `call_queue`; deadline-aware fair scheduler; per-client entitlement ledger | Every module; capacity promise | Scheduler: single global lease, one call per practice per tick | B2, B10 |
 | C7 | Dispatch service | The only code path that starts a call: lock, authorization, profile gate, policy, CARRIER_BLOCK, route semaphore, entitlement, mode, route, intent, vendor call, attempt row | Every module | Two divergent paths; intents unused | B2 |
@@ -169,7 +169,8 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 - Per-client concurrency ceiling replacing the all-or-nothing practice lock, keeping claim-level idempotency.
 - Flag `DISPATCH_V2`, per practice; old paths retained one release.
 - Acceptance (proposal WP-1): 20 parallel triggers on one claim produce at most one vendor call and one confirmed intent; ambiguous timeout leaves intent AMBIGUOUS and the queue BLOCKED with no redial; killed process between SENDING and confirm is reconciled to ambiguous; scheduled and manual paths yield identical capability, mode and squad for the same input (property test); dental decisions replay identically.
-- Needs: B0.
+- Task contract (case and receivable targets) agreed with B4a before coding; dispatch is built against tasks, not claim rows.
+- Needs: B0; contract with B4a.
 
 ### B3. Governance layer (L)
 
@@ -178,16 +179,25 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 - Gate predicates for every code in section 5, as pure functions with unit tests.
 - Admin screens: regime determination, grants (create, revoke, expiry), policy pack status.
 - Acceptance: each gate code blocks or defers in an integration test through the dispatch service; revocation takes effect before the next dial; an RLS test per table; a parameter whose status drops from VERIFIED suspends the module.
-- Needs: B2 for gate integration; B1 for attestation records.
+- Needs: B2 for gate integration; B1 for attestation records; B4a for payer kind and case dates.
 
-### B4. Ledger (L)
+### B4a. Ledger kernel (L; universal; starts in Stage 1, in parallel with B2)
 
-- New: `insurance_cases`, `receivables`, `receivable_lines`, `import_sources`, `import_coverage`. Dental dual-write from the existing importer inside its existing transaction; idempotent backfill; reads stay on `InsuranceClaim` until parity is proven.
-- New non-dental CSV import pipeline targeting the ledger, separate from the strict dental carrier-mapping importer.
-- Absence handling replaced by `suspected_settled` scoped by import coverage and per-source baseline.
-- Acceptance (proposal WP-3): two sources in one tenant do not affect each other's receivables; a collision case with four invoices stays four receivables and reconciles one payment across them; truncated exports do not mass-close; re-import is idempotent.
-- Wave B (module-owned, built at module time): `parties`, `case_party_roles`, `remittances`, `accrual_schedules`, `preauthorizations`, `callback_expectations`.
-- Needs: B3 (data classes on columns).
+The ledger is a baseline requirement for every insurance-facing module, and three other builds depend on it, so it is not deferred. Without it, B2 would be built against `InsuranceClaim` and re-pointed later, B9 has nothing to allocate payments to, policy pack clocks have no fields to run from (invoice received date, loss date), and the debtor-kind gate has no payer entity to inspect.
+
+- Tables: `insurance_cases`, `receivables`, `receivable_lines`, `payment_allocations`, `import_sources`, `import_coverage`, plus a minimal `case_party_roles` carrying three roles (legal debtor, payment recipient, contact) as effective-dated facts, with the payer linked to `payers` (B5 minimal).
+- Task contract fixed with B2: a `recovery_task` targets a `case_id` and one or more `receivable_id`s, not a claim row. Dental `call_queue` rows shadow into tasks 1:1; `legacy_claim_id` and `legacy_queue_id` link back.
+- Dental dual-write from the existing importer inside its existing transaction; idempotent, resumable backfill; reads stay on `InsuranceClaim` until parity is proven, then flip per tenant behind `FeatureFlag`.
+- New non-dental CSV import pipeline targeting the ledger directly, separate from the strict dental carrier-mapping importer.
+- Absence handling replaced by `suspected_settled`, scoped by import coverage and per-source baseline.
+- Data classes (`HEALTH`, `PERSONAL`, `FINANCIAL`, `GENERAL`) assigned to every kernel column from the start; sensitive fields in typed columns, not JSON.
+- RLS and an RLS test for every table.
+- Acceptance (proposal WP-3): two sources in one tenant do not affect each other's receivables; a collision case with four invoices stays four receivables and reconciles one payment across them; truncated exports do not mass-close; re-import is idempotent; replaying dental fixtures through ledger and legacy reads produces the same decisions.
+- Needs: B0. Gate predicates in B3 that depend on payer kind or dates read the kernel.
+
+### B4b. Ledger extensions (module-owned, Wave B)
+
+Built at module time and only for the modules that need them: extended `parties` roles and `case_party_roles`, `remittances` (one remittance covering many invoices), `accrual_schedules` (storage and accommodation), `preauthorizations`, `callback_expectations`. Each ships with typed extension tables, RLS tests and the module's golden transcripts.
 
 ### B5. Registry (M)
 
@@ -195,7 +205,7 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 - Destination guard reads `contact_routes`; seeded from `CARRIER_PHONE_MAP` and the six dental carriers with `legacy_carrier_id`; route parity test proves the six legacy numbers dial as before.
 - Replaces the Eastern-hours constant in `src/carriers/adapter.ts` with the intersection of legal hours and route hours in recipient-local time.
 - Acceptance: parity test; an out-of-scope number is refused with an auditable reason; a case-scope route cannot be read by another tenant (RLS test).
-- Needs: B2, B3.
+- Needs: B2, B3; payer link shared with B4a.
 
 ### B6. Objective packs, roles and typed outcomes (L)
 
@@ -225,7 +235,7 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 
 - `payment_allocations` with evidence kinds, `recovery_attributions`, a classifier; changes to `paymentVerification.ts`; dashboard "Dollars recovered" split into verified receipts and attributed recovery.
 - Acceptance (proposal WP-2): an insurer-paid claim with no call is organic and excluded from attributed recovery; a call-recorded payment issue date then payment is attributed; write-offs allocate as zero recovery; historic events appear as legacy unclassified.
-- Needs: B4 for non-dental; can run on dental in parallel after the tables exist.
+- Needs: B4a. It can start on dental as soon as the kernel tables exist.
 
 ### B10. Capacity and billing integrity (M)
 
@@ -261,13 +271,13 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 
 - Unified work queue across modules; case and receivable detail; compliance gate reasons shown to staff with the next action; grants and attestation management; module settings; policy pack status view for admins.
 - One generic case view, not per-module screens.
-- Needs: B3, B4.
+- Needs: B3, B4a.
 
 ### B15. First module slice: collision, tow and storage on synthetic data (L)
 
 - Built on B2 to B6, B12: thin ledger extension (one case, several invoices, storage accrual), two contact routes, a W5 policy pack containing only VERIFIED rows (RSLA ss. 3, 4, 15 to 18, 24; O. Reg. 427/15; TSSEA ss. 20 to 32, 60), a payment-trace objective pack with status-only scope, forced handoff on disputes and liens, golden transcripts, an end-to-end mock-Vapi test, and the refusal demo.
 - Purpose: show the shared engine carries a different entity shape and counterpart without forking. It does not prove demand or counterpart engagement.
-- Needs: B2, B3, B4, B5, B6, B12.
+- Needs: B2, B3, B4a, B4b (slice), B5, B6, B12.
 
 ### Per-module recipe (B16 onward, one module at a time)
 
@@ -285,15 +295,17 @@ Status: branches privacy-controls-w1 to w4 exist; contents not reviewed by me.
 ## 8. Dependencies and order
 
 ```text
-B0 --> B2 --> B3 --> B4 --> B6 --> B8
- |      |       |      \       \--> B15
- |      |       \--> B5 -+--> B7
- |      |                \--> B10
- |      \--> B12 ------------------> B15
+B0 --> B2 --+--> B3 --> B6 --> B8
+ |          |     |       \--> B15
+ |          |     \--> B5 -+--> B7
+ |          |              \--> B10
+ |          \--> B12 -------------> B15
+ +--> B4a --+--> B9 (payment allocation on dental first)
+ |          +--> B3 gate predicates (payer kind, case dates)
+ |          \--> B4b (module extensions) --> B15
  B1 (parallel; feeds B3, B7, B13)
- B9 (after tables exist; parallel with B6)
  B11 (blocked on vendor answers)
- B13, B14 (parallel from B3/B4)
+ B13, B14 (parallel from B3/B4a)
 ```
 
 Mapping to earlier plans:
@@ -304,7 +316,7 @@ Mapping to earlier plans:
 | B1 | (new, policy) | FIX-PROMPT W1 to W10 |
 | B2 | WP-1 | |
 | B3 | section 5.6, 18.2 | |
-| B4 | WP-3, M1 to M3 | |
+| B4a, B4b | WP-3, M1 to M3 (kernel pulled earlier; extensions per module) | |
 | B5 | WP-4 | |
 | B6 | WP-5 | |
 | B7 | WP-6 | |
@@ -321,12 +333,12 @@ Stage mapping (90-day plan, proposal section 19):
 | Stage | Builds |
 |---|---|
 | 0 | B0, B1 |
-| 1 | B2, B3 (core), B9, vendor answers, Cowork reads |
-| 2 | B4, B5, B6, B7, B8, B10, B12, B13, B14 |
+| 1 | B2, B4a (kernel, in parallel with B2), B3 (core), B9, vendor answers, Cowork reads |
+| 2 | B5, B6, B7, B8, B10, B12, B13, B14 |
 | 3 | B15 (synthetic demo), then the first real module in human-assisted mode |
 | 4 | Further modules; graduation by measured criteria |
 
-Critical path to the demo: B0, B2, B3, B4, B5, B6, B12, B15. B1 runs beside it. B10 is on the critical path to any commercial promise, not to the demo.
+Critical path to the demo: B0, B2 with B4a, B3, B5, B6, B12, B4b (slice), B15. B1 runs beside it. B10 is on the critical path to any commercial promise, not to the demo.
 
 ---
 

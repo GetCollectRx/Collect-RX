@@ -1231,7 +1231,7 @@ The bloat rule: a component enters Core only if two or more modules need it, or 
 | Truthful notice constant | Yes | Yes | Core |
 | `contact_routes` with capacity fields | Partly (carrier cap) | Yes | Core, minimal first |
 | `payment_allocations` and attribution classes (WP-2) | Yes (honest recovery number) | Yes | Core, parallel track |
-| `insurance_cases`, `receivables`, `receivable_lines` (WP-3) | No | Yes | Defer to Stage 2 |
+| `insurance_cases`, `receivables`, `receivable_lines` (WP-3) | Not for hardening, but dispatch, payment allocation, policy clocks and the debtor gate all depend on them | Yes, every module | Core kernel, built in Stage 1 in parallel with the dispatch service (corrected 2026-10-16; see CORE-ARCHITECTURE-AND-BUILD-SPEC.md B4a) |
 | `parties`, `case_party_roles`, `remittances`, `accrual_schedules` | No | Only W4, W5 | Defer to the module that needs them |
 | `preauthorizations`, `callback_expectations` | No | Only W6 | Defer |
 | `policy_packs` with evidence tags | No | Yes | Core mechanism, packs deferred per module |
