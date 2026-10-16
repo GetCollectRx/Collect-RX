@@ -125,7 +125,7 @@ export default function CsvImportPage() {
     if (absence.status === 'loading' || absence.status === 'idle') return 'Checking which open claims are not in this file.'
     if (absence.status === 'error') return absence.message
     if (absence.missingClaims > 0 && !absence.wouldHold && !absenceConfirmed) {
-      return `Confirm that CollectRx should stop calling about the ${absence.missingClaims} open claims that are not in this file.`
+      return `Confirm that CollectRx should pause calls on the ${absence.missingClaims} open claims that are not in this file.`
     }
     return null
   }
@@ -380,7 +380,7 @@ export default function CsvImportPage() {
                     <span>
                       All of our open insurance claims.
                       <span className="block text-xs text-gray-500">
-                        Open claims missing from the file are treated as resolved in your practice software, and CollectRx stops calling about them. You will see how many before anything changes.
+                        Open claims missing from the file are paused: CollectRx stops calling about them until you confirm they are resolved or put them back. You will see how many before anything changes.
                       </span>
                     </span>
                   </label>
@@ -411,14 +411,14 @@ export default function CsvImportPage() {
                 {scope === 'full' && absence.status === 'ready' && absence.missingClaims > 0 && !absence.wouldHold && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200" data-testid="absence-confirm">
                     <p>
-                      {absence.missingClaims} of your {absence.openClaims} open claims are not in this file. If you continue, CollectRx stops calling about them.
+                      {absence.missingClaims} of your {absence.openClaims} open claims are not in this file. If you continue, CollectRx pauses calls on them until you review them.
                       {absence.sampleClaimNumbers.length > 0 && (
                         <span className="block text-xs mt-1">For example: {absence.sampleClaimNumbers.join(', ')}</span>
                       )}
                     </p>
                     <label htmlFor="csv-absence-confirm" className="mt-2 flex items-start gap-2">
                       <input id="csv-absence-confirm" type="checkbox" className="mt-0.5" checked={absenceConfirmed} onChange={(e) => setAbsenceConfirmed(e.target.checked)} />
-                      <span>Yes, these {absence.missingClaims} claims are resolved. Stop calling about them.</span>
+                      <span>Yes, pause calls on these {absence.missingClaims} claims until I review them.</span>
                     </label>
                   </div>
                 )}
@@ -450,9 +450,14 @@ export default function CsvImportPage() {
                   {result.failed > 0 && <Badge color="red">{result.failed} failed</Badge>}
                   {result.validationPassed === false && <Badge color="amber">Validation drift</Badge>}
                   {result.claimsClosedAsMissing > 0 && (
-                    <Badge>{result.claimsClosedAsMissing} closed as resolved in your software</Badge>
+                    <Badge>{result.claimsClosedAsMissing} paused, not in this file</Badge>
                   )}
                 </div>
+                {result.claimsClosedAsMissing > 0 && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    <Link to="/not-in-latest-file" className="underline">Review these claims</Link>: confirm they are resolved, or put them back into follow-up.
+                  </p>
+                )}
                 {result.missingClaimsWarning && (
                   <div className="crx-alert px-4 py-3 text-sm" role="alert">
                     {result.missingClaimsWarning}

@@ -181,7 +181,11 @@ export function fmtRecoveryEventType(type: string): string {
     case 'BALANCE_CLEARED_UNVERIFIED':
       return 'Balance cleared in PMS (not confirmed as insurance payment)';
     case 'ABSENT_FROM_FULL_EXPORT':
-      return 'Missing from full export (treated as resolved in PMS)';
+      return 'Not in latest file (calls paused, waiting for staff)';
+    case 'ABSENT_CONFIRMED_RESOLVED':
+      return 'Staff confirmed resolved (not in latest file)';
+    case 'ABSENT_RESTORED_BY_STAFF':
+      return 'Staff resumed follow-up (not in latest file)';
     case 'REAPPEARED_IN_EXPORT':
       return 'Back in export (follow-up resumed)';
     default:

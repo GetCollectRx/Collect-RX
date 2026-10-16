@@ -41,6 +41,7 @@ const AgingReport           = lazy(() => import('./pages/AgingReport'))
 const CarrierStats          = lazy(() => import('./pages/CarrierStats'))
 const PracticeSettings      = lazy(() => import('./pages/PracticeSettings'))
 const Escalations           = lazy(() => import('./pages/Escalations'))
+const NotInLatestFile       = lazy(() => import('./pages/NotInLatestFile'))
 const QueueStatsReport      = lazy(() => import('./pages/QueueStatsReport'))
 const Portfolio             = lazy(() => import('./pages/Portfolio'))
 const AdminPractices        = lazy(() => import('./pages/AdminPractices'))
@@ -173,6 +174,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     items: [
       { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
       { to: '/import', exact: true, label: 'Import CSV', icon: 'download' },
+      { to: '/not-in-latest-file', exact: true, label: 'Not in latest file', icon: 'workqueue' },
       { to: '/ar-command-center', exact: true, label: 'AR command center', icon: 'workqueue' },
       { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
     ],
@@ -507,6 +509,7 @@ function AppShell() {
           <Route path="/reports/carriers" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'auditor', 'billing_ops_manager', 'platform_admin']}><CarrierStats /></ProtectedRoute>} />
           <Route path="/reports/queue" element={<ProtectedRoute allowedRoles={['auditor', 'practice_owner', 'billing_ops_manager', 'platform_admin']}><QueueStatsReport /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'platform_admin']}><PracticeSettings /></ProtectedRoute>} />
+          <Route path="/not-in-latest-file" element={<ProtectedRoute allowedRoles={['practice_owner']}><NotInLatestFile /></ProtectedRoute>} />
           <Route path="/escalations" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager']}><Escalations /></ProtectedRoute>} />
           <Route path="/portfolio" element={<ProtectedRoute allowedRoles={['billing_ops_manager']}><Portfolio /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['platform_admin']}><AdminPractices /></ProtectedRoute>} />

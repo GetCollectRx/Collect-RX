@@ -12,6 +12,8 @@ import type { ClaimStatus, Prisma, PrismaClient } from '@prisma/client';
 
 export const ABSENT_FROM_EXPORT_EVENT = 'ABSENT_FROM_FULL_EXPORT';
 export const REAPPEARED_IN_EXPORT_EVENT = 'REAPPEARED_IN_EXPORT';
+export const ABSENT_CONFIRMED_RESOLVED_EVENT = 'ABSENT_CONFIRMED_RESOLVED';
+export const ABSENT_RESTORED_BY_STAFF_EVENT = 'ABSENT_RESTORED_BY_STAFF';
 
 /**
  * A filtered export (wrong date range, one provider only) makes most open
@@ -135,6 +137,14 @@ export async function closeClaimsMissingFromFullExport(
   return { closed: missing.length, held: 0, warning: null };
 }
 
+/** The route a missing claim goes back to: the one it had before it went missing, else calling the carrier. */
+export function restoreRouteFrom(metadata: unknown): 'CALL_CARRIER' | 'WAIT_SYNC' | 'OPEN_CDCP' | 'PRACTICE_GATE' {
+  const previousRoute = (metadata as { previousRoute?: string | null } | null)?.previousRoute;
+  return previousRoute === 'WAIT_SYNC' || previousRoute === 'OPEN_CDCP' || previousRoute === 'PRACTICE_GATE'
+    ? previousRoute
+    : 'CALL_CARRIER';
+}
+
 /**
  * A claim closed only because it went missing comes back into recovery when a
  * later export lists it again with a balance. Claims closed for any other
@@ -152,12 +162,7 @@ export async function reopenIfReappeared(
   });
   if (latest?.eventType !== ABSENT_FROM_EXPORT_EVENT) return false;
 
-  const metadata = latest.metadata as { previousRoute?: string | null } | null;
-  const previousRoute = metadata?.previousRoute;
-  const restoreRoute =
-    previousRoute === 'WAIT_SYNC' || previousRoute === 'OPEN_CDCP' || previousRoute === 'PRACTICE_GATE'
-      ? previousRoute
-      : 'CALL_CARRIER';
+  const restoreRoute = restoreRouteFrom(latest.metadata);
 
   await prisma.insuranceClaim.update({
     where: { id: claimId },

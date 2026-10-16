@@ -78,6 +78,8 @@ const SERVER_PREFIXES = [
 
 /** Exact paths or prefix patterns not covered by SERVER_PREFIXES alone. */
 const SERVER_EXTRA = [
+  /^\/api\/claims-not-in-latest-file$/,
+  /^\/api\/claims-not-in-latest-file\//,
   /^\/api\/balances$/,
   /^\/api\/balances\//,
   /^\/api\/campaigns$/,
