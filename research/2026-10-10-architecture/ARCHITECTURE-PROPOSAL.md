@@ -35,6 +35,7 @@ Workspace notes, stated plainly:
 5. **Recommended architecture:** extend the existing modular monolith. No new services. Add four bounded modules inside `Collect-RX-main/src/server/`: a Case and Receivable ledger, a Payer and Contact registry, a single Dispatch service, and Objective Packs (versioned prompt, tool and outcome-schema bundles per call objective). Keep the five-role squad grammar.
 6. **First implementation work package:** WP-0 (a small safety patch to the manual trigger), then WP-1 (one dispatch service with intents wired into production). Both are behavior-preserving for dentistry and are prerequisites for everything else. Details in section 10.
 7. **Policy update (section 18, 2026-10-13):** the policy research found privacy control gaps in the dental product itself, so hardening dental (Stage 0) comes before WP-1 and before any new vertical. Compliance is decided at tenant, data-field and workflow level, not by one standard, which adds a profile gate to the dispatch service. Module order is revised on compliance load (section 18.5). Sections 5 to 17 stand unless section 18 says otherwise.
+8. **Consolidated build spec (2026-10-16):** `CORE-ARCHITECTURE-AND-BUILD-SPEC.md` defines the core inclusions, the module contract, and builds B0 to B15 with dependencies. It supersedes the work-package ordering in section 10 where they differ.
 
 ---
 
