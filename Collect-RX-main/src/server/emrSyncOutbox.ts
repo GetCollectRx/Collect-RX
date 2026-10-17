@@ -88,18 +88,32 @@ export async function processEmrSyncOutboxBatch(prisma: PrismaClient): Promise<E
   // no other tick can pick the same rows. On delivery failure, processedAt is
   // reset to null so the row is retried on the next tick.
   const rows = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM emr_sync_outbox
+    // Keep the read on the transaction connection. Calling tx.emrSyncOutbox
+    // here is unsafe for an RLS-extended client: prismaRls' query hook starts
+    // its own base-client transaction, whose second connection then waits on
+    // the FOR UPDATE lock held by this callback.
+    return tx.$queryRaw<
+      Array<{
+        id: string;
+        createdAt: Date;
+        practiceId: string;
+        claimId: string;
+        eventType: string;
+        payloadJson: Prisma.JsonValue;
+      }>
+    >`
+      SELECT id,
+             created_at AS "createdAt",
+             practice_id AS "practiceId",
+             claim_id AS "claimId",
+             event_type AS "eventType",
+             payload_json AS "payloadJson"
+      FROM emr_sync_outbox
       WHERE processed_at IS NULL
       ORDER BY created_at ASC
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     `;
-    if (locked.length === 0) return [];
-    return tx.emrSyncOutbox.findMany({
-      where: { id: { in: locked.map((r) => r.id) } },
-      orderBy: { createdAt: 'asc' },
-    });
   });
 
   if (rows.length === 0) {

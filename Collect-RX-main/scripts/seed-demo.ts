@@ -237,6 +237,7 @@ async function main() {
       name: practiceName,
       timezone: 'America/Toronto',
       passwordHash,
+      settings: { demoMode: true },
     },
   });
   console.log(`✅ Practice: ${practice.name}  (id: ${practice.id})`);

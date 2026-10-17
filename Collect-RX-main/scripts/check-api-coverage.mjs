@@ -50,6 +50,7 @@ const SERVER_PREFIXES = [
   '/api/analytics/',
   '/api/telemetry/',
   '/api/eligibility/',
+  '/api/ontario-billing/',
   '/api/queue/',
   '/api/dashboard/',
   '/api/admin/',

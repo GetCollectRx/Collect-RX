@@ -18,8 +18,9 @@ COPY package.json package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
-# npm install (not ci) — avoids lock-file sync failures across npm versions.
-RUN npm install --include=dev --ignore-scripts
+# The deploy workflow copies the canonical workspace lock into this build
+# context. `npm ci` fails if the manifest and lock disagree.
+RUN npm ci --include=dev --ignore-scripts
 
 RUN npx prisma generate
 

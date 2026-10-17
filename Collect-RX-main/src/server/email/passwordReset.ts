@@ -3,6 +3,7 @@
  * Falls back to console logging when SENDGRID_API_KEY is not configured.
  */
 import { logger } from '../observability/logger.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 async function getSendGrid() {
   if (!process.env.SENDGRID_API_KEY) return null;
@@ -66,7 +67,7 @@ export async function sendPasswordResetEmail(
       '',
       'If you did not request this, you can safely ignore this email.',
       '',
-      '— CollectRx',
+      FOUNDER_SIGNATURE_TEXT,
     ].join('\n'),
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -78,6 +79,7 @@ export async function sendPasswordResetEmail(
           Reset password
         </a>
         <p style="color:#888;font-size:13px">Link expires in 1 hour. If you did not request this, ignore this email.</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
       </div>
     `,
   });

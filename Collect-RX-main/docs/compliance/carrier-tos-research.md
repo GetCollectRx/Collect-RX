@@ -25,7 +25,7 @@
 
 ## CRTC Baseline
 
-CollectRx's use case — dental practice calling insurer provider line to follow up on a submitted claim — is a B2B non-solicitation interaction. The National DNCL Rules (UTR Part II) do not apply. The ADAD Rules (UTR Part IV) do apply: caller must disclose automated nature, practice name, and callback number within 10 seconds of live rep answering.
+CollectRx's use case is a dental practice calling an insurer provider line for claims-status follow-up. It is treated operationally as a business, non-solicitation workflow, but the product does not encode a blanket legal exemption or a definitive ADAD classification. CollectRx conservatively requires automated nature, practice identity, purpose, and callback information at the start of every human interaction. The CRTC rules' ten-second provision concerns disconnection after hang-up, not a universal disclosure deadline.
 
 Source: [CRTC UTR](https://www.crtc.gc.ca/eng/trules-reglest.htm) | [CRTC B2B obligations](https://crtc.gc.ca/eng/phone/telemarketing/tobligations.htm)
 

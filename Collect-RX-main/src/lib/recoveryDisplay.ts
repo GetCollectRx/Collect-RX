@@ -178,6 +178,12 @@ export function fmtRecoveryEventType(type: string): string {
       return 'Partial payment (PMS sync)';
     case 'ROUTE_ASSIGNED':
       return 'Recovery route assigned';
+    case 'BALANCE_CLEARED_UNVERIFIED':
+      return 'Balance cleared in PMS (not confirmed as insurance payment)';
+    case 'ABSENT_FROM_FULL_EXPORT':
+      return 'Missing from full export (treated as resolved in PMS)';
+    case 'REAPPEARED_IN_EXPORT':
+      return 'Back in export (follow-up resumed)';
     default:
       return type.replace(/_/g, ' ').toLowerCase();
   }

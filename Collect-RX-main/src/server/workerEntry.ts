@@ -3,6 +3,7 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { assertDataResidencyAtStartup } from './dataResidency.js';
 import { initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
@@ -22,6 +23,7 @@ import { runRulesEngineTick } from './rulesEngine.js';
 import { runLearningCycle } from './learning/cycle.js';
 import { runMarketingSequenceTick } from './marketing/sequenceEngine.js';
 import { runMarketingLearningCycle } from './marketing/marketingLearningJob.js';
+import { runProspectHarvesting } from './jobs/prospectHarvestingJob.js';
 import { enqueuePreVisitJob, type PreVisitJobPayload } from './preVisit/preVisitJobs.js';
 import { dispatchPreVisitCall, dispatchTelusTx23Check } from './preVisit/preVisitDispatch.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
@@ -34,11 +36,13 @@ import {
   resolveJobCorrelationId,
 } from './jobs/jobFailureAlert.js';
 import { insertDeadLetter, pruneOldDeadLetters } from './jobs/deadLetterQueue.js';
+import { runOntarioArAgingSweep } from './jobs/ontarioArAgingSweep.js';
 import { closeAgentRunnerQueue } from './jobs/agentRunnerQueue.js';
 import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
+assertDataResidencyAtStartup();
 
 if (!process.env.REDIS_URL) {
   logger.error(
@@ -192,6 +196,12 @@ const worker = new Worker(
         await runMarketingSequenceTick(prisma);
       } else if (job.name === 'MARKETING_LEARNING_CYCLE') {
         await runMarketingLearningCycle(prisma);
+      } else if (job.name === 'PROSPECT_HARVEST') {
+        const results = await runProspectHarvesting(prisma);
+        if (results.length > 0) {
+          const totalImported = results.reduce((sum, r) => sum + r.imported, 0);
+          logger.info('[worker] PROSPECT_HARVEST completed', { campaignsProcessed: results.length, totalImported });
+        }
       } else if (job.name === 'PRE_VISIT_ELIGIBILITY') {
         await handlePreVisitEligibility(prisma, job.data as PreVisitJobPayload);
       } else if (job.name === 'PRE_VISIT_CDCP_PREDET') {
@@ -204,6 +214,8 @@ const worker = new Worker(
       } else if (job.name === 'DLQ_RETENTION_SWEEP') {
         const pruned = await pruneOldDeadLetters(prisma);
         if (pruned > 0) logger.info('[worker] DLQ_RETENTION_SWEEP pruned dead letters', { pruned });
+      } else if (job.name === 'ONTARIO_AR_AGING_SWEEP') {
+        await runOntarioArAgingSweep(prisma);
       } else {
         throw new Error(`Unknown job name: ${job.name}`);
       }

@@ -32,6 +32,9 @@ test.describe('evidence pack export', () => {
           outstandingAmount: 500,
           daysOutstanding: 40,
           status: 'PENDING',
+          // The e2e practice is on the trial plan, where denial evidence is
+          // open only for CDCP claims (ADR 0004).
+          payerType: 'CDCP',
         },
       })
       claimId = claim.id

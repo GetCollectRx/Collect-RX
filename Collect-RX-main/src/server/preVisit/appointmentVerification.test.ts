@@ -11,6 +11,9 @@ vi.mock('./preVisitJobs.js', () => ({
   enqueuePreVisitJob: vi.fn().mockResolvedValue('job-123'),
 }));
 
+const { hasFeature } = vi.hoisted(() => ({ hasFeature: vi.fn() }));
+vi.mock('../plans/practiceEntitlements.js', () => ({ practiceHasFeature: hasFeature }));
+
 vi.mock('../emrSyncOutbox.js', () => ({
   enqueueEmrPreVisitEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -97,6 +100,49 @@ function makePrisma(opts: {
 describe('verifyBeforeAppointment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    hasFeature.mockResolvedValue(true);
+  });
+
+  it('does not queue a private eligibility check or TELUS Tx23 when the plan lacks pre-visit eligibility', async () => {
+    hasFeature.mockResolvedValue(false);
+    vi.mocked(checkTelusTx23Support).mockReturnValue({ supported: true });
+    const prismaState = makePrisma({});
+    prismaState.eligibilitySnapshot.findFirst = vi.fn().mockResolvedValue(null);
+
+    await verifyBeforeAppointment(prismaState as unknown as PrismaClient, {
+      practiceId: 'prac-1',
+      patientToken: 'tok-1',
+      carrierId: 'telus_adjudicare',
+      procedureCodes: ['D0120'],
+      appointmentAt: new Date('2026-06-26T15:00:00Z'),
+    });
+
+    expect(enqueuePreVisitJob).not.toHaveBeenCalled();
+    expect(checkTelusTx23Support).not.toHaveBeenCalled();
+  });
+
+  it('queues a CDCP predetermination check on every plan', async () => {
+    hasFeature.mockResolvedValue(false);
+    const prismaState = makePrisma({});
+    prismaState.eligibilitySnapshot.findFirst = vi.fn().mockResolvedValue(null);
+
+    await verifyBeforeAppointment(prismaState as unknown as PrismaClient, {
+      practiceId: 'prac-1',
+      patientToken: 'tok-1',
+      carrierId: 'sun_life',
+      procedureCodes: ['D2740'],
+      appointmentAt: new Date('2026-06-26T15:00:00Z'),
+      artifactAttestations: {
+        periapical_xray: true,
+        bitewing_xray: true,
+        clinical_narrative: true,
+        treatment_plan: true,
+        periodontal_charting: true,
+      },
+    });
+
+    expect(enqueuePreVisitJob).toHaveBeenCalledTimes(1);
+    expect(enqueuePreVisitJob).toHaveBeenCalledWith('PRE_VISIT_CDCP_PREDET', expect.anything(), undefined);
   });
 
   it('matches CDCP case by appointment procedure code, not most recent denial', async () => {
