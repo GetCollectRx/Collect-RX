@@ -79,6 +79,7 @@ import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertDataResidencyAtStartup } from './dataResidency';
 import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
 import {
   assertPersistentPhiVaultConfigured,
@@ -260,6 +261,7 @@ try {
 }
 
 assertPostgresTlsInProduction();
+assertDataResidencyAtStartup();
 assertPhiEncryptionAtRestConfigured();
 assertPersistentPhiVaultConfigured();
 assertEmrSyncWebhookUrlConfiguredAtBoot();

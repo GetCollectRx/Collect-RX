@@ -3,6 +3,7 @@
  */
 import 'dotenv/config';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
+import { assertDataResidencyAtStartup } from './dataResidency.js';
 import { initSentry } from './observability/sentryNode.js';
 
 applyPostgresTlsToProcessEnv();
@@ -41,6 +42,7 @@ import { runAgent } from './jobs/agentRunnerService.js';
 import { logger } from './observability/logger.js';
 
 assertPostgresTlsInProduction();
+assertDataResidencyAtStartup();
 
 if (!process.env.REDIS_URL) {
   logger.error(
