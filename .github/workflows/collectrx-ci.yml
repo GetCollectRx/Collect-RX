@@ -4,7 +4,8 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev]
+    # Every pushed branch, not only main and dev: the gates must run wherever work lands.
+    branches: ['**']
   pull_request:
     branches: [main, dev]
 
