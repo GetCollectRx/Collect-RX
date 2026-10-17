@@ -1,5 +1,7 @@
 # Industry statutes that force a stop or human hand-off
 
+L1 note (2026-10-13): nothing in this file was re-read in the L1 pass; tags unchanged. See CORRECTIONS.md.
+
 Status: COMPLETE FIRST PASS. Date of reads: 2026-10-13. Written early and appended section by section.
 
 Method and tags

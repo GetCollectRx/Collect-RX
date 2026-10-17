@@ -1,5 +1,21 @@
 # Vendors, AI Governance and Standards: Policy Research for CollectRx
 
+## L1 verification update (2026-10-13)
+
+Vendor pages were read in Chrome this session (EVIDENCE-LOG-2026-10-13.md E18 to E21). The method note below ("No external page was fetched") is superseded for these rows. Public documentation is not a contract; written confirmation is still required (VAPI-QUESTIONS.md).
+
+| Row | New tag | Statement |
+|---|---|---|
+| 1 | VERIFIED | Vapi: HIPAA "is an organization-level setting ... and it cannot be enabled through the API"; "a paid compliance add-on" (price not shown); limits providers to HIPAA compliant ones |
+| 2 | VERIFIED | "HIPAA mode and Zero Data Retention (ZDR) are mutually exclusive." Under ZDR Vapi retains no recordings, transcripts, messages, summaries, structured outputs or detailed logs; keeps call history, cost, latency and billing metadata. Outcomes can still be delivered through the end-of-call-report webhook if configured before enabling |
+| 3 | CONTRADICTED (ZDR) | "ZDR does not require a separate purchase." HIPAA price still unknown |
+| New | VERIFIED | Vapi default: "By default, Vapi records your calls and stores logs and transcriptions." |
+| 9 | VERIFIED | inference_geo: "global" or "us"; workspace geo "us" only; unsupported on Sonnet 4.5 (labelled deprecated) and Haiku 4.5 |
+| 13 | VERIFIED (quoted sentences, keyword scan) | ElevenLabs: data residency is an Enterprise feature; default storage in the U.S.; isolated environments EU and India; processing may occur outside the selected location. No Canada |
+| 17 | VERIFIED | Fly sub-processors (last updated 2026-09-24): US, UK, Germany only; AWS backups US; Fly's internal AI tooling may process "platform log lines, which include whatever your application writes to stdout" |
+| 18 | VERIFIED (status) | Bill C-36 (Protecting Privacy and Consumer Data Act) at second reading; no federal AI regulation statute found in force |
+| 24 | VERIFIED | 2026-132 explicitly asks about AI and synthesized voices (Q2, Q10, Q11) |
+
 Researched 2026-10-13. Not legal advice. Prepared for "code informed by policy".
 
 ## Evidence tags and method limits

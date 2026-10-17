@@ -1,5 +1,22 @@
 # Canadian telecom, call and recording law for CollectRx
 
+## L1 verification update (2026-10-13)
+
+The CRTC rules were read in full in Chrome this session (EVIDENCE-LOG-2026-10-13.md E1, E2, E6). The access-failure notes below are superseded for the rows listed here. Where this addendum and a row disagree, this addendum wins. See CORRECTIONS.md.
+
+| Row | New tag | Corrected statement |
+|---|---|---|
+| 5 | VERIFIED | UTR Part II National DNCL Rules, Part III Telemarketing Rules, Part IV ADAD Rules, Part V Express Consent, Part VI Record Keeping, Part VII Liability. The amalgamation page is dated 2014-03-31; Notice 2026-132 states "The last changes to the UTRs took place in 2014", so it is the current text |
+| 6 | VERIFIED (text); application UNVERIFIED | "Telemarketing" means unsolicited telecommunications "for the purpose of solicitation"; Part III s.6: the Telemarketing Rules do not apply to non-solicitation calls, "including telecommunications made solely for the purpose of emergencies, account collection ..." |
+| 7 | VERIFIED | Part I ADAD: "any automatic equipment incorporating the capability of storing or producing telecommunications numbers used alone or in conjunction with other equipment to convey a pre-recorded or synthesized voice message to a telecommunications number". Part IV s.4 governs ADAD calls "where there is no attempt to solicit". Whether an LLM voice agent is an ADAD is consultation question Q2 in 2026-132 |
+| 8 | VERIFIED, CORRECTED | Part IV s.4(d): begin with a clear message identifying the person on whose behalf the call is made and "a brief description of the purpose"; include "an electronic mail address or postal mailing address and a local or toll-free telecommunications number"; repeat at the end if the message exceeds 60 seconds. An email address satisfies the address element |
+| 9 | VERIFIED | Part IV s.4(h): "all reasonable efforts to ensure that their equipment disconnects within ten (10) seconds of the person receiving the telecommunication hanging up" |
+| 10 | VERIFIED, CORRECTED | Part IV s.4(b) and Part III s.23: weekdays 9:00 a.m. to 9:30 p.m., weekends 10:00 a.m. to 6:00 p.m., recipient's local time; s.4(c) provincial activity hours apply where stricter. The product's 08:00 start is EARLIER than 09:00, so the current window is not stricter at the start of day (CORRECTIONS A1) |
+| 11 | VERIFIED | Part II s.2: DNCL Rules do not apply to telemarketing to a business consumer. Internal do-not-call list: keep 3 years and 14 days; add within 14 days (Part III ss.8 to 12). Exempt callers keep their own list (Telecommunications Act s.41.7(4)) |
+| 12 | VERIFIED | Notice of Consultation dated 11 June 2026, 1011-NOC2026-0132, interventions 27 July 2026, replies 11 August 2026. Proposes defining "healthcare facility" broadly (doctors' offices, physiotherapy, chiropractic clinics), deleting Part III s.6 and s.27 as redundant, and asks about AI voice (Q2, Q10, Q11), contact details (Q12, Q13) and a 10 second message start (Q14). Outcome: not found (UNVERIFIED) |
+| New | VERIFIED | Part III s.28 and Part IV s.4(a): no telemarketing, and no non-solicitation ADAD calls, to "healthcare facilities". Part IV s.2: telemarketing via an ADAD needs the consumer's express consent. Relevant to group C (CollectRx's own AI sales calls to dental practices) |
+| New | VERIFIED | Penalties: Telecommunications Act s.72.01, up to $1,500 (individual) and $15,000 (corporation) per violation; s.72.03 each day a separate violation |
+
 Prepared 2026-10-13 for engineering planning. This is research, not legal advice. Every claim carries one tag.
 
 ## Tag legend and source access

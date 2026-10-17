@@ -34,6 +34,7 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 - Contrary reading: sub-processor hosting is a separate disclosure that needs consent under s. 50(1)(a).
 - Default control: record each vendor's region; disclose US processing in the practice-facing notice; do not claim Canadian residency anywhere.
 - Unread: every vendor page (Vapi, Anthropic, ElevenLabs, Deepgram, Google, Twilio, Fly); needed to state regions as fact.
+- L1 update 2026-10-13 (VERIFIED, EVIDENCE-LOG E19 to E21): Anthropic inference geo is "global" or "us" only and workspace geo is "us" only; ElevenLabs stores in the U.S. by default (EU and India isolated environments are Enterprise only); Fly.io lists no Canadian sub-processor and keeps backups with AWS in the United States. Vapi, Twilio, Deepgram and Google regions still unread. The register reading is unchanged; the facts behind the practice-facing disclosure are now firmer.
 - Risk accepted: moderate; turns on a reading of "reasonably necessary" that has not been tested in anything I read.
 - Decision: ______
 
@@ -68,6 +69,7 @@ How to use a row: read the quoted provisions, check the adopted reading, and eit
 - Text read: PHIPA sets no fixed retention period; s. 13 requires secure retention, transfer and disposal as prescribed. PIPEDA Schedule 1 cl. 4.5 requires retention schedules and destruction. Quebec requires retention for one year after use in a decision and destruction when no longer needed. BC PIPA s. 35 is similar (all VERIFIED per PS).
 - Adopted reading: choose and document a period per data type; the repo's 12 month default is a placeholder.
 - Unread: college record-keeping standards (for example dental records), which may set a longer minimum. Until read, do not purge anything.
+- L1 update 2026-10-13 (EXCERPT, not VERIFIED; EVIDENCE-LOG E11): RCDSO Dental Recordkeeping Guidelines (Council, November 2019) state clinical and financial records are kept at least ten years from the last entry (minors: ten years after age 18) and claim form copies at least two years. These bind the practice as custodian, not CollectRx directly; they set what the practice must still hold, which matters for what CollectRx may delete on the practice's behalf. Vapi ZDR, which stops vendor-side storage of transcripts and summaries, is documented as requiring no separate purchase (VERIFIED, E18); the earlier statement that ZDR is a paid add-on is withdrawn.
 - Default control: purge stays off; dry-run report; periods in config.
 - Decision: ______
 
@@ -95,6 +97,12 @@ See RISK-REGISTER-REVIEW-RESULT.md. Dispositions: R1 accept; R2 modify (add warr
 ## R10. CRTC rules
 
 - Nothing read from CRTC primary sources (all blocked). Cowork batch 1 reads them. Until then no position is adopted. Defaults: identification with address and callback number, hangup timing measurement, recipient-local hours, no voicemail messages.
+- L1 update 2026-10-13: the UTR and Notice 2026-132 were read in full (VERIFIED, EVIDENCE-LOG E1, E2, E6). Text now available for a decision:
+  - ADAD: "any automatic equipment incorporating the capability of storing or producing telecommunications numbers used alone or in conjunction with other equipment to convey a pre-recorded or synthesized voice message to a telecommunications number" (Part I). Part IV s.4 governs ADAD calls "where there is no attempt to solicit": no calls to healthcare facilities; 9:00 a.m. to 9:30 p.m. weekdays, recipient local time; opening message identifying the principal, purpose, an email or postal address and a local or toll-free number, repeated if over 60 seconds; display a reachable number; disconnect within 10 seconds of hangup.
+  - Whether an LLM voice agent is an ADAD is an open CRTC question (2026-132 Q2), as is whether non-solicitation ADAD use stays regulated (Q11).
+  - Penalties: up to $15,000 per violation for a corporation, each day separate (Telecommunications Act ss.72.01, 72.03).
+- Candidate reading for signature (Claude's draft, not adopted): treat carrier calls as non-solicitation ADAD calls under Part IV s.4 and comply in full, because every element is cheap and the definition plausibly reaches synthesized voice. Contrary reading: a conversational agent is not "equipment ... to convey a ... message" and the UTR do not apply at all. Under either reading the controls are the same: move the window start to 9:00 recipient local, add an email address and purpose statement to the opener, measure hangup disconnect. Treat CollectRx's own AI sales calls to dental offices as telemarketing via an ADAD: express consent required (Part IV s.2), and calls to healthcare facilities barred (Part III s.28).
+- Decision: ______  Date: ______
 - Decision: deferred until batch 1 returns.
 
 ---

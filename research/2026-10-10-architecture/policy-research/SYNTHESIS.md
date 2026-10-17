@@ -8,6 +8,8 @@ Source files: health-privacy.md (HP), private-sector-privacy.md (PS), telecom-an
 
 ## 0. Bottom line
 
+L1 update 2026-10-13: CRTC, CASL, Quebec and several vendor pages were read in full; see CORRECTIONS.md. Items below marked SEARCH-EXCERPT for those sources are superseded where CORRECTIONS.md says so. Most material: the 08:00 call window starts before the 09:00 ADAD window (A1); Vapi ZDR requires no separate purchase (A4); CollectRx's own AI sales calls to dental offices face the ADAD express consent and healthcare facility rules (A6).
+
 1. A single blanket privacy standard is wrong in both directions. It over-burdens non-custodian customers (tow, restoration) and it hides the fact that the customers who ARE custodians (dental, most rehab, pharmacy) are not compliant today.
 2. The compliance regime is determined at three levels, not one: tenant (who carries the duty and what paper must exist), data field (what handling applies), and workflow (which counterpart, clocks and stop points apply). Section 1 gives the exact split and the evidence for it.
 3. The shipping dental product has gaps that matter before any new vertical: no patient-consent attestation (HP#9), no custodian agent permission record (HP#1), every vendor agreement cell blank (VG), retention purge off and never run (PS#10, HP#12), no breach tooling (HP#2, PS#12), cross-tenant learning from transcripts (HP#14, PS#15), "may be recorded" while recording is off (TR#2). These are Tier 0 in section 9.
@@ -80,10 +82,10 @@ These come from obligations that attach to CollectRx itself or to every commerci
 | F5 | Breach register capturing every breach (not only high risk), 24-month retention, prescribed report fields, province routing | PS#12, #13 | PIPEDA ss. 10.1 to 10.3 and SOR/2018-64 verified | Model exists with no route; lacks required fields |
 | F6 | Subject access export and deletion workflow | PS#14 | PIPEDA s. 8; Quebec 30 days | Absent |
 | F7 | Sub-processor register with region, contract ref, review date; CI fails on an unregistered vendor domain or squad provider | PS#1, VG#4, VG checklist | Accountability principle; PHIPA s. 50 record | Blank trackers |
-| F8 | Truthful call notices: opening names the automation, the principal, a callback number and mailing address; recording statement matches reality | TR#2, #4, #8; PS#17; VG#24 | OPC openness; possible ADAD identification rule (CRTC text unread) | "may be recorded" while recording is off; no mailing address |
-| F9 | Recipient-local calling window, intersection of legal and carrier-staffed hours; handles Newfoundland half-hour offset and Saskatchewan | TR#10, #21 | Hard-coded Eastern breaks outside Eastern | Hard-coded Eastern 08:00 to 17:00 |
+| F8 | Truthful call notices: opening names the automation, the principal, a callback number and mailing address; recording statement matches reality | TR#2, #4, #8; PS#17; VG#24 | OPC openness; possible ADAD identification rule (CRTC text unread) | "may be recorded" while recording is off; no mailing address [L1: CRTC text now VERIFIED; the address element is "an electronic mail address or postal mailing address", plus a purpose statement] |
+| F9 | Recipient-local calling window, intersection of legal and carrier-staffed hours; handles Newfoundland half-hour offset and Saskatchewan | TR#10, #21 | Hard-coded Eastern breaks outside Eastern | Hard-coded Eastern 08:00 to 17:00 [L1: VERIFIED. Window is 9:00 to 21:30 weekdays recipient local; the current 08:00 start is earlier, not stricter] |
 | F10 | Voicemail detection in config, not prompt-only | TR#15 | A left message is itself a recorded message with identification duties | Prompt-only |
-| F11 | Remote-hangup disconnect measured under 10 seconds | TR#9 (SEARCH-EXCERPT) | Cheap to prove, expensive to learn wrong | Not measured |
+| F11 | Remote-hangup disconnect measured under 10 seconds | TR#9 (SEARCH-EXCERPT) | Cheap to prove, expensive to learn wrong | Not measured [L1: 10 second disconnect VERIFIED, Part IV s.4(h)] |
 | F12 | Learning pipeline default-deny: only de-identified content, tenant contribution and consumption flags, automated identifier scan on lesson text, provenance expiry | PS section 4, HP#14 | Purpose limitation; PHIPA agent definition | Cross-tenant, provenance link kept, no flags |
 | F13 | Marketing engine hard wall from claims data | HP#16 | PHIPA ss. 32 to 33 for custodians; good practice for all | Wall unverified |
 | F14 | Statute-versioned policy parameters with evidence tag; unverified parameter blocks its module | IS section 4 note | Several Ontario provisions are amended but not in force | No policy pack mechanism |
@@ -150,7 +152,7 @@ Two modes carry different obligations (TR groups A and B).
 | Autonomous (AI speaks to the rep) | Practice via CollectRx is originator and a party; one-party consent suffices on the Criminal Code text (ss. 183, 183.1, 184(2)(a) VERIFIED) | F8, F9, F10, F11 |
 | Human-assisted (Hold Sentinel, V1) | Practice staff are a party; the carrier rep is an unnotified third party to Claims_Scribe's transcription (TR#19) | Pre-transfer or early-in-call notice to the rep, per-tenant switch to disable transcription, staff consent clause in the customer agreement. The learning loop already skips human-assisted calls (TR#3), which is the right conservative default; keep it |
 
-Everything CRTC (hours, ADAD identification, 10-second disconnect, telemarketing status of B2B calls, Notice 2026-132) is SEARCH-EXCERPT at best; no CRTC primary page was readable. 2026-132 is a Notice of Consultation, not a Telecom Regulatory Policy (TR#12). The design stance that survives that uncertainty: build to the stricter reading as a floor (identification with address, disconnect timing, recipient-local hours) because each is cheap and none is wasted if the rules turn out not to apply.
+Everything CRTC (hours, ADAD identification, 10-second disconnect, telemarketing status of B2B calls, Notice 2026-132) is SEARCH-EXCERPT at best; no CRTC primary page was readable. [L1 2026-10-13: superseded. All of these were read and are VERIFIED; see telecom-and-recording.md addendum and CORRECTIONS.md A1 to A3, A6.] 2026-132 is a Notice of Consultation, not a Telecom Regulatory Policy (TR#12). The design stance that survives that uncertainty: build to the stricter reading as a floor (identification with address, disconnect timing, recipient-local hours) because each is cheap and none is wasted if the rules turn out not to apply.
 
 ---
 
@@ -175,8 +177,8 @@ Known verified clocks worth encoding first (all in IS, Ontario e-Laws text read 
 Findings (all SEARCH-EXCERPT unless noted):
 
 - Providers in one call chain: Vapi, Twilio, Anthropic (Sonnet 4.5 and Haiku 4.5, VERIFIED in `vapi-squad-config.json`), ElevenLabs, Deepgram nova-2; Gemini for server-side summaries and marketing. Identifiers reach at least five of them (VERIFIED in code and doc).
-- No Canadian region found for any of them (VG#9, #13, #14, #16). Only Fly `yyz` compute is claimed. Anthropic residency reported as global or US only.
-- Vapi HIPAA mode and ZDR reported as mutually exclusive; HIPAA mode reported as an org-level setting not settable per call (VG#1, #2).
+- No Canadian region found for any of them (VG#9, #13, #14, #16). Only Fly `yyz` compute is claimed. Anthropic residency reported as global or US only. [L1: VERIFIED for Anthropic, ElevenLabs and Fly sub-processors; Vapi, Twilio, Deepgram, Google still unread.]
+- Vapi HIPAA mode and ZDR reported as mutually exclusive; HIPAA mode reported as an org-level setting not settable per call (VG#1, #2). [L1: VERIFIED in Vapi docs. ZDR "does not require a separate purchase"; HIPAA is a paid add-on. Under ZDR outcomes can still be delivered to the end-of-call-report webhook.]
 - The code relies on Vapi-side structured output (`analysisPlan`) in `vapi-squad-config.json` (lines 55, 290, 483, 646 per VG#2), which ZDR would remove.
 - Every agreement tracker cell is blank (VG, repo).
 
@@ -280,6 +282,8 @@ Open classification:
 ---
 
 ## 13. What was not verified
+
+L1 update 2026-10-13: CRTC primary text, CASL and its regulations, the Quebec current consolidation, RHPA Schedule 1, FSRA adjuster and HSP licence pages, and the Vapi, Anthropic, ElevenLabs and Fly pages listed in CORRECTIONS.md are now read. Remaining gaps are in CORRECTIONS.md section D.
 
 - CRTC primary text, all of it (403 and DNS failures).
 - Every vendor page (Vapi, Twilio, Anthropic, ElevenLabs, Deepgram, Google, Fly); every vendor claim is SEARCH-EXCERPT or UNVERIFIED.

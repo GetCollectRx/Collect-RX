@@ -1,5 +1,17 @@
 # Private-Sector Privacy Research (PIPEDA, Quebec Law 25, Alberta PIPA, BC PIPA, OPC guidance)
 
+## L1 verification update (2026-10-13)
+
+See CORRECTIONS.md and EVIDENCE-LOG-2026-10-13.md (E3 to E7, E16). Where this addendum and a row disagree, this addendum wins.
+
+| Row or item | New tag | Statement |
+|---|---|---|
+| Quebec rows 3, 4, 5, 6, 7, 13, 15, 19 | VERIFIED against the CURRENT consolidation ("À jour au 12 août 2026"), not only the 2021 enacting Act | ss.3.3, 3.5 ("promptly"), 3.6, 3.7, 3.8, 12, 12.1, 13, 17, 18.3, 23 read |
+| Row 21 Quebec penalties | VERIFIED, CORRECTED | s.91: $5,000 to $100,000 (natural person); otherwise $15,000 to $25,000,000 or, if greater, 4% of worldwide turnover |
+| Framing, carrier representatives | VERIFIED (text) | PIPEDA s.2 "business contact information" and s.4.01 exclusion apply only where information is used "solely for the purpose of communicating or facilitating communication with the individual in relation to their employment, business or profession". Analysis in the L2c research file CARRIER-REP-PERSONAL-INFORMATION.md (stacked PR) |
+| PIPEDA ss.4, 5(3), 6.1, 10.1 to 10.3, 26(2)(b), 28 and Schedule 1 | VERIFIED (re-read) | No change to earlier readings |
+| Q13 PIPEDA reform | VERIFIED status | Bill C-36 at second reading (first reading June 15, 2026); PIPEDA amendment 2026, c. 3, s. 389 (data mobility) not in force |
+
 Status: COMPLETE DRAFT for counsel review. Date: 2026-10-13. Not legal advice.
 
 Tag legend: VERIFIED = primary text fetched and read this session. SEARCH-EXCERPT = search snippet only. UNVERIFIED = recalled, not checked this session.

@@ -1,5 +1,19 @@
 # Canadian health privacy law: obligations and code status
 
+## L1 verification update (2026-10-13)
+
+See CORRECTIONS.md and EVIDENCE-LOG-2026-10-13.md (E8 to E10, E11, E16, E17). Where this addendum and a row disagree, this addendum wins.
+
+| Row or item | New tag | Statement |
+|---|---|---|
+| Conclusion 3, dentists as RHPA members | VERIFIED | RHPA Schedule 1 lists "Dentistry Act, 1991 / Dentistry" (e-Laws currency 2026-10-08) |
+| Row 4 | VERIFIED, CORRECTED | O. Reg. 329/04 s.6.4(1) has five categories, the fifth being collection by means of the electronic health record without authority |
+| Row 6 | VERIFIED | PHIPA s.10.1 is preceded by "On a day to be named by proclamation"; not in force at e-Laws currency 2026-10-08 |
+| Row 12, college minimum | EXCERPT (not VERIFIED) | RCDSO Dental Recordkeeping Guidelines (Nov 2019): ten years from last entry for clinical and financial records; claim form copies two years. Words obtained only via a summarizing fetch tool |
+| Row 21 Quebec | VERIFIED | Current consolidation read (see private-sector-privacy.md addendum) |
+| Row 22 IPC AI scribe guidance | UNVERIFIED | Download link; not opened. Cowork batch R2 |
+| Sections 2, 12, 13, 17, 18, 50, 72 | VERIFIED (re-read) | No change |
+
 Date: 2026-10-13. Status: research draft for counsel review. Not legal advice.
 
 Tag legend: VERIFIED = read in primary statute/regulation text fetched this session. SEARCH-EXCERPT = seen only in a search snippet or secondary source. UNVERIFIED = recalled or inferred, not read.
