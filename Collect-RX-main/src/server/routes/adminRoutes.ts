@@ -7,11 +7,12 @@ import {
   requirePracticeContext,
 } from '../middleware/requirePracticeSession';
 import { appendAuditLog } from '../audit/auditLog.js';
-import type { Prisma } from '@prisma/client';
+import { CarrierId, type Prisma } from '@prisma/client';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { isPlatformDev, authUserId } from '../accessControl/types.js';
 import { requireCanEditPracticeAdmin, requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { reviewLesson } from '../learning/carrierLessons.js';
+import { getCarrierGraduation, DEFAULT_GRADUATION_CRITERIA } from '../learning/autonomyGraduation.js';
 import { logger } from '../observability/logger.js';
 
 const router = Router();
@@ -271,6 +272,25 @@ router.get('/carrier-lessons', async (req: Request, res: Response) => {
     return res.json({ lessons });
   } catch (err) {
     logger.error('[GET /admin/carrier-lessons]', { error: err });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Autonomous calling graduation (ADR 0005). Aggregate, cross-practice carrier
+// evidence (counts only, no PHI), so platform developers only: a practice
+// owner must not see figures derived from other practices' calls.
+// ---------------------------------------------------------------------------
+router.get('/autonomy-graduation', async (req: Request, res: Response) => {
+  if (!isPlatformDev(req.auth)) {
+    return res.status(403).json({ error: 'Platform access required' });
+  }
+  try {
+    const carriers = Object.values(CarrierId);
+    const results = await Promise.all(carriers.map((c) => getCarrierGraduation(prisma, c)));
+    return res.json({ criteria: DEFAULT_GRADUATION_CRITERIA, carriers: results });
+  } catch (err) {
+    logger.error('[GET /admin/autonomy-graduation]', { error: err });
     return res.status(500).json({ error: apiErrorMessageForResponse(err) });
   }
 });

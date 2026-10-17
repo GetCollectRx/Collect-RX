@@ -15,7 +15,7 @@ Three stages. Features open only through a paid upgrade (no usage-based or time-
 |---|---|---|---|
 | 1 | Hold Sentinel (`sentinel`), and the 30-day trial | $399/month, 1,000 min, $0.25/min overage | Calls through Hold Sentinel with staff handoff, reference number capture on a missed handoff, aged AR dashboard, CSV import, **CDCP tools** (predetermination and reconsideration tracking, denial work on CDCP claims) |
 | 2 | Recovery (`core`; Growth and Scale are larger sizes of it) | $799 / $1,999 / $2,499 | Everything in stage 1, plus pre-visit eligibility for private carriers (calls and TELUS Tx23), denial evidence and resubmission tracking on non-CDCP claims, underpayment recovery |
-| 3 | Autonomous | Not on any plan | The AI speaks with the rep. Opens per carrier only after the graduation criteria in ADR 0003 are met |
+| 3 | Autonomous | Not on any plan unless `AUTONOMOUS_PLAN_TIERS` names one | The AI speaks with the rep. Opens per carrier only after graduation (ADR 0005) |
 
 CDCP sits in stage 1 because it is the entry point: practices feel that pain now.
 
