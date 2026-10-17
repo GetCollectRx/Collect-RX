@@ -171,7 +171,7 @@ export const CARRIER_TIMEOUTS: Record<string, number> = {
 // or a DDoS attempt, not organic call volume. Layered on top of the global
 // vapiSlotBudget() in queueEngine.ts, which caps total concurrency but not
 // per-carrier concentration.
-export const CARRIER_CONCURRENCY_LIMITS: Record<CarrierId, number> = {
+export const CARRIER_CONCURRENCY_LIMITS: Partial<Record<CarrierId, number>> = {
   sun_life: 5,
   canada_life: 5,
   manulife: 5,
