@@ -97,7 +97,7 @@ function buildCarrierConfigs(): Record<CarrierId, CarrierConfig> {
   const rules = carrierRulesJson.carriers as Record<string, Partial<CarrierRulesEntry>>;
   const configs = {} as Record<CarrierId, CarrierConfig>;
 
-  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as CarrierId[]) {
+  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as Exclude<CarrierId, 'other'>[]) {
     const entry = rules[carrierId];
     if (!entry?.dispatch || entry.isClearinghouse === undefined || entry.minWaitDayForClaims === undefined) {
       throw new Error(`carrier-configs.json is missing dispatch rules for carrier "${carrierId}"`);

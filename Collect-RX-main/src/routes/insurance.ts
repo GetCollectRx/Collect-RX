@@ -38,6 +38,13 @@ import { compensateFailedManualDispatch } from '../server/insurance/manualDispat
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
 import { practiceHasFeature } from '../server/plans/practiceEntitlements.js';
 import { FEATURES, featureLockedMessage } from '../billing/entitlements.js';
+import multer from 'multer';
+import { blockAuditorWrites } from '../server/middleware/requireUserRole.js';
+import { preserveRlsAcrossMiddleware } from '../server/db/rlsContext.js';
+import { validateCsvUploadFile } from '../server/validation/csvUpload.js';
+import { importIndustryClaims, ImportRejectedError } from '../server/csv/industryClaimImport.js';
+import { CsvStructureError } from '../server/csv/csvParser.js';
+import { INDUSTRY_TYPES, type IndustryType } from '../types/industry-claims.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -450,6 +457,84 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
     return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/insurance/claims/upload
+// Non-dental CSV upload (auto collision, property restoration, paramedical/physio,
+// DME, roofing/trades, NEMT). multipart/form-data:
+//   file         the A/R export (.csv)
+//   industryType one of the non-dental IndustryType values
+//   dateFormat   REQUIRED. MDY | DMY | YMD. Slashed dates are never guessed.
+// Dashboard ingest only: rows are not queued for calling, and claims saved here
+// are carrierId 'other', which the queue engine skips and the Vapi client refuses.
+// ---------------------------------------------------------------------------
+const industryCsvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+});
+
+router.post(
+  '/claims/upload',
+  strictLimiter,
+  blockAuditorWrites,
+  preserveRlsAcrossMiddleware(industryCsvUpload.single('file')),
+  async (req: Request, res: Response) => {
+    try {
+      const practiceId = practiceIdFromSession(req);
+      const industryType = String(req.body?.industryType ?? '').trim() as IndustryType;
+      if (!(INDUSTRY_TYPES as readonly string[]).includes(industryType)) {
+        return res.status(400).json({
+          success: false,
+          error: `industryType must be one of: ${INDUSTRY_TYPES.filter((i) => i !== 'DENTAL').join(', ')}`,
+        });
+      }
+      const rawFormat = String(req.body?.dateFormat ?? '').trim().toUpperCase();
+      if (rawFormat !== 'MDY' && rawFormat !== 'DMY' && rawFormat !== 'YMD') {
+        return res.status(400).json({
+          success: false,
+          code: 'DATE_FORMAT_REQUIRED',
+          error: 'dateFormat is required and must be MDY, DMY or YMD',
+        });
+      }
+      const file = (req as Request & { file?: { buffer?: Buffer; size?: number; originalname?: string; mimetype?: string } }).file;
+      const check = validateCsvUploadFile(file as Parameters<typeof validateCsvUploadFile>[0], {
+        maxBytes: 10 * 1024 * 1024,
+      });
+      if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+
+      const result = await importIndustryClaims(prisma, piiVault, {
+        practiceId,
+        industryType,
+        csvText: file!.buffer!.toString('utf8'),
+        dateFormat: rawFormat as 'MDY' | 'DMY' | 'YMD',
+      });
+
+      void appendAuditLog(prisma, {
+        practiceId,
+        action: 'claims.industry_csv_upload',
+        subjectType: 'insurance_claims',
+        details: {
+          industryType,
+          imported: result.imported,
+          updated: result.updated,
+          rejected: result.rejected.length,
+          dateAssumedRowCount: result.dateAssumedRowCount,
+        },
+        req,
+      });
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      if (err instanceof CsvStructureError) {
+        return res.status(400).json({ success: false, code: err.code, error: err.message, detail: err.detail });
+      }
+      if (err instanceof ImportRejectedError) {
+        return res.status(err.status).json({ success: false, error: err.message });
+      }
+      logger.error('[POST /insurance/claims/upload]', { error: err });
+      return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+    }
+  },
+);
 
 router.get('/analytics/denials', async (req: Request, res: Response) => {
   try {
