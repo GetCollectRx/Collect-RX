@@ -192,6 +192,16 @@ if [ "$RUN_DB" = "1" ]; then
   fi
 fi
 
+# 8b. RLS gate selected without the migrate gate must be UNVERIFIED, never a database error FAIL (opt in).
+if [ "$RUN_DB" = "1" ]; then
+  out="$(cd "$top" && bash scripts/verify-all.sh --only deps,pg,rls --base main 2>&1)"; rc=$?
+  if [ "$rc" = "2" ] && printf '%s\n' "$out" | grep -E '^rls +' | grep -q UNVERIFIED; then
+    PASSED=$((PASSED + 1)); echo "ok    rls without migrate is UNVERIFIED, not FAIL"
+  else
+    FAILED=$((FAILED + 1)); echo "FAIL  rls without migrate (exit $rc)"; printf '%s\n' "$out" | tail -n 20 | sed 's/^/      /'
+  fi
+fi
+
 echo
 echo "selftest: $PASSED passed, $FAILED failed"
 [ "$FAILED" = "0" ]

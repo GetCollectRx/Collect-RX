@@ -83,6 +83,7 @@ PG_CONTAINER=""
 SOCK_DIR=""
 DEPS_OK=0
 DB_OK=0
+MIGRATED=0
 BASE_SHA=""
 
 if [ -t 1 ]; then
@@ -552,12 +553,14 @@ gate_migrate() {
   export_env
   npm run db:migrate:collectrx || { GATE_DETAIL="prisma migrate deploy failed"; return 1; }
   n="$(ls -d "$APP_DIR"/prisma/migrations/[0-9]* 2>/dev/null | wc -l | tr -d ' ')"
+  MIGRATED=1
   GATE_DETAIL="$n migration(s) applied to an empty database"; return 0
 }
 
 gate_rls() {
   need_deps || return 2
   need_db || return 2
+  [ "$MIGRATED" = "1" ] || { GATE_DETAIL="migrations not applied (migrate gate did not run or did not pass)"; return 2; }
   export_env
   npm run check:rls -w "$WS" || { GATE_DETAIL="RLS coverage check failed"; return 1; }
   GATE_DETAIL="$(grep -E 'tenant table' "$LOGDIR/rls.log" | tail -n 1 | cut -c1-120)"; return 0
