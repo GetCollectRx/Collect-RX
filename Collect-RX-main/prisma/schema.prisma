@@ -1167,7 +1167,7 @@ model WorkerDeadLetter {
   jobName       String    @map("job_name")
   bullJobId     String?   @map("bull_job_id")
   payload       Json
-  /// Array of { attempt: number, error: string, failedAt: string (ISO) }
+  /// Array of objects with attempt (number), error (string) and failedAt (ISO timestamp string)
   errorHistory  Json      @map("error_history")
   attemptsMade  Int       @map("attempts_made")
   /// Generated at DLQ-insertion time — the job's own dispatch-time
