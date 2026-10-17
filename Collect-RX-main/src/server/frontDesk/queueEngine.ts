@@ -668,7 +668,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         practiceId,
         status: 'PENDING',
         scheduledFor: { lte: new Date() },
-        claim: { deletedAt: null },
+        // Non-dental payers (carrierId 'other') have no allowlisted number or
+        // IVR config yet. Keep them out of automated dispatch; they stay PENDING.
+        claim: { deletedAt: null, carrierId: { not: 'other' } },
       },
       orderBy: [{ priority: 'desc' }, { scheduledFor: 'asc' }],
       take: CANDIDATE_BATCH_SIZE,

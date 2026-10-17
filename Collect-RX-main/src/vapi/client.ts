@@ -196,7 +196,10 @@ export interface VapiCallMetadata {
 // this file builds below, or initiateCall() will reject the outbound call.
 // ---------------------------------------------------------------------------
 
-export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
+/** Carriers with a verified dial-out number. `other` (non-dental payers) is deliberately absent. */
+export type DialableCarrierId = Exclude<CarrierId, 'other'>;
+
+export const CARRIER_PHONE_MAP: Record<DialableCarrierId, string> = {
   sun_life:          '+18009619356',
   canada_life:       '+18007240222',
   manulife:          '+18662122333',
@@ -204,6 +207,17 @@ export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
   rbc:               '+18003613311',
   telus_adjudicare:  '+18772893343', // DEPRECATED — see note above. Not a real TELUS line.
 };
+
+/**
+ * Resolve the allowlisted number for a carrier. Throws for `other`: non-dental
+ * payers have no verified number, so they can never be dialed by this path.
+ */
+export function carrierPhoneFor(carrierId: CarrierId): string {
+  if (carrierId === 'other') {
+    throw new Error('[VapiClient] Refusing call: payer "other" has no verified phone number on the allowlist');
+  }
+  return CARRIER_PHONE_MAP[carrierId];
+}
 
 /** CDCP Contact Centre — separate from Sun Life group benefits line. */
 export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
@@ -496,7 +510,7 @@ export interface VapiPreVisitCallParams {
 export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Promise<VapiCallResult> {
   const carrierPhone = params.cdcpContext
     ? CDCP_CONTACT_CENTRE_PHONE
-    : CARRIER_PHONE_MAP[params.carrierId];
+    : carrierPhoneFor(params.carrierId);
 
   const allowedNumbers = new Set(
     [...Object.values(CARRIER_PHONE_MAP), CDCP_CONTACT_CENTRE_PHONE].map((n) => n.replace(/\D/g, '')),

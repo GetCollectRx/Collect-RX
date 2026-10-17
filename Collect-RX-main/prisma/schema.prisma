@@ -566,8 +566,45 @@ enum CarrierId {
   green_shield
   rbc
   telus_adjudicare
+  /// Non-dental payer (auto, property, paramedical, DME, trades, NEMT). The
+  /// real payer is InsuranceClaim.payerName. Has NO entry in CARRIER_PHONE_MAP,
+  /// so outbound dispatch to an `other` claim is rejected by the call allowlist
+  /// until a payer-specific verified number is explicitly added.
+  other
 
   @@map("carrier_id")
+}
+
+/// Vertical a claim belongs to. DENTAL is the default so every existing row and
+/// every existing code path keeps its current meaning without a backfill.
+enum IndustryType {
+  DENTAL
+  AUTO_COLLISION
+  PROPERTY_RESTORATION
+  PARAMEDICAL_PHYSIO
+  DME
+  ROOFING_TRADES
+  NEMT
+
+  @@map("industry_type")
+}
+
+/// What InsuranceClaim.primaryReferenceId / secondaryReferenceId hold.
+/// Person-linked kinds (see PERSONAL_REFERENCE_KINDS in src/types/industry-claims.ts)
+/// MUST be PIIVault tokens, never the raw value; a CHECK constraint enforces
+/// UUID shape for them. Business-document kinds may be stored as-is.
+enum ReferenceKind {
+  PATIENT_ID
+  MRN
+  VIN
+  POLICY_NUMBER
+  REPAIR_ORDER
+  JOB_NUMBER
+  TRIP_ID
+  SALES_ORDER
+  CASE_NUMBER
+
+  @@map("reference_kind")
 }
 
 /// Classifies the funding source behind a claim's payer, independent of
@@ -724,6 +761,20 @@ model InsuranceClaim {
   /// Soft deletion preserves the claim's immutable recovery and call history.
   /// Application reads and dispatch paths must always exclude deleted claims.
   deletedAt         DateTime?      @map("deleted_at")
+  /// Vertical. Defaults to DENTAL so legacy rows and dental import paths are unchanged.
+  industryType      IndustryType   @default(DENTAL) @map("industry_type")
+  /// Polymorphic business identifier (RO #, Job #, Trip ID, Sales Order #, Case #,
+  /// or a PIIVault token for person-linked kinds). Meaning set by primaryReferenceKind.
+  primaryReferenceId     String?        @map("primary_reference_id")
+  primaryReferenceKind   ReferenceKind? @map("primary_reference_kind")
+  /// e.g. VIN (auto) or policy number (property/roofing). Person-linked kinds are tokens only.
+  secondaryReferenceId   String?        @map("secondary_reference_id")
+  secondaryReferenceKind ReferenceKind? @map("secondary_reference_kind")
+  /// Free-text payer for non-dental claims (carrierId = other). Business name, not PHI.
+  payerName         String?        @map("payer_name")
+  /// Billing lines (CDT/CPT, Xactimate/Symbility, CCC/Mitchell/Audatex). JSON array of
+  /// objects with code, description and amount. Codes, descriptions and amounts only; never PHI.
+  lineItems         Json?          @map("line_items") @db.JsonB
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
@@ -748,6 +799,7 @@ model InsuranceClaim {
   @@index([practiceId, status, updatedAt])
   @@index([practiceId, status, resolvedAt])
   @@index([treatingDentistId])
+  @@index([practiceId, industryType, status])
   @@map("insurance_claims")
 }
 
