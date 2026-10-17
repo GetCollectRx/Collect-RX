@@ -102,7 +102,7 @@ describe('parseIndustryCsv', () => {
   });
 
   it('handles quoted commas, escaped quotes, BOM and CRLF', () => {
-    const csv = '﻿Job #,Policy #,Insurer,Claim #,Policyholder,Date of Loss,Estimate Total,Outstanding Balance\r\nJ-1,POL-9,"Co-operators, The",C-1,"Smith ""Sam"" A",2026-08-15,$100.00,$100.00\r\n';
+    const csv = '\uFEFFJob #,Policy #,Insurer,Claim #,Policyholder,Date of Loss,Estimate Total,Outstanding Balance\r\nJ-1,POL-9,"Co-operators, The",C-1,"Smith ""Sam"" A",2026-08-15,$100.00,$100.00\r\n';
     const res = parseIndustryCsv(csv, { industryType: 'PROPERTY_RESTORATION' });
     expect(res.records[0]!.payerName).toBe('Co-operators, The');
     expect(res.records[0]!.insuredName).toBe('Smith "Sam" A');
