@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory completion checkpoint (every change, any size, any surface)
+
+This applies to every code change, including one line, in Claude Code, Cowork, claude.ai chat, or any other agent. Code is not done, and must not be reported as done, until each gate has passed or is explicitly marked UNVERIFIED with the reason.
+
+1. **Scope:** feature branch only. Never push to `main` or `prd`, never merge, no force-push or workflow edits without the owner's explicit approval in the current session. Follow the branch flow in `Collect-RX-main/CLAUDE.md` (`feature/*` to `dev` to `prd`).
+2. **Standards:** the PRD rules in `Collect-RX-main/CLAUDE.md` apply to every change: zero `any` (no aliases, no eslint-disable workarounds), zero lint errors, tests pass, PHI boundary, CARRIER_BLOCK.
+3. **Local gates before any push:** `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:rls`, `npm run check:api`, `npx prisma validate`, plus a secret scan of the diff and of branch history (CI scans history, so a credential in an earlier commit cannot be fixed by a later one).
+4. **No credentials anywhere:** fixtures use placeholder hosts without `user:pass@`. No literal special characters (for example NBSP) in source; use escapes. No braces in `schema.prisma` doc comments (the RLS coverage script mis-parses them).
+5. **API pushes skip `.githooks/pre-push`.** Any agent that pushes through the GitHub API or a connector must run the gates above first, or mark each one UNVERIFIED and say so before pushing.
+6. **After pushing:** read every failed CI job log and state the cause before changing anything. Never assume green. A secret finding in history stops work until the owner picks a remedy.
+7. **Done report:** a table of gate, status (pass, fail, UNVERIFIED) and evidence, with uncertainty stated first. Done means all required CI checks are green and nothing is UNVERIFIED without the owner's acknowledgement.
+
 ## Documentation source of truth (read this first)
 
 This repo has more than one doc claiming to describe "current state." When they conflict, this is the order of authority:
