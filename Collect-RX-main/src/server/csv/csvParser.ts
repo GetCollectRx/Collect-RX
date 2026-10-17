@@ -142,7 +142,7 @@ export function parseNanpPhone(raw: string): string | null {
 
 /** Money to integer cents. Handles $, CAD, thousands separators, (negatives), and French "1 234,50 $". */
 export function parseMoneyToCents(raw: string): number | null {
-  let s = raw.replace(/ | /g, ' ').trim();
+  let s = raw.replace(/[\u00A0\u202F]/g, ' ').trim();
   if (!s) return null;
   let negative = false;
   if (/^\(.*\)$/.test(s)) {

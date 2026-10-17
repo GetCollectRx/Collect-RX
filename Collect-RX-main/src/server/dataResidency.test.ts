@@ -10,7 +10,7 @@ describe('dataResidency', () => {
       checkDataResidency({
         DATA_RESIDENCY_REGION: 'ca-central-1',
         AWS_REGION: 'ca-central-1',
-        DATABASE_URL: 'postgresql://u:p@collectrx.abc123.ca-central-1.rds.amazonaws.com:5432/db?sslmode=require',
+        DATABASE_URL: 'postgresql://collectrx.abc123.ca-central-1.rds.amazonaws.com:5432/db?sslmode=require',
         REDIS_URL: 'rediss://master.collectrx.xyz.cac1.cache.amazonaws.com:6379',
       } as NodeJS.ProcessEnv),
     ).toEqual([]);
@@ -19,7 +19,7 @@ describe('dataResidency', () => {
     const p = checkDataResidency({
       DATA_RESIDENCY_REGION: 'ca-central-1',
       AWS_REGION: 'us-east-1',
-      DATABASE_URL: 'postgresql://u:p@x.abc.us-east-1.rds.amazonaws.com:5432/db',
+      DATABASE_URL: 'postgresql://x.abc.us-east-1.rds.amazonaws.com:5432/db',
     } as NodeJS.ProcessEnv);
     expect(p.length).toBe(2);
   });

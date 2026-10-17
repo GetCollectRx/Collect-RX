@@ -773,7 +773,7 @@ model InsuranceClaim {
   /// Free-text payer for non-dental claims (carrierId = other). Business name, not PHI.
   payerName         String?        @map("payer_name")
   /// Billing lines (CDT/CPT, Xactimate/Symbility, CCC/Mitchell/Audatex). JSON array of
-  /// { code, description, amount }. Codes, descriptions and amounts only; never PHI.
+  /// objects with code, description and amount. Codes, descriptions and amounts only; never PHI.
   lineItems         Json?          @map("line_items") @db.JsonB
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")

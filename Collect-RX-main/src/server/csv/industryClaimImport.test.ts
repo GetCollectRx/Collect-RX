@@ -21,14 +21,18 @@ function makeVault() {
   return { vault, live };
 }
 
-function makePrisma(existing: any[] = [], failUpsert = false) {
-  const upserts: any[] = [];
-  const prisma: any = {
+// Test double for the Prisma client; only the methods the importer calls are stubbed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Loose = any;
+
+function makePrisma(existing: Loose[] = [], failUpsert = false) {
+  const upserts: Loose[] = [];
+  const prisma: Loose = {
     insuranceClaim: { findMany: vi.fn(async () => existing) },
-    $transaction: async (fn: any) =>
+    $transaction: async (fn: Loose) =>
       fn({
         insuranceClaim: {
-          upsert: async (a: any) => {
+          upsert: async (a: Loose) => {
             if (failUpsert) throw new Error('db down');
             upserts.push(a);
           },
