@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { z } from 'zod';
 import { authUserId, isAuditor, type PracticeRole } from '../accessControl/types.js'
 import type { CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -20,7 +21,7 @@ import {
   setPracticeQueuePaused,
 } from '../frontDesk/queueEngine.js';
 import { clearCarrierBlock } from '../frontDesk/carrierBlockService.js';
-import { endVapiCall, transferVapiCall } from '../../vapi/client.js';
+import { endVapiCall, transferVapiCall, VapiControlUnavailableError } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from '../frontDesk/deskQueueBroadcast.js';
 import { broadcastDesk } from '../frontDesk/deskWs.js';
 import type { ActiveAgent } from '../../types/frontDesk.js';
@@ -334,20 +335,81 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
   }
 });
 
+const takeoverBodySchema = z
+  .object({
+    phoneNumber: z.string().trim().min(1).max(32),
+    staffId: z.string().trim().min(1).max(64).optional(),
+    /** CallAttempt id of the call staff selected in the Live Console. */
+    callId: z.string().uuid().optional(),
+    /** Alternative to callId: the Vapi call id. */
+    vapiCallId: z.string().trim().min(1).max(128).optional(),
+  })
+  .refine((b) => !(b.callId && b.vapiCallId), { message: 'Send callId or vapiCallId, not both' });
+
+/**
+ * Picks the live call a staff action applies to. With an explicit target the
+ * lookup is scoped to the practice, so another practice's call is
+ * indistinguishable from a missing one. Without a target it only proceeds when
+ * exactly one call is live, because guessing risks acting on the wrong call.
+ */
+async function resolveActiveAttempt(
+  practiceId: string,
+  target: { callId?: string; vapiCallId?: string },
+) {
+  const scope = { completedAt: null, claim: { practiceId } };
+  if (target.callId || target.vapiCallId) {
+    const attempt = await prisma.callAttempt.findFirst({
+      where: { ...scope, ...(target.callId ? { id: target.callId } : { vapiCallId: target.vapiCallId }) },
+    });
+    return attempt ? ({ kind: 'found', attempt } as const) : ({ kind: 'none' } as const);
+  }
+  const live = await prisma.callAttempt.findMany({
+    where: scope,
+    orderBy: { initiatedAt: 'desc' },
+    take: 2,
+  });
+  if (live.length === 0) return { kind: 'none' } as const;
+  if (live.length > 1) return { kind: 'ambiguous' } as const;
+  return { kind: 'found', attempt: live[0] } as const;
+}
+
 router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const { phoneNumber, staffId } = req.body as { phoneNumber?: string; staffId?: string };
-    if (!phoneNumber?.trim()) {
-      return res.status(400).json({ success: false, error: 'phoneNumber is required' });
+    const parsed = takeoverBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'phoneNumber is required and callId must be a valid id' });
     }
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const { phoneNumber, staffId, callId, vapiCallId } = parsed.data;
 
-    await transferVapiCall(attempt.vapiCallId, phoneNumber.trim());
+    const resolved = await resolveActiveAttempt(practiceId, { callId, vapiCallId });
+    if (resolved.kind === 'ambiguous') {
+      return res
+        .status(409)
+        .json({ success: false, error: 'More than one call is live. Select the call to take over.' });
+    }
+    if (resolved.kind === 'none') {
+      return res.status(404).json({ success: false, error: 'No matching active call' });
+    }
+    const attempt = resolved.attempt;
+
+    try {
+      await transferVapiCall(attempt.vapiCallId, phoneNumber);
+    } catch (transferErr) {
+      logger.error('[front-desk] takeover transfer failed', {
+        practiceId,
+        callAttemptId: attempt.id,
+        reason: transferErr instanceof VapiControlUnavailableError ? transferErr.reason : 'unexpected',
+        status: transferErr instanceof VapiControlUnavailableError ? transferErr.status : undefined,
+      });
+      if (transferErr instanceof VapiControlUnavailableError && transferErr.reason === 'bad_destination') {
+        return res.status(400).json({ success: false, error: 'Enter a valid phone number' });
+      }
+      return res
+        .status(502)
+        .json({ success: false, error: 'Could not transfer the call. It is still active.' });
+    }
     await prisma.callAttempt.update({
       where: { id: attempt.id },
       data: {
