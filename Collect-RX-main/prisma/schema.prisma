@@ -1119,6 +1119,20 @@ model CallAttempt {
   isHumanAssisted      Boolean      @default(false) @map("is_human_assisted")
   /// Durable outbound intent that existed before the external Vapi request.
   dispatchIntentId     String?      @unique @map("dispatch_intent_id")
+  /// Hybrid call flow phase: dialing, phone_menu, hold, rep_answered, staff_or_agent or wrap_up. Null when HYBRID_CALL_FLOW was off for the call.
+  callPhase            String?      @map("call_phase")
+  /// Ordered phase entries, each with a phase name and an ISO timestamp. Null when HYBRID_CALL_FLOW was off.
+  phaseHistory         Json?        @map("phase_history")
+  /// Who talks to the rep, chosen at dispatch from plan, practice setting and carrier graduation: staff or agent.
+  callEnding           String?      @map("call_ending")
+  /// Why that ending was chosen (reason code, no free text).
+  callEndingReason     String?      @map("call_ending_reason")
+  /// Seconds in each phase, written when the call closes. Null means the phase was not observed.
+  menuSeconds          Int?         @map("menu_seconds")
+  holdSeconds          Int?         @map("hold_seconds")
+  repSeconds           Int?         @map("rep_seconds")
+  staffAgentSeconds    Int?         @map("staff_agent_seconds")
+  wrapUpSeconds        Int?         @map("wrap_up_seconds")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
   dispatchIntent  CallDispatchIntent?    @relation(fields: [dispatchIntentId], references: [id])
