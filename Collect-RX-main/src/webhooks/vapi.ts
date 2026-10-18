@@ -21,7 +21,7 @@ import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
-import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
+import { transferVapiCall, VapiControlUnavailableError, type VapiWebhookPayload } from '../vapi/client';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import {
@@ -286,7 +286,18 @@ async function handleStaffHandoffRequest(
       return missedHandoffResult;
     }
 
-    await transferVapiCall(vapiCallId, escalationPhone);
+    try {
+      await transferVapiCall(vapiCallId, escalationPhone);
+    } catch (transferErr) {
+      // Coarse reason only: no control URL, destination number or response body.
+      logger.error('[vapi-webhook] request_staff_handoff transfer failed', {
+        vapiCallId,
+        practiceId,
+        reason: transferErr instanceof VapiControlUnavailableError ? transferErr.reason : 'unexpected',
+        status: transferErr instanceof VapiControlUnavailableError ? transferErr.status : undefined,
+      });
+      throw transferErr;
+    }
 
     const amt = Number(claim?.outstandingAmount);
     const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
