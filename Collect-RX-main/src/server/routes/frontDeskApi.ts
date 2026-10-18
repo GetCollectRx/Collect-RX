@@ -33,6 +33,7 @@ import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js
 import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { logger } from '../observability/logger.js';
+import { recordCallPhase } from '../frontDesk/callPhaseStore.js';
 
 const router = Router();
 router.use(authenticate);
@@ -418,6 +419,7 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
         liveState: 'resolving',
       },
     });
+    await recordCallPhase(prisma, attempt.id, ['rep_answered', 'staff_or_agent']);
     void appendAuditLog(prisma, {
       practiceId,
       action: 'frontdesk.call.takeover',
