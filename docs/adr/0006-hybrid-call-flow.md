@@ -1,7 +1,7 @@
 # ADR 0006: One audio stream for the hybrid call flow
 
-**Status:** Proposed (design note for founder approval; no code until approved)
-**Date:** 2026-10-18
+**Status:** Direction accepted 2026-10-21: option B, staff ending first, subject to the bake-off as the go or no-go. No code until the bake-off passes.
+**Date:** 2026-10-18 (decisions recorded 2026-10-21)
 **Decides:** where the call audio lives, so hold and pickup can be detected cheaply, the scribe never stops listening, and staff or the agent can join the same call.
 
 ## Context
@@ -97,7 +97,7 @@ Pickup is the moment a human carrier rep starts speaking after hold. Delay is me
 | A | `listenUrl` frames plus streaming recognition plus our logic, then `controlUrl` round trip | Not measured. Unknown framing and buffering on `listenUrl` |
 | B | Twilio stream frames (20 ms mulaw) plus streaming recognition plus our logic, then a participant add (1 per second API default) | Not measured. Participant add must not be the slow step |
 
-No delay figure is claimed in this ADR. The bake-off measures it. The proposed target is that the alert reaches the desk within 5 seconds of rep speech onset in 95 percent of simulated pickups (backlog item 2.4 leaves the number open; this is a proposal for the founder to confirm).
+No delay figure is claimed in this ADR. The bake-off measures it. The founder set the target on 2026-10-21: the desk alert within 2 seconds of rep speech onset, met on 95 percent of bake-off pickups. See "Pickup timing and the rep's wait" for the trade-off this creates with false pickups.
 
 False pickups are the larger risk than delay. Hold audio contains speech ("your call is important to us", position in queue). The detector must separate recorded announcements from a live rep: phrase list per carrier, music and silence transitions, prompt cadence, and a second check (rep speech that does not match a known recorded phrase). A false pickup pings staff for nothing; a missed pickup loses the rep and the hold.
 
@@ -149,31 +149,94 @@ Adopt **B** for the first release, with **B-lite** as a bake-off variant and **A
 3. Staged delivery: move the staff ending to B first, because it needs no agent leg and autonomous calling is off by default (ADR 0005). Keep the agent ending on the current Vapi path until the SIP-into-Vapi test passes, then move it.
 4. If the bake-off fails on pickup delay, false pickups or the SIP test, fall back to A, which still gives live timing through `listenUrl`.
 
-Founder decisions needed to move forward: approve B as the direction, confirm the 5 second alert target, and confirm that the agent ending may stay on the Vapi path for the first release.
+Founder decisions taken 2026-10-21: B approved as the direction (staff ending first, subject to the bake-off), 2 second alert target, and the agent ending stays on the Vapi path for the first release.
 
 ## Bake-off test plan
 
 No real carrier is called at any point. Inputs are recorded and synthetic audio played from our own Twilio numbers or injected directly into the listener.
 
-**Corpus** (synthetic, no patient data): 40 scripted calls across four carrier styles, each with a menu, 3 to 30 minutes of hold with announcements and music, and a pickup by a scripted human voice at a known second. Include 10 hard cases: announcements that sound like a person, long silence, music with speech overlay, a rep who speaks over the music, a menu that changed.
+**Corpus** (synthetic, no patient data, no real carrier audio):
+
+- 100 scripted calls across four carrier styles, each with a menu, 3 to 30 minutes of hold with announcements and music, and a pickup by a scripted human voice at a known second. Voices and accents vary.
+- 200 hold announcements written to sound like a person ("thank you for holding, this is Sam", queue position updates, callback offers).
+- 100 hours of replayed hold audio with no pickup, run through the detector faster than real time; 10 of those hours also run in real time through the Twilio path.
+- Hard cases in the 100 calls: long silence, music with speech overlay, a rep who speaks over the music, a menu that changed, a rep who says only "hello".
 
 **What is measured, per option (A, B, B-lite):**
 
 | Metric | How | Pass for B |
 |---|---|---|
 | Cost per hold minute | Vendor usage records for a 30 minute call, divided by hold minutes | At or below $0.035 |
-| Pickup detection delay | Timestamp of scripted rep onset against alert or agent first word | 95 percent within 5 seconds |
-| False pickups | Alerts raised with no rep speaking, per 100 hold hours | At most 1 |
-| Missed pickups | Rep speech with no alert, out of 40 | 0 |
+| Pickup detection delay | Timestamp of scripted rep onset against desk alert (or agent first word) | 95 percent within 2 seconds, on at least 100 scripted pickups |
+| False pickups (pass or fail) | Alerts with no rep speaking, per 100 hold hours of replayed audio; and on 200 recorded announcements that sound like a person | At most 1 per 100 hold hours, and at most 2 percent of the 200 announcements |
+| Missed pickups (pass or fail) | Rep speech with no alert, across 100 scripted pickups | 0 of 100 (a clean 0 of 100 only bounds the true miss rate below about 3 percent at 95 percent confidence) |
+| Rep wait for staff | Pickup to staff audible, when staff accept at the earliest and at the limit | Within the rep-wait limit on 95 percent of runs |
 | Menu navigation | Scripted keypresses reach the hold queue without the model | 4 of 4 carrier styles; drift falls back correctly |
 | Staff join | Accept to audible on the call | Under 3 seconds; carrier hears no gap |
 | Scribe continuity | Transcript has no gap across join, leave and rejoin | No gap over 1 second |
 | Agent join (B only) | SIP leg answered by Vapi with correct assistant and metadata | Works, with call control intact |
 | Concurrency | 20 simultaneous synthetic calls | No dropped streams |
 
-**Steps for Khalid by hand** (nothing is done for him): create one test Twilio number and one TwiML App; provide a Vapi test phone number and assistant; give the sandbox environment variables. A separate checklist will be written with the Stage D plan.
+**Steps for Khalid by hand:** see `docs/operations/ADR-0006-BAKEOFF-SETUP-CHECKLIST.md`. Khalid runs it; nothing in Twilio or Vapi has been changed by Claude.
+
+**Go or no-go:** B proceeds only if every pass or fail row above passes and the four unverified items resolve favorably (SIP from a Twilio conference into Vapi with per-call settings and control; a stream on a conference leg; Vapi billing for model-idle minutes, which only affects option A; whether the scribe hears after a transfer, which only affects option A). If B fails, stop and return with option A.
 
 **Exit:** a written comparison with the measured table, and the chosen option recorded in the change log below.
+
+## Pickup timing and the rep's wait
+
+**Detection budget.** Two seconds from rep speech onset to desk alert is tight against false pickups: separating a live rep from a recorded announcement usually needs more than a word or two of audio. Two designs to test, in this order:
+
+1. **Single alert at 2 seconds** from a classifier that decides on the first 2 seconds of post-hold speech.
+2. **Two-stage alert:** a tentative "possible rep" cue at 2 seconds (staff get ready, nothing is claimed), then a confirmed alert once the classifier is sure. Meets the 2 second target for the cue while protecting the false-pickup threshold.
+
+The bake-off plots the delay-versus-false-pickup curve for both and reports which meets both thresholds.
+
+**Rep-wait limit.** This is how long a live rep waits, after speaking, for staff to be audible before the missed-call path runs (standing rule, ADR 0003: the agent gets a reference number, the call ends politely, the claim is requeued, "missed: staff busy" is logged). No evidence exists yet for how long Canadian carrier reps will wait, so these are proposals to be tested with scripted reps only.
+
+| Limit | Effect | Trade-off |
+|---|---|---|
+| 20 seconds | Fewer rep hang-ups; more missed calls and requeues | Staff must be at the desk |
+| 30 seconds (recommended default) | Time for one accept click and a join; tolerable pause on a real call | Needs per-practice override and measurement from the first live pilot |
+| 45 seconds | Fewer missed calls | A long silent wait is the likeliest trigger for a rep to hang up or suspect automation |
+
+Make the limit a per-practice setting with 30 seconds as the default, and record every missed call with the wait it reached.
+
+**What the rep hears while waiting.** Options only; none is built. Choosing is the founder's decision.
+
+| Option | What it is | Cost and risk |
+|---|---|---|
+| 1. Silence | Nothing is played | Simplest and keeps the rule that the AI never speaks to a rep. Reps may think the line dropped. |
+| 2. Fixed line | A short pre-recorded line, for example "One moment please, connecting you to the practice" | A second exception to the rule that the AI never speaks to the rep (the first is the missed-handoff script). Any automated speech to the rep probably brings the CRTC disclosure with it, which a connecting line is too short to carry; counsel must say whether the line needs it. Also raises automation visibility (CARRIER_BLOCK). |
+| 3. Neutral hold audio | Brief non-speech hold music or a soft tone played to the rep | No speech, so no new exception and no disclosure question on its face (counsel to confirm). Matches what reps already hear when they put a caller on hold. Cost: a held conference participant is expected to be cut out of the mix, so the scribe would likely hear a gap of up to the limit (to be confirmed in the bake-off). |
+
+Recommendation for the founder to decide: option 1 for the bake-off baseline, option 3 as the variant to test, option 2 not built unless counsel clears the disclosure question. Not built either way until the founder chooses.
+
+## Agent ending: structured outcome and graduation
+
+Confirmed in code on 2026-10-21:
+
+- Graduation counts (`loadCarrierGraduationStats`) read `HumanAssistedCallLog` rows by carrier and window only. They do not look at who handled the call.
+- A row is written whenever any assistant calls `log_call_outcome` (`handleLogCallOutcome` in `src/webhooks/vapi.ts`), keyed by `vapiCallId`. So an agent call counts toward graduation only if the agent assistants have that tool in the Vapi dashboard, which is not verified from the repo.
+- The autonomous squad's own outcome pipeline writes `call_attempts` outcome and carrier lessons, not `HumanAssistedCallLog` (the source comment says this is deliberate).
+
+Consequences and the plan, not built:
+
+1. Add a nullable ending column to `HumanAssistedCallLog` (staff or agent), filled from the call attempt's `callEnding`, so both endings log in one place and can be told apart.
+2. Graduation entry thresholds must count staff-ending rows only. Counting the agent's own calls would let a carrier's agent evidence graduate itself.
+3. Count agent-ending rows separately as post-graduation monitoring (suspicion rate, unresolved rate), with a path to suspend a carrier.
+4. Dashboard step for Khalid: confirm Claims_Agent, Escalation_Closer and Resolution_Closer each have the `log_call_outcome` tool and the same schema, including `staff_unavailable`.
+
+## Open items
+
+| Item | State |
+|---|---|
+| Data residency and PHIPA | Gate before the first live practice. Twilio has no Canadian recording region and Vapi runs in the US (EU on Premier). Counsel review required. No action now. |
+| Rep audio during the staff wait | Founder decision pending: options 1 to 3 above. |
+| Rep-wait limit | Proposed 30 seconds, per practice; to be validated in the pilot. |
+| Agent ending outcome logging | Design above; Vapi dashboard tool check needed. |
+| Recording and disclosure | Counsel to confirm the scribe transcribing staff calls and any speech played to the rep. |
+| Twilio Canada rate, SIP into Vapi, stream on a conference leg | Bake-off questions. |
 
 ## Consequences
 
@@ -186,3 +249,4 @@ No real carrier is called at any point. Inputs are recorded and synthetic audio 
 | Date | Change |
 |---|---|
 | 2026-10-18 | Proposed |
+| 2026-10-21 | Founder: B approved as the direction with staff ending first, subject to the bake-off. Pickup alert target set to 2 seconds. False and missed pickups made pass or fail. Agent ending stays on the Vapi path for the first release. Residency recorded as a gate before the first live practice. |
