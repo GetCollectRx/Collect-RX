@@ -727,7 +727,7 @@ export default function LiveConsole() {
                       type="button"
                       className="flex-1 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
                       onClick={() =>
-                        void post('/active/takeover', { phoneNumber: takeoverPhone })
+                        void post('/active/takeover', { phoneNumber: takeoverPhone, callId: activeCall.id })
                           .then(() => setTakeoverOpen(false))
                           .catch((e) => setError((e as Error).message))
                       }
