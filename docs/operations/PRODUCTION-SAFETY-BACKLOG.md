@@ -168,6 +168,26 @@ Implemented in full — see "Shipped ahead of schedule" at the top of this doc. 
 ### P2.2 — Deployment & rollback — ✅ DONE
 Implemented in full — see "Shipped ahead of schedule" at the top of this doc. Rollback runbook (`docs/runbooks/deploy-rollback.md`), automatic post-deploy smoke gate wired into both `collectrx-prod-deploy.yml` and `collectrx-staging-deploy.yml`, and confirmation that Fly's own health-check-gated rollout already covers "can the new release reach the DB" — with an explicit, undisguised gap flagged (exact automatic-rollback semantics unconfirmed against a live `flyctl`, since it isn't installed in this sandbox) rather than assumed.
 
+### P2.3 — V1 squad handoff destinations and Claims_Scribe first message (found 2026-10-17, not started)
+
+Found during a read-only check of the live Vapi account (GET requests only; commands and output are in the Step 1 evidence archive under `v1-vapi-readonly/`). Nothing was changed in Vapi and no call was made.
+
+**Confirmed**
+- Squad `bbe41279-5301-4b5d-aa43-d7b23eaab5e7` ("CollectRx V1 Human-Assisted Squad (Listening)") has three members: IVR_Navigator (dtmf, endCall), Hold_Sentinel (`request_staff_handoff`), Claims_Scribe (`log_call_outcome`). The tool servers point at the production webhook `https://collect-rx.fly.dev/api/webhooks/vapi`. This is also the squad the code falls back to when `VAPI_HUMAN_ASSISTED_SQUAD_ID` is unset (`src/vapi/client.ts`).
+
+**Possible defect (stored configuration only; behaviour not tested)**
+1. The V1 members carry only `assistantId` and `assistantOverrides`. They have no `assistantDestinations`, unlike the autonomous squad (`40ee8e13-72d0-4a9e-8c29-cd2271137791`), where IVR_Navigator can hand off to Claims_Agent and Hold_Sentinel. IVR_Navigator's prompt names Hold_Sentinel, but nothing in the stored squad lets it hand off. If Vapi has no other handoff mechanism in play, a V1 call could stall at the IVR step and never reach the hold or the staff transfer.
+2. Claims_Scribe has a `firstMessage` set in a squad described as listening only. The text was not read. If it is spoken on the call, check it against the CRTC disclosure decision (`Collect-RX-main/docs/compliance/crtc-disclosure-decision.md`) and the V1 rule that the agent does not converse (ADR 0003).
+
+**Also unverified**
+- Which squad ID production dials. Vapi shows only 5 recent calls and none carry a squad ID; calls are deleted from Vapi after they finish by design, so the call list cannot answer this. The check is `fly ssh console -a collect-rx -C "printenv VAPI_SQUAD_ID VAPI_HUMAN_ASSISTED_SQUAD_ID"`.
+- Whether the missed-handoff script can be spoken: ADR 0003 requires that the assistant receiving the `request_staff_handoff` result is allowed to speak the returned text, and Hold_Sentinel is silent by design. The assistant prompts were not read.
+
+**To do when picked up**
+- Decide the intended V1 flow (IVR_Navigator to Hold_Sentinel to Claims_Scribe, and what activates Claims_Scribe), then change the squad in the Vapi dashboard. The V1 squad is not defined in this repo, so keep a copy of its configuration in the repo once corrected.
+- Prove it with a live test call. That needs a written live-test plan (DEC-8); no call is authorized until then.
+- Related: P3.3 (squad handoff protocol docs) should cover the V1 squad once this is settled.
+
 ---
 
 ## 5. Backlog — P3 (operational excellence)
