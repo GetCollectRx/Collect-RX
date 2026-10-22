@@ -65,9 +65,9 @@ describe.skipIf(!dbReady)(
 
     it('onboards the practice via CSV import (the primary path for practices without a PMS connector)', async () => {
       const csvText = [
-        'claim_number,patient_first_name,patient_last_name,carrier_name,treatment_date,amount_billed,amount_outstanding,days_outstanding,treatment_codes,patient_dob',
-        'CLM-E2E-1001,Jane,Doe,Sun Life,2026-02-15,450.00,450.00,45,D1110,1985-06-12',
-        'CLM-E2E-1002,John,Smith,Canada Life,2026-03-10,220.00,220.00,20,D0274,1990-01-20',
+        'claim_number,patient_first_name,patient_last_name,carrier_name,treatment_date,amount_billed,amount_outstanding,days_outstanding,treatment_codes,patient_dob,payer_type',
+        'CLM-E2E-1001,Jane,Doe,Sun Life,2026-02-15,450.00,450.00,45,D1110,1985-06-12,PRIVATE',
+        'CLM-E2E-1002,John,Smith,Canada Life,2026-03-10,220.00,220.00,20,D0274,1990-01-20,PRIVATE',
       ].join('\n');
 
       const rows = parseSimpleCsv(csvText);
@@ -87,6 +87,7 @@ describe.skipIf(!dbReady)(
       const claims = await prisma.insuranceClaim.findMany({ where: { practiceId: practice.id } });
       expect(claims).toHaveLength(2);
       expect(claims.every((c) => c.patientToken && c.patientToken.length > 0)).toBe(true);
+      expect(claims.every((c) => c.payerType === 'PRIVATE')).toBe(true);
     });
 
     it('a platform admin (platform-dev session) sees the newly onboarded practice via /api/admin/practices', async () => {

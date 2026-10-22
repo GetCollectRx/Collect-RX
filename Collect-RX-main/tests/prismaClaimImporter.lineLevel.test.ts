@@ -57,6 +57,7 @@ describe('importPmsClaimsToPrisma with a line-level export', () => {
       [line('27211', '400.00'), line('02391', '150.00'), line('01202', '50.00')],
       'practice-1',
       'generic',
+      { defaultPayerType: 'PRIVATE' },
     );
 
     expect(prisma.insuranceClaim.upsert).toHaveBeenCalledTimes(1);
@@ -78,6 +79,7 @@ describe('importPmsClaimsToPrisma with a line-level export', () => {
       [line('01202', '50.00')],
       'practice-1',
       'generic',
+      { defaultPayerType: 'PRIVATE' },
     );
     expect(result.paymentsVerified).toBe(1);
     expect(result.dollarsRecoveredSyncVerified).toBe(100);

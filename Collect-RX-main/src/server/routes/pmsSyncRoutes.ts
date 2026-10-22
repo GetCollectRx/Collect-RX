@@ -9,6 +9,7 @@ import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { parseSimpleCsv } from '../csv/parseSimple';
 import { runPmsImportPipeline, type ExportScope } from '../pms/pmsImportPipeline.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
+import { parsePayerTypeInput } from '../pms/payerTypeInput.js';
 import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { validateCsvUploadFile } from '../validation/csvUpload.js';
@@ -96,6 +97,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
     let rows: Record<string, unknown>[] = [];
     let sourceBalanceTotal: number | undefined;
     let exportScope: ExportScope = 'partial';
+    let declaredPayerType: unknown;
 
     if (req.file?.buffer) {
       const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
@@ -104,6 +106,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       }
       const multipartScope = (req.body as { exportScope?: unknown } | undefined)?.exportScope;
       if (multipartScope === 'full' || multipartScope === 'partial') exportScope = multipartScope;
+      declaredPayerType = (req.body as { defaultPayerType?: unknown } | undefined)?.defaultPayerType;
       const text = req.file.buffer.toString('utf8');
       try {
         rows = parseSimpleCsv(text) as Record<string, unknown>[];
@@ -128,6 +131,12 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       }
       sourceBalanceTotal = bodyParsed.data.sourceBalanceTotal;
       exportScope = bodyParsed.data.exportScope ?? 'partial';
+      declaredPayerType = bodyParsed.data.defaultPayerType;
+    }
+
+    const payerTypeParse = parsePayerTypeInput(declaredPayerType);
+    if (!payerTypeParse.ok) {
+      return res.status(400).json({ success: false, error: payerTypeParse.error });
     }
 
     const resolved =
@@ -142,6 +151,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       sourceRecordCount: rows.length,
       sourceBalanceTotal,
       exportScope,
+      defaultPayerType: payerTypeParse.value ?? undefined,
     });
 
     return res.json({ success: true, ...result });
