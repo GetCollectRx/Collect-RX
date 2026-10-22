@@ -13,7 +13,8 @@ Work is grouped A→G. Complete in order. Engineering can finish A–C in-repo; 
 | **D** Live integrations | Ops | **Checklist ready** — [PHASE4-GO-LIVE.md](PHASE4-GO-LIVE.md) |
 | **E** Compliance & legal | Legal + Ops | **Tracker ready** — [COMPLIANCE-LAUNCH-TRACKER.md](../compliance/COMPLIANCE-LAUNCH-TRACKER.md) |
 | **F** Ops hardening | Ops | **Checklist ready** — [OPS-HARDENING-CHECKLIST.md](OPS-HARDENING-CHECKLIST.md) |
-| **G** Pilot cutover | Ops + Eng | **Runbook ready** — [PILOT-CUTOVER.md](PILOT-CUTOVER.md) |
+| **V** Internal validation | Eng + Ops | **Not started.** Must be complete before G. Clients are never the test (root `CLAUDE.md`) |
+| **G** Pilot cutover | Ops + Eng | **Runbook ready** — [PILOT-CUTOVER.md](PILOT-CUTOVER.md). Blocked on V |
 
 Related: [OUTSTANDING-FIXES-PRODUCT-READY.md](../../OUTSTANDING-FIXES-PRODUCT-READY.md), [MVP-SCOPE.md](../product/MVP-SCOPE.md), [ENVIRONMENT-MATRIX.md](../ENVIRONMENT-MATRIX.md), [HUMAN-DECISIONS-PENDING.md](HUMAN-DECISIONS-PENDING.md) (TELUS call timing, PHIPA deletion/breach scope, production RLS role verification — decision-ready options, not code work).
 
@@ -106,13 +107,27 @@ Execute on staging, then prod:
 
 ---
 
+## V — Internal validation (before any practice)
+
+Standing rule: a client is never the first to exercise a capability (root `CLAUDE.md`). Everything below is proven by CollectRx on staging, with CollectRx's own phones and data, before group G starts. A pilot measures value; it never proves function.
+
+- [ ] Full automated suite and e2e green on the exact commit being deployed
+- [ ] Staging runs that commit; migrations applied; smoke and product walkthrough pass
+- [ ] Import: realistic exports from each supported PMS family (line-level and claim-level, full and partial) produce correct balances, closures and zero false recoveries
+- [ ] Contained call lab: the deployed squad calls a simulated carrier (IVR menu, hold queue, rep) for each supported carrier; IVR navigation, hold detection and handoff pass at the pre-registered rate over repeated runs. No real carrier is called
+- [ ] Simulated staff endpoint: answered, declined and unanswered transfer paths all behave as designed (warm transfer, missed-handoff script, reference number captured and delivered)
+- [ ] CARRIER_BLOCK drill on staging: block set mid-queue stops all dials to that carrier across practices
+- [ ] PHI boundary: after a full staging call cycle, Vapi metadata and logs contain no test patient identifiers
+- [ ] Billing limits on staging in Stripe test mode: trial caps, overage pause, plan locks, payment failure
+- [ ] Learning loop: a staging call log produces an updated carrier playbook
+- [ ] Every result above meets the empirical standard in the root `CLAUDE.md` (pre-registered criteria, repeated runs, stored evidence per commit and prompt version)
+
 ## G — Pilot cutover
 
-**Eng prepared:** [PILOT-CUTOVER.md](PILOT-CUTOVER.md).
+**Eng prepared:** [PILOT-CUTOVER.md](PILOT-CUTOVER.md). **Blocked until group V is complete.**
 
 - [ ] First practice CSV onboard
-- [ ] Supervised call path (PHI tokens only)
-- [ ] CARRIER_BLOCK drill
+- [ ] Call path confirmed in prod with the practice (already proven in V; this confirms prod configuration, it is not the first test)
 - [ ] Week-1 daily ops review
 
 ---
