@@ -2,6 +2,8 @@
 ## CollectRx — Quebec Market Entry
 ### Pursuant to Quebec Law 25 (Act 64) — *Loi modernisant des dispositions législatives en matière de protection des renseignements personnels*
 
+> Reviewed against research 2026-10-13; not legal advice; see policy-research/SYNTHESIS.md.
+
 **Document Version:** 1.0  
 **Prepared By:** CollectRx Compliance Team  
 **Date:** May 2026  
@@ -18,8 +20,9 @@ This Privacy Impact Assessment (PIA) is prepared pursuant to **Section 3.3 of Qu
 - Voice agent interactions with insurance carriers (CDCP, Sun Life, Canada Life, Manulife, Green Shield, RBC, TELUS)
 - Patient record tokenization and PHI vault operations
 - Eligibility and estimate calculations
-- Patient payment collection (Phase 4)
 - CDCP reconsideration workflows (Phase 5)
+
+Patient-facing payments are outside the product scope (see the repo `CLAUDE.md`, product boundary) and outside this PIA.
 
 ---
 
@@ -29,10 +32,10 @@ This Privacy Impact Assessment (PIA) is prepared pursuant to **Section 3.3 of Qu
 
 | Category | Data Elements | Purpose | Retention |
 |----------|--------------|---------|-----------|
-| Identifiers | Patient name, date of birth, health card number | Tokenization only — never transmitted to voice agents | 7 years (per OAQ/CDCP requirements) |
-| Insurance | Plan number, group number, member ID | Eligibility verification | 7 years |
-| Clinical | CDT/CDA procedure codes, diagnosis codes, treatment dates | Estimate calculation, reconsideration | 7 years |
-| Financial | Outstanding balance, payment history | Patient AR, Stripe payment links | 7 years |
+| Identifiers | Patient name, date of birth, health card number | Stored tokenized in the PHI vault. Name and date of birth are sent to voice agents only as ephemeral call variables at dispatch, never in metadata and never in stored call records (see `PHI-VAPI-BOUNDARY.md`) | PENDING_COUNSEL (a 7 year period was cited without a verified source) |
+| Insurance | Plan number, group number, member ID | Eligibility verification; policy and group numbers are sent to voice agents as ephemeral call variables | PENDING_COUNSEL |
+| Clinical | CDT/CDA procedure codes, diagnosis codes, treatment dates | Estimate calculation, reconsideration | PENDING_COUNSEL |
+| Financial | Insurance claim balances and adjudication history | Insurance AR follow-up | PENDING_COUNSEL |
 
 ### 2.2 Practice Information
 
@@ -55,15 +58,16 @@ This Privacy Impact Assessment (PIA) is prepared pursuant to **Section 3.3 of Qu
 All CollectRx data is hosted on **Fly.io PostgreSQL**, in the **`yyz` (Toronto, Canada)** region — confirmed via `fly status` on 2026-07-05. CollectRx previously ran on Railway; that deployment has been fully decommissioned.
 
 ### 3.2 Quebec Law 25 Requirement
-Quebec Law 25 (Section 17) requires that any communication of personal information outside Quebec must be:
+Quebec Law 25 (Section 17, as enacted) requires that any communication of personal information outside Quebec must be:
 1. Subject to a **Privacy Impact Assessment** (this document)
 2. Governed by a written agreement ensuring equivalent protection
-3. Approved by the enterprise's **Privacy Officer**
+
+Approval of the transfer by the **Privacy Officer** is not in the enacted text read for this document. Whether it is required is a counsel question (PENDING_COUNSEL).
 
 ### 3.3 Compliance Actions Required
 
-**Action 1 — Data Residency Declaration: RESOLVED (2026-07-05).**
-CollectRx's Postgres instance is hosted on Fly.io in `yyz` (Toronto, Canada) — confirmed via `fly postgres list` / `fly status`. All practice and patient data, including Quebec practices, resides in this single Canadian instance. No separate Quebec-specific instance is required.
+**Action 1: Database residency (partial, 2026-07-05).**
+CollectRx's Postgres instance is hosted on Fly.io in `yyz` (Toronto, Canada), confirmed via `fly postgres list` / `fly status`. Stored records, including Quebec practices, reside in this Canadian instance. This does not establish residency for data processed by sub-processors in the call chain (see Action 2). No separate Quebec-specific instance is required for the database.
 
 **Action 2 — Data Transfer Agreement:**
 If any Quebec PHI transits to US infrastructure (e.g., Vapi.ai voice processing, OpenAI/Anthropic inference), a written **Cross-Border Data Transfer Agreement** must be executed with each vendor, confirming:
@@ -77,7 +81,7 @@ Quebec Law 25 requires **clear, specific consent** (not bundled consent) for:
 - Communication of information to voice agents
 - Use of information for purposes other than the original stated purpose
 
-Dental practices must obtain this consent from patients as part of their intake process. CollectRx will provide a **model consent clause** for practices to integrate into their patient intake forms.
+Dental practices must obtain this consent from patients as part of their intake process. CollectRx intends to provide a **model consent clause** for practices to integrate into their patient intake forms. No template exists in the repository yet (PENDING_COUNSEL for the wording).
 
 ---
 
@@ -101,7 +105,7 @@ Quebec Law 25 (Section 3.1) requires every enterprise to designate a **Privacy O
 - Approve any cross-border data transfers
 - Maintain the PIA register
 - Respond to patient access requests within **30 days** (Law 25 requirement)
-- Notify the Commission d'accès à l'information (CAI) of any privacy incident within **72 hours** if the incident presents a risk of serious injury
+- Notify the Commission d'accès à l'information (CAI) of any privacy incident **promptly** if the incident presents a risk of serious injury. The enacted s. 3.5 text reads "promptly" and states no fixed number of hours (`policy-research/private-sector-privacy.md`, row 13)
 
 ---
 
@@ -109,11 +113,11 @@ Quebec Law 25 (Section 3.1) requires every enterprise to designate a **Privacy O
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| PHI transmitted to voice agent without tokenization | Low | Critical | PIIVault tokenization enforced in all code paths; unit tested |
-| Data hosted outside Canada without consent | Low | High | Resolved — Postgres confirmed hosted in `yyz` (Toronto, Canada) as of 2026-07-05 |
-| Patient consent not obtained for AI processing | Medium | High | Model consent clause provided to practices |
-| Privacy incident not reported within 72 hours | Low | High | Implement automated incident detection and CAI notification workflow |
-| Vapi.ai retains call transcripts containing PHI tokens | Low | Medium | All Vapi transmissions use UUID tokens only; Vapi DPA reviewed |
+| Identifiers sent to voice agents beyond what a call needs | Medium | High | Ephemeral call variables only; metadata is UUID-only (boundary test). Per-call-type variable allowlist is planned, not built |
+| Data processed outside Canada by sub-processors without a PIA reference | Medium | High | Database is in `yyz` (Toronto, Canada) as of 2026-07-05. Sub-processor residency and transfer agreements are not established (Action 2, PENDING_COUNSEL) |
+| Patient consent not obtained for AI processing | Medium | High | Model consent clause not yet drafted (PENDING_COUNSEL) |
+| Privacy incident not reported promptly to CAI | Low | High | Implement automated incident detection and CAI notification workflow |
+| Vapi.ai retains call transcripts containing identifiers | Unknown | Medium | Recording disabled. Name, DOB and policy numbers are sent as ephemeral variables. Vapi transcript retention and the Vapi DPA are not yet confirmed (see `PHI-VAPI-BOUNDARY.md`) |
 | Patient access request not fulfilled within 30 days | Low | Medium | Implement access request portal |
 
 ---
