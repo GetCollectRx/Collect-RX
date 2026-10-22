@@ -18,7 +18,7 @@ Automated Dialing-Announcing Device (ADAD), **non-solicitation** calls.
 |------|----------|
 | Telemarketing (UTR Part III) | **No** — not solicitation |
 | National DNCL (UTR Part II) | **No** — B2B to business lines |
-| Automated-call identification | **Conservative product control** — disclose automation, practice name, claims-status purpose, and callback information at the start of a human interaction; confirm legal classification for each production workflow |
+| Automated-call identification | Conservative product control. UTR Part IV s.4(d), if it applies: begin with the principal's identity, a brief purpose, an email or postal address and a local or toll-free number; repeat if the message exceeds 60 seconds. Automation disclosure is product policy |
 | CASL (voice) | **No** |
 
 **Engineering controls:** Opening disclosure in `initiateCall()`, call hours Mon–Fri 8am–5pm ET,
@@ -58,7 +58,7 @@ dental practices (not carriers, not patients).
 | Channel | Regulation |
 |---------|------------|
 | Email | **CASL** — conspicuous publication, unsubscribe, sender ID |
-| Sales voice calls | **DNCL** scrub before calling residential/mobile numbers |
+| Sales voice calls | AI voice sales calls are likely telemarketing via an ADAD: express consent required (UTR Part IV s.2), no telemarketing to healthcare facilities (Part III s.28), telemarketing hours (Part III s.23), identification (Part III s.17), internal do-not-call list (Part III ss.8 to 12). A National DNCL scrub alone is not enough. See policy-research/CASL-AND-OWN-MARKETING.md (PR #127) |
 | Voice (if used) | CRTC rules for calls **to practices** — separate from carrier lane |
 
 **Engineering controls:** `emailOptOutAt`, one-click unsubscribe, `DNCL_PHONE_LIST_PATH`,
@@ -85,5 +85,5 @@ audit log, breach protocol (incident IC-1).
 
 > "CollectRx places **non-solicitation claim status inquiries** on behalf of dental practices
 > to insurance carrier provider lines — the same calls a billing coordinator makes today.
-> We comply with CRTC **ADAD identification rules**. We are **not telemarketing**. We are
-> **not calling patients** to sell anything."
+> We follow a written policy built on the CRTC automated-call identification rules. These calls are
+> **not telemarketing**, and we are **not calling patients** to sell anything."
