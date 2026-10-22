@@ -1,0 +1,376 @@
+{
+  "$comment": "Every file under src/ belongs to exactly one feature (first matching pattern wins). check-feature-coverage.mjs fails CI when a source file maps to no feature, a feature has no test, or a feature's line coverage drops below its floor. Floors sit one point below the coverage measured in CI, because line coverage varies slightly between machines (environment-dependent branches). Raise a floor whenever new tests lift a feature; never lower one to make CI pass.",
+  "excluded": {
+    "patterns": [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "src/**/*.d.ts",
+      "src/types/**",
+      "src/assets/**",
+      "src/styles/**",
+      "src/data/**",
+      "src/main.tsx",
+      "src/sentryClient.ts",
+      "src/server/seed.ts"
+    ],
+    "reason": "Type declarations, static assets, the browser bootstrap and the seed script carry no product behaviour of their own."
+  },
+  "features": [
+    {
+      "id": "hold-sentinel-handoff",
+      "name": "Hold Sentinel calls, staff handoff and missed-handoff reference capture",
+      "src": [
+        "src/webhooks/**",
+        "src/server/vapi/**",
+        "src/vapi/**",
+        "src/server/webhooks/metadata-validator.ts",
+        "src/server/webhooks/webhookSecurityValidator.ts",
+        "src/server/claimStatusFromCallOutcome.ts",
+        "src/server/outcomeConfidence.ts",
+        "src/outcome/**"
+      ],
+      "tests": [
+        "tests/missedHandoff.test.ts",
+        "tests/vapiClient.test.ts",
+        "tests/phase-5/**"
+      ],
+      "floor": 67
+    },
+    {
+      "id": "learning-loop",
+      "name": "Carrier learning loop (call logs to carrier playbooks, self-tuning)",
+      "src": [
+        "src/server/learning/**"
+      ],
+      "tests": [
+        "tests/**/*arrier*esson*.test.ts",
+        "tests/agents/09-self-tuning-agent.test.ts",
+        "tests/**/humanAssisted*.test.ts"
+      ],
+      "floor": 16
+    },
+    {
+      "id": "call-dispatch",
+      "name": "Call queue, dispatch gates, CARRIER_BLOCK, call window and attempt limits",
+      "src": [
+        "src/server/frontDesk/**",
+        "src/carriers/**",
+        "src/server/jobs/arQueue.ts",
+        "src/server/jobs/deadLetterQueue.ts",
+        "src/server/jobs/jobFailureAlert.ts",
+        "src/routes/queue.ts",
+        "src/routes/workQueue.ts",
+        "src/routes/calls.ts",
+        "src/routes/carriers.ts",
+        "src/server/services/workQueueService.ts",
+        "src/server/services/priorityEngine.ts",
+        "src/server/services/priorityScheduleMerge.ts",
+        "src/services/priorityScoring.ts",
+        "src/server/insurance/**",
+        "src/server/discovery/**",
+        "src/server/routes/frontDeskApi.ts",
+        "src/server/routes/carrierDiscoveryRoutes.ts",
+        "src/workers/**",
+        "src/services/guardrails/**",
+        "src/server/rulesEngine.ts"
+      ],
+      "tests": [
+        "tests/frontDesk/**",
+        "tests/carrierBlock*.test.ts",
+        "tests/queueEngine*.test.ts"
+      ],
+      "floor": 52
+    },
+    {
+      "id": "claims-import",
+      "name": "CSV and PMS import, claim merge, full-export closure, AbelDent connector API",
+      "src": [
+        "src/server/pms/**",
+        "src/server/csv/**",
+        "src/server/validation/csvUpload.ts",
+        "src/server/routes/pmsSyncRoutes.ts",
+        "src/server/routes/pmsApiRoutes.ts",
+        "src/server/routes/connectorRoutes.ts",
+        "src/server/routes/connectorAdminRoutes.ts",
+        "src/server/services/connectorSyncMonitor.ts",
+        "src/server/services/desktopConnectorService.ts",
+        "src/server/jobs/connectorMonitorScheduler.ts",
+        "src/server/emrSyncOutbox.ts",
+        "src/server/emrWebhookUrl.ts",
+        "src/lib/csvClientPreview.ts"
+      ],
+      "tests": [
+        "tests/claimRowMerge.test.ts",
+        "tests/absentClaimHandler.test.ts",
+        "tests/csv-call-queue-remediation.test.ts",
+        "src/server/csv/*.test.ts"
+      ],
+      "floor": 67
+    },
+    {
+      "id": "recovery-routing",
+      "name": "Recovery routing, triage, payment verification, denial and underpayment recovery",
+      "src": [
+        "src/server/recovery/**",
+        "src/server/triage/**",
+        "src/server/reconciliation/**",
+        "src/server/adjudication/**",
+        "src/services/arEngine/**",
+        "src/server/routes/triageCredentialRoutes.ts",
+        "src/routes/insurance.ts",
+        "src/server/arCommandCenter/**",
+        "src/services/insurance-analytics.ts",
+        "src/services/insurance-denial-analytics.ts",
+        "src/lib/recoveryDisplay.ts",
+        "src/lib/workQueuePriority.ts"
+      ],
+      "tests": [
+        "tests/phase-5/payment-verification.test.ts",
+        "tests/planEntitlementRoutes.test.ts",
+        "tests/recovery/**"
+      ],
+      "floor": 63
+    },
+    {
+      "id": "cdcp-and-pre-visit",
+      "name": "CDCP predetermination and reconsideration, pre-visit eligibility, estimates",
+      "src": [
+        "src/server/preVisit/**",
+        "src/server/canadianExpansion/**",
+        "src/server/services/cdcp/**",
+        "src/server/routes/cdcp.ts",
+        "src/server/routes/preVisitRoutes.ts",
+        "src/server/routes/canadianExpansionApi.ts",
+        "src/services/eligibility/**",
+        "src/routes/eligibility.ts",
+        "src/server/benefits/**",
+        "src/server/routes/benefitsApi.ts",
+        "src/server/routes/ontarioBillingRoutes.ts",
+        "src/server/jobs/ontarioArAgingSweep.ts"
+      ],
+      "tests": [
+        "tests/preVisit/**",
+        "src/server/preVisit/*.test.ts",
+        "tests/eligibility.test.ts"
+      ],
+      "floor": 54
+    },
+    {
+      "id": "billing-and-plans",
+      "name": "Plans, entitlements, minute metering, COGS breaker, Stripe billing",
+      "src": [
+        "src/billing/**",
+        "src/server/plans/**",
+        "src/server/stripe/**",
+        "src/server/routes/billingRoutes.ts",
+        "src/server/routes/stripeApiRoutes.ts",
+        "src/server/services/billing/**",
+        "src/website/**"
+      ],
+      "tests": [
+        "tests/entitlements.test.ts",
+        "tests/billingTierPricing.test.ts",
+        "tests/billingCatalog.test.ts",
+        "tests/cogsBreaker.test.ts",
+        "tests/planGateFailClosed.test.ts"
+      ],
+      "floor": 58
+    },
+    {
+      "id": "auth-and-access",
+      "name": "Login, sessions, roles, practice scoping, SSO, user management",
+      "src": [
+        "src/server/accessControl/**",
+        "src/server/middleware/**",
+        "src/server/routes/authRoutes.ts",
+        "src/server/routes/ssoRoutes.ts",
+        "src/server/sso/**",
+        "src/server/authToken.ts",
+        "src/server/services/passwordResetService.ts",
+        "src/server/routes/platformPersonaAdminApi.ts",
+        "src/lib/authTypes.ts",
+        "src/lib/desktopAuth.ts",
+        "src/lib/pathRequiresAuth.ts",
+        "src/lib/personaRole.ts",
+        "src/lib/useRoleAccess.ts",
+        "src/lib/practiceScopedApi.ts"
+      ],
+      "tests": [
+        "tests/idorPracticeScope.audit.test.ts",
+        "tests/adminRoutesWriteAuthorization.test.ts"
+      ],
+      "floor": 64
+    },
+    {
+      "id": "practice-and-organizations",
+      "name": "Practice settings, provisioning, DSO organizations and group admin",
+      "src": [
+        "src/server/services/practiceSettingsService.ts",
+        "src/server/organizations/**",
+        "src/server/routes/orgAdminRoutes.ts",
+        "src/server/routes/groupAdminRoutes.ts",
+        "src/server/routes/adminRoutes.ts",
+        "src/server/featureFlags/**"
+      ],
+      "tests": [
+        "tests/practiceSettingsService.test.ts"
+      ],
+      "floor": 72
+    },
+    {
+      "id": "phi-and-compliance",
+      "name": "PHI vault, encryption, RLS tenant isolation, audit log, compliance workspace",
+      "src": [
+        "src/pii-vault.ts",
+        "src/services/pii-vault.ts",
+        "src/server/crypto/**",
+        "src/server/db/**",
+        "src/server/db.ts",
+        "src/lib/prisma.ts",
+        "src/lib/prismaRls.ts",
+        "src/server/audit/**",
+        "src/server/compliance/**",
+        "src/server/routes/complianceRoutes.ts",
+        "src/server/routes/complianceWorkspaceRoutes.ts",
+        "src/server/logging/**",
+        "src/server/jobs/dataRetentionJob.ts",
+        "src/server/insuranceOnlyPolicy.ts",
+        "src/server/databaseTls.ts",
+        "src/server/tls/**"
+      ],
+      "tests": [
+        "tests/rls.test.ts",
+        "tests/patientTokenScope.test.ts",
+        "src/server/jobs/dataRetentionJob.test.ts"
+      ],
+      "floor": 81
+    },
+    {
+      "id": "notifications-and-email",
+      "name": "Practice notifications, transactional email, digests, alerts",
+      "src": [
+        "src/server/email/**",
+        "src/server/sendgrid/**",
+        "src/server/services/emailService.ts",
+        "src/server/services/practiceNotificationService.ts",
+        "src/server/services/escalationService.ts",
+        "src/server/services/agentEscalationService.ts",
+        "src/services/alerts.ts",
+        "src/server/jobs/dailyDigestJob.ts",
+        "src/server/routes/publicUnsubscribeRoutes.ts",
+        "src/server/routes/sendgridInboundRouter.ts"
+      ],
+      "tests": [
+        "tests/prospectUnsubscribe.test.ts"
+      ],
+      "floor": 37
+    },
+    {
+      "id": "reporting-and-analytics",
+      "name": "Dashboards, reports, call quality, KPIs, product telemetry",
+      "src": [
+        "src/server/reports/**",
+        "src/server/routes/practiceReportsApi.ts",
+        "src/server/routes/dashboardRoutes.ts",
+        "src/server/routes/callQualityRoutes.ts",
+        "src/server/services/callQualityScorer.ts",
+        "src/server/services/phase5CallKpis.ts",
+        "src/server/services/platformReports.ts",
+        "src/server/services/assumptionValidation.ts",
+        "src/server/services/outcomeClassifier.ts",
+        "src/server/services/carrierRules.ts",
+        "src/services/analytics/**",
+        "src/routes/analytics.ts",
+        "src/server/productAnalytics/**",
+        "src/productAnalytics/**",
+        "src/server/routes/productTelemetry.ts",
+        "src/server/lib/**",
+        "src/server/jobs/dailyArClose.ts"
+      ],
+      "tests": [
+        "tests/callQualityScorer.test.ts"
+      ],
+      "floor": 46
+    },
+    {
+      "id": "ops-and-platform",
+      "name": "Server bootstrap, health, observability, schedulers, desktop releases, agent runner",
+      "src": [
+        "src/server/index.ts",
+        "src/server/workerEntry.ts",
+        "src/server/healthMetricsExposure.ts",
+        "src/server/observability/**",
+        "src/server/jobs/**",
+        "src/server/agents/**",
+        "src/server/routes/agentRunsRouter.ts",
+        "src/server/routes/dlqAdminRoutes.ts",
+        "src/server/routes/desktopReleasesRoutes.ts",
+        "src/server/services/desktopReleaseService.ts",
+        "src/server/apiErrorMessage.ts",
+        "src/server/appUrl.ts",
+        "src/server/corsAllowedOrigins.ts",
+        "src/server/envAliases.ts",
+        "src/server/publicApiHelpers.ts",
+        "src/server/resourceStatic.ts",
+        "src/server/validation/**",
+        "src/config/**",
+        "src/utils/**",
+        "src/lib/**"
+      ],
+      "tests": [
+        "src/server/healthCheck.test.ts",
+        "tests/gracefulShutdown.test.ts",
+        "tests/deadLetterQueue.test.ts"
+      ],
+      "floor": 40
+    },
+    {
+      "id": "marketing-and-growth",
+      "name": "Prospecting, campaigns, outreach, referrals, demo booking, partnerships",
+      "src": [
+        "src/server/marketing/**",
+        "src/server/routes/campaignRoutes.ts",
+        "src/server/routes/emailCampaignRoutes.ts",
+        "src/server/routes/demoBookingWebhookRouter.ts",
+        "src/server/routes/earlyAccessRoutes.ts",
+        "src/server/routes/partnershipsRouter.ts",
+        "src/server/jobs/prospectHarvestingJob.ts"
+      ],
+      "tests": [
+        "tests/prospectUnsubscribe.test.ts"
+      ],
+      "floor": 43
+    },
+    {
+      "id": "legacy-pad-payments",
+      "name": "GoCardless PAD (pre-authorized debit) payments",
+      "src": [
+        "src/server/gocardless/**",
+        "src/server/webhooks/gocardless.ts",
+        "src/server/routes/gocardlessRoutes.ts",
+        "src/server/jobs/padReconciliationScheduler.ts"
+      ],
+      "tests": [
+        "tests/**/*ocardless*.test.ts",
+        "tests/**/*pad*.test.ts"
+      ],
+      "floor": 13
+    },
+    {
+      "id": "frontend-app",
+      "name": "React app shell, pages and components",
+      "src": [
+        "src/App.tsx",
+        "src/pages/**",
+        "src/components/**",
+        "src/context/**",
+        "src/hooks/**"
+      ],
+      "tests": [
+        "e2e/**/*.spec.ts",
+        "src/pages/*.test.ts"
+      ],
+      "floor": 0
+    }
+  ]
+}

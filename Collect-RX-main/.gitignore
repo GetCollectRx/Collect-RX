@@ -57,3 +57,4 @@ dist-electron/
 *.asar
 .staging-seed-credentials
 dist-macos/
+coverage/
