@@ -48,6 +48,16 @@ The `< 30` check ran first and rejected every claim under 30 days old, TELUS inc
 
 ## 2. `PHIPADeletionRequest` / `PHIPABreachNotification` — schema exists, zero implementation
 
+**Update 2026-08-19 — Option B shipped.** `src/pages/LegalPrivacy.tsx` now states plainly that
+deletion and breach-notification requests are handled manually (support ticket → an engineer
+runs a scoped, logged deletion under supervision) until the automated workflow ships, and points
+requesters at support rather than implying a self-serve flow exists. This is a documentation/
+runbook change only — it does not touch `PHIPADeletionRequest`/`PHIPABreachNotification` or
+`tests/phipaCompliance.test.ts`, and it does not start the clock on Option A. Option A (the real
+workflow) still needs the legal/privacy sign-off below before any engineering work against those
+models begins — that has not happened yet. `docs/compliance/PHIPA-MANUAL-DELETION-BREACH-RUNBOOK.md`
+is the internal how-to for support/engineering handling a request under the interim manual process.
+
 **Owner needed:** Product + Legal/Privacy Officer (PHIPA compliance sign-off), before any engineering work starts.
 
 **Status: Option B's engineering-doable half is shipped (interim runbook below); Option A (the real automated workflow) is still blocked on legal/privacy sign-off, which only Legal/Product can unblock.**
