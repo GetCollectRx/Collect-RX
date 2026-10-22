@@ -1119,6 +1119,10 @@ model CallAttempt {
   isHumanAssisted      Boolean      @default(false) @map("is_human_assisted")
   /// Durable outbound intent that existed before the external Vapi request.
   dispatchIntentId     String?      @unique @map("dispatch_intent_id")
+  /// request_staff_handoff state (see src/webhooks/staffHandoff.ts). Null: never requested.
+  staffHandoffState    StaffHandoffState? @map("staff_handoff_state")
+  staffHandoffReason   String?            @map("staff_handoff_reason")
+  staffHandoffAt       DateTime?          @map("staff_handoff_at")
 
   claim           InsuranceClaim        @relation(fields: [claimId], references: [id])
   dispatchIntent  CallDispatchIntent?    @relation(fields: [dispatchIntentId], references: [id])
@@ -1129,6 +1133,7 @@ model CallAttempt {
   @@index([vapiCallId])
   @@index([outcome])
   @@index([initiatedAt(sort: Desc)])
+  @@index([staffHandoffState, staffHandoffAt])
   @@map("call_attempts")
 }
 
@@ -2560,3 +2565,10 @@ model WebhookAuditLog {
   @@map("webhook_audit_logs")
 }
  
+
+enum StaffHandoffState {
+  REQUESTED
+  PROVIDER_ACCEPTED
+  FAILED
+  OUTCOME_UNKNOWN
+}
