@@ -10,6 +10,17 @@ const PRACTICE_ROLES = [
   'group_admin',
 ] as const;
 
+// Mirrors the CarrierId enum in prisma/schema.prisma — kept as a local literal
+// list (like PRACTICE_ROLES above) rather than importing @prisma/client here.
+const CARRIER_IDS = [
+  'sun_life',
+  'canada_life',
+  'manulife',
+  'green_shield',
+  'rbc',
+  'telus_adjudicare',
+] as const;
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 /** New login: individual user email + password. */
@@ -64,6 +75,24 @@ export const registerBodySchema = z.object({
     )
     .max(49, 'use a batch import for organizations larger than 50 locations')
     .optional(),
+  /**
+   * Carriers the practice currently works with, each with the provider/billing
+   * number that carrier issued them. Required — validateDispatch() already
+   * refuses to call a carrier with no providerNumber on file, so this closes
+   * that gap at signup instead of practices discovering it silently later
+   * (queueEngine.ts just defers claims for an unauthorized carrier without
+   * telling anyone).
+   */
+  carriers: z
+    .array(
+      z.object({
+        carrierId: z.enum(CARRIER_IDS),
+        providerNumber: z.string().trim().min(1, 'providerNumber is required').max(50),
+      }),
+    )
+    .min(1, 'select at least one carrier your practice works with'),
+  /** Must be explicitly accepted — recorded as privacyPolicyAcceptedAt/Version on the Practice row. */
+  privacyPolicyAccepted: z.literal(true, 'You must accept the Privacy Policy to create an account'),
 });
 
 export const inviteBodySchema = z.object({

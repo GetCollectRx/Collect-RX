@@ -19,7 +19,14 @@ export function unusedLegacyPasswordHash(): Promise<string> {
 export async function createOrgPractice(
   tx: Prisma.TransactionClient,
   organizationId: string,
-  input: { practiceName: string; timezone?: string; passwordHash: string },
+  input: {
+    practiceName: string;
+    timezone?: string;
+    passwordHash: string;
+    settings?: object;
+    privacyPolicyAcceptedAt?: Date;
+    privacyPolicyVersion?: string;
+  },
 ): Promise<Practice> {
   const practice = await tx.practice.create({
     data: {
@@ -28,6 +35,9 @@ export async function createOrgPractice(
       passwordHash: input.passwordHash,
       billingTier: 'trial',
       trialEndsAt: trialEndDate(),
+      ...(input.settings ? { settings: input.settings } : {}),
+      ...(input.privacyPolicyAcceptedAt ? { privacyPolicyAcceptedAt: input.privacyPolicyAcceptedAt } : {}),
+      ...(input.privacyPolicyVersion ? { privacyPolicyVersion: input.privacyPolicyVersion } : {}),
     },
   });
   await tx.organizationPractice.create({
