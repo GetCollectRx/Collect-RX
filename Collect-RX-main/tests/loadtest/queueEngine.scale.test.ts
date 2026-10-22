@@ -211,6 +211,19 @@ describe.skipIf(!dbReady)('Queue engine at scale — 50-practice fleet', () => {
       }
 
       // ── Invariant: CARRIER_BLOCK propagates to org siblings, precisely ────
+      // CARRIER_BLOCK marking is applied lazily — only when the engine
+      // actually evaluates a candidate during a tick (queueEngine.ts's
+      // dispatch-guard switch) — not an eager bulk-update at block-event
+      // time. Same deferred throughput gap as the starvation check above:
+      // a sibling entry the engine never reached within TICKS ticks stays
+      // unmarked, which isn't a propagation-logic bug on its own. (Tried a
+      // throughput-aware hard assertion here that excluded only the
+      // VAPI_CAPACITY_EXHAUSTED sweep, but other pre-CARRIER_BLOCK gates —
+      // CARRIER_CONCURRENCY_LIMIT, COGS throttling — can just as easily
+      // leave an entry PENDING with a different code before it ever reaches
+      // the CARRIER_BLOCK check, so that exclusion list was incomplete and
+      // flaked; logging matches the deliberately-deferred sibling class of
+      // check the operator scoped this invariant out of for now.)
       const siblingIds = fleet.sixLocationPracticeIds.filter((id) => id !== fleet.blockedPracticeId);
       const siblingBlockedQueue = await runWithRlsBypass(() =>
         prisma.callQueue.findMany({
@@ -224,12 +237,6 @@ describe.skipIf(!dbReady)('Queue engine at scale — 50-practice fleet', () => {
       for (const practiceId of siblingIds) {
         const entriesForPractice = siblingBlockedQueue.filter((e) => e.practiceId === practiceId);
         expect(entriesForPractice.length, `sibling ${practiceId} should have its guaranteed ${fleet.blockedCarrierId} claim seeded`).toBeGreaterThan(0);
-        // CARRIER_BLOCK marking is applied lazily — only when the engine
-        // actually evaluates a candidate during a tick (queueEngine.ts's
-        // dispatch-guard switch) — not an eager bulk-update at block-event
-        // time. Same deferred throughput gap as the starvation check above:
-        // a sibling entry the engine never reached within TICKS ticks stays
-        // unmarked, which isn't a propagation-logic bug on its own.
         const allBlocked = entriesForPractice.every((e) => e.status === 'BLOCKED');
         if (!allBlocked) {
           console.warn(
