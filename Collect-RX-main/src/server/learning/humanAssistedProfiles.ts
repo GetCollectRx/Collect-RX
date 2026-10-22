@@ -23,6 +23,7 @@ import {
   assertAllowedEvalModel,
   assertAnthropicEvalAllowed,
 } from '../../services/analytics/anthropicEvalGuard.js';
+import { contributingPracticeIds } from './learningPolicy.js';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 /** Synthesis is a narrow structured task — the cheap model tier is deliberate. */
@@ -169,8 +170,12 @@ export async function synthesizeCarrierProfile(
   prisma: PrismaClient,
   carrierId: CarrierId,
 ): Promise<number> {
+  // Only practices that opted in to learning contribute to shared profiles.
+  const contributors = await contributingPracticeIds(prisma);
+  if (contributors.length === 0) return 0;
+
   const unprocessed = await prisma.humanAssistedCallLog.findMany({
-    where: { carrierId, processedForProfileAt: null },
+    where: { carrierId, processedForProfileAt: null, practiceId: { in: contributors } },
     orderBy: { createdAt: 'asc' },
     take: BATCH_SIZE,
     select: {

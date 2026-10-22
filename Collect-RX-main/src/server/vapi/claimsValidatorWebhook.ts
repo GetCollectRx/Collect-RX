@@ -496,6 +496,7 @@ async function applyDeadlineFromFacts(
  */
 export async function recordSubmissionChannelFromFacts(
   prisma: PrismaClient,
+  practiceId: string,
   carrierId: CarrierId,
   callAttemptId: string,
   facts: ValidatorExtractedFacts,
@@ -510,6 +511,7 @@ export async function recordSubmissionChannelFromFacts(
   if (typeof facts.submissionMethod !== 'string' || typeof facts.submissionDestination !== 'string') return;
 
   await recordSubmissionChannelObservation(prisma, {
+    practiceId,
     carrierId,
     channelType,
     submissionMethod: facts.submissionMethod,
@@ -579,7 +581,13 @@ export async function runClaimsValidation(
   // asking cold. Gated on result.passed, unlike deadline stamping above.
   if (result.passed) {
     try {
-      await recordSubmissionChannelFromFacts(prisma, attempt.claim.carrierId, attempt.id, input.extractedFacts);
+      await recordSubmissionChannelFromFacts(
+        prisma,
+        attempt.claim.practiceId,
+        attempt.claim.carrierId,
+        attempt.id,
+        input.extractedFacts,
+      );
     } catch (channelErr) {
       logger.error('[validator] submission channel memory write failed (non-fatal)', { error: channelErr });
     }

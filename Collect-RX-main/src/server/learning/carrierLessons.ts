@@ -20,6 +20,12 @@ import {
   assertAllowedEvalModel,
   assertAnthropicEvalAllowed,
 } from '../../services/analytics/anthropicEvalGuard.js';
+import { logger } from '../observability/logger.js';
+import {
+  LEARNING_CONTRIBUTION_DISABLED,
+  loadPracticeLearningPolicy,
+} from './learningPolicy.js';
+import { scanLessonText } from './lessonTextScan.js';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 /** Extraction is a narrow structured task — the cheap model tier is deliberate. */
@@ -134,15 +140,26 @@ export async function extractLessonsFromCall(
   prisma: PrismaClient,
   callAttemptId: string,
 ): Promise<number> {
+  const owner = await prisma.callAttempt.findUnique({
+    where: { id: callAttemptId },
+    select: { claim: { select: { carrierId: true, practiceId: true } } },
+  });
+  if (!owner) return 0;
+  const carrierId = owner.claim.carrierId;
+
+  // Gate before the transcript is read: an opted-out practice's transcript is
+  // never loaded for learning, never sent to the model, and never stored.
+  const policy = await loadPracticeLearningPolicy(prisma, owner.claim.practiceId);
+  if (!policy.learningContribution) {
+    logger.info('[carrierLessons] skipped', { reasonCode: LEARNING_CONTRIBUTION_DISABLED, callAttemptId });
+    return 0;
+  }
+
   const attempt = await prisma.callAttempt.findUnique({
     where: { id: callAttemptId },
-    select: {
-      transcriptText: true,
-      claim: { select: { carrierId: true } },
-    },
+    select: { transcriptText: true },
   });
   if (!attempt?.transcriptText || attempt.transcriptText.length < 200) return 0;
-  const carrierId = attempt.claim.carrierId;
 
   const proposedCount = await prisma.carrierLesson.count({
     where: { carrierId, status: 'PROPOSED' },
@@ -160,6 +177,15 @@ export async function extractLessonsFromCall(
 
   let stored = 0;
   for (const lesson of extracted) {
+    const scan = scanLessonText(`${lesson.observation} ${lesson.recommendation}`, policy.fingerprintTerms);
+    if (!scan.ok) {
+      logger.warn('[carrierLessons] lesson rejected by text scan', {
+        reasonCode: scan.reasonCode,
+        carrierId,
+        callAttemptId,
+      });
+      continue;
+    }
     if (seen.has(normalize(lesson.observation))) continue;
     await prisma.carrierLesson.create({
       data: {
@@ -183,7 +209,10 @@ export async function extractLessonsFromCall(
 export async function getApprovedNavigationNotes(
   prisma: PrismaClient,
   carrierId: CarrierId,
+  practiceId: string,
 ): Promise<string> {
+  const policy = await loadPracticeLearningPolicy(prisma, practiceId);
+  if (!policy.learningConsumption) return '';
   const lessons = await prisma.carrierLesson.findMany({
     where: { carrierId, status: 'APPROVED', category: 'IVR_NAVIGATION' },
     orderBy: [{ confidence: 'desc' }, { reviewedAt: 'desc' }],

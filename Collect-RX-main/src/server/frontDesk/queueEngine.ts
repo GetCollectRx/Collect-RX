@@ -903,7 +903,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     // Only published, human-approved snapshots may augment the static adapter
     // hints. Proposed discovery output is never exposed to a live call.
-    const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId);
+    const learnedNotes = await getApprovedNavigationNotes(prisma, next.claim.carrierId, next.practiceId);
     const publishedNavigation = await getPublishedNavigationSteps(prisma, next.claim.carrierId);
     const carrierIvrInstructions = [
       ...carrierConfig.ivrHints,
@@ -917,11 +917,13 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       prisma,
       next.claim.carrierId,
       'CLAIM_RESUBMISSION',
+      next.practiceId,
     );
     const knownDocumentationChannel = await getKnownSubmissionChannel(
       prisma,
       next.claim.carrierId,
       'DOCUMENTATION',
+      next.practiceId,
     );
 
     const callParams: VapiCallParams = {

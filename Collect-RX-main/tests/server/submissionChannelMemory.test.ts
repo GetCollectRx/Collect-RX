@@ -9,6 +9,8 @@ import {
   type ValidatorExtractedFacts,
 } from '../../src/server/vapi/claimsValidatorWebhook.js';
 
+const PRACTICE_ID = 'practice-1';
+
 function channelPrisma(overrides: { findUnique?: unknown; upsert?: unknown } = {}) {
   const upsertMock = vi.fn().mockResolvedValue({});
   const findUniqueMock = vi.fn().mockResolvedValue(null);
@@ -16,6 +18,17 @@ function channelPrisma(overrides: { findUnique?: unknown; upsert?: unknown } = {
     carrierSubmissionChannel: {
       findUnique: overrides.findUnique ?? findUniqueMock,
       upsert: overrides.upsert ?? upsertMock,
+    },
+    practice: {
+      findUnique: vi.fn().mockResolvedValue({
+        name: 'Synthetic Channel Practice',
+        billingPhone: null,
+        faxNumber: null,
+        npi: null,
+        taxId: null,
+        learningContribution: true,
+        learningConsumption: true,
+      }),
     },
   };
   return { prisma: prisma as unknown as PrismaClient, upsertMock, findUniqueMock };
@@ -25,6 +38,7 @@ describe('recordSubmissionChannelObservation', () => {
   it('no-ops when submissionMethod is empty/whitespace', async () => {
     const { prisma, upsertMock, findUniqueMock } = channelPrisma();
     await recordSubmissionChannelObservation(prisma, {
+      practiceId: PRACTICE_ID,
       carrierId: 'sun_life' as never,
       channelType: 'CLAIM_RESUBMISSION' as never,
       submissionMethod: '   ',
@@ -37,6 +51,7 @@ describe('recordSubmissionChannelObservation', () => {
   it('no-ops when submissionDestination is empty/whitespace', async () => {
     const { prisma, upsertMock } = channelPrisma();
     await recordSubmissionChannelObservation(prisma, {
+      practiceId: PRACTICE_ID,
       carrierId: 'sun_life' as never,
       channelType: 'CLAIM_RESUBMISSION' as never,
       submissionMethod: 'fax',
@@ -123,7 +138,7 @@ describe('recordSubmissionChannelObservation', () => {
 describe('getKnownSubmissionChannel', () => {
   it("returns '' when findUnique resolves null", async () => {
     const { prisma } = channelPrisma({ findUnique: vi.fn().mockResolvedValue(null) });
-    const result = await getKnownSubmissionChannel(prisma, 'sun_life' as never, 'CLAIM_RESUBMISSION' as never);
+    const result = await getKnownSubmissionChannel(prisma, 'sun_life' as never, 'CLAIM_RESUBMISSION' as never, PRACTICE_ID);
     expect(result).toBe('');
   });
 
@@ -134,7 +149,7 @@ describe('getKnownSubmissionChannel', () => {
         submissionDestination: '555-0100',
       }),
     });
-    const result = await getKnownSubmissionChannel(prisma, 'sun_life' as never, 'CLAIM_RESUBMISSION' as never);
+    const result = await getKnownSubmissionChannel(prisma, 'sun_life' as never, 'CLAIM_RESUBMISSION' as never, PRACTICE_ID);
     expect(result).toBe('fax to 555-0100');
   });
 });
@@ -151,7 +166,7 @@ describe('recordSubmissionChannelFromFacts', () => {
       submissionMethod: 'fax',
       submissionDestination: '555-0100',
     };
-    await recordSubmissionChannelFromFacts(prisma, 'sun_life' as never, 'attempt-1', facts);
+    await recordSubmissionChannelFromFacts(prisma, PRACTICE_ID, 'sun_life' as never, 'attempt-1', facts);
     expect(upsertMock).toHaveBeenCalledTimes(1);
     const call = upsertMock.mock.calls[0][0];
     expect(call.create).toMatchObject({
@@ -171,7 +186,7 @@ describe('recordSubmissionChannelFromFacts', () => {
       submissionMethod: 'mail',
       submissionDestination: 'PO Box 100',
     };
-    await recordSubmissionChannelFromFacts(prisma, 'manulife' as never, 'attempt-2', facts);
+    await recordSubmissionChannelFromFacts(prisma, PRACTICE_ID, 'manulife' as never, 'attempt-2', facts);
     expect(upsertMock).toHaveBeenCalledTimes(1);
     const call = upsertMock.mock.calls[0][0];
     expect(call.create).toMatchObject({
@@ -191,7 +206,7 @@ describe('recordSubmissionChannelFromFacts', () => {
       submissionMethod: 'fax',
       submissionDestination: '555-0100',
     };
-    await recordSubmissionChannelFromFacts(prisma, 'sun_life' as never, 'attempt-3', facts);
+    await recordSubmissionChannelFromFacts(prisma, PRACTICE_ID, 'sun_life' as never, 'attempt-3', facts);
     expect(upsertMock).not.toHaveBeenCalled();
     expect(findUniqueMock).not.toHaveBeenCalled();
   });
@@ -203,7 +218,7 @@ describe('recordSubmissionChannelFromFacts', () => {
       outcome: 'CLAIM_NOT_RECEIVED',
       submissionDestination: '555-0100',
     };
-    await recordSubmissionChannelFromFacts(prisma, 'sun_life' as never, 'attempt-4', facts);
+    await recordSubmissionChannelFromFacts(prisma, PRACTICE_ID, 'sun_life' as never, 'attempt-4', facts);
     expect(upsertMock).not.toHaveBeenCalled();
     expect(findUniqueMock).not.toHaveBeenCalled();
   });
