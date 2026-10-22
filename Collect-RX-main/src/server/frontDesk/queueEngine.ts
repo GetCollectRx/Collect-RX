@@ -349,7 +349,7 @@ type BlockedDisposition = 'skip' | 'stop';
 // Settle a queue entry the dispatch guard rejected so it cannot sit PENDING at
 // the head of the queue forever: terminal causes leave the PENDING pool,
 // retryable causes are deferred, practice-wide causes stop this practice's tick.
-async function settleBlockedCandidate(
+export async function settleBlockedCandidate(
   prisma: PrismaClient,
   entry: {
     id: string;
@@ -438,6 +438,20 @@ async function settleBlockedCandidate(
           data: { status: 'BLOCKED' },
         }),
       ]);
+      return 'skip';
+    case 'CONSENT_ATTESTATION_MISSING':
+    case 'CONSENT_ATTESTATION_REVOKED':
+    case 'CONSENT_ATTESTATION_VERSION_STALE':
+    case 'AGENT_PERMISSION_MISSING':
+      // Practice-level precondition, but each entry is deferred with its own
+      // code and next action so staff see why the queue is not moving.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        guardCode,
+        guardReason ?? 'Practice consent attestation is required before calls resume.',
+      );
       return 'skip';
     case 'OUTSIDE_CALL_WINDOW':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
