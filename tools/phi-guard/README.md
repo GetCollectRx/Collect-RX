@@ -8,7 +8,7 @@ All identifiers are treated as PHI under Ontario's PHIPA, including claim number
 |---|---|---|---|
 | A. phi-redact | `src/redact` | Replaces identifiers in transcript text with tokens | none |
 | C. synthetic-data | `src/synthetic` | Generates fake patients and claims for testing | none |
-| B. retention-check | `src/retention` | Verifies no call content remains at Vapi and artifacts reached Azure Blob | `@azure/storage-blob`, `@azure/identity` |
+| B. retention-check | `src/retention` | Verifies no call content remains at Vapi and artifacts reached Azure Blob | `@azure/storage-blob` 12.32.0, `@azure/identity` 4.13.0 |
 
 ## Setup and scripts
 
@@ -147,3 +147,67 @@ Columns left out on purpose, because each one changes pipeline behaviour: `paid_
 `test/synthetic/repo-pipeline.test.ts` loads the repository's own `parseSimpleCsv`, `normalizePmsClaimRow`, `mapToCarrierId`, `mergeClaimRows` and `validateImportTotals` and runs 120 generated rows through them. It asserts the conditions the later stages test: positive balance, age 30 to 90, treatment codes, service and submission dates, an expected amount, and no denial or dentist columns. The repository's CSV validator imports `zod`, which a bare checkout does not install, so the test resolves `zod` from this package's pinned dev dependency. The test skips itself if the repository directory is not next to this package.
 
 Not run: the database stages (claim upsert, PHI vault, submission quality gate, work item sync, call queue sync). They need Prisma and a live database, so end-to-end import of these files is unverified.
+
+## Module B: retention-check
+
+After a synthetic test call, confirms that Vapi holds no call content and that our Azure Blob container received the artifacts. It never places a call, changes Vapi configuration, or creates or modifies Azure resources.
+
+```sh
+npm run build
+export VAPI_API_KEY=...            # a private Vapi API key
+export AZURE_STORAGE_ACCOUNT=...   # storage account name, not a URL
+node dist/retention/bin.js --call-id <id> --container <name> --prefix <blobPrefix>
+```
+
+Configuration comes from those two environment variables only. Azure authentication is `DefaultAzureCredential`. Connection strings and account keys are not supported, and are ignored if set.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Vapi holds no content and at least one blob exists in our container |
+| 1 | Any check failed: content present, call not ended, Vapi or Azure error, or no blob found |
+| 2 | Bad argument or missing or malformed configuration. Nothing was requested. |
+
+A Vapi HTTP error, including 404, exits 1. A missing call is not proof that nothing was retained, so the tool fails closed.
+
+### The Vapi check
+
+It calls `GET https://api.vapi.ai/call/{id}` with a bearer token (official reference: docs.vapi.ai/api-reference/calls/get). It passes only if the call has `status` of `ended` and every content field below is absent, null, an empty string, or an empty container (checked recursively). A call that has not ended fails, because content is attached after it ends and earlier absence proves nothing.
+
+Content fields, all response field names from the reference:
+
+| Group | Fields |
+|---|---|
+| Messages | `messages`, `artifact.messages`, `artifact.messagesOpenAIFormatted` |
+| Transcript | `artifact.transcript` |
+| Recordings and packet capture | `artifact.recording`, `artifact.recordingUrl`, `artifact.stereoRecordingUrl`, `artifact.videoRecordingUrl`, `artifact.pcapUrl`, and `artifact.presignedMonoUrl`, `presignedStereoUrl`, `presignedVideoUrl`, `presignedAssistantUrl`, `presignedCustomerUrl`, `presignedPcapUrl` |
+| Logs | `artifact.logUrl`, `artifact.presignedLogUrl` |
+| Structured outputs and derived values | `artifact.structuredOutputs`, `artifact.skippedStructuredOutputs`, `artifact.scorecards`, `artifact.variableValues`, `artifact.nodes`, `artifact.transfers` |
+| Post-call analysis | `analysis.summary`, `analysis.structuredData`, `analysis.structuredDataMulti`, `analysis.successEvaluation` |
+
+Each field is reported as `PRESENT` or `absent`. Values and response bodies are never printed, logged, or put in an error message.
+
+The call id must be a UUID. Vapi's reference types the id only as a string. The one place its docs name a format is the Langfuse `traceName` text, where `{{ call.id }}` is "Call UUID". If Vapi ever issues ids in another shape, relax the pattern in `src/retention/validate.ts`.
+
+### The Azure check
+
+It lists blobs under `--prefix` whose name contains the call id (case-insensitive) and reports the count and names. Blob contents are never downloaded. At most 50 names are printed, with control and non-ASCII characters replaced by `?`. `--prefix` is required and must be 1 to 200 characters of letters, digits, `.`, `_`, `-`, `/`, so the tool never scans a whole container. The endpoint is `https://<account>.blob.core.windows.net`, so sovereign clouds are not supported.
+
+Both checks always run, so one report shows every failure.
+
+### Adding a LiveKit source
+
+The Vapi check sits behind the `RetentionSource` interface in `src/retention/types.ts`: a `name` and a `check(callId)` that returns whether the call is complete and the status of each content field. A LiveKit source implements that interface, and the CLI needs no other change beyond constructing it.
+
+### Limits of this check
+
+- It reads one endpoint, `GET /call/{id}`. It does not request the separate recording and log download endpoints, and it does not look at Vapi dashboard data, webhooks you receive, or any copy outside Vapi.
+- Content can appear some time after a call ends. A pass right after hangup is weaker than a pass later. Run it after Vapi has finished post-call processing.
+- `monitor.listenUrl` and `monitor.controlUrl` are live-call URLs, not stored content, and are not checked. `assistantActivations` and `performanceMetrics` hold no conversation content and are not checked.
+- Vapi's `GET /call/{id}` returns only what it holds, so a field that is absent might also be hidden from your key's role. Use a key with full read access.
+- A Vapi artifact toggle in `assistant.artifactPlan` (recording, logging, packet capture, `transcriptPlan.enabled`) is what stops content being stored. This tool verifies the outcome. It does not set any of them.
+
+### Dependency notes
+
+`@azure/storage-blob` 12.32.0 and `@azure/identity` 4.13.0 are the newest releases that declare Node 20 support. The newer releases require Node 22. `npm audit --omit=dev` reports 3 moderate findings, all one `uuid` advisory (GHSA-w5hq-g745-h8pq, missing bounds check in v3, v5 and v6 when a buffer is supplied) reached through `@azure/msal-node`. This package does not call those functions. The fix arrives with identity 4.14, which needs Node 22. Identity 4.13.1 and 4.13.2 avoid it but pull in an `@azure/msal-node` with a high severity advisory, so 4.13.0 is the lower risk choice. Revisit when the repository moves to Node 22.

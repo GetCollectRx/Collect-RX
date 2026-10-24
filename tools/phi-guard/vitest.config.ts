@@ -21,6 +21,7 @@ export default defineConfig({
       thresholds: {
         "src/redact/**": { lines: 95 },
         "src/synthetic/**": { lines: 95 },
+        "src/retention/**": { lines: 95 },
       },
     },
   },
