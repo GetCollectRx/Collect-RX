@@ -1,5 +1,6 @@
 import type { CallContext, RedactionResult } from "./types.js";
 import { findDates } from "./dates.js";
+import { findSpokenDob } from "./dobForms.js";
 import { findHealthNumbers, findDigitSequences, findEmails, findPhones } from "./layer2.js";
 import { findIdentifiers, findNames } from "./layer1.js";
 import { apply } from "./merge.js";
@@ -25,6 +26,7 @@ export function redact(text: string, context: CallContext): RedactionResult {
       ...findNames(normalised, ctx),
       ...findIdentifiers(normalised, ctx),
       ...findDates(normalised, ctx.dob),
+      ...findSpokenDob(normalised, ctx.dob),
       ...findEmails(normalised),
       ...findPhones(normalised),
       ...findHealthNumbers(normalised),

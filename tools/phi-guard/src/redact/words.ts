@@ -157,3 +157,89 @@ export function parseYearWords(value: string): number | undefined {
   const tail = parseUnderHundred(rest);
   return tail === undefined ? undefined : century * 100 + tail;
 }
+
+/** Spoken cardinal for 1 to 99, such as "four" or "eighty five". */
+export function cardinalWord(n: number): string {
+  if (n < 10) {
+    return CARDINAL_UNITS[n - 1] ?? "";
+  }
+  if (n < 20) {
+    return CARDINAL_TEENS[n - 10] ?? "";
+  }
+  const tens = CARDINAL_TENS[Math.floor(n / 10) - 2] ?? "";
+  const unit = n % 10;
+  return unit === 0 ? tens : `${tens} ${CARDINAL_UNITS[unit - 1] ?? ""}`;
+}
+
+/** Spoken ordinal for 1 to 31, such as "fourth" or "twenty first". */
+export function ordinalWord(n: number): string {
+  if (n < 10) {
+    return ORDINAL_UNITS[n - 1] ?? "";
+  }
+  if (n < 20) {
+    return ORDINAL_TEENS[n - 10] ?? "";
+  }
+  if (n === 20) {
+    return "twentieth";
+  }
+  if (n === 30) {
+    return "thirtieth";
+  }
+  const tens = n < 30 ? "twenty" : "thirty";
+  return `${tens} ${ORDINAL_UNITS[(n % 10) - 1] ?? ""}`;
+}
+
+const CENTURY_WORDS = new Map<number, string>([
+  [18, "eighteen"],
+  [19, "nineteen"],
+  [20, "twenty"],
+]);
+
+/** Ways a year from 1800 to 2099 is spoken, for example "nineteen eighty five". */
+export function yearWordVariants(year: number): string[] {
+  const century = Math.floor(year / 100);
+  const rest = year % 100;
+  const variants: string[] = [];
+  const centuryWord = CENTURY_WORDS.get(century);
+  if (centuryWord !== undefined) {
+    if (rest === 0) {
+      variants.push(`${centuryWord} hundred`);
+    } else if (rest < 10) {
+      variants.push(`${centuryWord} oh ${cardinalWord(rest)}`);
+    } else {
+      variants.push(`${centuryWord} ${cardinalWord(rest)}`);
+    }
+  }
+  if (century === 20) {
+    variants.push(rest === 0 ? "two thousand" : `two thousand ${cardinalWord(rest)}`);
+    if (rest !== 0) {
+      variants.push(`two thousand and ${cardinalWord(rest)}`);
+    }
+  }
+  return variants;
+}
+
+const MONTH_FULL_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+/** Written names for a month number: the full name, its three letter form, and "sept". */
+export function monthNames(month: number): string[] {
+  const full = MONTH_FULL_NAMES[month - 1] ?? "";
+  const names = [full, full.slice(0, 3)];
+  if (month === 9) {
+    names.push("sept");
+  }
+  return names;
+}
