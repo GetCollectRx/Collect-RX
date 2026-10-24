@@ -98,3 +98,52 @@ The context is validated strictly: unknown keys are rejected, names need at leas
 - Text is normalised before matching (NFKC, with zero-width and soft-hyphen characters removed), so the redacted output is also normalised.
 - A transcript that already contains token-shaped text such as `[[PHONE_1]]` is passed through unchanged and can be confused with a real token.
 - Matching relies on the context being correct. A wrong `CallContext` weakens layer 1, though layer 2 still applies.
+
+## Module C: synthetic-data
+
+Generates fake patients and claims in the CollectRx CSV import format, plus one `CallContext` JSON file per claim for module A tests. It has no runtime dependencies and no network access.
+
+```sh
+npm run build
+node dist/synthetic/bin.js generate --count 25 --seed my-seed --out ./out
+```
+
+This writes `claims.csv` and `context-<claimNumber>.json` for each row. `--count` is 1 to 10000. `--seed` is 1 to 64 characters from letters, digits, `.`, `_` and `-`. The same seed and count always produce byte-identical files. The generator is a seeded sfc32 and never calls `Math.random`. Bad arguments exit with code 2 and print the usage line.
+
+### Which import path this targets
+
+The live endpoint is `POST /admin/sync/import`. It runs `parseSimpleCsv`, then `runPmsImportPipeline`, which calls `normalizePmsClaimRow` with the generic import family (the `other` vendor). That path matches headers by alias and has no fixed column order, so this tool emits one set of snake_case keys that `parseSimpleCsv` leaves untouched and `normalizePmsClaimRow` reads. Every generated row was checked against the full pipeline source, not only the normaliser. The columns, in order:
+
+| Column | Why it is present |
+|---|---|
+| `claim_number` | Required. A row without a claim id fails the whole file. Unique per row, so no line merging or carrier conflict. |
+| `patient_first_name`, `patient_last_name` | Tokenised into the PHI vault; the carrier lookup needs them. |
+| `patient_dob` | Vault; the carrier asks for it. ISO `YYYY-MM-DD`, the form the normaliser re-emits. |
+| `subscriber_id` | Vault; the member id. Starts with `SYN-`. |
+| `group_policy_number` | Vault; the group number. Starts with `SYN-GRP-`. |
+| `insurance_carrier` | Required. A blank or unrecognised carrier fails the whole file in the preflight, before anything is written. |
+| `procedure_code` | First CDT code on the claim. |
+| `treatment_codes` | An empty value makes the submission quality gate raise a blocking action, which keeps the claim out of the call queue. Two codes are written as a quoted, comma separated cell, as real exports do. |
+| `treatment_date` | Date of service. Empty raises a non-blocking gate. |
+| `submitted_date` | Submission date. Empty raises a non-blocking gate. |
+| `amount_billed` | Plain decimal, two places, no `$` or thousands separators. |
+| `amount_outstanding` | Must be above zero. A zero or blank balance is skipped as already paid. |
+| `expected_amount` | Above zero, or the gate notes that underpayment detection is off. |
+| `days_outstanding` | 32 to 88. The call queue takes 30 to 90, and `validateDispatch` applies a flat 30 day floor. When this column is present it overrides any age computed from the service date. |
+
+Columns left out on purpose, because each one changes pipeline behaviour: `paid_amount` (triggers underpayment checks), `denial_code` and `transaction_type` (create a blocking denial review and keep the claim out of the queue), `treating_dentist_provider_number` (is looked up in the database and fails the row if unknown), and the subscriber, relationship and dependent columns.
+
+### Synthetic data conventions
+
+- Member ids start with `SYN-`, claim numbers with `SYN-CLM-`, group numbers with `SYN-GRP-`.
+- Names come from a fixed list of 20 obviously fictional names in `src/synthetic/names.ts`.
+- Dates of birth fall between 1900-01-01 and 1929-12-31 inclusive. That range is outside any living person's, so a generated value cannot be mistaken for a real one.
+- Service dates count back from the fixed anchor date 2026-06-30, so output never depends on the clock. Because the anchor is fixed, `days_outstanding` is an explicit column rather than a computed one.
+- Carriers are only Sun Life, Canada Life, Manulife, Green Shield, RBC, and TELUS AdjudiCare, spelled as the carrier map accepts them.
+- No value starts with `=`, `+`, `-`, `@` or `%`, which `parseSimpleCsv` would rewrite.
+
+### What the tests run against the repository
+
+`test/synthetic/repo-pipeline.test.ts` loads the repository's own `parseSimpleCsv`, `normalizePmsClaimRow`, `mapToCarrierId`, `mergeClaimRows` and `validateImportTotals` and runs 120 generated rows through them. It asserts the conditions the later stages test: positive balance, age 30 to 90, treatment codes, service and submission dates, an expected amount, and no denial or dentist columns. The repository's CSV validator imports `zod`, which a bare checkout does not install, so the test resolves `zod` from this package's pinned dev dependency. The test skips itself if the repository directory is not next to this package.
+
+Not run: the database stages (claim upsert, PHI vault, submission quality gate, work item sync, call queue sync). They need Prisma and a live database, so end-to-end import of these files is unverified.

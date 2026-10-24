@@ -7,6 +7,9 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "phi-guard-synthetic": "dist/synthetic/bin.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -21,6 +24,7 @@
     "eslint": "9.39.4",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
-    "vitest": "3.2.7"
+    "vitest": "3.2.7",
+    "zod": "4.6.5"
   }
 }
