@@ -12,7 +12,8 @@ This applies to every code change, including one line, in Claude Code, Cowork, c
 4. **No credentials anywhere:** fixtures use placeholder hosts without `user:pass@`. No literal special characters (for example NBSP) in source; use escapes. No braces in `schema.prisma` doc comments (the RLS coverage script mis-parses them).
 5. **API pushes skip `.githooks/pre-push`.** Any agent that pushes through the GitHub API or a connector must run the gates above first, or mark each one UNVERIFIED and say so before pushing.
 6. **After pushing:** read every failed CI job log and state the cause before changing anything. Never assume green. A secret finding in history stops work until the owner picks a remedy.
-7. **Done report:** a table of gate, status (pass, fail, UNVERIFIED) and evidence, with uncertainty stated first. Done means all required CI checks are green and nothing is UNVERIFIED without the owner's acknowledgement.
+7. **Required CI checks:** `ci-gate`, `pr-gate` (the pull request description must carry the last line of `bash scripts/verify-all.sh`) and `Detect exposed secrets`. See [`docs/operations/CI-GATES.md`](docs/operations/CI-GATES.md). `scripts/check-gate-parity.sh` fails CI if the pre-push hook, `verify-all.sh` and the CI `verify` job drift apart, so change them together.
+8. **Done report:** a table of gate, status (pass, fail, UNVERIFIED) and evidence, with uncertainty stated first. Done means all required CI checks are green and nothing is UNVERIFIED without the owner's acknowledgement.
 
 ## Documentation source of truth (read this first)
 

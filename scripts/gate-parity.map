@@ -1,0 +1,37 @@
+# scripts/gate-parity.map
+#
+# Declares how every gate in scripts/verify-all.sh (what the pre-push hook runs) corresponds to
+# the CI workflow, so a change on one side cannot silently drift from the other.
+# scripts/check-gate-parity.sh reads this file. Columns are tab separated.
+#
+#   GATE    <gate id>    <where>
+#       where is one of:
+#         step:<exact name of a step in the CI verify job>
+#         job:<name of another job in collectrx-ci.yml>   (static-gates must list the id in its --only)
+#         ci-only:<reason>     CI covers it some other way, outside collectrx-ci.yml
+#         local-only:<reason>  CI does not need it, with the reason
+#   SETUP   <step name>      a verify job step that is plumbing, not a gate
+#   CI_ONLY <step name>      <reason>   a verify job step that cannot run locally
+GATE	env	job:static-gates
+GATE	scope	job:static-gates
+GATE	anyscan	job:static-gates
+GATE	todo	job:static-gates
+GATE	secrets	ci-only:TruffleHog in secret-scanning.yml scans new commits and the Detect exposed secrets check is required
+GATE	chars	job:static-gates
+GATE	schemadoc	job:static-gates
+GATE	deps	step:Install dependencies (workspace root)
+GATE	pg	local-only:CI provides PostgreSQL through the job services block
+GATE	validate	local-only:prisma migrate deploy in CI fails on an invalid schema
+GATE	generate	step:Prisma generate
+GATE	migrate	step:Prisma migrate deploy
+GATE	rls	job:rls-strict
+GATE	api	step:Production build (typecheck emit + API coverage + Vite build)
+GATE	typecheck	step:Typecheck
+GATE	lint	step:Lint
+GATE	test	step:Unit & integration tests
+GATE	audit	step:npm audit (production dependencies)
+GATE	build	step:Production build
+SETUP	Grant CI test role RLS bypass (integration tests use platform-level DB access)
+SETUP	Upload test report (JUnit)
+SETUP	Notify ops (CI failure)
+CI_ONLY	Semgrep SAST	Runs in a container image that is not available on a developer machine

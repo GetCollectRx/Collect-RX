@@ -16,7 +16,7 @@
 #   bash scripts/verify-all.sh --no-install    never run npm ci (missing deps become UNVERIFIED)
 #   bash scripts/verify-all.sh --allow-unverified   exit 0 even if a gate was UNVERIFIED
 #
-# Gate ids: env scope anyscan secrets chars schemadoc deps pg validate generate
+# Gate ids: env scope anyscan todo secrets chars schemadoc deps pg validate generate
 #           migrate rls api typecheck lint test audit build
 #
 # Statuses:
@@ -113,7 +113,7 @@ list_has() { # list(comma) item
   return 1
 }
 
-STATIC_IDS="env,scope,anyscan,secrets,chars,schemadoc"
+STATIC_IDS="env,scope,anyscan,todo,secrets,chars,schemadoc"
 FULL_ONLY_IDS="audit,build"
 
 want() { # gate id
@@ -262,6 +262,25 @@ gate_anyscan() {
     return 1
   fi
   GATE_DETAIL="no new any, ts-ignore or any-suppressions"
+  return 0
+}
+
+gate_todo() {
+  [ -n "$BASE_SHA" ] || { GATE_DETAIL="no base ref"; return 2; }
+  tmp="$TMP_ROOT/todo.tsv"
+  # PRD rule: no TODO or FIXME in prd-bound code. Tests, docs and these gate scripts are exempt.
+  added_working \
+    | grep -E $'^[^\t]+\\.(ts|tsx|js|mjs|cjs|sql|prisma|sh)\t' \
+    | grep -vE $'^[^\t]*(\\.(test|spec)\\.[A-Za-z]+|(^|/)tests?/|(^|/)scripts/(verify-all|check-gate-parity|check-pr-body)[A-Za-z.-]*\\.sh)\t' \
+    | grep -vE $'\t.*verify-all: allow' > "$tmp" || true
+  grep -E $'\t.*\\b(TODO|FIXME)\\b' "$tmp" > "$TMP_ROOT/todo.hits" || true
+  if [ -s "$TMP_ROOT/todo.hits" ]; then
+    echo "Added lines with TODO or FIXME (resolve it or track it in a GitHub issue):"
+    truncate_line < "$TMP_ROOT/todo.hits" | sed 's/^/  /'
+    GATE_DETAIL="$(wc -l < "$TMP_ROOT/todo.hits" | tr -d ' ') added TODO or FIXME line(s)"
+    return 1
+  fi
+  GATE_DETAIL="no TODO or FIXME added in non-test code"
   return 0
 }
 
@@ -603,15 +622,19 @@ gate_test() {
   GATE_DETAIL="$line"; return 0
 }
 
+# Pull requests gate on critical advisories only: a newly published high advisory against an
+# unchanged lockfile must not block unrelated work overnight. .github/workflows/dependency-audit.yml
+# runs the stricter high threshold every week. Keep this level equal to the one in collectrx-ci.yml
+# (scripts/check-gate-parity.sh enforces that).
 gate_audit() {
   need_deps || return 2
-  if npm audit --omit=dev --audit-level=high; then
-    GATE_DETAIL="no high or critical production advisories"; return 0
+  if npm audit --omit=dev --audit-level=critical; then
+    GATE_DETAIL="no critical production advisories"; return 0
   fi
   if grep -qiE 'ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|audit endpoint' "$LOGDIR/audit.log" 2>/dev/null; then
     GATE_DETAIL="npm audit could not reach the registry"; return 2
   fi
-  GATE_DETAIL="high or critical advisories found"; return 1
+  GATE_DETAIL="critical advisories found"; return 1
 }
 
 gate_build() {
@@ -629,6 +652,7 @@ echo "verify-all: repo $REPO_ROOT"
 run_gate env       "Environment and base ref"        gate_env
 run_gate scope     "Scope (protected paths)"         gate_scope
 run_gate anyscan   "No new any or suppressions"      gate_anyscan
+run_gate todo      "No new TODO or FIXME"            gate_todo
 run_gate secrets   "Secrets in diff and history"     gate_secrets
 run_gate chars     "No irregular whitespace chars"   gate_chars
 run_gate schemadoc "Schema comments have no braces"  gate_schemadoc
@@ -642,7 +666,7 @@ run_gate api       "API coverage"                    gate_api
 run_gate typecheck "Typecheck"                       gate_typecheck
 run_gate lint      "Lint"                            gate_lint
 run_gate test      "Tests"                           gate_test
-run_gate audit     "npm audit (prod, high+)"         gate_audit
+run_gate audit     "npm audit (prod, critical)"      gate_audit
 run_gate build     "Production build"                gate_build
 
 # ---------------------------------------------------------------- report
