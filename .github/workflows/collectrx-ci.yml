@@ -510,8 +510,10 @@ jobs:
             const event = process.env.EVENT_NAME;
             const deferred = needs.trigger.outputs.run === "false";
             let bad = 0;
+            let cancelled = 0;
             for (const [job, info] of Object.entries(needs)) {
               const r = info.result;
+              if (r === "cancelled") cancelled += 1;
               // branch-up-to-date only exists for pull_request events. Everything is skipped when
               // this push defers to the pull_request run of the same commit.
               const okSkip = (job === "branch-up-to-date" && event !== "pull_request") || (deferred && job !== "trigger");
@@ -520,5 +522,8 @@ jobs:
               if (!ok) bad += 1;
             }
             if (deferred) console.log("note: this push defers to the pull_request run of the same commit");
+            // Still fails closed: a cancelled run proves nothing about the code. The message only
+            // says why, because a newer push to the same ref cancels this run and looks like a failure.
+            if (cancelled) console.log("note: " + cancelled + " job(s) were cancelled, usually because a newer run on the same ref replaced this one. Check the newest run for this branch, not this one.");
             process.exit(bad ? 1 : 0);
           '
