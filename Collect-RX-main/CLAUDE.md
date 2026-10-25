@@ -98,11 +98,11 @@ VAPI_PRACTICE_PHONE="416-555-0100" node test-call.js
 ### Branch flow
 
 ```
-feature/* → dev (CI gate: typecheck + tests) → prd (strict gate: all checks below)
+feature/* → pull request → main (required checks: ci-gate, pr-gate, Detect exposed secrets)
 ```
 
-- **`dev`** — integration branch. Feature branches merge here. CI must pass.
-- **`prd`** — production. Only receives merges from `dev`. Every item below must be true before touching prd-bound code.
+- **`main`** — the only long-lived branch that ships. Every item below must be true before code reaches it. Production deploys run by hand from `main` through the `CollectRx production deploy` workflow.
+- **`dev`** — optional integration branch with the same required checks. There is no `prd` branch: it was decommissioned in PR #64 and its history is kept as `archive/prd-2026-08-08`.
 
 **Enforcement:** these rules aren't just documentation. `.githooks/pre-push` (installed automatically via `npm install`'s `prepare` script) runs the same audit/typecheck/lint/test/build sequence as CI's `verify` job before every push — a violation should never reach GitHub in the first place. CI's `verify` job is the backstop of record if the local hook is bypassed (`git push --no-verify`) or its checks drift out of sync with CI's.
 
@@ -110,7 +110,7 @@ feature/* → dev (CI gate: typecheck + tests) → prd (strict gate: all checks 
 
 ### PRD is the standard of perfection — non-negotiable rules for all coding agents
 
-These rules apply to **any code that will be merged to `prd`**. As a coding agent (Claude, Cursor, or any other), you must not generate or accept code that violates them, regardless of what the user asks for in the moment.
+These rules apply to **any code that will be merged to `main`**. As a coding agent (Claude, Cursor, or any other), you must not generate or accept code that violates them, regardless of what the user asks for in the moment.
 
 **TypeScript**
 - Zero `any` types. No exceptions. `unknown` with a type guard, or a proper interface.
@@ -129,7 +129,7 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 
 **Tests**
 - All Vitest tests pass with no skips.
-- New behaviour must have test coverage — do not ship untested paths to prd.
+- New behaviour must have test coverage — do not ship untested paths to main.
 
 **Build**
 - Frontend Vite build succeeds with no errors.
@@ -144,11 +144,11 @@ These rules apply to **any code that will be merged to `prd`**. As a coding agen
 - Any code touching call scheduling, retry logic, or Vapi webhooks must check the `CARRIER_BLOCK` flag first. This is the most critical operational safety rule.
 
 **Code quality**
-- No `TODO` or `FIXME` comments in prd-bound code — resolve them or track in GitHub Issues.
+- No `TODO` or `FIXME` comments in main-bound code — resolve them or track in GitHub Issues.
 - No dead code — unused functions, variables, and imports are a lint error.
 - Comments explain WHY, never WHAT. Well-named identifiers explain what. Task-referencing comments (`// added for issue #123`) are not allowed.
 
-**If you are unsure whether code meets these standards — do not merge to prd. Merge to dev first and flag the uncertainty.**
+**If you are unsure whether code meets these standards — do not merge to main. Open the pull request as a draft and flag the uncertainty.**
 
 ---
 

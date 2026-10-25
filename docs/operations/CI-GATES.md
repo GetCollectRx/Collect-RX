@@ -24,8 +24,8 @@ Do this after the dependency audit is green on `main`, or every pull request is 
 3. Require status checks to pass, with "Require branches to be up to date" on, and select
    `ci-gate`, `pr-gate` and `Detect exposed secrets`.
 4. Block force pushes. Do not allow bypassing for administrators.
-5. Decide on `prd`. It is named in `CLAUDE.md` but does not exist on the remote. Create it with
-   the same rule, or change the docs.
+5. There is no `prd` branch. It was decommissioned in PR #64 and the docs now say `main` is the
+   only shipping branch. Do not recreate it without a new decision.
 
 ## Pasting the gate output
 
