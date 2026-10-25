@@ -15,6 +15,9 @@ The jobs behind `ci-gate` are `branch-up-to-date`, `static-gates`, `gate-parity`
 `queue-redis`, `rls-strict`, `carrier-whitelist`, `e2e` and `perf-smoke`. Do not require them one
 by one: a job that is renamed or skipped would leave a required name that never reports.
 
+A push to a branch cancels the older run on that branch, and `ci-gate` in the cancelled run fails. It fails
+on purpose, because a cancelled run proves nothing, and its log says so. Read the newest run, not the old one.
+
 ## Turn on branch protection (a repository admin does this in Settings, Branches)
 
 Do this after the dependency audit is green on `main`, or every pull request is blocked.
