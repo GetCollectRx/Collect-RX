@@ -3,6 +3,7 @@ import type { PmsImportFamily } from '../../types/pms.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { mergeClaimRows } from './claimRowMerge.js';
+import { deriveDaysOutstanding } from './claimAge.js';
 import { reopenIfReappeared } from './absentClaimHandler.js';
 // Use the main PIIVault (AES-256-GCM, stores full PatientPHI objects).
 // NOTE: do NOT import from '../../services/pii-vault.js' — that is the legacy
@@ -92,12 +93,7 @@ async function upsertInsuranceClaim(
   const previousOutstanding = existing ? Number(existing.outstandingAmount) : row.outstandingAmount;
 
   const patientToken = patientTokenForRow(practiceId, row);
-  const daysOutstanding =
-    row.daysOutstanding > 0
-      ? row.daysOutstanding
-      : row.servicedAt
-        ? Math.max(0, Math.floor((Date.now() - row.servicedAt.getTime()) / 86400000))
-        : 0;
+  const daysOutstanding = deriveDaysOutstanding(row, new Date());
 
   const upserted = await prisma.insuranceClaim.upsert({
     where: {
