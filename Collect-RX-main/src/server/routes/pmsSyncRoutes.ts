@@ -7,7 +7,7 @@ import {
 } from '../middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
 import { parseSimpleCsv } from '../csv/parseSimple';
-import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { runPmsImportPipeline, type ExportScope } from '../pms/pmsImportPipeline.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 import { resolvePmsImport } from '../pms/practicePmsContext.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
@@ -95,12 +95,15 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
     }
     let rows: Record<string, unknown>[] = [];
     let sourceBalanceTotal: number | undefined;
+    let exportScope: ExportScope = 'partial';
 
     if (req.file?.buffer) {
       const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
       if (!uploadCheck.ok) {
         return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
       }
+      const multipartScope = (req.body as { exportScope?: unknown } | undefined)?.exportScope;
+      if (multipartScope === 'full' || multipartScope === 'partial') exportScope = multipartScope;
       const text = req.file.buffer.toString('utf8');
       try {
         rows = parseSimpleCsv(text) as Record<string, unknown>[];
@@ -124,6 +127,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
         return res.status(400).json({ success: false, error: 'CSV file or JSON records required' });
       }
       sourceBalanceTotal = bodyParsed.data.sourceBalanceTotal;
+      exportScope = bodyParsed.data.exportScope ?? 'partial';
     }
 
     const resolved =
@@ -137,6 +141,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       rows,
       sourceRecordCount: rows.length,
       sourceBalanceTotal,
+      exportScope,
     });
 
     return res.json({ success: true, ...result });

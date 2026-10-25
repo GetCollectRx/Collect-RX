@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import {
@@ -46,8 +46,26 @@ import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
+import { runWithRlsContext } from '../db/rlsContext.js';
+import {
+  consumePasswordResetToken,
+  issuePasswordResetToken,
+} from '../services/passwordResetService.js';
 
 const BCRYPT_ROUNDS = 12;
+
+/**
+ * Pre-authentication routes look up a User/InviteToken/PlatformUser/Practice
+ * row before any session exists — RLS FORCE mode would otherwise silently
+ * return zero rows for these (no app.practice_id is ever set here, and there
+ * is no session yet to derive one from). Mirrors the same
+ * runWithRlsContext(..., () => next()) shape authenticate.ts and
+ * authenticateConnector.ts already use for the opposite case (setting a real
+ * practiceId once a session IS established).
+ */
+function withRlsBypass(_req: Request, _res: Response, next: NextFunction) {
+  runWithRlsContext({ bypass: true }, () => next());
+}
 
 type PracticeListRow = { id: string; name: string; timezone: string };
 
@@ -278,7 +296,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   // ── Login ────────────────────────────────────────────────────────────────────
 
   /** POST /api/auth/dev/demo — one-click local demo sign-in (non-production only) */
-  r.post('/dev/demo', async (req: Request, res: Response) => {
+  r.post('/dev/demo', withRlsBypass, async (req: Request, res: Response) => {
     try {
       if (process.env.NODE_ENV === 'production') {
         return res.status(404).json({ error: 'Not found' });
@@ -298,7 +316,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login — email + password (practice staff or platform roles) */
-  r.post('/login', authLimiter, async (req: Request, res: Response) => {
+  r.post('/login', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = loginBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -345,7 +363,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-dev */
-  r.post('/login/platform-dev', authLimiter, async (req: Request, res: Response) => {
+  r.post('/login/platform-dev', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       if (!platformDevPasswordConfigured()) {
         return res.status(503).json({
@@ -390,7 +408,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-user — legacy alias; main /login accepts platform emails too */
-  r.post('/login/platform-user', authLimiter, async (req: Request, res: Response) => {
+  r.post('/login/platform-user', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       if (!email?.trim() || !password) {
@@ -792,7 +810,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
    * returned in the response so the admin can relay it to the user.
    * Always returns 200 to avoid email enumeration.
    */
-  r.post('/reset-password/request', authLimiter, async (req: Request, res: Response) => {
+  r.post('/reset-password/request', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
       if (!email) return res.status(400).json({ error: 'email is required' });
@@ -803,19 +821,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.json({ ok: true, message: 'If that email exists, a reset token has been issued.' });
       }
 
-      // Invalidate any existing unused tokens for this user
-      await prisma.passwordResetToken.updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: new Date() },
-      });
-
-      const { randomBytes } = await import('node:crypto');
-      const token = randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-      await prisma.passwordResetToken.create({
-        data: { userId: user.id, token, expiresAt },
-      });
+      const token = await issuePasswordResetToken(prisma, user.id);
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
       void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
@@ -839,7 +845,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
    * Body: { token, newPassword }
    * Consumes the token and sets the new password.
    */
-  r.post('/reset-password/confirm', authLimiter, async (req: Request, res: Response) => {
+  r.post('/reset-password/confirm', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
       const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
@@ -850,16 +856,9 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
       }
 
-      const record = await prisma.passwordResetToken.findUnique({ where: { token } });
-      if (!record || record.usedAt || record.expiresAt < new Date()) {
-        return res.status(400).json({ error: 'Invalid or expired reset token' });
-      }
-
       const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-      await prisma.$transaction([
-        prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
-        prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
-      ]);
+      const consumed = await consumePasswordResetToken(prisma, token, passwordHash);
+      if (!consumed) return res.status(400).json({ error: 'Invalid or expired reset token' });
 
       return res.json({ ok: true });
     } catch (e) {
@@ -877,7 +876,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
    * user as group_admin/org_admin — the self-serve counterpart to the
    * platform_dev-only POST /api/admin/organizations tool.
    */
-  r.post('/register', authLimiter, async (req: Request, res: Response) => {
+  r.post('/register', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
@@ -1097,7 +1096,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** GET /api/auth/invite/:token — validate token and return role info (public) */
-  r.get('/invite/:token', async (req: Request, res: Response) => {
+  r.get('/invite/:token', withRlsBypass, async (req: Request, res: Response) => {
     try {
       const invite = await prisma.inviteToken.findUnique({
         where: { token: req.params.token },
@@ -1114,7 +1113,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/accept-invite — create staff account from invite token (public) */
-  r.post('/accept-invite', authLimiter, async (req: Request, res: Response) => {
+  r.post('/accept-invite', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = acceptInviteBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });

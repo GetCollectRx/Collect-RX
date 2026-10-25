@@ -36,7 +36,7 @@
 import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import axios from 'axios';
-import logger from '../logger.cjs';
+import logger from '../server/observability/logger.js';
 
 const WS_PATH = '/ws/hold-park-audio';
 

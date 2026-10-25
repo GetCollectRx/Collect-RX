@@ -71,37 +71,56 @@ async function api(method, path, body = null) {
 }
 
 // ─── Tool Definitions ─────────────────────────────────────────────────────────
+//
+// Every path below was checked directly against the mounted routes in
+// src/server/index.ts, not inferred from naming conventions. The MCP server
+// always authenticates as platform_dev (see login() above), so every tool
+// here is scoped to what a platform_dev session can actually reach —
+// platform_dev is explicitly barred from a few practice-staff-only actions,
+// noted per tool below.
 
 const TOOLS = [
   // ── Queue ──────────────────────────────────────────────────────────────────
   {
     name: "get_queue_stats",
     description:
-      "Get current queue statistics — how many claims are queued, in progress, resolved, escalated, or paused. Use this to understand the current state of collections before taking action.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "build_queue",
-    description:
-      "Preview which claims would be called in the next run — a dry run that does NOT make any calls. Returns the prioritized list of claims with their scores.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "run_queue",
-    description:
-      "DISPATCH calls to Vapi for all eligible claims. This triggers real phone calls to insurance carriers. Only use this when Khalid confirms he wants to run the queue.",
+      "Get queue statistics for every practice (queued/in-progress/resolved/blocked counts, plus platform-wide recovery metrics). This is always a platform-wide snapshot — pass practice_id to filter the response down to one practice's row.",
     inputSchema: {
       type: "object",
       properties: {
         practice_id: {
           type: "string",
-          description: "Practice UUID to run calls for. Omit to use default practice.",
+          description: "Practice UUID. Optional — omit to see every practice.",
+        },
+      },
+    },
+  },
+  {
+    name: "build_queue",
+    description:
+      "IMPORTANT — despite the name, this does NOT preview or build a call queue. It only records a break-glass request in the platform audit log (POST /api/admin/queue/build). The actual AR call queue is built and dispatched automatically on its own schedule by the server (runDeskQueueTick) and is not directly triggerable through this API. Use this only to leave an auditable note that a break-glass build was requested and why.",
+    inputSchema: {
+      type: "object",
+      required: ["reason"],
+      properties: {
+        reason: {
+          type: "string",
+          description: "Why a break-glass queue build is being requested. Required by the API.",
+        },
+      },
+    },
+  },
+  {
+    name: "run_queue",
+    description:
+      "IMPORTANT — despite the name, this does NOT dispatch any calls. It only records a break-glass request in the platform audit log (POST /api/admin/queue/run). No calls to Vapi or carriers happen as a result of calling this tool. Real dispatch runs automatically on its own schedule, gated by CARRIER_BLOCK and plan limits. Use this only to leave an auditable note that a break-glass run was requested and why — never tell Khalid calls were placed because this tool returned success.",
+    inputSchema: {
+      type: "object",
+      required: ["reason"],
+      properties: {
+        reason: {
+          type: "string",
+          description: "Why a break-glass queue run is being requested. Required by the API.",
         },
       },
     },
@@ -111,27 +130,42 @@ const TOOLS = [
   {
     name: "list_claims",
     description:
-      "List claims with optional filters. Use to review outstanding claims, check specific carriers, or see claims in a particular aging bucket.",
+      "List claims for a practice with optional filters. Use to review outstanding claims, check specific carriers, or see claims in a particular aging bucket.",
     inputSchema: {
       type: "object",
+      required: ["practice_id"],
       properties: {
-        queue_status: {
+        practice_id: {
           type: "string",
-          enum: ["queued", "in_progress", "resolved", "escalated", "paused", "excluded"],
-          description: "Filter by queue status",
+          description: "Practice UUID (required — claims are always practice-scoped)",
+        },
+        status: {
+          type: "string",
+          enum: [
+            "PENDING",
+            "IN_QUEUE",
+            "CALLING",
+            "APPROVED_PENDING_PAYMENT",
+            "RESOLVED",
+            "DENIED",
+            "ESCALATED",
+            "ON_HOLD",
+            "BLOCKED",
+          ],
+          description: "Filter by claim status",
         },
         carrier: {
           type: "string",
           description: "Filter by carrier code (e.g. sunlife_private, manulife, great_west)",
         },
-        bucket: {
+        aging: {
           type: "string",
-          enum: ["0-29", "30-59", "60-89", "90-119", "120+"],
-          description: "Filter by aging bucket",
+          enum: ["30-60", "60-90", "90+"],
+          description: "Filter by days-outstanding bucket",
         },
         limit: {
           type: "number",
-          description: "Max results to return (default 100)",
+          description: "Max results per page (default 25, max 100)",
         },
       },
     },
@@ -145,8 +179,8 @@ const TOOLS = [
       required: ["claim_id"],
       properties: {
         claim_id: {
-          type: "number",
-          description: "The claim ID",
+          type: "string",
+          description: "The claim UUID",
         },
       },
     },
@@ -154,33 +188,25 @@ const TOOLS = [
   {
     name: "pause_claim",
     description:
-      "Pause a claim so it won't be called in future queue runs. Use when a claim needs human review or has special circumstances.",
+      "NOT IMPLEMENTED. There is no per-claim pause in the API today — ClaimStatus has no PAUSED/EXCLUDED value and the only claim PATCH endpoint updates servicedAt. Calling this tool always returns a not_implemented error. The nearest existing capability is pausing the entire practice queue (POST /api/desk/:practiceId/queue/pause), which is a different, coarser action.",
     inputSchema: {
       type: "object",
       required: ["claim_id"],
       properties: {
-        claim_id: {
-          type: "number",
-          description: "The claim ID to pause",
-        },
-        reason: {
-          type: "string",
-          description: "Why the claim is being paused",
-        },
+        claim_id: { type: "string", description: "The claim UUID (unused — feature not built)" },
+        reason: { type: "string", description: "Why the claim would be paused (unused — feature not built)" },
       },
     },
   },
   {
     name: "unpause_claim",
-    description: "Return a paused claim back to the active queue.",
+    description:
+      "NOT IMPLEMENTED — see pause_claim. Calling this tool always returns a not_implemented error.",
     inputSchema: {
       type: "object",
       required: ["claim_id"],
       properties: {
-        claim_id: {
-          type: "number",
-          description: "The claim ID to unpause",
-        },
+        claim_id: { type: "string", description: "The claim UUID (unused — feature not built)" },
       },
     },
   },
@@ -189,27 +215,40 @@ const TOOLS = [
   {
     name: "list_escalations",
     description:
-      "Get all open escalations that need human attention — claims where the AI couldn't resolve the issue and a staff member needs to follow up.",
+      "Get open CallEscalation records for a practice — claims where the AI couldn't resolve the issue and a staff member needs to follow up. Note: this is a separate system from a claim's own ESCALATED status (see list_claims status filter) — escalation_id here is not a claim_id.",
     inputSchema: {
       type: "object",
-      properties: {},
+      required: ["practice_id"],
+      properties: {
+        practice_id: { type: "string", description: "Practice UUID (required)" },
+        status: {
+          type: "string",
+          enum: ["open", "resolved"],
+          description: "Filter by escalation status (default: all)",
+        },
+        limit: { type: "number", description: "Max results (default 50)" },
+      },
     },
   },
   {
     name: "resolve_escalation",
-    description: "Mark an escalation as resolved with notes on how it was handled.",
+    description:
+      "Mark a CallEscalation as resolved. IMPORTANT: the backend explicitly blocks platform_dev sessions from this action by design (PUT /api/desk/:practiceId/escalations/:id returns 403 for platform_dev) — this is a deliberate safety rail restricting who can resolve escalations (front_desk, practice_owner, office_manager, billing_coordinator, group_admin only). Since this MCP server always authenticates as platform_dev, calling this tool will always fail with a 403. It is wired to the real endpoint so it starts working automatically if the platform_dev restriction is ever intentionally relaxed, but do not expect it to succeed today.",
     inputSchema: {
       type: "object",
-      required: ["escalation_id", "resolution_notes"],
+      required: ["practice_id", "escalation_id", "resolution"],
       properties: {
+        practice_id: { type: "string", description: "Practice UUID" },
         escalation_id: {
-          type: "number",
-          description: "The escalation ID",
-        },
-        resolution_notes: {
           type: "string",
+          description: "The CallEscalation UUID from list_escalations (not a claim_id)",
+        },
+        resolution: {
+          type: "string",
+          enum: ["resolved", "appealing", "written_off", "paused_for_review"],
           description: "How the escalation was resolved",
         },
+        notes: { type: "string", description: "Optional resolution notes" },
       },
     },
   },
@@ -218,24 +257,24 @@ const TOOLS = [
   {
     name: "get_aging_report",
     description:
-      "Get an aging summary broken down by insurance carrier — shows total outstanding amounts across 0-29, 30-59, 60-89, 90-119, and 120+ day buckets. Great for understanding where the money is.",
+      "Get an aging summary for a practice — total outstanding amounts across aging buckets. There is no date-range parameter on this endpoint; it always reflects current outstanding balances.",
     inputSchema: {
       type: "object",
-      properties: {},
+      required: ["practice_id"],
+      properties: {
+        practice_id: { type: "string", description: "Practice UUID (required)" },
+      },
     },
   },
   {
     name: "get_carrier_stats",
     description:
-      "Get per-carrier call health for the last 30 days — total calls, resolution rate, avg hold time, block status. Use to see which carriers the AI handles well vs. which are struggling or blocked. Requires practice_id (use list_practices to find one).",
+      "Get per-carrier call health for the last 30 days — total calls, resolution rate, avg hold time, block status.",
     inputSchema: {
       type: "object",
       required: ["practice_id"],
       properties: {
-        practice_id: {
-          type: "string",
-          description: "Practice UUID (from list_practices) to get carrier stats for",
-        },
+        practice_id: { type: "string", description: "Practice UUID (required)" },
       },
     },
   },
@@ -243,7 +282,7 @@ const TOOLS = [
   // ── Practices ──────────────────────────────────────────────────────────────
   {
     name: "list_practices",
-    description: "List all active dental practices connected to CollectRx.",
+    description: "List all dental practices connected to CollectRx.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -251,34 +290,27 @@ const TOOLS = [
   },
   {
     name: "get_practice",
-    description: "Get full details and queue stats for a specific practice.",
+    description: "Get full details for a specific practice.",
     inputSchema: {
       type: "object",
       required: ["practice_id"],
       properties: {
-        practice_id: {
-          type: "string",
-          description: "Practice UUID (from list_practices)",
-        },
+        practice_id: { type: "string", description: "Practice UUID (from list_practices)" },
       },
     },
   },
   {
     name: "update_practice",
     description:
-      "Update practice settings such as max_call_attempts, min_claim_value, escalation_email, or any other configuration field.",
+      "Update a practice's settings (e.g. max call attempts, min claim value, escalation email).",
     inputSchema: {
       type: "object",
       required: ["practice_id", "updates"],
       properties: {
-        practice_id: {
-          type: "string",
-          description: "Practice UUID (from list_practices)",
-        },
+        practice_id: { type: "string", description: "Practice UUID (from list_practices)" },
         updates: {
           type: "object",
-          description:
-            "Fields to update, e.g. { max_call_attempts: 4, min_claim_value: 100 }",
+          description: "Settings fields to update, e.g. { max_call_attempts: 4, min_claim_value: 100 }",
         },
       },
     },
@@ -291,58 +323,71 @@ async function handleTool(name, args) {
   switch (name) {
     // Queue
     case "get_queue_stats": {
-      const data = await api("GET", "/api/queue/stats");
-      return JSON.stringify(data.stats, null, 2);
+      const data = await api("GET", "/api/admin/queue/stats");
+      const rows = data.data || [];
+      const filtered = args.practice_id
+        ? rows.filter((r) => r.practice?.id === args.practice_id)
+        : rows;
+      return JSON.stringify({ practices: filtered, platformRecovery: data.platformRecovery }, null, 2);
     }
     case "build_queue": {
-      const data = await api("GET", "/api/queue/build");
-      return `${data.count} claims in next run:\n${JSON.stringify(data.queue, null, 2)}`;
+      const data = await api("POST", "/api/admin/queue/build", { reason: args.reason });
+      return data.message;
     }
     case "run_queue": {
-      const body = args.practice_id ? { practice_id: args.practice_id } : {};
-      const data = await api("POST", "/api/queue/run", body);
-      return `Dispatched ${data.dispatched} calls, ${data.failed} failed.\n${JSON.stringify(data.results, null, 2)}`;
+      const data = await api("POST", "/api/admin/queue/run", { reason: args.reason });
+      return data.message;
     }
 
     // Claims
     case "list_claims": {
       const params = new URLSearchParams();
-      if (args.queue_status) params.set("queue_status", args.queue_status);
+      params.set("practiceId", args.practice_id);
+      if (args.status) params.set("status", args.status);
       if (args.carrier) params.set("carrier", args.carrier);
-      if (args.bucket) params.set("bucket", args.bucket);
+      if (args.aging) params.set("aging", args.aging);
       if (args.limit) params.set("limit", args.limit);
-      const data = await api("GET", `/api/claims?${params}`);
-      return `${data.count} claims found:\n${JSON.stringify(data.claims, null, 2)}`;
+      const data = await api("GET", `/api/insurance/claims?${params}`);
+      return `${data.total ?? data.claims?.length ?? 0} claims found:\n${JSON.stringify(data.claims ?? data, null, 2)}`;
     }
     case "get_claim": {
-      const data = await api("GET", `/api/claims/${args.claim_id}`);
+      const data = await api("GET", `/api/insurance/claims/${args.claim_id}`);
       return JSON.stringify(data, null, 2);
     }
-    case "pause_claim": {
-      await api("POST", `/api/claims/${args.claim_id}/pause`, { reason: args.reason });
-      return `Claim ${args.claim_id} paused. Reason: ${args.reason || "no reason given"}`;
-    }
+    case "pause_claim":
     case "unpause_claim": {
-      await api("POST", `/api/claims/${args.claim_id}/unpause`);
-      return `Claim ${args.claim_id} returned to queue.`;
+      return JSON.stringify(
+        {
+          error: "not_implemented",
+          message:
+            "Per-claim pause/unpause does not exist in the API. Nearest capability: POST /api/desk/:practiceId/queue/pause (or /resume) pauses the entire practice queue, not a single claim.",
+        },
+        null,
+        2,
+      );
     }
 
     // Escalations
     case "list_escalations": {
-      const data = await api("GET", "/api/escalations");
-      return `${data.count} open escalations:\n${JSON.stringify(data.escalations, null, 2)}`;
+      const params = new URLSearchParams();
+      if (args.status) params.set("status", args.status);
+      if (args.limit) params.set("limit", args.limit);
+      const data = await api("GET", `/api/desk/${args.practice_id}/escalations?${params}`);
+      const rows = data.data || [];
+      return `${rows.length} escalations:\n${JSON.stringify(rows, null, 2)}`;
     }
     case "resolve_escalation": {
-      await api("POST", `/api/escalations/${args.escalation_id}/resolve`, {
-        resolutionNotes: args.resolution_notes,
+      const data = await api("PUT", `/api/desk/${args.practice_id}/escalations/${args.escalation_id}`, {
+        resolution: args.resolution,
+        notes: args.notes,
       });
-      return `Escalation ${args.escalation_id} resolved.`;
+      return JSON.stringify(data.data, null, 2);
     }
 
     // Reports
     case "get_aging_report": {
-      const data = await api("GET", "/api/reports/aging");
-      return JSON.stringify(data.report, null, 2);
+      const data = await api("GET", `/api/practices/${args.practice_id}/reports/aging`);
+      return JSON.stringify(data.data, null, 2);
     }
     case "get_carrier_stats": {
       const data = await api("GET", `/api/carriers/health?practiceId=${args.practice_id}`);
@@ -375,7 +420,7 @@ async function handleTool(name, args) {
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "collectrx", version: "1.0.0" },
+  { name: "collectrx", version: "1.1.0" },
   { capabilities: { tools: {} } }
 );
 

@@ -185,6 +185,7 @@ export const pmsImportBodySchema = z
     pmsVendor: z.string().trim().optional(),
     /** @deprecated Use pmsVendor */
     pmsSource: z.string().trim().optional(),
+    exportScope: z.enum(['full', 'partial']).optional(),
   })
   .passthrough();
 

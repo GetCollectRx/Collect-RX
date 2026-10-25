@@ -4,7 +4,8 @@ name: CollectRx CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev]
+    # Every pushed branch, not only main and dev: the gates must run wherever work lands.
+    branches: ['**']
   pull_request:
     branches: [main, dev]
 
@@ -13,12 +14,60 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+  # connection_limit/pool_timeout: Prisma's default pool (num_cpus*2+1) is too
+  # small for tests/dsoHttpLoadCapacity.test.ts's 20 concurrent authenticated
+  # sessions x 2 requests each on GitHub's 2-core runners — confirmed directly
+  # (PrismaClientKnownRequestError: "Unable to start a transaction in the
+  # given time" on the audit-log write, which fails closed rather than
+  # degrading silently). See SHIPPABILITY-BACKLOG.md P1-01.
+  DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public&connection_limit=30&pool_timeout=20
   JWT_SECRET: github-actions-ci-placeholder-not-for-production
   VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
+  # A push to a branch that has an open pull request is covered by the pull_request run of the
+  # same commit, so running both only doubles the cost and fills the history with cancelled runs.
+  # Pushes still run when no open pull request exists (the gates must run wherever work lands),
+  # when the pull request has merge conflicts (GitHub does not start pull_request runs then), and
+  # whenever this lookup is unsure: it fails open, never closed.
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Decide whether this push duplicates a pull_request run
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          run=true
+          if [ "$EVENT_NAME" = "push" ]; then
+            numbers="$(gh api -X GET "repos/${REPO}/pulls" -f state=open -f head="${OWNER}:${BRANCH}" -f per_page=10 \
+              --jq '.[] | select(.base.ref == "main" or .base.ref == "dev") | .number' 2>/dev/null || true)"
+            for number in $numbers; do
+              state="$(gh api "repos/${REPO}/pulls/${number}" --jq '.mergeable_state' 2>/dev/null || echo unknown)"
+              if [ "$state" = "unknown" ] || [ -z "$state" ] || [ "$state" = "null" ]; then
+                sleep 5
+                state="$(gh api "repos/${REPO}/pulls/${number}" --jq '.mergeable_state' 2>/dev/null || echo unknown)"
+              fi
+              case "$state" in
+                dirty|unknown|null|"") ;;
+                *) run=false ;;
+              esac
+            done
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+          echo "Run the jobs for this event: ${run}"
+
   branch-up-to-date:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -40,6 +89,8 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 20
     services:
       postgres:
@@ -67,8 +118,12 @@ jobs:
       - name: Install dependencies (workspace root)
         run: npm ci
 
+      # Pull requests block on critical advisories only. A newly published advisory against an
+      # unchanged lockfile must not stop unrelated work overnight. .github/workflows/dependency-audit.yml
+      # audits at the stricter high threshold every week. scripts/check-gate-parity.sh keeps this
+      # level equal to the one verify-all.sh uses.
       - name: npm audit (production dependencies)
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=critical
 
       # Do not use `npx prisma` — it can resolve to Prisma 7+ and break Prisma 5 schemas. Use the workspace script.
       - name: Prisma generate
@@ -131,6 +186,8 @@ jobs:
 
   queue-redis:
     runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 20
     services:
       postgres:
@@ -156,7 +213,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+      # See the workflow-level env block's comment on connection_limit above —
+      # this job sets its own DATABASE_URL (adds REDIS_URL) so it needs the
+      # same fix independently, not inherited from the workflow-level default.
+      DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public&connection_limit=30&pool_timeout=20
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: github-actions-ci-placeholder-not-for-production
       VAPI_WEBHOOK_SECRET: github-actions-ci-placeholder
@@ -188,7 +248,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [trigger, verify]
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 25
     services:
       postgres:
@@ -240,7 +301,8 @@ jobs:
 
   perf-smoke:
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [trigger, verify]
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 15
     services:
       postgres:
@@ -297,6 +359,8 @@ jobs:
 
   rls-strict:
     runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 15
     services:
       postgres:
@@ -323,6 +387,10 @@ jobs:
         run: npm ci
       - name: Prisma generate + migrate
         run: npm run db:generate:collectrx && npm run db:migrate:collectrx
+      - name: Verify every tenant table has RLS coverage (P0-03)
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public
+        run: npm exec --workspace=dental-ar-system -- node scripts/check-rls-coverage.mjs
       - name: Create non-superuser DB role for RLS enforcement
         run: |
           psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
@@ -350,6 +418,8 @@ jobs:
 
   carrier-whitelist:
     runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 15
     services:
       postgres:
@@ -380,3 +450,80 @@ jobs:
         run: psql "${DATABASE_URL%%\?*}" -c "ALTER ROLE prisma BYPASSRLS;"
       - name: Validate carrier whitelist dispatch gates
         run: npm run test:carrier-whitelist --workspace=dental-ar-system
+
+  # Static gates that need no install and no database: no new any or suppressions, no new
+  # TODO or FIXME, no irregular whitespace, no braces in schema comments, no protected paths.
+  # The same script and gate ids the pre-push hook runs, so local and CI cannot disagree.
+  static-gates:
+    runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch the base branch
+        env:
+          BASE_BRANCH: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags --quiet origin "${BASE_BRANCH}" || true
+
+      - name: Static gates
+        env:
+          BASE_BRANCH: ${{ github.base_ref || 'main' }}
+        run: bash scripts/verify-all.sh --only env,scope,anyscan,todo,chars,schemadoc --base "origin/${BASE_BRANCH}"
+
+      - name: Gate script self-tests
+        run: |
+          bash scripts/verify-all.selftest.sh
+          bash scripts/check-pr-body.selftest.sh
+          bash scripts/check-gate-parity.selftest.sh
+
+  # Fails when the pre-push hook, verify-all.sh and the verify job above have drifted apart.
+  gate-parity:
+    runs-on: ubuntu-latest
+    needs: trigger
+    if: needs.trigger.outputs.run == 'true'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check hook, verify-all.sh and CI parity
+        run: bash scripts/check-gate-parity.sh
+
+  # The single status to require in branch protection for this workflow. It passes only when
+  # every job above succeeded, or was skipped for a reason that is correct for this event.
+  ci-gate:
+    if: always()
+    needs: [trigger, branch-up-to-date, static-gates, gate-parity, verify, queue-redis, rls-strict, carrier-whitelist, e2e, perf-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job to have passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.NEEDS_JSON);
+            const event = process.env.EVENT_NAME;
+            const deferred = needs.trigger.outputs.run === "false";
+            let bad = 0;
+            let cancelled = 0;
+            for (const [job, info] of Object.entries(needs)) {
+              const r = info.result;
+              if (r === "cancelled") cancelled += 1;
+              // branch-up-to-date only exists for pull_request events. Everything is skipped when
+              // this push defers to the pull_request run of the same commit.
+              const okSkip = (job === "branch-up-to-date" && event !== "pull_request") || (deferred && job !== "trigger");
+              const ok = r === "success" || (r === "skipped" && okSkip);
+              console.log((ok ? "ok    " : "FAIL  ") + job + ": " + r);
+              if (!ok) bad += 1;
+            }
+            if (deferred) console.log("note: this push defers to the pull_request run of the same commit");
+            // Still fails closed: a cancelled run proves nothing about the code. The message only
+            // says why, because a newer push to the same ref cancels this run and looks like a failure.
+            if (cancelled) console.log("note: " + cancelled + " job(s) were cancelled, usually because a newer run on the same ref replaced this one. Check the newest run for this branch, not this one.");
+            process.exit(bad ? 1 : 0);
+          '

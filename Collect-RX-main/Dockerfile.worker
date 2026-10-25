@@ -13,7 +13,7 @@ COPY package.json package-lock.json ./
 COPY scripts/ensure-electron-symlink.cjs ./scripts/ensure-electron-symlink.cjs
 COPY prisma ./prisma/
 
-RUN npm install --include=dev --ignore-scripts
+RUN npm ci --include=dev --ignore-scripts
 RUN npx prisma generate
 
 COPY . .

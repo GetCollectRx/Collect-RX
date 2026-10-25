@@ -80,6 +80,13 @@ export interface NormalizedPmsClaimRow {
   /** AbelDent / CDAnet transaction type (e.g. T11 pre-auth denial) */
   transactionType: string | null;
   denialReasonCode: string | null;
+  /**
+   * Treating dentist's unique 9-digit CDA provider number, when the PMS
+   * export includes one. Optional: most practices' exports predate this
+   * column, so its absence does not fail the row — see
+   * validateTreatingDentistForClaim, called only when this is present.
+   */
+  treatingDentistProviderNumber: string | null;
 }
 
 const CLAIM_ID_KEYS: Record<PmsImportFamily, string[]> = {
@@ -157,6 +164,7 @@ export function normalizePmsClaimRow(
   const dobRaw = getCell(
     raw,
     'Date of Birth',
+    'date_of_birth',
     'DOB',
     'dob',
     'Patient DOB',
@@ -175,6 +183,7 @@ export function normalizePmsClaimRow(
     raw,
     'Subscriber DOB',
     'Subscriber Date of Birth',
+    'subscriber_date_of_birth',
     'subscriber_dob',
     'Policy Holder DOB',
     'policy_holder_dob',
@@ -302,6 +311,15 @@ export function normalizePmsClaimRow(
       'transaction_type',
       'Trans Type',
       'CDAnet Type',
+    ),
+    treatingDentistProviderNumber: getCell(
+      raw,
+      'Treating Dentist Provider Number',
+      'Treating Dentist',
+      'Provider Number',
+      'CDA Provider Number',
+      'treating_dentist_provider_number',
+      'provider_number',
     ),
     denialReasonCode: getCell(
       raw,

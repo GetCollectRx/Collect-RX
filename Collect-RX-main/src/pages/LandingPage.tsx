@@ -1034,15 +1034,15 @@ const FEATURES = [
   },
   {
     icon: <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" /></svg>,
-    h: 'Direct PMS integration',
+    h: 'CSV intake',
     p: 'Works with any practice management software. A weekly export of outstanding insurance balances is all it takes, no API integration, no IT setup.',
     check: 'No IT setup or API integration required',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-    h: 'Collections metrics',
-    p: 'Sync-verified dollars recovered, open insurance outstanding, and claims in follow-up. Compare CollectRx results to your PMS aging reports.',
-    check: 'Recovery metrics in your dashboard',
+    h: 'Staff-time and follow-up metrics',
+    p: 'Track carrier calls, hold time handled, documented outcomes, open insurance outstanding, and claims requiring staff review.',
+    check: 'Claims-status metrics in your dashboard',
   },
   {
     icon: <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" /></svg>,
@@ -1060,8 +1060,8 @@ const TRUST = [
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
-    h: 'PIPEDA compliant',
-    p: 'Built to Canadian federal privacy standards. Data residency, consent handling, and subject access rights are built into the platform.',
+    h: 'PIPEDA-aligned safeguards',
+    p: 'Engineering safeguards support a controlled Canadian pilot; legal applicability, vendor terms, residency configuration, and operator processes require separate verification.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
@@ -1170,8 +1170,8 @@ const COMPLIANCE_SNIPPETS = [
   },
   {
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" /></svg>,
-    h: 'PIPEDA compliant',
-    p: 'Canadian federal privacy standards. Data residency built in, not bolted on.',
+    h: 'PIPEDA-aligned safeguards',
+    p: 'Technical safeguards plus deployment and operator evidence; no blanket compliance guarantee.',
   },
   {
     icon: <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
@@ -2022,7 +2022,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <div className="lp-trust-row">
-                {['PHIPA compliant by design', 'Any PMS via CSV', '6 major Canadian carriers'].map(t => (
+                {['Privacy controls for a supervised pilot', 'CSV only — no PMS access', 'Carrier-status follow-up'].map(t => (
                   <div className="lp-trust-item" key={t}>
                     <svg className="lp-trust-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                       <path d="M5 13l4 4L19 7" />
@@ -2092,11 +2092,11 @@ export default function LandingPage() {
             <div className="lp-section-heading lp-reveal">
               <div className="lp-eyebrow">Pricing</div>
               <h2 className="lp-section-h2">
-                Priced on what you save: staff time and recovered dollars<span className="lp-dot">.</span>
+                Priced around staff time saved on carrier follow-up<span className="lp-dot">.</span>
               </h2>
               <p className="lp-section-sub">
                 Flat monthly tiers with included call minutes. You pay for automation that frees
-                your team from carrier hold time and drives verified insurance collections.
+                your team from carrier hold time and documents claims-status outcomes.
               </p>
             </div>
             <PricingSection />
@@ -2313,7 +2313,7 @@ export default function LandingPage() {
             </h2>
             <p className="lp-cta-body">
               Annual partnership for Canadian dental practices. No setup fees.
-              Collections metrics show what we recovered on your outstanding insurance AR.
+              Follow-up metrics show calls completed, hold time handled, and claims needing staff action.
             </p>
             <div className="lp-cta-actions">
               <Link to={MARKETING_PATHS.signup} className="lp-btn-primary">

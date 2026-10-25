@@ -98,6 +98,12 @@ export interface VapiCallParams {
   /** Language for IVR navigation and rep interactions — 'en' | 'fr'. Default 'en'. */
   languagePreference?: 'en' | 'fr';
   carrierIvrInstructions?: string;
+  /** Overrides the default squad — used to dial the V1 human-assisted squad instead of the fully-autonomous one. Defaults to VAPI_SQUAD_ID. */
+  squadId?: string;
+  /** Known resubmission channel from prior confirmed calls (Scenario A) — see submissionChannelMemory.ts. */
+  knownResubmissionChannel?: string;
+  /** Known documentation-submission channel from prior confirmed calls (Scenario D) — see submissionChannelMemory.ts. */
+  knownDocumentationChannel?: string;
   /**
    * Stable per-attempt key (e.g. `${claimId}:${attemptNumber}`) — sent as the
    * Idempotency-Key header so a retry of the *same* attempt (after a timeout
@@ -105,8 +111,7 @@ export interface VapiCallParams {
    * carrier for that attempt. Optional so existing callers don't break;
    * callers that dispatch real carrier calls should always pass one.
    */
-  idempotencyKey?: string;
-}
+  idempotencyKey?: string;}
 
 export interface VapiCallResult {
   vapiCallId: string;
@@ -175,16 +180,44 @@ export interface VapiCallMetadata {
 // ---------------------------------------------------------------------------
 // CARRIER_PHONE_MAP — direct-dial numbers for each carrier's claims line.
 // Update if carriers change their numbers.
+//
+// telus_adjudicare is a DEPRECATED LAST-RESORT PLACEHOLDER, not a real
+// claims line. TELUS AdjudiCare is an aggregator for many small TPAs with
+// no single carrier-wide number (confirmed 2026-08-01 against TELUS's own
+// FAQ: "please contact your insurer directly"). This entry only exists so
+// buildCarrierConfigs() in adapter.ts (which iterates every CARRIER_PHONE_MAP
+// key) doesn't throw for telus_adjudicare, and so the allowlist guard below
+// has *a* value to compare against pre-verification. Real TELUS dispatch is
+// gated in queueEngine.ts via getTelusDialPhone() and never reaches this
+// number — it escalates to a human when no per-TPA number is verified.
+// If/when an operator verifies a TPA's provider phone (promoting a
+// candidate in carrier-configs.json telusTpaProfiles.tpa_research_leads to
+// verified_provider_phone), that number must ALSO be added to the allowlist
+// this file builds below, or initiateCall() will reject the outbound call.
 // ---------------------------------------------------------------------------
 
-export const CARRIER_PHONE_MAP: Record<CarrierId, string> = {
+/** Carriers with a verified dial-out number. `other` (non-dental payers) is deliberately absent. */
+export type DialableCarrierId = Exclude<CarrierId, 'other'>;
+
+export const CARRIER_PHONE_MAP: Record<DialableCarrierId, string> = {
   sun_life:          '+18009619356',
   canada_life:       '+18007240222',
   manulife:          '+18662122333',
   green_shield:      '+18882110644',
   rbc:               '+18003613311',
-  telus_adjudicare:  '+18772893343',
+  telus_adjudicare:  '+18772893343', // DEPRECATED — see note above. Not a real TELUS line.
 };
+
+/**
+ * Resolve the allowlisted number for a carrier. Throws for `other`: non-dental
+ * payers have no verified number, so they can never be dialed by this path.
+ */
+export function carrierPhoneFor(carrierId: CarrierId): string {
+  if (carrierId === 'other') {
+    throw new Error('[VapiClient] Refusing call: payer "other" has no verified phone number on the allowlist');
+  }
+  return CARRIER_PHONE_MAP[carrierId];
+}
 
 /** CDCP Contact Centre — separate from Sun Life group benefits line. */
 export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
@@ -211,6 +244,11 @@ function getSquadId(): string {
 
 function getPreVisitSquadId(): string {
   return process.env.VAPI_PREVISIT_SQUAD_ID?.trim() || getSquadId();
+}
+
+/** V1 human-assisted squad (IVR_Navigator -> Hold_Sentinel -> Claims_Scribe). Practice staff, not the AI, speak with the rep. */
+export function getHumanAssistedSquadId(): string {
+  return process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID?.trim() || 'bbe41279-5301-4b5d-aa43-d7b23eaab5e7';
 }
 
 function getPhoneNumberId(): string {
@@ -339,6 +377,9 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     practicePhone,
     languagePreference,
     carrierIvrInstructions,
+    squadId,
+    knownResubmissionChannel,
+    knownDocumentationChannel,
     idempotencyKey,
   } = params;
 
@@ -362,7 +403,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
   };
 
   const payload = {
-    squadId: getSquadId(),
+    squadId: squadId || getSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: {
       number: carrierPhone,
@@ -409,13 +450,18 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
       practice_tax_id:          practiceTaxId ?? '',
       practice_address:         practiceAddress ?? '',
       provider_number:          providerNumber,
-      // CRTC ADAD Part IV Rule 4 — identification within first 10 seconds.
+      // Conservative CollectRx disclosure control: identify automation,
+      // practice, purpose, recording/transcription, and callback details at
+      // the start of the human interaction. Do not characterize the CRTC's
+      // ten-second disconnect provision as a disclosure deadline.
       // practice_phone is the billing/claims line, NOT the staff escalation line.
       practice_phone:           practicePhone,
       language_preference:      languagePreference ?? 'en',
       // ── Carrier routing ───────────────────────────────────────────────────────
       carrierId,
       carrier_ivr_instructions: carrierIvrInstructions ?? '',
+      known_resubmission_channel: knownResubmissionChannel ?? '',
+      known_documentation_channel: knownDocumentationChannel ?? '',
       },
     },
   };
@@ -436,6 +482,11 @@ export interface VapiPreVisitCallParams {
   appointmentVerificationId: string;
   preVisitType: 'eligibility' | 'cdcp_predet';
   cdcpContext?: boolean;
+  /**
+   * V1 Hold Sentinel practices: dial the human-assisted squad so staff, not
+   * the AI, speak with the CDCP or carrier rep. Same rule as AR dispatch.
+   */
+  humanAssisted?: boolean;
   patientName: string;
   patientDob: string;
   policyNumber: string;
@@ -459,7 +510,7 @@ export interface VapiPreVisitCallParams {
 export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Promise<VapiCallResult> {
   const carrierPhone = params.cdcpContext
     ? CDCP_CONTACT_CENTRE_PHONE
-    : CARRIER_PHONE_MAP[params.carrierId];
+    : carrierPhoneFor(params.carrierId);
 
   const allowedNumbers = new Set(
     [...Object.values(CARRIER_PHONE_MAP), CDCP_CONTACT_CENTRE_PHONE].map((n) => n.replace(/\D/g, '')),
@@ -484,7 +535,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
       : 'an eligibility and coverage verification before a scheduled appointment';
 
   const payload = {
-    squadId: getPreVisitSquadId(),
+    squadId: params.humanAssisted ? getHumanAssistedSquadId() : getPreVisitSquadId(),
     phoneNumberId: getPhoneNumberId(),
     customer: { number: carrierPhone },
     assistantOverrides: {

@@ -238,6 +238,15 @@ export interface TELUSTPAIdentification {
   confidence: 'high' | 'medium' | 'low';
   minWaitDay: number; // 21 for TELUS
   notes: string;
+  /**
+   * Provider claim-status phone number for the identified TPA, or null.
+   * TELUS AdjudiCare has no single carrier-wide line (confirmed against
+   * TELUS's own published FAQ — "please contact your insurer directly").
+   * This is only ever non-null once an operator has promoted a candidate
+   * number in carrier-configs.json's telusTpaProfiles.tpa_research_leads
+   * to a verified_provider_phone. Null means: do not dial, escalate.
+   */
+  dialPhone: string | null;
 }
 
 // ---------------------------------------------------------------------------

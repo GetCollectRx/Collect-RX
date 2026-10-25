@@ -1,0 +1,55 @@
+# Weekly dependency audit at the stricter "high" threshold.
+#
+# Pull requests only block on critical advisories (collectrx-ci.yml, verify job), because a newly
+# published advisory against an unchanged lockfile would otherwise block unrelated work overnight.
+# This job is where high findings surface. A failing run here starts the fix window: patch the
+# dependency within 72 hours (policy: docs/operations/CI-GATES.md).
+name: Dependency audit
+
+on:
+  schedule:
+    # Mondays 13:17 UTC. An off-peak minute avoids the load spike at the top of the hour.
+    - cron: '17 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: audit (production dependencies, high)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The audit reads package-lock.json only, so nothing is installed.
+      - name: npm audit (high and critical)
+        id: audit
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high --package-lock-only > audit.txt 2>&1
+          rc=$?
+          {
+            echo '### npm audit (production dependencies, high or critical)'
+            echo
+            if [ "$rc" -eq 0 ]; then
+              echo 'No high or critical advisories.'
+            else
+              echo "Advisories found (exit code $rc). Fix window: 72 hours."
+              echo
+              echo '```'
+              grep -E '^[A-Za-z@/._-]+ +[<>=0-9. |-]+$|^Severity: |^fix available' audit.txt | head -60
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat audit.txt
+          exit "$rc"

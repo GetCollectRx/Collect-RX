@@ -1,4 +1,4 @@
-import express, { Router, type Request, type Response } from 'express';
+import express, { Router, type Request, type Response, type NextFunction } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import {
   getOrganizationSsoConnectionBySlug,
@@ -11,6 +11,21 @@ import type { UserAuthPayload } from '../accessControl/types.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { frontendBaseUrl } from '../stripe/billing.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
+import { runWithRlsContext } from '../db/rlsContext.js';
+
+export async function findSsoUserForOrganization(
+  prisma: PrismaClient,
+  organizationId: string,
+  email: string,
+) {
+  return prisma.user.findFirst({
+    where: {
+      email,
+      isActive: true,
+      organizationMemberships: { some: { organizationId } },
+    },
+  });
+}
 
 /**
  * Phase 4 FR-1-6: per-org SAML 2.0 SSO front door. Authenticates onto the
@@ -20,9 +35,18 @@ import { authLimiter } from '../middleware/rateLimiter.js';
  * Successful logins go to AuditLog; failures go to OrgSsoEvent (AuditLog's
  * practiceId is NOT NULL and an unmatched-email failure has no practice).
  */
+// Every route in this router runs before any session exists — that's the
+// whole point of an SSO front door — so none of them ever have an
+// app.practice_id to derive. Bypass here mirrors authRoutes.ts's pre-auth
+// routes exactly.
+function withRlsBypass(_req: Request, _res: Response, next: NextFunction) {
+  runWithRlsContext({ bypass: true }, () => next());
+}
+
 export function createSsoRouter(prisma: PrismaClient): Router {
   const r = Router();
   r.use(express.urlencoded({ extended: false }));
+  r.use(withRlsBypass);
 
   r.get('/:orgSlug/metadata', async (req: Request, res: Response) => {
     try {
@@ -82,10 +106,10 @@ export function createSsoRouter(prisma: PrismaClient): Router {
         return await loginFailed(prisma, res, organizationId, 'no_email', 'assertion carried no usable email');
       }
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user || !user.isActive) {
+      const user = await findSsoUserForOrganization(prisma, organizationId, email);
+      if (!user) {
         // FR-4: never create an account here — "contact your administrator" instead.
-        return await loginFailed(prisma, res, organizationId, 'unmatched_email', `no matching active CollectRx user for ${email}`);
+        return await loginFailed(prisma, res, organizationId, 'unmatched_email', 'no matching active organization member');
       }
 
       setUserAuthCookie(res, {

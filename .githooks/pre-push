@@ -1,44 +1,29 @@
 #!/usr/bin/env bash
-# Runs the same checks CI's `verify` job runs, before code ever reaches GitHub.
-# Installed automatically via `npm install` (see package.json's `prepare` script,
-# which sets `core.hooksPath` to this directory). Bypass in a genuine emergency
-# with `git push --no-verify` — that's git's own escape hatch, nothing custom here.
+# Runs the full local gate set before code ever reaches GitHub. One entry point, the same
+# one used by hand, by Claude Code sessions and by CI parity checks: scripts/verify-all.sh.
 #
-# Deliberately NOT run here (CI still catches these): Prisma migrate deploy and
-# the RLS-bypass grant (both need a live Postgres service container — DB-dependent
-# tests already skip gracefully without one, per tests/README conventions), and
-# Semgrep SAST (needs Docker). Treat CI as still authoritative for those two.
+# Installed automatically via `npm install` (package.json `prepare` sets core.hooksPath to
+# this directory). Bypass in a genuine emergency with `git push --no-verify`.
+#
+# What it runs (see scripts/verify-all.sh --help): scope, any/suppression scan, TODO/FIXME scan,
+# secrets scan over the diff AND commit history, whitespace and schema-comment checks, prisma validate and
+# generate, migrations on an empty throwaway PostgreSQL 16, RLS coverage, API coverage,
+# typecheck, lint, the full test suite, npm audit and the production build.
+#
+# It starts its own temporary PostgreSQL (local pg16, Docker, or a cached embedded copy) and
+# never touches an existing database. First run on a machine without PostgreSQL 16 downloads
+# the embedded copy once.
+#
+# Exit codes: 0 pass, 1 a gate failed, 2 a gate could not run (UNVERIFIED). Both block the push.
+# Still CI only: Semgrep, Playwright e2e, perf-smoke, TruffleHog, queue-redis.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-# Match CI's placeholder env (.github/workflows/collectrx-ci.yml `verify` job env
-# block) so local runs test the same auth paths CI does. Without these, tests like
-# tests/vapiToolCalls.test.ts fail locally on missing VAPI_WEBHOOK_SECRET — a false
-# negative CI never hits, since its workflow sets these job-wide. Only override if
-# unset, so a developer's real .env values (if any) still take precedence.
-export JWT_SECRET="${JWT_SECRET:-github-actions-ci-placeholder-not-for-production}"
-export VAPI_WEBHOOK_SECRET="${VAPI_WEBHOOK_SECRET:-github-actions-ci-placeholder}"
+if [ ! -f scripts/verify-all.sh ]; then
+  echo "[pre-push] scripts/verify-all.sh is missing; refusing to push without the gate runner." >&2
+  exit 1
+fi
 
-step() { printf '\n\033[1m[pre-push] %s\033[0m\n' "$1"; }
-
-step "npm audit --omit=dev --audit-level=high"
-npm audit --omit=dev --audit-level=high
-
-step "prisma generate"
-npm run db:generate:collectrx
-
-step "typecheck"
-npm run typecheck:collectrx
-
-step "lint"
-npm run lint:collectrx
-
-step "test"
-npm run test:collectrx
-
-step "build"
-NODE_ENV=production npm run build:collectrx
-
-step "all checks passed — pushing"
+exec bash scripts/verify-all.sh --full
