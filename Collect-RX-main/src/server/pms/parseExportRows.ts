@@ -3,7 +3,9 @@
  * Import family selects alias precedence; carrier phone logic does not branch on PMS.
  */
 
+import type { PayerType } from '@prisma/client';
 import type { PmsImportFamily } from '../../types/pms.js';
+import { resolveRowPayerType } from './payerTypeInput.js';
 
 export function getCell(raw: Record<string, unknown>, ...keys: string[]): string | null {
   for (const k of keys) {
@@ -77,6 +79,11 @@ export interface NormalizedPmsClaimRow {
   subscriberDateOfBirth: string | null;
   /** Relationship to subscriber — 'self' | 'spouse' | 'dependent' */
   relationship: string | null;
+  /**
+   * Funding program from an optional "Payer Type" column. null when the export
+   * has none; the import then needs a file-level declaration for NEW claims.
+   */
+  payerType: PayerType | null;
   /** AbelDent / CDAnet transaction type (e.g. T11 pre-auth denial) */
   transactionType: string | null;
   denialReasonCode: string | null;
@@ -228,26 +235,35 @@ export function normalizePmsClaimRow(
     'Codes',
   );
 
+  const carrierName =
+    getCell(
+      raw,
+      'Insurance Carrier',
+      'Insurance Company',
+      'Carrier',
+      'Insurance',
+      'carrier_name',
+      'insurance_carrier',
+      'Primary Insurance',
+      'Ins Carrier',
+      'Ins Company',
+      'Plan Name',
+    ) ?? '';
+  const payerTypeParse = resolveRowPayerType(
+    getCell(raw, 'Payer Type', 'Payer Program', 'Plan Type', 'Funding Type', 'payer_type'),
+    carrierName,
+  );
+  if (!payerTypeParse.ok) {
+    throw new Error(payerTypeParse.error);
+  }
+
   return {
     claimNumber: claimNumber.trim(),
     patientFirstName:
       getCell(raw, 'Patient First Name', 'First Name', 'patient_first_name', 'FName', 'fname') ?? '',
     patientLastName:
       getCell(raw, 'Patient Last Name', 'Last Name', 'patient_last_name', 'LName', 'lname') ?? '',
-    carrierName:
-      getCell(
-        raw,
-        'Insurance Carrier',
-        'Insurance Company',
-        'Carrier',
-        'Insurance',
-        'carrier_name',
-        'insurance_carrier',
-        'Primary Insurance',
-        'Ins Carrier',
-        'Ins Company',
-        'Plan Name',
-      ) ?? '',
+    carrierName,
     procedureCode:
       getCell(raw, 'Procedure Code', 'Code', 'Proc Code', 'procedure_code', 'CDT', 'cdt_code') ?? '',
     servicedAt: servicedAt && !Number.isNaN(servicedAt.getTime()) ? servicedAt : null,
@@ -296,6 +312,7 @@ export function normalizePmsClaimRow(
       'Guarantor Name',
     ),
     subscriberDateOfBirth,
+    payerType: payerTypeParse.value,
     relationship: getCell(
       raw,
       'Relationship',

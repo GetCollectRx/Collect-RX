@@ -12,7 +12,8 @@
 // The underlying TPA determines IVR navigation — TELUS is a clearinghouse.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { CarrierId, ClaimStatus, PrismaClient } from '@prisma/client';
+import type { CarrierId, ClaimStatus, PayerType, PrismaClient } from '@prisma/client';
+import { evaluatePayerProgram } from './payerProgram.js';
 import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
@@ -67,6 +68,10 @@ export interface DispatchGuard {
   allowed: boolean;
   code?: string;
   reason?: string;
+  /** Present on an allowed decision whose claim had no payerType: PRIVATE was assumed (DEC-10 treatment of unclassified claims). */
+  payerTypeAssumed?: boolean;
+  /** Present when a claim over 90 days was allowed because the Hold Sentinel rule (DEC-2) does not block on age alone. */
+  over90Evaluation?: 'ALLOWED_HOLD_SENTINEL';
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +403,14 @@ export async function checkCarrierAuthorizationGate(
  *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
  *   5. Max attempts (>= 3 → reject)
  *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *
+ * Also enforced here, so every path that dials gets it without a flag:
+ *   - Payer program (DEC-10): only enabled programs dial; a claim with no
+ *     payerType is treated as PRIVATE and reported via `payerTypeAssumed`.
+ *   - Over 90 days (DEC-2): age alone blocks only in autonomous mode. In Hold
+ *     Sentinel mode the other gates (authorization, recovery gate covering
+ *     practice blockers, open gates, escalations and a future recall date, and
+ *     the attempt cap) decide.
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
@@ -414,9 +427,13 @@ export async function validateDispatch(
     claimStatus: ClaimStatus;
     /** Fleet-wide active-call-per-carrier snapshot, gathered outside RLS scope. Omit to skip the concurrency guard. */
     carrierActiveCounts?: Map<CarrierId, number>;
+    /** Required so no caller can skip the payer-program rule. Null means the claim is unclassified. */
+    payerType: PayerType | null;
+    /** Required: the execution mode decides the over-90 rule (DEC-2). */
+    humanAssisted: boolean;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, payerType, humanAssisted } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -442,6 +459,17 @@ export async function validateDispatch(
     return { allowed: false, code: 'RECOVERY_GATE', reason: recoveryGate.reason };
   }
 
+  // Payer program (DEC-10): enforced here, ahead of the carrier-facing gates,
+  // so a program that is not enabled never reaches a dial on any path.
+  const payerProgram = evaluatePayerProgram(payerType);
+  if (!payerProgram.enabled) {
+    return {
+      allowed: false,
+      code: 'PAYER_PROGRAM_NOT_ENABLED',
+      reason: `${payerProgram.reason} (${payerProgram.effectivePayerType}, ${payerProgram.policyRef})`,
+    };
+  }
+
   const authGate = await checkCarrierAuthorizationGate(prisma, practiceId, carrierId);
   if (!authGate.allowed) {
     return authGate;
@@ -456,9 +484,17 @@ export async function validateDispatch(
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
 
-  // 5. Claims over 90 days — escalate to human, skip AI
+  // 5. Claims over 90 days. Autonomous mode keeps the age block (the AI would
+  // speak on an old claim). Hold Sentinel mode (DEC-2) does not block on age
+  // alone: the authorization and recovery gates above already refused any claim
+  // with an open practice-side blocker, escalation, open gate or future recall
+  // date, and the attempt cap below still applies.
+  let over90Evaluation: DispatchGuard['over90Evaluation'];
   if (daysOutstanding > 90) {
-    return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
+    if (!humanAssisted) {
+      return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
+    }
+    over90Evaluation = 'ALLOWED_HOLD_SENTINEL';
   }
 
   // 6. Max 3 attempts
@@ -477,7 +513,11 @@ export async function validateDispatch(
     return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
   }
 
-  return { allowed: true };
+  return {
+    allowed: true,
+    ...(payerProgram.assumed ? { payerTypeAssumed: true } : {}),
+    ...(over90Evaluation ? { over90Evaluation } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

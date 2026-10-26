@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PayerType, PrismaClient } from '@prisma/client';
 import type { PmsVendorId } from '../../types/pms.js';
 import { importPmsClaimsToPrisma } from './prismaClaimImporter.js';
 import { validateImportTotals } from './importValidation.js';
@@ -32,6 +32,11 @@ export interface RunPmsImportOptions {
    * Defaults to 'partial', which never closes claims.
    */
   exportScope?: ExportScope;
+  /**
+   * Payer program for every row that has no "Payer Type" value of its own.
+   * Required for any row that would create a NEW claim (DEC-10 classification).
+   */
+  defaultPayerType?: PayerType;
 }
 
 export type ExportScope = 'full' | 'partial';
@@ -161,6 +166,7 @@ export async function runPmsImportPipeline(
         options.rows,
         options.practiceId,
         importFamily,
+        { defaultPayerType: options.defaultPayerType },
       );
 
       const validation = validateImportTotals({
