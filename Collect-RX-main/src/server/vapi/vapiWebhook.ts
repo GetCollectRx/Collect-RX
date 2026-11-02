@@ -21,6 +21,7 @@ import {
   tryCdcpFromVapiPayload,
 } from '../recovery/cdcpRecoveryBridge.js';
 import { isHeldThenDumped } from '../recovery/holdLedger.js';
+import { deriveResultProvenance } from '../resultProvenance.js';
 import { parseMoneyToCents } from './claimsValidatorWebhook.js';
 import { piiVault } from '../../pii-vault.js';
 import { deleteAudioWithBoundedRetry } from '../../services/pii-vault.js';
@@ -378,15 +379,16 @@ async function processCallEnded(
   // fired (e.g. the call dropped before Claims_Scribe could log it).
   let processed = resolveOutcomeFromWebhookPayload(payload);
   let structuredStatus = extractStructuredClaimStatus(payload);
+  let usedHumanLog = false;
   if (attempt.isHumanAssisted) {
     const humanLog = await prisma.humanAssistedCallLog.findUnique({ where: { vapiCallId } });
     if (humanLog) {
       const resolution = resolveOutcomeFromHumanAssistedLog(humanLog, {
-        transcriptUrl: payload.recordingUrl ?? null,
         durationSeconds: payload.call.durationSeconds ?? null,
       });
       processed = resolution.processed;
       structuredStatus = resolution.structuredClaimStatus;
+      usedHumanLog = true;
     } else {
       console.warn(
         `[vapi-webhook] isHumanAssisted call ${vapiCallId} has no HumanAssistedCallLog — ` +
@@ -433,6 +435,14 @@ async function processCallEnded(
 
   const completedAt = payload.call.endedAt ? new Date(payload.call.endedAt) : new Date();
 
+  const provenance = deriveResultProvenance({
+    usedHumanLog,
+    hasStructuredPayload: Boolean(structuredStatus),
+    referenceNumber: processed.referenceNumber,
+    heldForHumanVerification:
+      gatedClaimStatus === 'ESCALATED' && proposedClaimStatus !== 'ESCALATED',
+  });
+
   if (!attempt.completedAt || !attempt.outcome) {
     await prisma.callAttempt.update({
       where: { id: attempt.id },
@@ -443,8 +453,11 @@ async function processCallEnded(
         outcomeDetail: processed.outcomeDetail,
         repName: processed.repName,
         referenceNumber: processed.referenceNumber,
-        transcriptUrl: processed.transcriptUrl,
         carrierBlockDetected: processed.carrierBlockDetected,
+        vendorCostCents:
+          payload.vendorCostUsd === undefined ? null : Math.round(payload.vendorCostUsd * 100),
+        resultSource: provenance.source,
+        resultConfidence: provenance.confidence,
         heldThenDumped: isHeldThenDumped({
           outcome: processed.outcome,
           durationSeconds: processed.durationSeconds,

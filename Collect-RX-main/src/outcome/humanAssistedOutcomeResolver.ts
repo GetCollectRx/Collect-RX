@@ -93,7 +93,7 @@ export interface HumanAssistedResolution {
  */
 export function resolveOutcomeFromHumanAssistedLog(
   log: HumanAssistedCallLog,
-  callMeta: { transcriptUrl: string | null; durationSeconds: number | null },
+  callMeta: { durationSeconds: number | null },
 ): HumanAssistedResolution {
   const mapping = SCENARIO_MAP[log.scenario] ?? SCENARIO_MAP.UNCLEAR;
   const claimStatus =
@@ -111,7 +111,6 @@ export function resolveOutcomeFromHumanAssistedLog(
     outcomeDetail: detailParts.join(' ').slice(0, 2000) || `[human-assisted] ${log.scenario}`,
     repName: cleanOptional(log.repName),
     referenceNumber: cleanOptional(log.referenceNumber),
-    transcriptUrl: callMeta.transcriptUrl,
     durationSeconds: callMeta.durationSeconds,
     // Human-assisted calls are staff-driven end to end — the automated-block
     // detector (BLOCK_SIGNAL_PATTERNS in processor.ts) targets a fully

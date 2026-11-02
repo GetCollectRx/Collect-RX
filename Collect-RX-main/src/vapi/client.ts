@@ -145,6 +145,8 @@ export interface VapiWebhookPayload {
   };
   transcript?: string;
   recordingUrl?: string;
+  /** Vendor-reported call cost in USD from the end-of-call report, when present. */
+  vendorCostUsd?: number;
   /** CollectRx metadata forwarded from the call initiation payload */
   metadata?: VapiCallMetadata;
   analysis?: {
