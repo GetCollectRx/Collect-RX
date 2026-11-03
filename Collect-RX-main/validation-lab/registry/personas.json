@@ -114,7 +114,7 @@
       "label": "Platform Admin",
       "authSource": "platform_user",
       "effectiveUserRole": "platform_admin",
-      "jwtRole": "platform_dev",
+      "jwtRole": "group_admin",
       "platformUserSession": true,
       "phiAccess": false,
       "scope": "platform",
