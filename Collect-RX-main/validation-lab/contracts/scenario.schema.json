@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collectrx.local/validation-lab/scenario.schema.json",
+  "title": "CollectRx validation scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "tier", "name", "description", "layer", "personas", "preconditions", "harness", "steps", "expected", "forbidden", "evidence", "sourceRefs", "tags", "implementation"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Za-z0-9_]+)*$" },
+    "tier": { "enum": ["P0", "P1", "P2"] },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "layer": { "enum": ["conversation", "dispatch", "handoff", "ivr", "post_call", "ops"] },
+    "personas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collectrx", "carrier"],
+      "properties": {
+        "collectrx": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "carrier": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["syntheticOnly", "fixtureProfile", "services", "initialState"],
+      "properties": {
+        "syntheticOnly": { "const": true },
+        "fixtureProfile": { "type": "string", "minLength": 1 },
+        "services": { "type": "array", "uniqueItems": true, "items": { "enum": ["postgresql", "redis", "browser", "carrier_simulator", "telephony_simulator"] } },
+        "initialState": { "type": "object" }
+      }
+    },
+    "harness": { "enum": ["carrier_conversation", "scenario_vitest", "supervised_pilot", "telephony_controlled", "transcript_outcome"] },
+    "steps": { "$ref": "#/$defs/actions" },
+    "expected": { "$ref": "#/$defs/assertions" },
+    "forbidden": { "$ref": "#/$defs/assertions" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredArtifacts"],
+      "properties": {
+        "requiredArtifacts": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["assertion_results", "browser_trace", "event_log", "manifest", "manual_signoff", "sanitized_transcript", "state_snapshot", "telephony_metrics"] } }
+      }
+    },
+    "sourceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reference"],
+        "properties": { "path": { "type": "string", "minLength": 1 }, "reference": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "tags": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "implementation": { "enum": ["implemented", "partial", "pilot_only", "unimplemented"] }
+  },
+  "$defs": {
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "actor"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "actor": { "type": "string", "minLength": 1 },
+          "input": {}
+        }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "operator", "value", "critical"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "operator": { "enum": ["equals", "not_equals", "exists", "not_exists", "lte", "gte", "contains"] },
+          "value": {},
+          "critical": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
