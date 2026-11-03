@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toCsv } from "../../src/synthetic/csv.js";
+import { FIXTURE_PROFILE_IDS, generatePracticeBundle } from "../../src/synthetic/factory.js";
 import { SYNTHETIC_HEADERS, generateRecords } from "../../src/synthetic/generate.js";
 
 /**
@@ -145,5 +146,36 @@ describe.skipIf(!available)("generated rows against the repository import path",
       ),
     );
     expect([...ids].sort()).toEqual(["canada_life", "green_shield", "manulife", "rbc", "sun_life", "telus_adjudicare"]);
+  });
+
+  it("parses and normalises every clean, messy, and profile fixture without duplicate claims", async () => {
+    const pipeline = await load();
+    for (const profile of FIXTURE_PROFILE_IDS) {
+      const bundle = generatePracticeBundle(profile, "repo-profile", 8);
+      for (const [variant, csvText] of Object.entries(bundle.csv)) {
+        const parsed = pipeline.parseSimpleCsv(csvText);
+        expect(parsed, `${profile}:${variant}`).toHaveLength(8);
+        const normalized = parsed.map((row) => pipeline.normalizePmsClaimRow(row, "generic"));
+        expect(new Set(normalized.map((row) => row.claimNumber)).size, `${profile}:${variant}`).toBe(8);
+        expect(normalized.every((row) => pipeline.mapToCarrierId(row.carrierName) !== null), `${profile}:${variant}`).toBe(true);
+        const merged = pipeline.mergeClaimRows(normalized);
+        expect(merged.conflicts, `${profile}:${variant}`).toEqual([]);
+        expect(merged.rows, `${profile}:${variant}`).toHaveLength(8);
+      }
+    }
+  });
+
+  it("preserves the intended messy-import and dispatch-boundary preconditions", async () => {
+    const pipeline = await load();
+    const messy = generatePracticeBundle("synthetic_claim_standard", "repo-messy", 8);
+    const messyRows = pipeline.parseSimpleCsv(messy.csv.messy).map((row) => pipeline.normalizePmsClaimRow(row, "generic"));
+    expect(messyRows[0]?.treatmentCodes).toBeNull();
+    expect(messyRows[1]?.submittedAt).toBeNull();
+    expect(messyRows[2]?.expectedAmount).toBeNull();
+    expect(messyRows[3]?.servicedAt).toBeNull();
+
+    const dispatch = generatePracticeBundle("synthetic_claim_dispatch", "repo-dispatch", 8);
+    const dispatchRows = pipeline.parseSimpleCsv(dispatch.csv.profile).map((row) => pipeline.normalizePmsClaimRow(row, "generic"));
+    expect(dispatchRows.map((row) => row.daysOutstanding)).toEqual([29, 30, 90, 91, 29, 30, 90, 91]);
   });
 });

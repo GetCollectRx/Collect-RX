@@ -35,6 +35,8 @@
     "worker": "tsx src/server/workerEntry.ts",
     "learning:cycle": "tsx scripts/run-learning-cycle.ts",
     "eval:conversation-robustness": "tsx scripts/run-conversation-robustness-eval.ts",
+    "lab:registry:generate": "node validation-lab/registry/generate-registry.mjs",
+    "lab:validate": "node --import tsx validation-lab/registry/validateRegistry.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop ecosystem.config.cjs && pm2 delete ecosystem.config.cjs",
     "pm2:status": "pm2 status",
