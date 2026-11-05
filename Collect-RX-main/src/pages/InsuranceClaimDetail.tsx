@@ -28,7 +28,6 @@ interface CallAttempt {
   outcomeDetail: string | null
   repName: string | null
   referenceNumber: string | null
-  transcriptUrl: string | null
   validationPassed?: boolean | null
   validationResult?: { escalationReason?: string; safetyScore?: number } | null
 }
@@ -685,18 +684,6 @@ export default function InsuranceClaimDetail() {
                           {a.repName && <span>Rep spoken with: <span className="font-medium text-gray-700 dark:text-gray-300">{a.repName}</span></span>}
                           {a.referenceNumber && <span>Reference #: <span className="font-medium text-gray-700 dark:text-gray-300 font-mono">{a.referenceNumber}</span></span>}
                         </div>
-                      )}
-
-                      {/* Transcript link */}
-                      {a.transcriptUrl && (
-                        <a
-                          href={a.transcriptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400 transition-colors"
-                        >
-                          View full call transcript →
-                        </a>
                       )}
                     </div>
                   )

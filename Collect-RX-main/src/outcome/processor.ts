@@ -23,7 +23,6 @@ export interface ProcessedOutcome {
   outcomeDetail: string;
   repName: string | null;
   referenceNumber: string | null;
-  transcriptUrl: string | null;
   durationSeconds: number | null;
   /** True if this call should trigger the CARRIER_BLOCK suspension protocol */
   carrierBlockDetected: boolean;
@@ -218,13 +217,11 @@ function legacyCodeToProcessedOutcome(
   code: string,
   rawText: string,
   fullText: string,
-  transcriptUrl: string | null,
   durationSeconds: number | null,
 ): ProcessedOutcome {
   const base = {
     repName: extractRepName(rawText),
     referenceNumber: extractReferenceNumber(fullText),
-    transcriptUrl,
     durationSeconds,
   };
 
@@ -337,7 +334,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const fullText = rawText.toLowerCase();
 
   const durationSeconds = payload.call.durationSeconds ?? null;
-  const transcriptUrl = payload.recordingUrl ?? null;
 
   // ── Automation / bot block (regex only — not in legacy substring list) ───
   if (BLOCK_SIGNAL_PATTERNS.some((p) => p.test(blockScanText))) {
@@ -347,7 +343,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
         'Carrier detected automation — CARRIER_BLOCK protocol must fire immediately',
       repName: null,
       referenceNumber: extractReferenceNumber(fullText),
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: true,
     };
@@ -361,7 +356,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
         payload.call.status === 'failed' ? 'Call failed to connect' : 'Zero-duration call',
       repName: null,
       referenceNumber: null,
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -374,7 +368,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: `Call ended after ${durationSeconds}s — likely no answer or IVR disconnect`,
       repName: null,
       referenceNumber: null,
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -383,7 +376,7 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   // ── Legacy keyword ladder (mirrors processor.legacy.cjs) ─────────────────
   const legacyCode = matchLegacyTranscript(fullText);
   if (legacyCode !== null) {
-    return legacyCodeToProcessedOutcome(legacyCode, rawText, fullText, transcriptUrl, durationSeconds);
+    return legacyCodeToProcessedOutcome(legacyCode, rawText, fullText, durationSeconds);
   }
 
   // ── Regex fallbacks (legacy: unknown) ─────────────────────────────────────
@@ -393,7 +386,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: 'No transcript available — manual review (legacy: unknown)',
       repName: null,
       referenceNumber: null,
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -405,7 +397,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: 'Claim requires human escalation — dispute or appeal pathway identified',
       repName: extractRepName(rawText),
       referenceNumber: extractReferenceNumber(fullText),
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -417,7 +408,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: 'Claim confirmed resolved — payment issued or claim approved',
       repName: extractRepName(rawText),
       referenceNumber: extractReferenceNumber(fullText),
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -429,7 +419,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: 'Claim denied by carrier',
       repName: extractRepName(rawText),
       referenceNumber: extractReferenceNumber(fullText),
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -441,7 +430,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
       outcomeDetail: 'Claim still in adjudication — follow up required',
       repName: extractRepName(rawText),
       referenceNumber: extractReferenceNumber(fullText),
-      transcriptUrl,
       durationSeconds,
       carrierBlockDetected: false,
     };
@@ -452,7 +440,6 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
     outcomeDetail: 'Call ended without clear resolution — manual review recommended',
     repName: extractRepName(rawText),
     referenceNumber: extractReferenceNumber(fullText),
-    transcriptUrl,
     durationSeconds,
     carrierBlockDetected: false,
   };

@@ -23,7 +23,6 @@ interface CallAttempt {
   outcomeDetail: string | null
   repName: string | null
   referenceNumber: string | null
-  transcriptUrl: string | null
 }
 
 interface RecoveryActionView {
@@ -240,16 +239,6 @@ function CallTimelineEntry({ call, index }: { call: CallAttempt; index: number }
           {call.repName && call.referenceNumber && ' · '}
           {call.referenceNumber && <>Ref #{call.referenceNumber}</>}
         </p>
-      )}
-      {call.transcriptUrl && (
-        <a
-          href={call.transcriptUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-crx-500 hover:text-crx-600 dark:hover:text-crx-400"
-        >
-          View transcript →
-        </a>
       )}
     </div>
   )

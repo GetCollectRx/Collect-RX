@@ -697,6 +697,25 @@ enum CallOutcome {
   @@map("call_outcome")
 }
 
+/// Where a call result came from. Ordered by trust: a human witnessed log beats
+/// a structured payload from the voice assistant, which beats a text classifier.
+enum ResultSource {
+  HUMAN_LOG
+  STRUCTURED_PAYLOAD
+  TRANSCRIPT_CLASSIFIER
+
+  @@map("result_source")
+}
+
+/// How much a practice should trust a call result without checking it.
+enum ResultConfidence {
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("result_confidence")
+}
+
 enum QueueStatus {
   PENDING
   IN_PROGRESS
@@ -1100,6 +1119,12 @@ model CallAttempt {
   /// True when the carrier kept the agent waiting past the hold threshold and
   /// still ended the call with no engagement (no rep, no reference number).
   heldThenDumped       Boolean      @default(false) @map("held_then_dumped")
+  /// Vapi reported cost of the call in whole cents. Excludes telephony billed directly by Twilio. Null when the vendor sent no cost.
+  vendorCostCents      Int?         @map("vendor_cost_cents")
+  /// Provenance of the persisted outcome. Null on calls completed before this field existed.
+  resultSource         ResultSource?     @map("result_source")
+  /// Trust level of the persisted outcome. Null on calls completed before this field existed.
+  resultConfidence     ResultConfidence? @map("result_confidence")
   /// Live console state while call is in progress (cleared on completion).
   liveState            String?      @map("live_state")
   activeAgent          String?      @map("active_agent")

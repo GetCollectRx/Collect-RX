@@ -252,6 +252,77 @@ router.get('/practice-performance/export', async (req: Request, res: Response) =
   }
 });
 
+/**
+ * Per-claim results export. One row per claim with its latest completed call, so
+ * a practice can audit every result alongside its source and confidence. Scoped
+ * to the session practice; the owner-practice middleware gates the role.
+ */
+router.get('/claim-results/export', async (req: Request, res: Response) => {
+  try {
+    const qPractice = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qPractice)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const practiceId = practiceIdFromSession(req);
+    const days = Math.min(365, Math.max(1, parseInt(String(req.query.days ?? '90'), 10) || 90));
+    const since = new Date(Date.now() - days * 86_400_000);
+
+    const claims = await prisma.insuranceClaim.findMany({
+      where: {
+        practiceId,
+        deletedAt: null,
+        callAttempts: { some: { completedAt: { gte: since } } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 5000,
+      select: {
+        claimNumber: true,
+        carrierId: true,
+        status: true,
+        callAttempts: {
+          where: { completedAt: { not: null } },
+          orderBy: { completedAt: 'desc' },
+          take: 1,
+          select: {
+            completedAt: true,
+            outcome: true,
+            resultSource: true,
+            resultConfidence: true,
+            referenceNumber: true,
+            repName: true,
+            durationSeconds: true,
+          },
+        },
+      },
+    });
+
+    const { buildClaimResultsCsv } = await import('../server/export/claimResultsCsv.js');
+    const body = buildClaimResultsCsv(
+      claims.map((c) => {
+        const call = c.callAttempts[0];
+        return {
+          claimNumber: c.claimNumber,
+          carrierId: c.carrierId,
+          claimStatus: c.status,
+          callCompletedAt: call?.completedAt ?? null,
+          callOutcome: call?.outcome ?? null,
+          resultSource: call?.resultSource ?? null,
+          resultConfidence: call?.resultConfidence ?? null,
+          referenceNumber: call?.referenceNumber ?? null,
+          repName: call?.repName ?? null,
+          durationSeconds: call?.durationSeconds ?? null,
+        };
+      }),
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="collectrx-claim-results.csv"');
+    return res.send(body);
+  } catch (err) {
+    logger.error('[GET /analytics/claim-results/export]', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.get('/practice-performance', async (req: Request, res: Response) => {
   try {
     const qPractice = req.query.practiceId as string | undefined;
@@ -341,20 +412,20 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
     const limit = Math.min(200, parseInt(String(req.query.limit ?? '50'), 10) || 50);
     const since = new Date(Date.now() - days * 86_400_000);
 
-    // Fetch completed calls that have a transcript URL, joined to their claim
+    // Fetch completed calls that have a stored redacted transcript, joined to their claim
     // for carrierId. Split into already-evaluated (cached) and pending.
     const completedCalls = await prisma.callAttempt.findMany({
       where: {
         claim: { practiceId },
         outcome: { not: null },
-        transcriptUrl: { not: null },
+        transcriptText: { not: null },
         completedAt: { gte: since },
       },
       orderBy: { completedAt: 'desc' },
       take: limit,
       select: {
         id: true,
-        transcriptUrl: true,
+        transcriptText: true,
         completedAt: true,
         evalCompletedAt: true,
         evalScores: true,
@@ -392,7 +463,7 @@ router.get('/insurance/eval-scores', async (req: Request, res: Response) => {
       try {
         const { isAnthropicEvalAllowed } = await import('../services/analytics/anthropicEvalGuard.js');
         if (!isAnthropicEvalAllowed()) break;
-        const transcriptText = call.transcriptUrl ?? '';
+        const transcriptText = call.transcriptText ?? '';
         if (transcriptText.length < 50) continue;
 
         const result = await evaluateCallTranscript(

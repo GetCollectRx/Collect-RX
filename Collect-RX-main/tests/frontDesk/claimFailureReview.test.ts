@@ -15,7 +15,6 @@ function attempt(overrides: Partial<CallAttempt> = {}): CallAttempt {
     outcomeDetail: 'Raw outcome text is intentionally excluded from the review.',
     repName: null,
     referenceNumber: null,
-    transcriptUrl: null,
     transcriptText: 'Sensitive transcript content must not appear in the review.',
     evalCompletedAt: null,
     evalScores: null,

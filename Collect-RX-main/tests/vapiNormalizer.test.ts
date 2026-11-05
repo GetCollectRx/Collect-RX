@@ -189,3 +189,16 @@ describe('escalateOverdueRecoveryActions', () => {
     expect(where.status).toEqual({ in: ['OPEN', 'BLOCKING'] });
   });
 });
+
+describe('vendor cost capture', () => {
+  it('maps a numeric cost to vendorCostUsd', () => {
+    const out = normalizeVapiWebhook(nativeEndOfCallReport({ cost: 0.4321 }));
+    expect(out?.vendorCostUsd).toBe(0.4321);
+  });
+
+  it('ignores a missing, negative or non numeric cost', () => {
+    expect(normalizeVapiWebhook(nativeEndOfCallReport())?.vendorCostUsd).toBeUndefined();
+    expect(normalizeVapiWebhook(nativeEndOfCallReport({ cost: -1 }))?.vendorCostUsd).toBeUndefined();
+    expect(normalizeVapiWebhook(nativeEndOfCallReport({ cost: '0.5' }))?.vendorCostUsd).toBeUndefined();
+  });
+});

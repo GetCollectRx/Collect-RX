@@ -18,7 +18,6 @@ type HistoryRow = {
   vapiCallId: string
   outcome: string | null
   outcomeDetail: string | null
-  transcriptUrl: string | null
   liveState: string | null
   initiatedAt: string
   completedAt: string | null
@@ -153,7 +152,6 @@ export default function CallHistory() {
                     <Th>When</Th>
                     <Th>Duration</Th>
                     <Th>Detail</Th>
-                    <Th />
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -184,18 +182,6 @@ export default function CallHistory() {
                             <span className="text-xs text-gray-400 dark:text-gray-600">Retry via queue</span>
                           ) : (
                             <span className="text-gray-300 dark:text-gray-700">N/A</span>
-                          )}
-                        </Td>
-                        <Td>
-                          {r.transcriptUrl && (
-                            <a
-                              href={r.transcriptUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-medium text-emerald-600 dark:text-emerald-500 hover:underline"
-                            >
-                              Recording ↗
-                            </a>
                           )}
                         </Td>
                       </Tr>

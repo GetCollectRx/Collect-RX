@@ -139,7 +139,6 @@ export function resolveOutcomeFromWebhookPayload(payload: VapiWebhookPayload): P
       outcomeDetail: st?.outcomeDetail?.trim() || '[collectrx structured outcome]',
       repName: null,
       referenceNumber: null,
-      transcriptUrl: payload.recordingUrl ?? null,
       durationSeconds: payload.call.durationSeconds ?? null,
       carrierBlockDetected: Boolean(st?.carrierBlockDetected),
     };
@@ -153,7 +152,6 @@ export function resolveOutcomeFromWebhookPayload(payload: VapiWebhookPayload): P
       outcomeDetail: squad.summary?.trim() || `[squad structured outcome: ${squad.outcome}]`,
       repName: squad.repName ?? null,
       referenceNumber: squad.referenceNumber ?? null,
-      transcriptUrl: payload.recordingUrl ?? null,
       durationSeconds: payload.call.durationSeconds ?? null,
       carrierBlockDetected: false,
     };

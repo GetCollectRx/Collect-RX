@@ -26,6 +26,7 @@ interface NativeCall {
 interface NativeServerMessage {
   type?: unknown;
   status?: unknown;
+  cost?: unknown;
   endedReason?: unknown;
   startedAt?: unknown;
   endedAt?: unknown;
@@ -43,6 +44,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function asString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+function asNonNegativeNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
 
 function extractMetadata(msg: NativeServerMessage): VapiCallMetadata | undefined {
@@ -103,6 +108,7 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
       },
       transcript: asString(msg.artifact?.transcript) ?? asString(msg.transcript),
       recordingUrl: asString(msg.artifact?.recordingUrl),
+      vendorCostUsd: asNonNegativeNumber(msg.cost),
       metadata,
       analysis: {
         summary: asString(msg.analysis?.summary),
