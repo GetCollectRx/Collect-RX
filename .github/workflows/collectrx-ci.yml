@@ -247,7 +247,10 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: the installed Playwright release cannot install Chromium on the
+    # Ubuntu 26.04 image that ubuntu-latest now resolves to. Move back to
+    # ubuntu-latest once Playwright is upgraded to a release that supports it.
+    runs-on: ubuntu-24.04
     needs: [trigger, verify]
     if: needs.trigger.outputs.run == 'true'
     timeout-minutes: 25
