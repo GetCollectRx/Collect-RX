@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    { "id": "synthetic_claim_standard", "description": "Normal unresolved claim with valid practice and carrier identity fields." },
+    { "id": "synthetic_claim_auth_adversity", "description": "Claim with valid allowed identifiers and controlled authentication variations." },
+    { "id": "synthetic_claim_denial", "description": "Denied or coverage-limited claim with deterministic reason metadata." },
+    { "id": "synthetic_claim_documentation", "description": "Claim requiring fictional attachments or clinical documentation metadata." },
+    { "id": "synthetic_claim_payment", "description": "Paid, partially paid, or payment-pending claim with deterministic amounts." },
+    { "id": "synthetic_claim_ivr", "description": "Claim and carrier routing data for IVR, hold, callback, voicemail, and disconnect paths." },
+    { "id": "synthetic_claim_handoff", "description": "Claim with staff escalation and warm-transfer configuration." },
+    { "id": "synthetic_claim_dispatch", "description": "Claim with configurable age, attempt, authorization, schedule, and queue gates." },
+    { "id": "synthetic_claim_post_call", "description": "Claim with controlled transcript and webhook outcome inputs." },
+    { "id": "synthetic_practice_operations", "description": "Fictional practice configuration for operational and pilot-only checks." }
+  ]
+}

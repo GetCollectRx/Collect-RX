@@ -341,11 +341,25 @@ export function identifyTelusPlan(
   groupNumber: string,
 ): TELUSTPAIdentification {
   const config = getCarrierConfig(Carrier.TELUSAdjudiCare);
-  const tpaProfiles: Record<string, string> =
-    (config as unknown as { telusTpaProfiles: { group_prefix_ranges: Record<string, string> } })
-      .telusTpaProfiles?.group_prefix_ranges ?? {};
+  const telusConfig = config as unknown as {
+    telusTpaProfiles: {
+      group_prefix_ranges: Record<string, string>;
+      tpa_research_leads?: Record<string, { status: string; verified_provider_phone?: string }>;
+    };
+  };
+  const tpaProfiles: Record<string, string> = telusConfig.telusTpaProfiles?.group_prefix_ranges ?? {};
 
   const { tpa, method, confidence } = identifyTelusTpa(memberId, groupNumber, tpaProfiles);
+
+  // Dial number resolution is deliberately separate from TPA identification.
+  // TELUS AdjudiCare has no single carrier-wide phone line — see the
+  // _dial_phone_policy note in carrier-configs.json. A dial number is only
+  // ever returned once an operator has hand-verified a TPA's provider
+  // claim-status line and recorded it as verified_provider_phone. Until
+  // then this returns null on every path, so dispatch is forced to
+  // escalate to a human instead of guessing.
+  const leads = telusConfig.telusTpaProfiles?.tpa_research_leads ?? {};
+  const dialPhone = tpa ? leads[tpa]?.verified_provider_phone ?? null : null;
 
   return {
     memberId,
@@ -354,9 +368,12 @@ export function identifyTelusPlan(
     identificationMethod: method as TELUSTPAIdentification['identificationMethod'],
     confidence,
     minWaitDay: config.minWaitDayForClaims ?? 21,
+    dialPhone,
     notes:
       confidence === 'low'
         ? 'Manual verification required — call TELUS AdjudiCare member line to identify underlying TPA before routing IVR call.'
-        : `TPA identified as "${tpa}" via ${method}. Minimum claim wait: day ${config.minWaitDayForClaims ?? 21}.`,
+        : dialPhone
+          ? `TPA identified as "${tpa}" via ${method}. Minimum claim wait: day ${config.minWaitDayForClaims ?? 21}.`
+          : `TPA identified as "${tpa}" via ${method}, but no verified provider phone is on file for this TPA — dispatch must escalate to a human rather than dial an unverified number.`,
   };
 }

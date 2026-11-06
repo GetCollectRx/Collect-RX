@@ -202,4 +202,20 @@ describe('initiatePreVisitCall', () => {
     const body = JSON.parse(init.body as string);
     expect(body.squadId).toBe('squad-recovery');
   });
+
+  it('dials the Hold Sentinel squad for a human-assisted practice, even for CDCP calls', async () => {
+    process.env.VAPI_PREVISIT_SQUAD_ID = 'squad-previsit';
+    process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID = 'squad-hold-sentinel';
+    try {
+      await initiatePreVisitCall({ ...PRE_VISIT_BASE, cdcpContext: true, humanAssisted: true });
+    } finally {
+      delete process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID;
+    }
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.squadId).toBe('squad-hold-sentinel');
+    expect(body.customer.number).toBe('+18888888110');
+  });
 });

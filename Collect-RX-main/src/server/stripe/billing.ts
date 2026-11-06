@@ -78,6 +78,110 @@ function subscriptionPlanSnapshot(sub: Stripe.Subscription): SubscriptionPlanSna
   return subscriptionPlanById(metaPlanId) ?? null;
 }
 
+function organizationHealthUpdate(
+  current: { callsPaused: boolean; callsPausedReason: string | null },
+  status: string | null | undefined,
+): Record<string, unknown> {
+  if (status === 'past_due' || status === 'unpaid') {
+    return current.callsPaused
+      ? {}
+      : { callsPaused: true, callsPausedReason: 'payment_failed', callsPausedAt: new Date() };
+  }
+  if (status === 'canceled') {
+    return { callsPaused: true, callsPausedReason: 'subscription_cancelled', callsPausedAt: new Date() };
+  }
+  if (
+    (status === 'active' || status === 'trialing') &&
+    current.callsPaused &&
+    (current.callsPausedReason === 'payment_failed' || current.callsPausedReason === 'subscription_cancelled')
+  ) {
+    return { callsPaused: false, callsPausedReason: null, callsPausedAt: null };
+  }
+  return {};
+}
+
+async function applyOrganizationSubscriptionEvent(
+  db: PrismaClient,
+  eventId: string,
+  organizationId: string,
+  sub: Stripe.Subscription,
+): Promise<void> {
+  const priceId = subscriptionPrimaryPriceId(sub);
+  const plan = subscriptionPlanSnapshot(sub);
+  const billingTier = billingTierForStripePrice(priceId);
+  if (priceId && !billingTier) {
+    logger.error('[billing-webhook] Stripe price does not map to any tier — organization tier left unchanged', {
+      priceId,
+      organizationId,
+      hint: 'check STRIPE_PRICE_CORE/GROWTH/SCALE',
+    });
+  }
+
+  await db.$transaction(async (tx) => {
+    const organization = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { callsPaused: true, callsPausedReason: true },
+    });
+    if (!organization) throw new Error(`Organization ${organizationId} not found`);
+
+    await tx.organization.update({
+      where: { id: organizationId },
+      data: {
+        stripeSubscriptionId: sub.status === 'canceled' ? null : sub.id,
+        stripeCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
+        subscriptionStatus: sub.status,
+        subscriptionPriceId: sub.status === 'canceled' ? null : priceId,
+        subscriptionPlanId: sub.status === 'canceled' ? null : (plan?.id ?? null),
+        subscriptionCurrentPeriodStart: sub.status === 'canceled' ? null : subscriptionPeriodStartDate(sub),
+        subscriptionCurrentPeriodEnd: sub.status === 'canceled' ? null : subscriptionPeriodEndDate(sub),
+        ...(billingTier ? { billingTier } : {}),
+        ...organizationHealthUpdate(organization, sub.status),
+      },
+    });
+    await tx.processedStripeEvent.create({ data: { id: eventId } });
+  });
+}
+
+async function applyOrganizationBillingCycle(
+  db: PrismaClient,
+  eventId: string,
+  organizationId: string,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    // Stripe can deliver invoice events more than once or out of order. Only a
+    // strictly newer period may reset usage. The conditional update is the
+    // atomic claim: concurrent events for the same period cannot both win.
+    const resetClaim = await tx.organization.updateMany({
+      where: {
+        id: organizationId,
+        OR: [{ billingPeriodStart: null }, { billingPeriodStart: { lt: periodStart } }],
+      },
+      data: {
+        billingPeriodStart: periodStart,
+        callsPaused: false,
+        callsPausedReason: null,
+        callsPausedAt: null,
+        overageConfirmed: false,
+        overageConfirmedAt: null,
+      },
+    });
+    if (resetClaim.count === 1) {
+      const members = await tx.organizationPractice.findMany({
+        where: { organizationId },
+        select: { practiceId: true },
+      });
+      for (const member of members) {
+        await tx.usagePeriod.create({
+          data: { practiceId: member.practiceId, periodStart, periodEnd },
+        });
+      }
+    }
+    await tx.processedStripeEvent.create({ data: { id: eventId } });
+  });
+}
+
 export type SubscriptionGateState = {
   enforce: boolean;
   active: boolean;
@@ -387,12 +491,7 @@ export async function handlePlatformBillingWebhook(
         ...(billingTier ? { billingTier } : {}),
       };
       if (organizationId) {
-        await db.$transaction([
-          db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
-          db.processedStripeEvent.create({ data: { id: event.id } }),
-        ]);
-        // Organization-level plan status sync (TODO: implement if needed)
-        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        await applyOrganizationSubscriptionEvent(db, event.id, organizationId, sub);
         return { handled: true };
       }
       await db.$transaction([
@@ -408,14 +507,34 @@ export async function handlePlatformBillingWebhook(
       const subRef = invoice.subscription;
       if (!subRef) return { handled: false, reason: 'invoice_without_subscription' };
       const subId = typeof subRef === 'string' ? subRef : subRef.id;
-      const org = await db.organization.findFirst({
+      let org = await db.organization.findFirst({
         where: { stripeSubscriptionId: subId },
         select: { id: true },
       });
+      if (!org) {
+        const currentSub = await stripe.subscriptions.retrieve(subId, { expand: ['items.data'] });
+        const metadataOrganizationId = currentSub.metadata?.organization_id;
+        if (typeof metadataOrganizationId === 'string' && metadataOrganizationId.length > 0) {
+          org = await db.organization.findUnique({
+            where: { id: metadataOrganizationId },
+            select: { id: true },
+          });
+          if (!org) throw new Error(`Organization ${metadataOrganizationId} not found`);
+        }
+      }
       if (org) {
-        // Organization-level billing cycle (TODO: implement if needed)
-        // await startNewOrgBillingCycle(org.id);
-        await db.processedStripeEvent.create({ data: { id: event.id } });
+        const periodStartSeconds = invoice.period_start;
+        const periodEndSeconds = invoice.period_end;
+        if (!Number.isFinite(periodStartSeconds) || !Number.isFinite(periodEndSeconds)) {
+          throw new Error(`Stripe invoice ${invoice.id} is missing a valid billing period`);
+        }
+        await applyOrganizationBillingCycle(
+          db,
+          event.id,
+          org.id,
+          new Date(periodStartSeconds * 1000),
+          new Date(periodEndSeconds * 1000),
+        );
         return { handled: true };
       }
       const p = await db.practice.findFirst({
@@ -429,7 +548,10 @@ export async function handlePlatformBillingWebhook(
     }
 
     if (event.type === 'customer.subscription.updated') {
-      const sub = event.data.object as Stripe.Subscription;
+      const deliveredSub = event.data.object as Stripe.Subscription;
+      // Fetch current Stripe state so an older webhook delivered after a newer
+      // one cannot roll the organization back to stale plan/payment state.
+      const sub = await stripe.subscriptions.retrieve(deliveredSub.id, { expand: ['items.data'] });
       const metaOrgId = sub.metadata?.organization_id;
       let organizationId: string | undefined =
         typeof metaOrgId === 'string' && metaOrgId.length > 0 ? metaOrgId : undefined;
@@ -475,12 +597,7 @@ export async function handlePlatformBillingWebhook(
         ...(billingTier ? { billingTier } : {}),
       };
       if (organizationId) {
-        await db.$transaction([
-          db.organization.update({ where: { id: organizationId }, data: subscriptionFields }),
-          db.processedStripeEvent.create({ data: { id: event.id } }),
-        ]);
-        // Organization-level plan status sync (TODO: implement if needed)
-        // await syncOrgPlanStatusFromSubscription(organizationId, sub.status);
+        await applyOrganizationSubscriptionEvent(db, event.id, organizationId, sub);
         return { handled: true };
       }
       await db.$transaction([
@@ -501,17 +618,35 @@ export async function handlePlatformBillingWebhook(
         subscriptionCurrentPeriodStart: null,
         subscriptionCurrentPeriodEnd: null,
       };
-      const org = await db.organization.findFirst({
+      const orgBySubscription = await db.organization.findFirst({
         where: { stripeSubscriptionId: sub.id },
         select: { id: true },
       });
-      if (org) {
-        await db.$transaction([
-          db.organization.update({ where: { id: org.id }, data: canceledFields }),
-          db.processedStripeEvent.create({ data: { id: event.id } }),
-        ]);
-        // Organization-level plan status sync (TODO: implement if needed)
-        // await syncOrgPlanStatusFromSubscription(org.id, 'canceled');
+      const metadataOrganizationId =
+        typeof sub.metadata?.organization_id === 'string' && sub.metadata.organization_id.length > 0
+          ? sub.metadata.organization_id
+          : undefined;
+      const organizationId = orgBySubscription?.id ?? metadataOrganizationId;
+      if (organizationId) {
+        await db.$transaction(async (tx) => {
+          const organization = await tx.organization.findUnique({
+            where: { id: organizationId },
+            select: { stripeSubscriptionId: true, callsPaused: true, callsPausedReason: true },
+          });
+          if (!organization) throw new Error(`Organization ${organizationId} not found`);
+          // A deletion for an old subscription must never cancel a replacement
+          // subscription that is already attached to the organization.
+          if (!organization.stripeSubscriptionId || organization.stripeSubscriptionId === sub.id) {
+            await tx.organization.update({
+              where: { id: organizationId },
+              data: {
+                ...canceledFields,
+                ...organizationHealthUpdate(organization, 'canceled'),
+              },
+            });
+          }
+          await tx.processedStripeEvent.create({ data: { id: event.id } });
+        });
         return { handled: true };
       }
       const p = await db.practice.findFirst({
@@ -531,7 +666,8 @@ export async function handlePlatformBillingWebhook(
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
     if (code === 'P2002') {
-      return { handled: true, reason: 'duplicate_event' };
+      const processed = await db.processedStripeEvent.findUnique({ where: { id: event.id } });
+      if (processed) return { handled: true, reason: 'duplicate_event' };
     }
     throw e;
   }

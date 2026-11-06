@@ -490,7 +490,12 @@ function checkAuditTrail(): ComplianceCheck[] {
   const results: ComplianceCheck[] = [];
 
   // D1 — Append-only audit log in database
-  const hasAuditLog = auditLog.includes('prisma.auditLog.create') && auditLog.includes('appendAuditLog');
+  // The writer runs inside an interactive transaction so the tenant advisory
+  // lock and hash-chain read/write share one connection. Accept either the
+  // legacy direct-client call or the transaction-client equivalent.
+  const hasAuditLog =
+    (auditLog.includes('prisma.auditLog.create') || auditLog.includes('tx.auditLog.create')) &&
+    auditLog.includes('appendAuditLog');
   const hasAuditLogSchema = prismaSchema.includes('AuditLog') || prismaSchema.includes('auditLog');
   results.push(check(
     'D1', 'AUDIT_TRAIL', ['PHIPA', 'PIPEDA'],

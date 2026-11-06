@@ -24,6 +24,8 @@ import {
 } from './electronicPreVisit.js';
 import { enqueueEmrPreVisitEvent } from '../emrSyncOutbox.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
+import { practiceHasFeature } from '../plans/practiceEntitlements.js';
+import { FEATURES } from '../../billing/entitlements.js';
 
 export interface PreVisitParams {
   practiceId: string;
@@ -181,9 +183,14 @@ export async function verifyBeforeAppointment(
       orderBy: { verifiedAt: 'desc' },
     });
 
+    const eligibilityInPlan = await practiceHasFeature(prisma, practiceId, FEATURES.PRE_VISIT_ELIGIBILITY);
+
     if (!snapshot) {
       result.eligibilitySnapshotAge = null;
-      if (result.status !== 'YELLOW' || !result.reason?.startsWith('missing_documentation')) {
+      if (
+        eligibilityInPlan &&
+        (result.status !== 'YELLOW' || !result.reason?.startsWith('missing_documentation'))
+      ) {
         result.enqueuedJobId = await enqueuePreVisitJob(
           'PRE_VISIT_ELIGIBILITY',
           buildPayload(params, row.id),
@@ -193,7 +200,7 @@ export async function verifyBeforeAppointment(
     } else {
       const ageDays = Math.floor((Date.now() - snapshot.verifiedAt.getTime()) / MS_PER_DAY);
       result.eligibilitySnapshotAge = ageDays;
-      if (ageDays > SNAPSHOT_STALE_AFTER_DAYS) {
+      if (eligibilityInPlan && ageDays > SNAPSHOT_STALE_AFTER_DAYS) {
         result.enqueuedJobId = await enqueuePreVisitJob(
           'PRE_VISIT_ELIGIBILITY',
           buildPayload(params, row.id),
@@ -249,7 +256,7 @@ export async function verifyBeforeAppointment(
     // (f) TELUS Tx23 — flag only. The live CDAnet inquiry must not run inline
     // here; identify support and defer the actual submission to the worker
     // (PRE_VISIT_TELUS_TX23 job), the same pattern PRE_VISIT_ELIGIBILITY uses.
-    if (carrierId === 'telus_adjudicare') {
+    if (eligibilityInPlan && carrierId === 'telus_adjudicare') {
       const tx23Support = checkTelusTx23Support(carrierId, patientToken, practiceId);
       await appendPhiAccessEvent(prisma, {
         practiceId,
