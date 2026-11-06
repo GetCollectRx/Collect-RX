@@ -139,6 +139,24 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
     };
   }
 
+  // ── transcript: live speech from the transcriber (docs.vapi.ai/server-url/events) ──
+  // Only final lines from the far party (role "user": the carrier IVR or rep on
+  // an outbound call) are consumed. Partials repeat as they refine, and the
+  // assistant's own speech must never be scanned for carrier-block phrases.
+  // Vapi may send the final-only form as type `transcript[transcriptType="final"]`.
+  if (msgType === 'transcript' || msgType.startsWith('transcript[')) {
+    const native = parsed.message as Record<string, unknown>;
+    const isFinal = msgType.includes('"final"') || native.transcriptType === 'final';
+    const text = asString(native.transcript);
+    if (!isFinal || native.role !== 'user' || !text) return null;
+    return {
+      type: 'transcript',
+      call: { id: callId, status: 'in-progress' },
+      transcript: text,
+      metadata,
+    };
+  }
+
   // Message types the backend does not consume (speech-update, conversation-update, ...).
   return null;
 }
