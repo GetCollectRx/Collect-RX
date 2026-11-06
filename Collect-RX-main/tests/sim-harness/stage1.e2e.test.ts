@@ -518,7 +518,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
       if (scenario === 'ROBOT_REFUSER') {
         const block = await plain.carrierBlockEvent.findFirst({ where: { practiceId, carrierId: claim.carrierId, resumedAt: null } });
         log.scenario({ scenario, persona: REP_SCRIPTS[scenario].persona, carrierId: claim.carrierId, expected: 'CARRIER_BLOCK applied to carrier',
-          observed: `block=${Boolean(block)} attempt outcome=${after?.outcome ?? 'null'} carrierBlockDetected=${after?.carrierBlockDetected ?? false}. humanAssistedOutcomeResolver.ts hard-codes carrierBlockDetected=false.`,
+          observed: `block=${Boolean(block)} attempt outcome=${after?.outcome ?? 'null'} carrierBlockDetected=${after?.carrierBlockDetected ?? false}.`,
           status: block ? 'PASS' : 'FAIL' });
       } else {
         const notTerminal = scenario === 'NOT_ON_FILE_RESUBMIT' ? claimAfter?.status !== 'DENIED' && claimAfter?.status !== 'RESOLVED' : true;
@@ -551,8 +551,10 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     const b = await plain.callAttempt.create({ data: { claimId: second.id, vapiCallId: 'sim-concurrent-b', initiatedAt: new Date(Date.now() + 1000), liveState: 'on_hold' } });
     createdAttemptIds.push(a.id, b.id);
     const token = signUserToken({ userId: frontDesk.id, practiceId, role: 'front_desk' });
-    // One takeover can land on the selected call by row-order luck, so select
-    // each call in turn: a route that honours the selection transfers A then B.
+    // Select the same call twice. A takeover updates the row it transferred,
+    // which can change the order Postgres returns rows in, so alternating picks
+    // (A then B) can pass by luck. With two picks of B, a route that ignores the
+    // selection transfers A at least once whatever the row order.
     const takeover = async (selected: { id: string; vapiCallId: string }): Promise<{ status: number; path: string }> => {
       const before = interceptor.transfers().length;
       const res = await request(deskApp)
@@ -561,14 +563,14 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         .send({ phoneNumber: ESCALATION_PHONE, staffId: frontDesk.id, callAttemptId: selected.id, vapiCallId: selected.vapiCallId });
       return { status: res.status, path: interceptor.transfers().slice(before)[0]?.path ?? 'none' };
     };
-    const pickA = await takeover({ id: a.id, vapiCallId: 'sim-concurrent-a' });
-    const pickB = await takeover({ id: b.id, vapiCallId: 'sim-concurrent-b' });
-    if (pickA.status !== 200 || pickB.status !== 200) {
-      log.record('Gap 3', '17', 'Takeover targets the selected call', 'UNVERIFIED', `route returned HTTP ${pickA.status} (select A) and ${pickB.status} (select B)`);
+    const pickOne = await takeover({ id: b.id, vapiCallId: 'sim-concurrent-b' });
+    const pickTwo = await takeover({ id: b.id, vapiCallId: 'sim-concurrent-b' });
+    if (pickOne.status !== 200 || pickTwo.status !== 200) {
+      log.record('Gap 3', '17', 'Takeover targets the selected call', 'UNVERIFIED', `route returned HTTP ${pickOne.status} and ${pickTwo.status}`);
     } else {
-      const honoured = pickA.path === '/call/sim-concurrent-a/transfer' && pickB.path === '/call/sim-concurrent-b/transfer';
-      log.expect('Gap 3', '17', 'Takeover targets the selected call (select A, then B)', honoured && pickA.path !== pickB.path,
-        `selected A -> ${pickA.path}; selected B -> ${pickB.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
+      const target = '/call/sim-concurrent-b/transfer';
+      log.expect('Gap 3', '17', 'Takeover targets the selected call (B selected twice)', pickOne.path === target && pickTwo.path === target,
+        `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
     }
     await plain.callAttempt.updateMany({ where: { id: { in: [a.id, b.id] } }, data: { completedAt: new Date() } });
     log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall POSTs /call/{id}/transfer (src/vapi/client.ts:597). Whether this matches the PRD Stage A control-URL method is UNVERIFIED until the PRD arrives.');
