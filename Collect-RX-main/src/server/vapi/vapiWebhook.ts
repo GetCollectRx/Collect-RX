@@ -497,49 +497,12 @@ async function processCallEnded(
   // persisted on CallAttempt so a completed webhook cannot make an unresolved
   // vendor recording disappear from operational view. Vendor response bodies
   // and recording URLs are deliberately excluded from durable state and audit.
-  const recordingUrl = payload.recordingUrl ?? null;
-  const validationBase =
-    attempt.validationResult &&
-    typeof attempt.validationResult === 'object' &&
-    !Array.isArray(attempt.validationResult)
-      ? attempt.validationResult
-      : {};
-  const { result: deletionResult, state: audioDeletionState } = await deleteAudioWithBoundedRetry(
+  await deletePostCallAudio(prisma, {
+    attemptId: attempt.id,
+    practiceId: claim.practiceId,
     vapiCallId,
-    recordingUrl,
-    {
-      maxAttempts: 3,
-      onState: async (state) => {
-        await prisma.callAttempt.update({
-          where: { id: attempt.id },
-          data: { validationResult: { ...validationBase, audioDeletion: state } },
-        });
-      },
-    },
-  );
-
-  const deletionResolved = audioDeletionState.status === 'resolved';
-  if (!deletionResolved) {
-    const maxDeletionAttempts = audioDeletionState.attempts;
-    logger.error('[vapi-webhook] post-call audio deletion reached unresolved terminal state', {
-      vapiCallId,
-      attempts: maxDeletionAttempts,
-      errorCodes: deletionResult.errors,
-    });
-    await appendAuditLog(prisma, {
-      practiceId: claim.practiceId,
-      action: 'AUDIO_DELETION_FAILED',
-      subjectType: 'CallAttempt',
-      subjectId: attempt.id,
-      details: {
-        vapiCallId,
-        attempts: maxDeletionAttempts,
-        vapiDeleted: deletionResult.vapiDeleted,
-        twilioDeleted: deletionResult.twilioDeleted,
-        errorCodes: deletionResult.errors,
-      },
-    });
-  }
+    recordingUrl: payload.recordingUrl ?? null,
+  });
 
   // ── AUTONOMOUS AGENTS: post-call triggers ────────────────────────────────────
   // Fire-and-forget — never block the webhook response.
@@ -585,6 +548,66 @@ async function processCallEnded(
 }
 
 /** Recovery-aware call.ended handler — used by production webhook and tests. */
+/**
+ * Zero-retention: delete the call recording from Vapi (and Twilio when
+ * configured) with bounded retries. Shared by the normal call-ended path and
+ * the CARRIER_BLOCK path, which must not skip deletion because it skips claim
+ * recovery.
+ */
+export async function deletePostCallAudio(
+  prisma: PrismaClient,
+  params: { attemptId: string; practiceId: string; vapiCallId: string; recordingUrl: string | null },
+): Promise<void> {
+  const { attemptId, practiceId, vapiCallId, recordingUrl } = params;
+  const attempt = await prisma.callAttempt.findUnique({
+    where: { id: attemptId },
+    select: { id: true, validationResult: true },
+  });
+  if (!attempt) return;
+  const validationBase =
+    attempt.validationResult &&
+    typeof attempt.validationResult === 'object' &&
+    !Array.isArray(attempt.validationResult)
+      ? attempt.validationResult
+      : {};
+  const { result: deletionResult, state: audioDeletionState } = await deleteAudioWithBoundedRetry(
+    vapiCallId,
+    recordingUrl,
+    {
+      maxAttempts: 3,
+      onState: async (state) => {
+        await prisma.callAttempt.update({
+          where: { id: attempt.id },
+          data: { validationResult: { ...validationBase, audioDeletion: state } },
+        });
+      },
+    },
+  );
+
+  const deletionResolved = audioDeletionState.status === 'resolved';
+  if (!deletionResolved) {
+    const maxDeletionAttempts = audioDeletionState.attempts;
+    logger.error('[vapi-webhook] post-call audio deletion reached unresolved terminal state', {
+      vapiCallId,
+      attempts: maxDeletionAttempts,
+      errorCodes: deletionResult.errors,
+    });
+    await appendAuditLog(prisma, {
+      practiceId,
+      action: 'AUDIO_DELETION_FAILED',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: {
+        vapiCallId,
+        attempts: maxDeletionAttempts,
+        vapiDeleted: deletionResult.vapiDeleted,
+        twilioDeleted: deletionResult.twilioDeleted,
+        errorCodes: deletionResult.errors,
+      },
+    });
+  }
+}
+
 export async function processRecoveryCallEnded(
   payload: VapiWebhookPayload,
   prisma: PrismaClient,
