@@ -168,6 +168,8 @@ const DETOKENIZE_ALLOWLIST = new Set([
   'webhooks/vapi.ts',
   'routes/insurance.ts',
   'server/compliance/auditAgent.ts',
+  // Live transcript lines: PHI used in memory only, to redact known values before the line is stored.
+  'server/frontDesk/vapiDeskEvents.ts',
   'server/frontDesk/queueEngine.ts',
   'server/preVisit/electronicPreVisit.ts',
   'server/preVisit/preVisitDispatch.ts',
