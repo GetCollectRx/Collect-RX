@@ -4,7 +4,8 @@ Point-in-time record. Branch `feature/sim-harness`, base `7da0877`. Raw run log:
 
 ## Limits of this report (read first)
 
-- **Corrected 2026-11-06 after review.** The first version quoted 54 vs 79 minutes for finding 6 (from an earlier 3-call development run) and claimed finding 8 was reproduced in the committed run. Both now match the committed run log.
+- **Corrected 2026-11-06 after review.** The first version quoted 54 vs 79 minutes for finding 6 (from an earlier 3-call development run) and over-claimed finding 8 from a single-trial check. Finding 6 now cites the committed run; the gap 3 check now selects A then B and the run log was regenerated.
+- **Dispatch order among equal-priority claims is not deterministic**, so which carrier a scenario lands on can change between runs (ROBOT_REFUSER reached rbc in one run, canada_life in this one). Outcomes did not change.
 
 - **Offline only.** No audio, no Vapi, no carrier. The fake carrier is the sequence of Vapi server messages a real call would produce. Pickup timing, hold detection, false pickups and whether the scribe keeps hearing after transfer (gaps 2 and 11) are **not measured**.
 - **PRD not supplied.** Section 5 thresholds, Stage A and Option B are **UNVERIFIED** (decision D9).
@@ -14,7 +15,7 @@ Point-in-time record. Branch `feature/sim-harness`, base `7da0877`. Raw run log:
 
 ## Verdict
 
-**FAIL.** 110 checks: PASS 71, FAIL 18, UNVERIFIED 5, FINDING 16. Scenarios: 3 PASS, 2 FAIL. Spend $0. 18 outbound requests intercepted, 0 escaped, teardown residue 0 rows.
+**FAIL.** 110 checks: PASS 70, FAIL 19, UNVERIFIED 5, FINDING 16. Scenarios: 3 PASS, 2 FAIL. Spend $0. 19 outbound requests intercepted, 0 escaped, teardown residue 0 rows. Run `stage1-2026-11-06T17-50-17-387Z`.
 
 ## Findings, ranked
 
@@ -27,7 +28,7 @@ Point-in-time record. Branch `feature/sim-harness`, base `7da0877`. Raw run log:
 | 5 | P1 | **Hold time is never recorded.** `CallAttempt` has no hold column; live state never leaves `dialing`, because status updates carry no agent and the normalizer drops `analysis.collectrx`, so the transition processor never runs. | `src/webhooks/vapiNormalizer.ts:107`; `src/webhooks/holdTransitionProcessor.ts`. Every scenario: liveState=dialing. Run log checks 30, 31, 44, 45, 58, 59, 73, 74, 89, 90. |
 | 6 | P1 | **The proof dashboard cannot prove the wedge.** "Time saved" is completed calls × a fixed 18 minutes; there is no hold-minutes-avoided metric. Run log hold was 104 minutes against 90 shown (5 calls × 18). | `src/services/insurance-analytics.ts:90`. Run log checks 106, 107. |
 | 7 | P1 | **No staff-availability gate** before dialling. A Hold Sentinel call goes out with nobody ready to take the transfer. | `src/server/frontDesk/queueEngine.ts` (no availability check between `:483` and `:684`). Run log check 23. |
-| 8 | P1 | **Live Console takeover ignores which call staff selected** when two are open. The route reads only `phoneNumber` and `staffId` from the body (`:341`) and transfers whatever `findFirst` with no `orderBy` returns, so the target depends on database row order. Pause and end-call share the pattern. | `src/server/routes/frontDeskApi.ts:341`, `:345`, `:277`, `:318`. Static evidence is conclusive. Empirical: two development runs transferred A when B was selected; **the committed run (check 97) happened to transfer B and recorded PASS**. That single-trial check cannot detect the flaw and needs redesigning (select A, then B; FAIL if both go to the same call). |
+| 8 | P1 | **Live Console takeover ignores which call staff selected** when two are open. The route reads only `phoneNumber` and `staffId` from the body (`:341`) and transfers whatever `findFirst` with no `orderBy` returns, so the target depends on database row order. Pause and end-call share the pattern. | `src/server/routes/frontDeskApi.ts:341`, `:345`, `:277`, `:318`. Run log check 97: staff selected A, then B; both transfers went to A. (The earlier single-trial check could pass by row order and was replaced.) |
 | 9 | P2 | Lesson identifier filter **misses names**; only 6+ digit runs and ISO dates are dropped. Human review is the only barrier. | `src/server/learning/carrierLessons.ts:66`. Run log check 103 (date filter works, check 102). |
 | 10 | P2, commercial | **Trial daily cap overshoots.** The cap is checked before each dial, not projected: 3 realistic holds billed 82 minutes against a 50-minute daily cap. A trial practice gets about two carrier calls a day. | Run log check 66: DAILY_CAP_REACHED after 82 billed minutes (calls of 22, 26 and 34 minutes, checks 36, 50, 64). |
 | 11 | P2 | **Five age numbers.** Dispatch is gated by the flat 30/90 in `validateDispatch` (`src/carriers/adapter.ts:455`). Also present: 45-day priority floor, 21/32 in carrier configs, 21/32 `minimumClaimAgeDays` in practice settings (`practiceSettingsService.ts:12`, never read), and Dr Hasan's 7. | Run log check 4; flat floor at `adapter.ts:455` is static. Under-30 and over-90 not exercised (factory ages 32 to 88). |
@@ -55,7 +56,7 @@ Import and tokenization (zero plaintext PHI in the database after import), carri
 |---|---|
 | 1 Lesson extraction gated to autonomous calls | Confirmed (`src/webhooks/vapi.ts:623`). Direct extraction on a staff-handled call works and lands PROPOSED, but see findings 2 and 9 before lifting the gate. |
 | 2 Scribe after transfer | UNVERIFIED, needs Stage 2. |
-| 3 Takeover selection | Confirmed by code (finding 8). The committed run's single-trial check passed by row order; see finding 8. |
+| 3 Takeover selection | Confirmed in code and by check 97 (finding 8). |
 | 4 Transfer method | `POST /call/{id}/transfer` (`src/vapi/client.ts:597`). PRD comparison UNVERIFIED. |
 | 5 Claims_Agent opening line | Repo config `vapi-squad-config.json:235` opens "You are an automated insurance collections agent". Live dashboard UNVERIFIED. Not exercised: Stage 1 is Hold Sentinel only. |
 | 6 Claim email | None found in the paths read; not exhaustively searched. |

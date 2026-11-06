@@ -551,17 +551,24 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     const b = await plain.callAttempt.create({ data: { claimId: second.id, vapiCallId: 'sim-concurrent-b', initiatedAt: new Date(Date.now() + 1000), liveState: 'on_hold' } });
     createdAttemptIds.push(a.id, b.id);
     const token = signUserToken({ userId: frontDesk.id, practiceId, role: 'front_desk' });
-    const before = interceptor.transfers().length;
-    const res = await request(deskApp)
-      .post(`/api/desk/${practiceId}/active/takeover`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ phoneNumber: ESCALATION_PHONE, staffId: frontDesk.id, callAttemptId: b.id, vapiCallId: 'sim-concurrent-b' });
-    const t = interceptor.transfers().slice(before)[0];
-    if (res.status !== 200) {
-      log.record('Gap 3', '17', 'Takeover targets the selected call', 'UNVERIFIED', `route returned HTTP ${res.status}: ${JSON.stringify(res.body)}`);
+    // One takeover can land on the selected call by row-order luck, so select
+    // each call in turn: a route that honours the selection transfers A then B.
+    const takeover = async (selected: { id: string; vapiCallId: string }): Promise<{ status: number; path: string }> => {
+      const before = interceptor.transfers().length;
+      const res = await request(deskApp)
+        .post(`/api/desk/${practiceId}/active/takeover`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ phoneNumber: ESCALATION_PHONE, staffId: frontDesk.id, callAttemptId: selected.id, vapiCallId: selected.vapiCallId });
+      return { status: res.status, path: interceptor.transfers().slice(before)[0]?.path ?? 'none' };
+    };
+    const pickA = await takeover({ id: a.id, vapiCallId: 'sim-concurrent-a' });
+    const pickB = await takeover({ id: b.id, vapiCallId: 'sim-concurrent-b' });
+    if (pickA.status !== 200 || pickB.status !== 200) {
+      log.record('Gap 3', '17', 'Takeover targets the selected call', 'UNVERIFIED', `route returned HTTP ${pickA.status} (select A) and ${pickB.status} (select B)`);
     } else {
-      log.expect('Gap 3', '17', 'Takeover targets the selected call (B)', t?.path === '/call/sim-concurrent-b/transfer',
-        `staff selected B; transfer went to ${t?.path ?? 'none'}. frontDeskApi.ts:345 uses findFirst with no selection; pause (:277) and end-call (:318) share the pattern.`);
+      const honoured = pickA.path === '/call/sim-concurrent-a/transfer' && pickB.path === '/call/sim-concurrent-b/transfer';
+      log.expect('Gap 3', '17', 'Takeover targets the selected call (select A, then B)', honoured && pickA.path !== pickB.path,
+        `selected A -> ${pickA.path}; selected B -> ${pickB.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
     }
     await plain.callAttempt.updateMany({ where: { id: { in: [a.id, b.id] } }, data: { completedAt: new Date() } });
     log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall POSTs /call/{id}/transfer (src/vapi/client.ts:597). Whether this matches the PRD Stage A control-URL method is UNVERIFIED until the PRD arrives.');
