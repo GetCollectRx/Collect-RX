@@ -45,6 +45,7 @@ import { validateCsvUploadFile } from '../server/validation/csvUpload.js';
 import { importIndustryClaims, ImportRejectedError } from '../server/csv/industryClaimImport.js';
 import { CsvStructureError } from '../server/csv/csvParser.js';
 import { INDUSTRY_TYPES, type IndustryType } from '../types/industry-claims.js';
+import { buildIndustryWorklist, loadOpenIndustryClaims, summarizeIndustryAr } from '../server/verticals/industryAr.js';
 
 const router = Router();
 useOwnerPracticeApi(router);
@@ -517,6 +518,7 @@ router.post(
           industryType,
           imported: result.imported,
           updated: result.updated,
+          zeroedExisting: result.zeroedExisting,
           rejected: result.rejected.length,
           dateAssumedRowCount: result.dateAssumedRowCount,
         },
@@ -535,6 +537,61 @@ router.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// GET /api/insurance/claims/industry/summary
+// GET /api/insurance/claims/industry/worklist?industryType=&payerKey=&limit=
+// Read-only AR view of non-dental claims: payer-grouped aging summary and a
+// prioritised worklist. Session practice only; no PHI or vault tokens in the
+// response. Every item reports dialable=false until a payer has a verified
+// claims line (see src/server/verticals/industryAr.ts).
+// ---------------------------------------------------------------------------
+const NON_DENTAL_INDUSTRIES = INDUSTRY_TYPES.filter((i) => i !== 'DENTAL');
+
+router.get('/claims/industry/summary', async (req: Request, res: Response) => {
+  try {
+    const qP = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qP)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const claims = await loadOpenIndustryClaims(prisma, practiceIdFromSession(req));
+    return res.json({ success: true, data: summarizeIndustryAr(claims, new Date()) });
+  } catch (err) {
+    logger.error('[GET /insurance/claims/industry/summary]', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.get('/claims/industry/worklist', async (req: Request, res: Response) => {
+  try {
+    const qP = req.query.practiceId as string | undefined;
+    if (queryPracticeConflictsSession(req, qP)) {
+      return res.status(403).json({ success: false, error: 'practiceId does not match session' });
+    }
+    const rawIndustry = typeof req.query.industryType === 'string' ? req.query.industryType.trim() : '';
+    if (rawIndustry && !(NON_DENTAL_INDUSTRIES as readonly string[]).includes(rawIndustry)) {
+      return res.status(400).json({
+        success: false,
+        error: `industryType must be one of: ${NON_DENTAL_INDUSTRIES.join(', ')}`,
+      });
+    }
+    const rawPayer = typeof req.query.payerKey === 'string' ? req.query.payerKey.trim() : '';
+    if (rawPayer.length > 200) {
+      return res.status(400).json({ success: false, error: 'payerKey is too long' });
+    }
+    const rawLimit = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : Number.NaN;
+    const claims = await loadOpenIndustryClaims(prisma, practiceIdFromSession(req));
+    const items = buildIndustryWorklist(claims, new Date(), {
+      industryType: rawIndustry ? (rawIndustry as IndustryType) : undefined,
+      payerKey: rawPayer || undefined,
+      limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+    });
+    return res.json({ success: true, data: { items } });
+  } catch (err) {
+    logger.error('[GET /insurance/claims/industry/worklist]', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
 
 router.get('/analytics/denials', async (req: Request, res: Response) => {
   try {
