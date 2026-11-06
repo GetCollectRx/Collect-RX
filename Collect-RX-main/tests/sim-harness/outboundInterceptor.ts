@@ -24,7 +24,7 @@ export interface InterceptedRequest {
   path: string;
   body: unknown;
   idempotencyKey: string | null;
-  disposition: 'vapi_stub' | 'anthropic_stub' | 'recording_delete_stub' | 'blocked';
+  disposition: 'vapi_stub' | 'vapi_control_stub' | 'anthropic_stub' | 'recording_delete_stub' | 'blocked';
 }
 
 export interface ScriptedLessonResponse {
@@ -32,6 +32,8 @@ export interface ScriptedLessonResponse {
 }
 
 const VAPI_HOST = 'api.vapi.ai';
+/** Stands in for the per-call control host Vapi returns in call.monitor.controlUrl. */
+const SIM_CONTROL_HOST = 'sim-control.vapi.ai';
 const ANTHROPIC_HOST = 'api.anthropic.com';
 const TWILIO_HOST = 'api.twilio.com';
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '']);
@@ -82,8 +84,17 @@ export class OutboundInterceptor {
     return this.requests.filter((r) => r.host === VAPI_HOST && r.method === 'POST' && r.path === '/call');
   }
 
+  /** Live-call transfer commands sent to a call's control URL (Vapi live call control). */
   transfers(): InterceptedRequest[] {
-    return this.requests.filter((r) => r.host === VAPI_HOST && /\/call\/[^/]+\/transfer$/u.test(r.path));
+    return this.controlCommands('transfer');
+  }
+
+  controlCommands(type: string): InterceptedRequest[] {
+    return this.requests.filter((r) => {
+      if (r.disposition !== 'vapi_control_stub') return false;
+      const body = r.body as { type?: unknown } | null;
+      return typeof body === 'object' && body !== null && body.type === type;
+    });
   }
 
   blocked(): InterceptedRequest[] {
@@ -112,12 +123,23 @@ export class OutboundInterceptor {
         return new Response(null, { status: 204 });
       }
       this.record({ method, url: url.href, host: url.hostname, path: url.pathname, body, idempotencyKey, disposition: 'vapi_stub' });
+      const getCall = /^\/call\/([^/]+)$/u.exec(url.pathname);
+      if (method === 'GET' && getCall) {
+        // Shape of Vapi's call object as far as live call control needs it.
+        const id = getCall[1] ?? '';
+        return jsonResponse({ id, status: 'in-progress', monitor: { controlUrl: `https://${SIM_CONTROL_HOST}/${id}/control` } });
+      }
       if (method === 'POST' && url.pathname === '/call') {
         this.callCounter += 1;
         const id = `sim-call-${String(this.callCounter).padStart(3, '0')}`;
         return jsonResponse({ id, status: 'queued' });
       }
       return jsonResponse({ ok: true });
+    }
+
+    if (url.hostname === SIM_CONTROL_HOST && method === 'POST' && url.pathname.endsWith('/control')) {
+      this.record({ method, url: url.href, host: url.hostname, path: url.pathname, body, idempotencyKey, disposition: 'vapi_control_stub' });
+      return jsonResponse({ status: 'ok' });
     }
 
     if (url.hostname === TWILIO_HOST && method === 'DELETE') {
