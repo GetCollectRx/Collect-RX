@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { authUserId, isAuditor, type PracticeRole } from '../accessControl/types.js'
-import type { CarrierId, ClaimPriority } from '@prisma/client';
+import type { CallAttempt, CarrierId, ClaimPriority } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../middleware/authenticate.js';
 import {
@@ -48,6 +48,41 @@ router.use(async (req, res, next) => {
   }
   next();
 });
+
+/**
+ * The live call a console action applies to. Staff act on the call they can
+ * see, so the client names it by id. Without an id the action is allowed only
+ * when exactly one call is open: picking "the first" of several transferred,
+ * paused or hung up whichever row the database returned, not the one on screen.
+ * Sends the error response itself and returns null when no single call matches.
+ */
+async function resolveConsoleCall(req: Request, res: Response, practiceId: string): Promise<CallAttempt | null> {
+  const rawId = (req.body as { callId?: unknown } | undefined)?.callId;
+  if (rawId !== undefined && (typeof rawId !== 'string' || rawId.trim() === '' || rawId.length > 64)) {
+    res.status(400).json({ success: false, error: 'callId must be a non-empty string' });
+    return null;
+  }
+  const callId = typeof rawId === 'string' ? rawId.trim() : undefined;
+  const open = await prisma.callAttempt.findMany({
+    where: { completedAt: null, claim: { practiceId }, ...(callId ? { id: callId } : {}) },
+    orderBy: { initiatedAt: 'desc' },
+    take: 2,
+  });
+  const [first] = open;
+  if (!first) {
+    res.status(404).json({ success: false, error: callId ? 'That call is no longer active' : 'No active call' });
+    return null;
+  }
+  if (!callId && open.length > 1) {
+    res.status(409).json({
+      success: false,
+      code: 'CALL_ID_REQUIRED',
+      error: 'More than one call is active; choose the call to act on',
+    });
+    return null;
+  }
+  return first;
+}
 
 function assertPracticeParam(req: Request, res: Response): string | null {
   const pid = req.params.practiceId;
@@ -274,10 +309,8 @@ router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req:
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     const staffId = (req.body as { staffId?: string }).staffId ?? 'front_desk';
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await resolveConsoleCall(req, res, practiceId);
+    if (!attempt) return;
 
     await prisma.callAttempt.update({
       where: { id: attempt.id },
@@ -315,10 +348,8 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await resolveConsoleCall(req, res, practiceId);
+    if (!attempt) return;
 
     await endVapiCall(attempt.vapiCallId);
     void appendAuditLog(prisma, {
@@ -342,10 +373,8 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
     if (!phoneNumber?.trim()) {
       return res.status(400).json({ success: false, error: 'phoneNumber is required' });
     }
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await resolveConsoleCall(req, res, practiceId);
+    if (!attempt) return;
 
     await transferVapiCall(attempt.vapiCallId, phoneNumber.trim());
     await prisma.callAttempt.update({
