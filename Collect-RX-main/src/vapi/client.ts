@@ -588,14 +588,93 @@ export async function listCalls(limit = 20): Promise<VapiCallStatus[]> {
   return vapiRequest<VapiCallStatus[]>('GET', `/call?limit=${limit}`);
 }
 
-/** End an in-progress Vapi call (CARRIER_BLOCK / staff end). */
-export async function endVapiCall(vapiCallId: string): Promise<void> {
-  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/end`);
+// ---------------------------------------------------------------------------
+// Live call control
+// ---------------------------------------------------------------------------
+//
+// Vapi changes a live call through the call's control URL
+// (docs.vapi.ai/calls/call-features): read call.monitor.controlUrl from the
+// call object and POST a command to it. The REST API has no /transfer or /end
+// sub-resource. By default the control URL needs no authentication, so it is
+// treated as a secret: it is never logged and never put in an error message.
+
+interface VapiCallMonitor {
+  status?: unknown;
+  monitor?: { controlUrl?: unknown };
 }
 
-/** Warm transfer to front desk phone (human takeover). */
+type ControlCommand =
+  | { type: 'transfer'; destination: { type: 'number'; number: string } }
+  | { type: 'end-call' };
+
+/** A control URL must be HTTPS on a Vapi host before any command is sent to it. */
+function assertVapiControlUrl(raw: unknown): string {
+  if (typeof raw !== 'string') throw new Error('[VapiClient] call has no control URL');
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('[VapiClient] call control URL is not a valid URL');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== 'https:' || !(host === 'vapi.ai' || host.endsWith('.vapi.ai'))) {
+    throw new Error('[VapiClient] call control URL is not an https vapi.ai URL');
+  }
+  return parsed.toString();
+}
+
+async function getLiveCall(vapiCallId: string): Promise<{ status: string; controlUrl: string | null }> {
+  const call = await vapiRequest<VapiCallMonitor>('GET', `/call/${vapiCallId}`);
+  const status = typeof call.status === 'string' ? call.status : 'unknown';
+  const rawControlUrl = call.monitor?.controlUrl;
+  return { status, controlUrl: rawControlUrl === undefined ? null : assertVapiControlUrl(rawControlUrl) };
+}
+
+async function sendControlCommand(vapiCallId: string, controlUrl: string, command: ControlCommand): Promise<void> {
+  return vapiCircuitBreaker.execute(async () => {
+    // Only needed when an assistant sets controlAuthenticationEnabled; Vapi
+    // then requires the public key and rejects the private one.
+    const publicKey = process.env.VAPI_PUBLIC_KEY?.trim();
+    let res: Response;
+    try {
+      res = await fetch(controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(publicKey ? { Authorization: `Bearer ${publicKey}` } : {}),
+        },
+        body: JSON.stringify(command),
+        signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new VapiAmbiguousOutcomeError('POST', `call ${vapiCallId} control (${command.type})`, err);
+    }
+    if (!res.ok) {
+      throw new Error(`[VapiClient] control ${command.type} for call ${vapiCallId} → ${res.status}`);
+    }
+  });
+}
+
+/**
+ * End an in-progress Vapi call (CARRIER_BLOCK / staff end / duration ceiling).
+ * A call that is no longer in progress needs nothing more and is not an error.
+ */
+export async function endVapiCall(vapiCallId: string): Promise<void> {
+  const { status, controlUrl } = await getLiveCall(vapiCallId);
+  if (status !== 'in-progress') return;
+  if (!controlUrl) throw new Error(`[VapiClient] call ${vapiCallId} is in progress but has no control URL`);
+  await sendControlCommand(vapiCallId, controlUrl, { type: 'end-call' });
+}
+
+/** Transfer a live call to a practice phone (human takeover / Hold Sentinel handoff). */
 export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string): Promise<void> {
-  await vapiRequest<unknown>('POST', `/call/${vapiCallId}/transfer`, {
+  const { status, controlUrl } = await getLiveCall(vapiCallId);
+  if (status !== 'in-progress') {
+    throw new Error(`[VapiClient] call ${vapiCallId} cannot be transferred: status ${status}`);
+  }
+  if (!controlUrl) throw new Error(`[VapiClient] call ${vapiCallId} is in progress but has no control URL`);
+  await sendControlCommand(vapiCallId, controlUrl, {
+    type: 'transfer',
     destination: { type: 'number', number: toPhoneNumber },
   });
 }

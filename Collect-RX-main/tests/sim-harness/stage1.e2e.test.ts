@@ -481,7 +481,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
       const transfer = newTransfers[0];
       const transferBody = typeof transfer?.body === 'object' && transfer.body !== null ? JSON.stringify(transfer.body) : '';
       log.expect(step, '9,17', 'Pickup handoff transfers this call to the escalation line',
-        Boolean(transfer) && transfer?.path === `/call/${vapiCallId}/transfer` && transferBody.includes(ESCALATION_PHONE),
+        Boolean(transfer) && transfer?.path === `/${vapiCallId}/control` && transferBody.includes(ESCALATION_PHONE),
         `result="${handoff?.result ?? ''}" transfer=${transfer?.path ?? 'none'}`);
       const notice = await plain.practiceNotification.findFirst({ where: { practiceId, claimId, type: 'LIVE_CALL_NEEDS_STAFF' } });
       log.expect(step, '17', 'Staff alerted on pickup', Boolean(notice), notice ? `notification "${notice.subject}"` : 'no LIVE_CALL_NEEDS_STAFF notification');
@@ -568,12 +568,12 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     if (pickOne.status !== 200 || pickTwo.status !== 200) {
       log.record('Gap 3', '17', 'Takeover targets the selected call', 'UNVERIFIED', `route returned HTTP ${pickOne.status} and ${pickTwo.status}`);
     } else {
-      const target = '/call/sim-concurrent-b/transfer';
+      const target = '/sim-concurrent-b/control';
       log.expect('Gap 3', '17', 'Takeover targets the selected call (B selected twice)', pickOne.path === target && pickTwo.path === target,
         `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
     }
     await plain.callAttempt.updateMany({ where: { id: { in: [a.id, b.id] } }, data: { completedAt: new Date() } });
-    log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall POSTs /call/{id}/transfer (src/vapi/client.ts:597). Whether this matches the PRD Stage A control-URL method is UNVERIFIED until the PRD arrives.');
+    log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall reads call.monitor.controlUrl from GET /call/{id} and posts the documented transfer command to it (docs.vapi.ai/calls/call-features); the interceptor stands in for the control host.');
   }, 60_000);
 
   it('Step 8: lessons from staff-handled calls stay PHI-free and only APPROVED navigation lessons inject', async () => {
