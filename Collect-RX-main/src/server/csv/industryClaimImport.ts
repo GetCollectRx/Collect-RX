@@ -41,7 +41,13 @@ export interface ImportIndustryClaimsResult {
   totalRows: number;
   imported: number;
   updated: number;
+  /** New claim numbers with a zero balance: not created. */
   skippedZeroBalance: number;
+  /**
+   * Existing claims this export now shows at a zero balance: their stored
+   * balance is set to zero so they leave the open AR view. Status is left as is.
+   */
+  zeroedExisting: number;
   duplicateRowsInFile: number;
   conflicts: Array<{ claimNumber: string; error: string }>;
   rejected: RowIssue[];
@@ -103,10 +109,14 @@ export async function importIndustryClaims(
   let imported = 0;
   let updated = 0;
   let skippedZeroBalance = 0;
+  let zeroedExisting = 0;
 
   try {
     // Tokenize and build writes first (in memory), then commit in one transaction.
     const writes: Array<{ claimNumber: string; data: Prisma.InsuranceClaimUncheckedCreateInput; isUpdate: boolean }> = [];
+    // A paid claim used to be skipped here, so its old balance stayed open
+    // forever. Zeroing needs no PHI, so no token is minted for it.
+    const zeroed: string[] = [];
     for (const rec of parsed.records) {
       const prior = existingByNumber.get(rec.claimNumber);
       if (prior && (prior.industryType !== industryType || prior.carrierId !== 'other')) {
@@ -117,7 +127,8 @@ export async function importIndustryClaims(
         continue;
       }
       if (Number(rec.balanceDue) <= 0) {
-        skippedZeroBalance++;
+        if (prior) zeroed.push(rec.claimNumber);
+        else skippedZeroBalance++;
         continue;
       }
 
@@ -176,6 +187,13 @@ export async function importIndustryClaims(
         if (w.isUpdate) updated++;
         else imported++;
       }
+      for (const claimNumber of zeroed) {
+        await tx.insuranceClaim.update({
+          where: { practiceId_claimNumber: { practiceId, claimNumber } },
+          data: { outstandingAmount: '0.00' },
+        });
+        zeroedExisting++;
+      }
     });
   } catch (err) {
     for (const t of minted) vault.expireToken(t, `${CALLER}:rollback`);
@@ -189,6 +207,7 @@ export async function importIndustryClaims(
     imported,
     updated,
     skippedZeroBalance,
+    zeroedExisting,
     duplicateRowsInFile: parsed.duplicateRows.length,
     conflicts,
     rejected: parsed.rejected,
