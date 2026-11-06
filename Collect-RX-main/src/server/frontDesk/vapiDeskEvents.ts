@@ -13,7 +13,7 @@ import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
 import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
-import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
+import { deletePostCallAudio, processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
@@ -226,6 +226,7 @@ async function processCallEndedDesk(
         where: { id: existing.id },
         data: {
           completedAt: new Date(),
+          durationSeconds: processed.durationSeconds,
           outcome: 'BLOCK_DETECTED',
           outcomeDetail: processed.outcomeDetail ?? 'Carrier block detected at call end',
           carrierBlockDetected: true,
@@ -241,10 +242,19 @@ async function processCallEndedDesk(
       reason: processed.outcomeDetail,
       hangVapi: false,
     });
-    return;
+    // A blocked call skips claim recovery, but not zero-retention audio
+    // deletion, the disclosure audit entry or usage metering below.
+    if (existing?.id) {
+      await deletePostCallAudio(prisma, {
+        attemptId: existing.id,
+        practiceId: claim.practiceId,
+        vapiCallId,
+        recordingUrl: payload.recordingUrl ?? null,
+      });
+    }
+  } else {
+    await processRecoveryCallEnded(payload, prisma, ctx?.rawBody ?? payload);
   }
-
-  await processRecoveryCallEnded(payload, prisma, ctx?.rawBody ?? payload);
 
   const attemptAfter = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
