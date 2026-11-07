@@ -49,6 +49,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
+import './sandbox/installSandboxGuard.js';
 
 import fs from 'node:fs';
 import https from 'node:https';
@@ -121,6 +122,9 @@ import eligibilityRouter      from '../routes/eligibility';
 import ontarioBillingRouter   from './routes/ontarioBillingRoutes.js';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
+import { isSandboxMode, SANDBOX_VAPI_PATH } from './sandbox/sandboxMode.js';
+import { createMockVapiRouter } from './sandbox/mockVapiApi.js';
+import { startSandbox } from './sandbox/bootSandbox.js';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import holdParkTestRouter     from '../webhooks/holdParkTest';
 import { attachHoldParkAudioStream } from '../webhooks/holdParkAudioStream';
@@ -301,6 +305,11 @@ app.post(
 // HMAC validation requires access to the raw request body bytes.
 // webhookLimiter allows 300 req/min to handle Vapi event bursts.
 // ─────────────────────────────────────────────────────────────────────────────
+// Live sandbox only: the in-process stand-in for Vapi's API (loopback only).
+if (isSandboxMode()) {
+  app.use(SANDBOX_VAPI_PATH, express.json({ limit: '1mb' }), createMockVapiRouter());
+}
+
 app.use(
   '/api/webhooks/vapi',
   webhookLimiter,
@@ -945,6 +954,15 @@ async function boot() {
   } catch (err) {
     logger.error('[server] PHI vault initialization failed; refusing to start', { error: err });
     process.exit(1);
+  }
+
+  if (isSandboxMode()) {
+    try {
+      await startSandbox(prisma);
+    } catch (err) {
+      logger.error('[sandbox] startup failed; refusing to start', { error: err instanceof Error ? err.message : 'unknown' });
+      process.exit(1);
+    }
   }
 
   // docs/operations/HUMAN-DECISIONS-PENDING.md #3: a superuser/BYPASSRLS
