@@ -677,14 +677,14 @@ export default function LiveConsole() {
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
-                  onClick={() => void post('/active/pause-agent').catch((e) => setError((e as Error).message))}
+                  onClick={() => void post('/active/pause-agent', { callId: activeCall.id }).catch((e) => setError((e as Error).message))}
                 >
                   ⏸ Pause Agent
                 </button>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-900 border border-red-200 dark:border-red-800/40 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors shadow-sm"
-                  onClick={() => void post('/active/end-call').catch((e) => setError((e as Error).message))}
+                  onClick={() => void post('/active/end-call', { callId: activeCall.id }).catch((e) => setError((e as Error).message))}
                 >
                   ✕ End Call
                 </button>

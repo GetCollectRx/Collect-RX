@@ -271,70 +271,22 @@ router.delete('/:practiceId/queue/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req: Request, res: Response) => {
-  try {
-    const practiceId = assertPracticeParam(req, res);
-    if (!practiceId) return;
-    const staffId = (req.body as { staffId?: string }).staffId ?? 'front_desk';
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+/** Body of a Live Console action: which call it applies to. */
+const callTargetBodySchema = z
+  .object({
+    staffId: z.string().trim().min(1).max(64).optional(),
+    /** CallAttempt id of the call staff selected in the Live Console. */
+    callId: z.string().uuid().optional(),
+    /** Alternative to callId: the Vapi call id. */
+    vapiCallId: z.string().trim().min(1).max(128).optional(),
+  })
+  .refine((b) => !(b.callId && b.vapiCallId), { message: 'Send callId or vapiCallId, not both' });
 
-    await prisma.callAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        pausedByStaffAt: new Date(),
-        pausedByStaffId: staffId,
-        liveState: 'paused_by_staff',
-      },
-    });
-    void appendAuditLog(prisma, {
-      practiceId,
-      action: 'frontdesk.call.pause',
-      subjectType: 'CallAttempt',
-      subjectId: attempt.id,
-      details: { staffId },
-      req,
-    });
-
-    broadcastDesk(practiceId, {
-      type: 'call.state_changed',
-      data: {
-        callId: attempt.id,
-        state: 'paused_by_staff',
-        activeAgent: (attempt.activeAgent as ActiveAgent | null) ?? null,
-      },
-    });
-
-    return res.json({ success: true });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
-  }
-});
-
-router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Request, res: Response) => {
-  try {
-    const practiceId = assertPracticeParam(req, res);
-    if (!practiceId) return;
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
-
-    await endVapiCall(attempt.vapiCallId);
-    void appendAuditLog(prisma, {
-      practiceId,
-      action: 'frontdesk.call.end',
-      subjectType: 'CallAttempt',
-      subjectId: attempt.id,
-      req,
-    });
-    return res.json({ success: true });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
-  }
-});
+const AMBIGUOUS_CALL_RESPONSE = {
+  success: false,
+  code: 'CALL_ID_REQUIRED',
+  error: 'More than one call is live. Select the call first.',
+} as const;
 
 const takeoverBodySchema = z
   .object({
@@ -374,6 +326,89 @@ async function resolveActiveAttempt(
   return { kind: 'found', attempt: live[0] } as const;
 }
 
+router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const parsed = callTargetBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'callId must be a valid id' });
+    }
+    const staffId = parsed.data.staffId ?? 'front_desk';
+    const resolved = await resolveActiveAttempt(practiceId, parsed.data);
+    if (resolved.kind === 'ambiguous') return res.status(409).json(AMBIGUOUS_CALL_RESPONSE);
+    if (resolved.kind === 'none') return res.status(404).json({ success: false, error: 'No matching active call' });
+    const attempt = resolved.attempt;
+
+    await prisma.callAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        pausedByStaffAt: new Date(),
+        pausedByStaffId: staffId,
+        liveState: 'paused_by_staff',
+      },
+    });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.pause',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      details: { staffId },
+      req,
+    });
+
+    broadcastDesk(practiceId, {
+      type: 'call.state_changed',
+      data: {
+        callId: attempt.id,
+        state: 'paused_by_staff',
+        activeAgent: (attempt.activeAgent as ActiveAgent | null) ?? null,
+      },
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const parsed = callTargetBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'callId must be a valid id' });
+    }
+    const resolved = await resolveActiveAttempt(practiceId, parsed.data);
+    if (resolved.kind === 'ambiguous') return res.status(409).json(AMBIGUOUS_CALL_RESPONSE);
+    if (resolved.kind === 'none') return res.status(404).json({ success: false, error: 'No matching active call' });
+    const attempt = resolved.attempt;
+
+    try {
+      await endVapiCall(attempt.vapiCallId);
+    } catch (endErr) {
+      logger.error('[front-desk] end call failed', {
+        practiceId,
+        callAttemptId: attempt.id,
+        reason: endErr instanceof VapiControlUnavailableError ? endErr.reason : 'unexpected',
+        status: endErr instanceof VapiControlUnavailableError ? endErr.status : undefined,
+      });
+      return res.status(502).json({ success: false, error: 'Could not end the call. It may still be active.' });
+    }
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.call.end',
+      subjectType: 'CallAttempt',
+      subjectId: attempt.id,
+      req,
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
@@ -386,9 +421,7 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
 
     const resolved = await resolveActiveAttempt(practiceId, { callId, vapiCallId });
     if (resolved.kind === 'ambiguous') {
-      return res
-        .status(409)
-        .json({ success: false, error: 'More than one call is live. Select the call to take over.' });
+      return res.status(409).json(AMBIGUOUS_CALL_RESPONSE);
     }
     if (resolved.kind === 'none') {
       return res.status(404).json({ success: false, error: 'No matching active call' });
