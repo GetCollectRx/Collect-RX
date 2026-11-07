@@ -15,6 +15,7 @@ import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { canMakeCall } from '../plans/planBridge.js';
 import { planTierForPractice } from '../plans/practiceEntitlements.js';
 import { FEATURES, effectiveHumanAssisted, tierAllows } from '../../billing/entitlements.js';
+import { isCarrierGraduated } from '../learning/autonomyGraduation.js';
 import type { PreVisitJobPayload } from './preVisitJobs.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { tryTelusTx23PreVisit } from './electronicPreVisit.js';
@@ -109,7 +110,9 @@ export async function dispatchPreVisitCall(
     appointmentVerificationId: payload.appointmentVerificationId,
     preVisitType: cdcpContext ? 'cdcp_predet' : 'eligibility',
     cdcpContext,
-    humanAssisted: effectiveHumanAssisted(planTier, settings.humanAssistedMode),
+    humanAssisted: effectiveHumanAssisted(planTier, settings.humanAssistedMode, {
+      carrierGraduated: await isCarrierGraduated(prisma, payload.carrierId),
+    }),
     patientName: phi.patientName,
     patientDob: phi.dateOfBirth,
     policyNumber: phi.subscriberId,

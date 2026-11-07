@@ -32,7 +32,7 @@ The founder's mentor advised starting from the client's single biggest pain poin
 | Item | Current state |
 |---|---|
 | Default mode for new practices | Resolved 2026-10-06: `humanAssistedMode` defaults to `true`. Practices that explicitly turned it off keep their choice. |
-| Criteria for moving a practice or carrier from V1 to autonomous | Not defined. Needs evidence thresholds (for example, playbook coverage per carrier, outcome accuracy of autonomous calls vs. staff calls). |
+| Criteria for moving a practice or carrier from V1 to autonomous | Resolved 2026-10-17 by ADR 0005: per-carrier evidence thresholds plus founder approval by name. |
 | Staff availability check before transfer | Not built. The transfer still fires as soon as a rep answers. |
 | Staff miss the handoff after the transfer connects (rings out) | Not covered by code. Needs Vapi warm transfer with a fallback plan, which requires Twilio numbers and a live test. See the standing rule below. |
 

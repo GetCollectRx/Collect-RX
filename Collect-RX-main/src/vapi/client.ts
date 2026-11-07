@@ -127,6 +127,12 @@ export interface VapiCallStatus {
   durationSeconds: number | null;
   transcript: string | null;
   recordingUrl: string | null;
+  /**
+   * Present only when live control was enabled for the call. controlUrl is a
+   * bearer capability: anyone holding it can steer the live call, so it is
+   * read at use time and never stored or logged.
+   */
+  monitor?: { listenUrl?: string; controlUrl?: string };
 }
 
 export interface VapiWebhookPayload {
@@ -255,6 +261,16 @@ function getPhoneNumberId(): string {
   const id = process.env.VAPI_PHONE_NUMBER_ID;
   if (!id) throw new Error('[VapiClient] VAPI_PHONE_NUMBER_ID environment variable is not set');
   return id;
+}
+
+/**
+ * Asks Vapi to issue a live-control URL for the call (required by
+ * transferVapiCall). Off by default: an override Vapi does not accept would
+ * fail call creation for every dispatch, so enable it in staging first, or set
+ * monitorPlan.controlEnabled on the assistants in the Vapi dashboard instead.
+ */
+function liveControlOverrides(): { monitorPlan?: { controlEnabled: true } } {
+  return process.env.VAPI_LIVE_CONTROL_ENABLED === 'true' ? { monitorPlan: { controlEnabled: true } } : {};
 }
 
 // A hung connection here would hang the queue-engine tick promise forever —
@@ -412,6 +428,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     // those fields are silently dropped. Everything call-scoped must ride in
     // assistantOverrides, which Vapi applies to every squad member.
     assistantOverrides: {
+      ...liveControlOverrides(),
       // Zero-retention: tell Vapi not to store the recording.
       // Belt-and-suspenders — handlePostCallAudioDeletion() also deletes it.
       artifactPlan: { recordingEnabled: false },
@@ -539,6 +556,7 @@ export async function initiatePreVisitCall(params: VapiPreVisitCallParams): Prom
     phoneNumberId: getPhoneNumberId(),
     customer: { number: carrierPhone },
     assistantOverrides: {
+      ...liveControlOverrides(),
       artifactPlan: { recordingEnabled: false },
       maxDurationSeconds: maxCallDurationSeconds(params.carrierId),
       metadata,
@@ -603,22 +621,67 @@ interface VapiCallMonitor {
   monitor?: { controlUrl?: unknown };
 }
 
+export type VapiControlFailureReason =
+  | 'bad_destination'
+  | 'not_enabled'
+  | 'not_in_progress'
+  | 'untrusted_url'
+  | 'unreachable'
+  | 'rejected';
+
+const CONTROL_FAILURE_TEXT: Record<VapiControlFailureReason, string> = {
+  bad_destination: 'transfer destination is not a valid phone number',
+  not_enabled: 'call has no control URL',
+  not_in_progress: 'call cannot be transferred: it is not in progress',
+  untrusted_url: 'call control URL is not an https vapi.ai URL',
+  unreachable: 'control command got no response (timeout or network failure)',
+  rejected: 'control command rejected',
+};
+
+/**
+ * Live call control could not be used. The message carries only a coarse
+ * reason and HTTP status: never the control URL (a bearer capability), the
+ * destination number or any response body.
+ */
+export class VapiControlUnavailableError extends Error {
+  readonly reason: VapiControlFailureReason;
+  readonly status: number | undefined;
+
+  constructor(reason: VapiControlFailureReason, status?: number) {
+    super(`[VapiClient] live call control unavailable: ${CONTROL_FAILURE_TEXT[reason]}${status ? ` (${status})` : ''}`);
+    this.name = 'VapiControlUnavailableError';
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+/** Vapi needs E.164. The product is Canada only, so a bare 10 digit number is NANP. */
+function toE164(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  const hasPlus = raw.trim().startsWith('+');
+  if (!hasPlus && digits.length === 10) return `+1${digits}`;
+  if (!hasPlus && digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (hasPlus && digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0')) return `+${digits}`;
+  throw new VapiControlUnavailableError('bad_destination');
+}
+
 type ControlCommand =
   | { type: 'transfer'; destination: { type: 'number'; number: string } }
   | { type: 'end-call' };
 
-/** A control URL must be HTTPS on a Vapi host before any command is sent to it. */
+/** A control URL must be HTTPS on a Vapi host, with no credentials, before any command is sent to it. */
 function assertVapiControlUrl(raw: unknown): string {
-  if (typeof raw !== 'string') throw new Error('[VapiClient] call has no control URL');
+  if (typeof raw !== 'string') throw new VapiControlUnavailableError('untrusted_url');
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
-    throw new Error('[VapiClient] call control URL is not a valid URL');
+    throw new VapiControlUnavailableError('untrusted_url');
   }
   const host = parsed.hostname.toLowerCase();
-  if (parsed.protocol !== 'https:' || !(host === 'vapi.ai' || host.endsWith('.vapi.ai'))) {
-    throw new Error('[VapiClient] call control URL is not an https vapi.ai URL');
+  const isVapiHost = host === 'vapi.ai' || host.endsWith('.vapi.ai');
+  if (parsed.protocol !== 'https:' || !isVapiHost || parsed.username || parsed.password) {
+    throw new VapiControlUnavailableError('untrusted_url');
   }
   return parsed.toString();
 }
@@ -630,7 +693,7 @@ async function getLiveCall(vapiCallId: string): Promise<{ status: string; contro
   return { status, controlUrl: rawControlUrl === undefined ? null : assertVapiControlUrl(rawControlUrl) };
 }
 
-async function sendControlCommand(vapiCallId: string, controlUrl: string, command: ControlCommand): Promise<void> {
+async function sendControlCommand(controlUrl: string, command: ControlCommand): Promise<void> {
   return vapiCircuitBreaker.execute(async () => {
     // Only needed when an assistant sets controlAuthenticationEnabled; Vapi
     // then requires the public key and rejects the private one.
@@ -646,11 +709,20 @@ async function sendControlCommand(vapiCallId: string, controlUrl: string, comman
         body: JSON.stringify(command),
         signal: AbortSignal.timeout(VAPI_HTTP_TIMEOUT_MS),
       });
-    } catch (err) {
-      throw new VapiAmbiguousOutcomeError('POST', `call ${vapiCallId} control (${command.type})`, err);
+    } catch {
+      throw new VapiControlUnavailableError('unreachable');
     }
-    if (!res.ok) {
-      throw new Error(`[VapiClient] control ${command.type} for call ${vapiCallId} → ${res.status}`);
+    if (!res.ok) throw new VapiControlUnavailableError('rejected', res.status);
+
+    // Vapi has been seen answering 200 with a schema error in the body, so a
+    // 2xx alone is not proof the command was applied.
+    const body: unknown = await res.json().catch(() => null);
+    if (
+      body !== null &&
+      typeof body === 'object' &&
+      ('error' in body || ('statusCode' in body && Number((body as { statusCode: unknown }).statusCode) >= 400))
+    ) {
+      throw new VapiControlUnavailableError('rejected', res.status);
     }
   });
 }
@@ -662,21 +734,22 @@ async function sendControlCommand(vapiCallId: string, controlUrl: string, comman
 export async function endVapiCall(vapiCallId: string): Promise<void> {
   const { status, controlUrl } = await getLiveCall(vapiCallId);
   if (status !== 'in-progress') return;
-  if (!controlUrl) throw new Error(`[VapiClient] call ${vapiCallId} is in progress but has no control URL`);
-  await sendControlCommand(vapiCallId, controlUrl, { type: 'end-call' });
+  if (!controlUrl) throw new VapiControlUnavailableError('not_enabled');
+  await sendControlCommand(controlUrl, { type: 'end-call' });
 }
 
-/** Transfer a live call to a practice phone (human takeover / Hold Sentinel handoff). */
+/**
+ * Transfer a live call to a phone number (human takeover / Hold Sentinel
+ * handoff). The control URL is read from Vapi at use time and never stored.
+ * Requires live control to be enabled for the call (see liveControlOverrides).
+ * Whether the result is a warm or blind transfer is a Vapi dashboard setting.
+ */
 export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string): Promise<void> {
+  const number = toE164(toPhoneNumber);
   const { status, controlUrl } = await getLiveCall(vapiCallId);
-  if (status !== 'in-progress') {
-    throw new Error(`[VapiClient] call ${vapiCallId} cannot be transferred: status ${status}`);
-  }
-  if (!controlUrl) throw new Error(`[VapiClient] call ${vapiCallId} is in progress but has no control URL`);
-  await sendControlCommand(vapiCallId, controlUrl, {
-    type: 'transfer',
-    destination: { type: 'number', number: toPhoneNumber },
-  });
+  if (status !== 'in-progress') throw new VapiControlUnavailableError('not_in_progress');
+  if (!controlUrl) throw new VapiControlUnavailableError('not_enabled');
+  await sendControlCommand(controlUrl, { type: 'transfer', destination: { type: 'number', number } });
 }
 
 export const vapiClient = {
