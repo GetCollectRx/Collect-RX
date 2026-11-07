@@ -73,14 +73,22 @@ function hostOfRequestArgs(args: unknown[]): string | null {
   return 'localhost';
 }
 
-let installed = false;
+let restore: (() => void) | null = null;
 
 /** Blocks fetch and node http/https requests to any non-local host. Idempotent. */
 export function installOutboundBlock(): void {
-  if (installed) return;
-  installed = true;
+  if (restore) return;
+  const originalFetch = globalThis.fetch;
+  const originals = [http, https].map((mod) => ({ mod, request: mod.request, get: mod.get }));
+  restore = () => {
+    globalThis.fetch = originalFetch;
+    for (const o of originals) {
+      Object.defineProperty(o.mod, 'request', { value: o.request, configurable: true, writable: true });
+      Object.defineProperty(o.mod, 'get', { value: o.get, configurable: true, writable: true });
+    }
+  };
 
-  const realFetch = globalThis.fetch.bind(globalThis);
+  const realFetch = originalFetch.bind(globalThis);
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const host = hostOfFetchInput(input);
     if (!isLocalHost(host)) throw new SandboxOutboundBlockedError(host ?? 'an unparsable URL');
@@ -100,6 +108,12 @@ export function installOutboundBlock(): void {
     Object.defineProperty(mod, 'request', { value: guard(realRequest), configurable: true, writable: true });
     Object.defineProperty(mod, 'get', { value: guard(realGet), configurable: true, writable: true });
   }
+}
+
+/** Tests only: removes the block so it cannot leak into other test files. */
+export function uninstallOutboundBlock(): void {
+  restore?.();
+  restore = null;
 }
 
 /**

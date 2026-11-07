@@ -272,7 +272,10 @@ export class CarrierSimulator {
     if (call.summary.status === 'ended') return;
     for (const t of call.timers) clearTimeout(t);
     call.timers = [];
-    const endedAt = new Date();
+    // At SANDBOX_TIME_SCALE > 1 the report carries simulated time, so the
+    // product sees the call's real length (it treats a call under 30 seconds
+    // as unanswered). At real time the two are the same.
+    const endedAt = new Date(call.started.getTime() + (Date.now() - call.started.getTime()) * timeScale());
     call.summary.status = 'ended';
     call.summary.endedAt = endedAt.toISOString();
     call.summary.endedReason = endedReason;

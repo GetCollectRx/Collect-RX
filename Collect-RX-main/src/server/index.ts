@@ -125,6 +125,7 @@ import vapiWebhookRouter      from '../webhooks/vapi';
 import { isSandboxMode, SANDBOX_VAPI_PATH } from './sandbox/sandboxMode.js';
 import { createMockVapiRouter } from './sandbox/mockVapiApi.js';
 import { startSandbox } from './sandbox/bootSandbox.js';
+import { createSandboxResultsRouter } from './sandbox/resultsRoutes.js';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import holdParkTestRouter     from '../webhooks/holdParkTest';
 import { attachHoldParkAudioStream } from '../webhooks/holdParkAudioStream';
@@ -529,6 +530,9 @@ app.use('/api', anonStandardLimiter);
 // ─────────────────────────────────────────────────────────────────────────────
 // Required PHI access-intent audit. Audit-store failure prevents execution.
 app.use('/api/insurance', authenticate, auditPhiAccessMiddleware);
+if (isSandboxMode()) {
+  app.use('/api/sandbox', authenticate, createSandboxResultsRouter(prisma));
+}
 app.use('/api/calls', authenticate, auditPhiAccessMiddleware);
 app.use('/api/admin/audit-log', authenticate, auditPhiAccessMiddleware);
 app.use('/api/auth',       createAuthRouter(prisma));
