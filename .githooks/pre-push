@@ -5,8 +5,8 @@
 # Installed automatically via `npm install` (package.json `prepare` sets core.hooksPath to
 # this directory). Bypass in a genuine emergency with `git push --no-verify`.
 #
-# What it runs (see scripts/verify-all.sh --help): scope, any/suppression scan, secrets scan
-# over the diff AND commit history, whitespace and schema-comment checks, prisma validate and
+# What it runs (see scripts/verify-all.sh --help): scope, any/suppression scan, TODO/FIXME scan,
+# secrets scan over the diff AND commit history, whitespace and schema-comment checks, prisma validate and
 # generate, migrations on an empty throwaway PostgreSQL 16, RLS coverage, API coverage,
 # typecheck, lint, the full test suite, npm audit and the production build.
 #

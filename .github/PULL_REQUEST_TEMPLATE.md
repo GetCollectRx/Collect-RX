@@ -10,6 +10,19 @@
 - [ ] New behavior has test coverage — no untested paths shipped to `main`
 - [ ] For UI/frontend changes: exercised in a running browser (golden path + edge cases), not just typechecked
 
+## Gate output
+
+<!--
+Run `bash scripts/verify-all.sh` and paste its final line inside the block below, for example
+`VERIFY-ALL: PASS (18 passed)`. The `pr-gate` check reads this section and fails without it.
+If a gate was UNVERIFIED, paste that line and add `UNVERIFIED acknowledged by @owner` once the
+owner has agreed. Checkboxes alone are not evidence.
+-->
+
+```
+VERIFY-ALL:
+```
+
 ## Database migrations (skip this section if none)
 
 Migration bugs here don't surface until a real deploy against the real database — see the

@@ -552,6 +552,16 @@ router.post('/', async (req: Request, res: Response) => {
       const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
       const handledAsProspect = await tryProcessProspectVapiWebhook(prisma, payload);
       if (!handledAsProspect) {
+        // The transcript must be stored before desk processing: a terminal
+        // outcome revokes the claim's PHI token there, and known-value
+        // redaction needs that token. Pattern redaction alone does not remove
+        // patient names.
+        if (payload.type === 'call.ended' && payload.transcript) {
+          const transcriptResult = await persistFromVapiPayload(payload);
+          if (!transcriptResult.persisted) {
+            logger.warn('[guardrails] Failed to persist transcript', { error: transcriptResult.error });
+          }
+        }
         await processVapiDeskWebhook(prisma, payload, { rawBody });
       }
     });
@@ -604,11 +614,6 @@ router.post('/', async (req: Request, res: Response) => {
         const payloadResult = await webhookGuardScanPayload(payload);
         if (payloadResult.hasPhi) {
           logger.warn('[guardrails] Payload contains PHI-like patterns', { findings: payloadResult.findings });
-        }
-
-        const transcriptResult = await persistFromVapiPayload(payload);
-        if (!transcriptResult.persisted) {
-          logger.warn('[guardrails] Failed to persist transcript', { error: transcriptResult.error });
         }
 
         const auditResult = await enqueueForAudit(callAttempt.id);

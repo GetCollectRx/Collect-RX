@@ -1,0 +1,32 @@
+# Fails a pull request whose description does not carry the gate output it relies on.
+# Separate from collectrx-ci.yml so that editing a description re-runs only this cheap check,
+# not the whole test suite. Required check name: "pr-gate".
+name: PR Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-gate:
+    name: pr-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # The description and author reach the script through the environment only, never through
+      # string interpolation into the shell command, so a crafted description cannot inject code.
+      - name: Require gate output in the description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash scripts/check-pr-body.sh

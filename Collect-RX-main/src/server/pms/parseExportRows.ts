@@ -164,6 +164,7 @@ export function normalizePmsClaimRow(
   const dobRaw = getCell(
     raw,
     'Date of Birth',
+    'date_of_birth',
     'DOB',
     'dob',
     'Patient DOB',
@@ -182,6 +183,7 @@ export function normalizePmsClaimRow(
     raw,
     'Subscriber DOB',
     'Subscriber Date of Birth',
+    'subscriber_date_of_birth',
     'subscriber_dob',
     'Policy Holder DOB',
     'policy_holder_dob',

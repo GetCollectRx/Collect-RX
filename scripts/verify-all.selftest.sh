@@ -142,6 +142,41 @@ printf 'export const csv = "\xef\xbb\xbfa,b";\n' > "$r/src/bom.test.ts"
 commit_all "$r" bomtest
 expect "raw BOM in a test file is allowed with a note" "$r" 0 chars PASS
 
+# 4c. TODO and FIXME markers (assembled at run time so this file never contains the words as markers).
+TODO_WORD="TO""DO"
+FIXME_WORD="FIX""ME"
+
+r="$(new_repo todo)"
+printf '// %s: handle the empty case\nexport const a = 1;\n' "$TODO_WORD" > "$r/src/bad.ts"
+commit_all "$r" todo
+expect "added TODO in code is caught" "$r" 1 todo FAIL
+
+r="$(new_repo fixme)"
+printf 'export const b = 1; // %s later\n' "$FIXME_WORD" > "$r/src/bad.ts"
+commit_all "$r" fixme
+expect "added FIXME in code is caught" "$r" 1 todo FAIL
+
+r="$(new_repo todotest)"
+mkdir -p "$r/src/__t"
+printf '// %s: cover the edge case\nexport const c = 1;\n' "$TODO_WORD" > "$r/src/thing.test.ts"
+commit_all "$r" todotest
+expect "TODO inside a test file is allowed" "$r" 0 todo PASS
+
+r="$(new_repo tododoc)"
+printf '# Notes\n\n%s: write this section\n' "$TODO_WORD" > "$r/NOTES.md"
+commit_all "$r" tododoc
+expect "TODO in markdown is allowed" "$r" 0 todo PASS
+
+r="$(new_repo todoallow)"
+printf '// %s: tracked elsewhere. verify-all: allow\nexport const d = 1;\n' "$TODO_WORD" > "$r/src/ok2.ts"
+commit_all "$r" todoallow
+expect "TODO with the allow marker is allowed" "$r" 0 todo PASS
+
+r="$(new_repo todoprose)"
+printf 'export const getTodoList = () => [];\nexport const todos = 1;\n' > "$r/src/ok2.ts"
+commit_all "$r" todoprose
+expect "identifiers containing todo are not false positives" "$r" 0 todo PASS
+
 # 5. Braces inside a schema comment.
 r="$(new_repo schemadoc)"
 printf 'model B {\n  /// JSON like {code, amount}\n  id String @id\n}\n' >> "$r/Collect-RX-main/prisma/schema.prisma"

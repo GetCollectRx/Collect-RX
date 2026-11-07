@@ -6,7 +6,7 @@
  * src/config/csv-aliases.ts. Pure and synchronous: no database, no network.
  *
  * Scope: this is the path for the multi-vertical expansion. The existing dental
- * import (parseSimpleCsv + csvValidator ClaimRowSchema) is untouched.
+ * import (parseSimpleCsv) is untouched.
  *
  * Safety properties:
  *  - Limits from CSV_LIMITS (size, rows) are enforced before parsing.
