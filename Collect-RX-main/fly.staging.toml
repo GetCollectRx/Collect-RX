@@ -9,6 +9,15 @@ primary_region = 'yyz'
 [deploy]
 release_command = 'npx prisma migrate deploy'
 
+# Live sandbox (docs/operations/STAGING-SANDBOX.md). SANDBOX_MODE blocks every
+# outbound call and message and plays carrier calls through the in-process
+# simulator. Changing SANDBOX_RESET_TOKEN to a new value wipes this app's
+# database once, on the next boot, and recreates the two synthetic practices.
+[env]
+SANDBOX_MODE = '1'
+SANDBOX_RESET_TOKEN = '2026-11-07-initial'
+BILLING_SKIP_PRACTICE_IDS = '5a0d0000-0000-4000-8000-0000000000a1,5a0d0000-0000-4000-8000-0000000000a2'
+
 [processes]
 app = 'npm run start'
 worker = 'npm run worker'
@@ -16,9 +25,11 @@ worker = 'npm run worker'
 [http_service]
 internal_port = 3000
 force_https = true
-auto_stop_machines = true
+# The queue engine and the carrier simulator run in the app process, so it
+# stays up for calls to be scheduled and played in real time.
+auto_stop_machines = false
 auto_start_machines = true
-min_machines_running = 0
+min_machines_running = 1
 processes = ['app']
 
 [[http_service.checks]]
@@ -32,6 +43,8 @@ path = '/api/health/ready'
 internal_port = 3000
 protocol = 'tcp'
 processes = ['worker']
+auto_stop_machines = false
+min_machines_running = 1
 
   [[services.http_checks]]
   interval = '30s'
