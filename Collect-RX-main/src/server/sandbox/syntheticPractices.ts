@@ -44,6 +44,20 @@ export const SANDBOX_PRACTICES: readonly SandboxPracticeDef[] = [
   },
 ];
 
+/**
+ * Claims go in a few at a time. The import runs each batch in one database
+ * transaction with a 5 second limit; all 216 claims at once took 2 seconds on a
+ * local database and over 7 on staging's remote one, which stopped the app
+ * from starting.
+ */
+export const SANDBOX_IMPORT_BATCH_SIZE = 20;
+
+export function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 /** Fictional staff line the Hold Sentinel handoff transfers to. */
 export const SANDBOX_STAFF_PHONE = '+16135550150';
 
@@ -74,13 +88,19 @@ function ageFor(seed: string): number {
   return seeded(seed, 'age', 32, 88);
 }
 
-export function buildSandboxCsv(practice: SandboxPracticeDef, scenarios: CallScenario[]): string {
+/**
+ * `all` is the full scenario list. A scenario's claim number and carrier come
+ * from its position in it, so a subset (the claims still missing after an
+ * interrupted setup) gets the same numbers it would have had in a full run.
+ */
+export function buildSandboxCsv(practice: SandboxPracticeDef, scenarios: CallScenario[], all: CallScenario[] = scenarios): string {
   const header = [
     'claim_number', 'patient_first_name', 'patient_last_name', 'patient_dob', 'subscriber_id',
     'group_policy_number', 'insurance_carrier', 'procedure_code', 'treatment_codes', 'treatment_date',
     'submitted_date', 'amount_billed', 'amount_outstanding', 'expected_amount', 'days_outstanding',
   ];
-  const rows = scenarios.map((s, i) => {
+  const rows = scenarios.map((s) => {
+    const i = Math.max(0, all.findIndex((a) => a.id === s.id));
     const seed = `${practice.key}-${s.id}`;
     const carrier = carrierIdForScenario(s) ?? CARRIER_ROTATION[i % CARRIER_ROTATION.length] ?? 'sun_life';
     const age = ageFor(seed);
@@ -139,8 +159,8 @@ export interface EnsureResult {
   loginsUsable: boolean;
 }
 
-/** Creates the practice, its two logins and its claims if they are missing. Safe to run on every boot. */
-export async function ensureSandboxPractice(prisma: PrismaClient, def: SandboxPracticeDef): Promise<EnsureResult> {
+/** Creates the practice and its two logins if they are missing. */
+export async function ensurePracticeRecord(prisma: PrismaClient, def: SandboxPracticeDef): Promise<{ created: boolean; loginsUsable: boolean }> {
   const { hash, usable } = await passwordHashForSandbox();
   const existing = await prisma.practice.findUnique({ where: { id: def.id }, select: { id: true } });
   if (!existing) {
@@ -168,12 +188,31 @@ export async function ensureSandboxPractice(prisma: PrismaClient, def: SandboxPr
       update: usable ? { passwordHash: hash, isActive: true } : {},
     });
   }
-  const claimCount = await prisma.insuranceClaim.count({ where: { practiceId: def.id } });
+  return { created: !existing, loginsUsable: usable };
+}
+
+/**
+ * Imports the claims a practice is still missing, a few at a time. Safe to run
+ * again after an interruption: only scenarios without a claim are imported.
+ */
+export async function ensurePracticeClaims(prisma: PrismaClient, def: SandboxPracticeDef): Promise<number> {
+  const all = loadCallScenarios();
+  const present = await prisma.insuranceClaim.findMany({ where: { practiceId: def.id }, select: { claimNumber: true } });
+  const have = new Set(present.map((c) => c.claimNumber));
+  const missing = all.filter((s) => !have.has(sandboxClaimNumber(s.id, all.findIndex((a) => a.id === s.id) + 1)));
   let imported = 0;
-  if (claimCount === 0) {
-    const csv = buildSandboxCsv(def, loadCallScenarios());
+  for (const batch of chunk(missing, SANDBOX_IMPORT_BATCH_SIZE)) {
+    const csv = buildSandboxCsv(def, batch, all);
     const result = await runPmsImportPipeline(prisma, { practiceId: def.id, pmsSource: 'other', rows: parseSimpleCsv(csv) });
-    imported = result.imported;
+    if (result.status !== 'success') throw new Error(`sandbox claim import ${result.status} (imported ${result.imported}, failed ${result.failed})`);
+    imported += result.imported;
   }
-  return { practiceId: def.id, created: !existing, claimsImported: imported, loginsUsable: usable };
+  return imported;
+}
+
+/** The practice, its logins and all its claims. Safe to run on every boot. */
+export async function ensureSandboxPractice(prisma: PrismaClient, def: SandboxPracticeDef): Promise<EnsureResult> {
+  const record = await ensurePracticeRecord(prisma, def);
+  const claimsImported = await ensurePracticeClaims(prisma, def);
+  return { practiceId: def.id, created: record.created, claimsImported, loginsUsable: record.loginsUsable };
 }

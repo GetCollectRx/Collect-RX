@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../src/lib/prisma.js';
 import { piiVault } from '../src/pii-vault.js';
 import { runWithRlsBypass } from '../src/server/db/rlsContext.js';
-import { ensureSandboxPractice, SANDBOX_PRACTICES } from '../src/server/sandbox/syntheticPractices.js';
+import { ensurePracticeClaims, ensureSandboxPractice, SANDBOX_PRACTICES } from '../src/server/sandbox/syntheticPractices.js';
 import { resumeOpenCalls } from '../src/server/sandbox/bootSandbox.js';
 import { CarrierSimulator } from '../src/server/sandbox/carrierSimulator.js';
 import { loadCallScenarios, scenarioIdFromClaimNumber } from '../src/server/sandbox/scenarioRegistry.js';
@@ -99,6 +99,23 @@ describe.skipIf(!dbReady)('live sandbox boot (integration)', () => {
     }
     expect(await runWithRlsBypass(() => prisma.insuranceClaim.count({ where: { practiceId: { in: ids } } }))).toBe(loadCallScenarios().length * 2);
   }, 60_000);
+
+  it('finishes an interrupted claim import without duplicating or renumbering claims', async () => {
+    const def = SANDBOX_PRACTICES[0];
+    if (!def) throw new Error('missing practice');
+    const before = await runWithRlsBypass(() => prisma.insuranceClaim.findMany({ where: { practiceId: def.id }, select: { claimNumber: true }, orderBy: { claimNumber: 'asc' } }));
+    const victims = before.filter((_, i) => i % 3 === 0).map((c) => c.claimNumber);
+    await runWithRlsBypass(async () => {
+      const ids = (await prisma.insuranceClaim.findMany({ where: { practiceId: def.id, claimNumber: { in: victims } }, select: { id: true } })).map((c) => c.id);
+      await prisma.callQueue.deleteMany({ where: { claimId: { in: ids } } });
+      await prisma.insuranceClaim.deleteMany({ where: { id: { in: ids } } });
+    });
+    const restored = await runWithRlsBypass(() => ensurePracticeClaims(prisma, def));
+    expect(restored).toBe(victims.length);
+    const after = await runWithRlsBypass(() => prisma.insuranceClaim.findMany({ where: { practiceId: def.id }, select: { claimNumber: true }, orderBy: { claimNumber: 'asc' } }));
+    expect(after.map((c) => c.claimNumber)).toEqual(before.map((c) => c.claimNumber));
+    expect(await runWithRlsBypass(() => ensurePracticeClaims(prisma, def))).toBe(0);
+  }, 120_000);
 
   it('resumes a sandbox call that was open when the process stopped', async () => {
     const claim = await runWithRlsBypass(() => prisma.insuranceClaim.findFirst({ where: { practiceId: ids[1] }, select: { id: true } }));

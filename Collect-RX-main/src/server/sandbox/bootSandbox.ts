@@ -13,7 +13,7 @@ import { logger } from '../observability/logger.js';
 import { getHumanAssistedSquadId } from '../../vapi/client.js';
 import { carrierSimulator, type CarrierSimulator } from './carrierSimulator.js';
 import { registerScenarioScoring } from './scenarioScoring.js';
-import { ensureSandboxPractice, SANDBOX_PRACTICES } from './syntheticPractices.js';
+import { ensurePracticeRecord, ensureSandboxPractice, SANDBOX_PRACTICES } from './syntheticPractices.js';
 import { buildCallPlan } from './callPlan.js';
 import { findCallScenario, scenarioIdFromClaimNumber } from './scenarioRegistry.js';
 
@@ -67,7 +67,9 @@ async function maybeReset(prisma: PrismaClient): Promise<void> {
   logger.warn('[sandbox] resetting the staging database to synthetic data (new SANDBOX_RESET_TOKEN)', {});
   const { residualTables } = await wipeDatabase(prisma);
   if (residualTables.length > 0) logger.warn('[sandbox] reset left rows in tables that refuse deletes', { tables: residualTables });
-  await ensureSandboxPractice(prisma, marker);
+  // Only the practice record, so the marker is saved before any claim is
+  // imported: a failed import is retried without wiping the database again.
+  await ensurePracticeRecord(prisma, marker);
   const after = await prisma.practice.findUnique({ where: { id: marker.id }, select: { settings: true } });
   await prisma.practice.update({
     where: { id: marker.id },
@@ -129,4 +131,26 @@ export async function startSandbox(prisma: PrismaClient): Promise<void> {
     if (resumed > 0) logger.info('[sandbox] resumed simulated calls', { resumed });
   });
   registerScenarioScoring(prisma, carrierSimulator);
+}
+
+const START_RETRY_DELAY_MS = 30_000;
+const START_MAX_ATTEMPTS = 20;
+
+/**
+ * Runs sandbox setup in the background and retries on failure. A setup error is
+ * logged and retried; it does not stop the app, which stays up so the failure
+ * can be seen and the sandbox finishes setting itself up when the cause clears.
+ */
+export function startSandboxWithRetry(prisma: PrismaClient, attempt = 1): void {
+  startSandbox(prisma).then(
+    () => logger.info('[sandbox] ready', { attempt }),
+    (err: unknown) => {
+      logger.error('[sandbox] setup failed', { attempt, error: err instanceof Error ? err.message : 'unknown' });
+      if (attempt >= START_MAX_ATTEMPTS) {
+        logger.error('[sandbox] giving up on setup; restart the app to try again', { attempts: attempt });
+        return;
+      }
+      setTimeout(() => startSandboxWithRetry(prisma, attempt + 1), START_RETRY_DELAY_MS).unref();
+    },
+  );
 }

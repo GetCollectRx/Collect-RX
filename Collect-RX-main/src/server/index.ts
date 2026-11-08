@@ -124,7 +124,7 @@ import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import { isSandboxMode, SANDBOX_VAPI_PATH } from './sandbox/sandboxMode.js';
 import { createMockVapiRouter } from './sandbox/mockVapiApi.js';
-import { startSandbox } from './sandbox/bootSandbox.js';
+import { startSandboxWithRetry } from './sandbox/bootSandbox.js';
 import { createSandboxResultsRouter } from './sandbox/resultsRoutes.js';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import holdParkTestRouter     from '../webhooks/holdParkTest';
@@ -960,14 +960,7 @@ async function boot() {
     process.exit(1);
   }
 
-  if (isSandboxMode()) {
-    try {
-      await startSandbox(prisma);
-    } catch (err) {
-      logger.error('[sandbox] startup failed; refusing to start', { error: err instanceof Error ? err.message : 'unknown' });
-      process.exit(1);
-    }
-  }
+  if (isSandboxMode()) startSandboxWithRetry(prisma);
 
   // docs/operations/HUMAN-DECISIONS-PENDING.md #3: a superuser/BYPASSRLS
   // connection makes every RLS tenant-isolation policy a silent no-op. Cache

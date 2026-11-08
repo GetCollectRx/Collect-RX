@@ -26,7 +26,7 @@ import { buildCallPlan, fillLine } from './callPlan';
 import { CarrierSimulator, TRANSFER_WAIT_SECONDS } from './carrierSimulator';
 import { createMockVapiRouter, isLoopbackRequest } from './mockVapiApi';
 import { scoreCall, type ObservedState } from './scenarioScoring';
-import { buildSandboxCsv, SANDBOX_PRACTICES } from './syntheticPractices';
+import { buildSandboxCsv, chunk, SANDBOX_IMPORT_BATCH_SIZE, SANDBOX_PRACTICES } from './syntheticPractices';
 import { resetAllowedHere } from './bootSandbox';
 
 const base = (over: Partial<RegistryScenario>): RegistryScenario => ({
@@ -312,5 +312,27 @@ describe('synthetic practices', () => {
       expect(age).toBeLessThanOrEqual(88);
     }
     expect(csv).not.toMatch(/@(?!sandbox\.collectrx\.test)/u);
+  });
+});
+
+describe('synthetic claim batches', () => {
+  it('splits work into batches no larger than the import transaction can handle', () => {
+    const items = Array.from({ length: 216 }, (_, i) => i);
+    const batches = chunk(items, SANDBOX_IMPORT_BATCH_SIZE);
+    expect(batches.every((b) => b.length > 0 && b.length <= SANDBOX_IMPORT_BATCH_SIZE)).toBe(true);
+    expect(batches.flat()).toEqual(items);
+    expect(chunk([], 20)).toEqual([]);
+  });
+
+  it('gives a scenario the same claim number and carrier whether it is built alone or with the full list', () => {
+    const def = SANDBOX_PRACTICES[0];
+    if (!def) throw new Error('missing practice');
+    const all = loadCallScenarios();
+    const fullRows = buildSandboxCsv(def, all).split('\n').slice(1);
+    const subset = [all[37], all[150], all[all.length - 1]].filter((s): s is CallScenario => Boolean(s));
+    const subsetRows = buildSandboxCsv(def, subset, all).split('\n').slice(1);
+    const byClaim = new Map(fullRows.map((r) => [r.split(',')[0], r]));
+    expect(subsetRows).toHaveLength(3);
+    for (const row of subsetRows) expect(byClaim.get(row.split(',')[0])).toBe(row);
   });
 });
