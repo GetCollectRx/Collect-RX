@@ -1,4 +1,7 @@
 import type { CarrierId, Prisma, PrismaClient } from '@prisma/client';
+import { PAYER_PROGRAM_ACTIVATION } from '../../carriers/payerProgram.js';
+import { resolveDispatchMode } from '../frontDesk/dispatchDecision.js';
+import logger from '../observability/logger.js';
 import {
   buildPriorityScoreInput,
   rankClaimForPractice,
@@ -14,11 +17,13 @@ export interface QueueRankingWeights {
 /**
  * Create the carrier-call work implied by a successful CSV import.
  *
- * This deliberately mirrors the current dispatch age boundary without trying
- * to decide the unresolved product question about what happens after hold.
- * Claims with a blocking recovery action, a terminal/non-pending status, or an
- * age outside the automated follow-up window remain visible as work items but
- * are not placed in the autonomous call queue.
+ * This mirrors the dispatch rules in validateDispatch so a claim that dispatch
+ * would refuse never enters the queue: the 30-day floor, the payer-program
+ * rule (DEC-10), and the over-90 rule (DEC-2: age alone blocks only in
+ * autonomous mode). Claims with a blocking recovery action, a terminal or
+ * non-pending status, or outside those rules remain visible as work items but
+ * are not placed in the call queue. A claim with no payerType is treated as
+ * PRIVATE, as dispatch does.
  *
  * Existing queue rows are left untouched. In particular, a re-import must not
  * reset attempts, revive a terminal queue row, or move a scheduled recall.
@@ -26,21 +31,37 @@ export interface QueueRankingWeights {
 export async function syncEligibleCallQueueForPractice(
   prisma: PrismaClient,
   practiceId: string,
-): Promise<{ created: number }> {
+): Promise<{ created: number; excludedByPayerProgram: number }> {
+  const mode = await resolveDispatchMode(prisma, practiceId);
+  const enabledPayerTypes = (Object.keys(PAYER_PROGRAM_ACTIVATION) as Array<keyof typeof PAYER_PROGRAM_ACTIVATION>)
+    .filter((payerType) => PAYER_PROGRAM_ACTIVATION[payerType].enabled);
+  const baseWhere = {
+    practiceId,
+    deletedAt: null,
+    status: 'PENDING' as const,
+    outstandingAmount: { gt: 0 },
+    daysOutstanding: mode.humanAssisted ? { gte: 30 } : { gte: 30, lte: 90 },
+    queueEntry: null,
+    recoveryActions: {
+      none: { status: 'BLOCKING' as const, clearedAt: null },
+    },
+  };
   const eligibleClaims = await prisma.insuranceClaim.findMany({
     where: {
-      practiceId,
-      deletedAt: null,
-      status: 'PENDING',
-      outstandingAmount: { gt: 0 },
-      daysOutstanding: { gte: 30, lte: 90 },
-      queueEntry: null,
-      recoveryActions: {
-        none: { status: 'BLOCKING', clearedAt: null },
-      },
+      ...baseWhere,
+      OR: [{ payerType: null }, { payerType: { in: enabledPayerTypes } }],
     },
     select: { id: true, priority: true },
   });
+  const excludedByPayerProgram = await prisma.insuranceClaim.count({
+    where: { ...baseWhere, payerType: { notIn: enabledPayerTypes, not: null } },
+  });
+  if (excludedByPayerProgram > 0) {
+    logger.info('[workQueue] claims not queued: payer program not enabled for carrier calls', {
+      practiceId,
+      excludedByPayerProgram,
+    });
+  }
 
   let created = 0;
   for (const claim of eligibleClaims) {
@@ -60,7 +81,7 @@ export async function syncEligibleCallQueueForPractice(
     created += result.count;
   }
 
-  return { created };
+  return { created, excludedByPayerProgram };
 }
 
 const DEFAULT_WEIGHTS: QueueRankingWeights = {

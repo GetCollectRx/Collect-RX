@@ -1,4 +1,4 @@
-import type { CarrierId, PrismaClient } from '@prisma/client';
+import type { CarrierId, PayerType, PrismaClient } from '@prisma/client';
 import type { PmsImportFamily } from '../../types/pms.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
@@ -60,6 +60,7 @@ async function upsertInsuranceClaim(
   row: NormalizedPmsClaimRow,
   carrierId: CarrierId,
   treatingDentistId: string | undefined,
+  defaultPayerType: PayerType | undefined,
 ): Promise<
   | { outcome: 'imported'; claimId: string; previousOutstanding: number; newOutstanding: number }
   | { outcome: 'skipped' }
@@ -68,8 +69,11 @@ async function upsertInsuranceClaim(
     where: {
       practiceId_claimNumber: { practiceId, claimNumber: row.claimNumber },
     },
-    select: { id: true, outstandingAmount: true, recoveryRoute: true },
+    select: { id: true, outstandingAmount: true, recoveryRoute: true, payerType: true },
   });
+
+  // The row's own column wins over the file-level declaration.
+  const resolvedPayerType = row.payerType ?? defaultPayerType ?? null;
 
   if (row.outstandingAmount <= 0) {
     if (!existing || Number(existing.outstandingAmount) <= 0) {
@@ -90,6 +94,15 @@ async function upsertInsuranceClaim(
     };
   }
 
+  // A new claim must be classified: the payer program decides whether carrier
+  // calls are allowed at all. Existing claims keep their classification, and an
+  // unclassified one is classified by the first import that declares a type.
+  if (!existing && resolvedPayerType === null) {
+    throw new Error(
+      `Payer type is required for new claims. Add a "Payer Type" column (PRIVATE, CDCP or PROVINCIAL) or declare one for the whole file. Claim ${row.claimNumber} was not imported.`,
+    );
+  }
+
   const previousOutstanding = existing ? Number(existing.outstandingAmount) : row.outstandingAmount;
 
   const patientToken = patientTokenForRow(practiceId, row);
@@ -104,6 +117,7 @@ async function upsertInsuranceClaim(
       claimNumber: row.claimNumber,
       carrierId,
       patientToken,
+      payerType: resolvedPayerType,
       billedAmount: row.billedAmount,
       outstandingAmount: row.outstandingAmount,
       expectedAmount: row.expectedAmount ?? undefined,
@@ -127,6 +141,7 @@ async function upsertInsuranceClaim(
       // the claim points at the newly tokenized entry.
       patientToken,
       servicedAt: row.servicedAt ?? undefined,
+      ...(existing && existing.payerType === null && resolvedPayerType ? { payerType: resolvedPayerType } : {}),
       // Only overwrite an already-set treatingDentistId when this import row
       // actually carries one — a later re-import without the column must not
       // erase a dentist assignment made by an earlier one that had it.
@@ -159,6 +174,7 @@ export async function importPmsClaimsToPrisma(
   rows: Record<string, unknown>[],
   practiceId: string,
   importFamily: PmsImportFamily,
+  options: { defaultPayerType?: PayerType } = {},
 ): Promise<PrismaImportResult> {
   const result: PrismaImportResult = {
     imported: 0,
@@ -225,7 +241,14 @@ export async function importPmsClaimsToPrisma(
         treatingDentistId = dentistCheck.dentistId;
       }
 
-      const outcome = await upsertInsuranceClaim(prisma, practiceId, row, carrierId, treatingDentistId);
+      const outcome = await upsertInsuranceClaim(
+        prisma,
+        practiceId,
+        row,
+        carrierId,
+        treatingDentistId,
+        options.defaultPayerType,
+      );
       if (outcome.outcome === 'skipped') {
         result.skipped += 1;
         result.sourceRowsAccounted += merged.sourceRowCount.get(row.claimNumber) ?? 1;

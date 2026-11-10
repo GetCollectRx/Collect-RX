@@ -3,6 +3,7 @@ import { useDesktopConnector } from '../hooks/useDesktopConnector'
 import { Link } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
+import { parseCsvFile, payerTypeBlockReason, summarizePayerTypes } from '../lib/csvClientPreview'
 import type { PmsVendorCatalogEntry, PracticePmsInfo } from '../types/pms'
 import {
   Button, Card, CardHeader, DataState,
@@ -46,6 +47,9 @@ export default function SyncOpsDashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState<string | null>(null)
+  // No default: required whenever the file has rows that name no program.
+  const [payerType, setPayerType] = useState('')
+  const [uploadProblem, setUploadProblem] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
   const [catalog, setCatalog] = useState<PmsVendorCatalogEntry[]>([])
   const [pmsContext, setPmsContext] = useState<PracticePmsInfo | null>(null)
@@ -82,9 +86,18 @@ export default function SyncOpsDashboard() {
   }, [practiceId, canFetch])
 
   const upload = async (pmsVendor: string, file: File) => {
+    setUploadProblem(null)
+    const summary = summarizePayerTypes(parseCsvFile(await file.text()))
+    const blocked = payerTypeBlockReason(summary, payerType)
+    if (blocked) {
+      const detail = summary.problems.slice(0, 3).map((p) => `Row ${p.row}: ${p.message}`).join(' ')
+      setUploadProblem(detail ? `${blocked} ${detail}` : blocked)
+      return
+    }
     setUploading(pmsVendor)
     const fd = new FormData()
     fd.append('file', file)
+    if (summary.unclassified > 0) fd.append('defaultPayerType', payerType)
     try {
       const r = await apiFetch(`/api/admin/sync/import/${pmsVendor}`, { method: 'POST', body: fd })
       const j = await r.json().catch(() => ({})) as {
@@ -263,6 +276,26 @@ export default function SyncOpsDashboard() {
 
         <Card>
           <CardHeader title="Upload claim export" subtitle="CSV from your PMS, column names are mapped automatically" />
+          <div className="px-4 pb-2">
+            <label className="text-sm block">
+              <span className="block text-gray-500 mb-1">Payer program for rows that do not name one</span>
+              <select
+                value={payerType}
+                onChange={(e) => setPayerType(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
+              >
+                <option value="">Choose one (needed only if a row names none)</option>
+                <option value="PRIVATE">Private insurance</option>
+                <option value="CDCP">CDCP</option>
+                <option value="PROVINCIAL">Provincial program</option>
+              </select>
+            </label>
+            {uploadProblem && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-2" role="alert" data-testid="upload-payer-problem">
+                {uploadProblem}
+              </p>
+            )}
+          </div>
           <div className="px-4 pb-4 flex flex-wrap gap-4">
             {vendors.map((v) => (
               <label key={v.id} className="text-sm">

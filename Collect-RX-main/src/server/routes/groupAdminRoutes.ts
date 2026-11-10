@@ -20,6 +20,7 @@ import {
   formatZodError,
 } from '../validation/zodSchemas.js';
 import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { parsePayerTypeInput } from '../pms/payerTypeInput.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 import {
   createOrgBillingCheckoutSession,
@@ -459,6 +460,10 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
           if (!vendorId) {
             return { practiceId: entry.practiceId, success: false, error: `Unknown PMS vendor "${entry.pmsVendor}"` };
           }
+          const payerTypeParse = parsePayerTypeInput(entry.defaultPayerType);
+          if (!payerTypeParse.ok) {
+            return { practiceId: entry.practiceId, success: false, error: payerTypeParse.error };
+          }
           try {
             const result = await runWithPracticeRls(entry.practiceId, () =>
               runPmsImportPipeline(prisma, {
@@ -467,6 +472,7 @@ export function createGroupAdminRouter(prisma: PrismaClient): Router {
                 rows: entry.records,
                 sourceRecordCount: entry.records.length,
                 sourceBalanceTotal: entry.sourceBalanceTotal,
+                defaultPayerType: payerTypeParse.value ?? undefined,
               }),
             );
             return {

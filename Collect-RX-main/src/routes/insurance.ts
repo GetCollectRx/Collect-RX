@@ -14,7 +14,7 @@ import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
-import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
+import { validateDispatch, checkCarrierBlock } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
 import { strictLimiter } from '../server/middleware/rateLimiter';
@@ -32,6 +32,18 @@ import { canMakeCall, gateBlockMessage } from '../server/plans/planBridge.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import { apiErrorMessageForResponse } from '../server/apiErrorMessage.js';
 import { piiVault } from '../pii-vault.js';
+import { checkPatientDataCompleteness } from '../server/frontDesk/patientDataCompleteness.js';
+import { recordDispatchedCallAttempt } from '../server/frontDesk/callAttemptRecording.js';
+import { escalateClaimForGuard, isEscalatingGuardCode } from '../server/frontDesk/dispatchEscalation.js';
+import { holdClaimForUnresolvedCall } from '../server/frontDesk/dispatchUnresolved.js';
+import { loadCarrierActiveCounts, resolveDispatchMode } from '../server/frontDesk/dispatchDecision.js';
+import {
+  buildVapiCallParams,
+  loadCarrierCallHints,
+  loadPracticeCallContext,
+  resolveCarrierDial,
+} from '../server/frontDesk/dispatchCallBuilder.js';
+import { DISPATCH_FEATURES, isDispatchFeatureEnabled } from '../server/featureFlags/dispatchFeatures.js';
 import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
@@ -423,7 +435,9 @@ router.get('/claims/:id/recovery', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 router.post('/claims/import', strictLimiter, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { records?: unknown[]; pmsSource?: string; pmsVendor?: string } | unknown[];
+    const body = req.body as
+      | { records?: unknown[]; pmsSource?: string; pmsVendor?: string; defaultPayerType?: unknown }
+      | unknown[];
     const rows = Array.isArray(body) ? body : body?.records;
     if (!Array.isArray(rows)) {
       return res.status(400).json({
@@ -434,12 +448,18 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
     const practiceId = practiceIdFromSession(req);
     const explicitPms =
       !Array.isArray(body) ? body?.pmsVendor ?? body?.pmsSource : undefined;
+    const { parsePayerTypeInput } = await import('../server/pms/payerTypeInput.js');
+    const payerTypeParse = parsePayerTypeInput(Array.isArray(body) ? undefined : body?.defaultPayerType);
+    if (!payerTypeParse.ok) {
+      return res.status(400).json({ success: false, error: payerTypeParse.error });
+    }
     const { runPmsImportPipeline } = await import('../server/pms/pmsImportPipeline.js');
     const result = await runPmsImportPipeline(prisma, {
       practiceId,
       pmsSource: explicitPms ?? null,
       rows: rows as Record<string, unknown>[],
       sourceRecordCount: rows.length,
+      defaultPayerType: payerTypeParse.value ?? undefined,
     });
     return res.json({
       success: true,
@@ -584,8 +604,16 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const attemptsSoFar = claim.queueEntry?.attempts ?? claim.callAttempts.length;
     const practiceId = claim.practiceId;
 
+    // Same mode and fleet snapshot the scheduler uses, resolved before the
+    // guard because the over-90 rule depends on the mode and the concurrency
+    // ceiling needs the snapshot.
+    const practiceSettings = await getPracticeSettings(prisma, practiceId);
+    const mode = await resolveDispatchMode(prisma, practiceId, practiceSettings);
+    const carrierActiveCounts = await loadCarrierActiveCounts(prisma);
+
     // Validate all dispatch rules (non-race-prone checks: CARRIER_BLOCK,
-    // days outstanding, business hours)
+    // days outstanding, business hours). The payer-program rule lives inside
+    // validateDispatch, so it applies here whatever the rollout flag says.
     const guard = await validateDispatch(prisma, {
       practiceId,
       claimId,
@@ -594,6 +622,9 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       attemptsSoFar,
       claimStatus: claim.status,
       scheduledFor: new Date(),
+      carrierActiveCounts,
+      payerType: claim.payerType,
+      humanAssisted: mode.humanAssisted,
     });
 
     // Write guardrails audit log (non-blocking)
@@ -603,22 +634,50 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       logger.error('[guardrails] Failed to write dispatch audit:', { error: err });
     }
 
+    if (guard.allowed && guard.payerTypeAssumed) {
+      logger.warn('[POST /insurance/queue/trigger/:claimId] claim has no payerType: treating as PRIVATE until it is classified', {
+        claimId,
+        practiceId,
+      });
+    }
+
     if (!guard.allowed) {
-      // If > 90 days → auto-escalate
-      if (claim.daysOutstanding > 90) {
-        await prisma.insuranceClaim.update({
-          where: { id: claimId },
-          data: { status: 'ESCALATED' },
+      // Escalate only when the rule that needs a person refused the call (over
+      // 90 days in autonomous mode, or the attempt cap), exactly as the
+      // scheduler does. Other refusals (window, block, payer program) must not
+      // escalate the claim.
+      if (isEscalatingGuardCode(guard.code)) {
+        const queueEntry = await prisma.callQueue.findUnique({ where: { claimId }, select: { id: true } });
+        await escalateClaimForGuard(prisma, {
+          practiceId,
+          claimId,
+          queueEntryId: queueEntry?.id ?? null,
+          claimNumber: claim.claimNumber,
+          carrierId: claim.carrierId,
+          outstandingAmount: claim.outstandingAmount,
+          attempts: attemptsSoFar,
+          code: guard.code,
+          reason: guard.reason,
         });
-        if (claim.queueEntry) {
-          await prisma.callQueue.update({
-            where: { claimId },
-            data: { status: 'ESCALATED' },
-          });
-        }
       }
       const statusCode = guard.code === 'SUBSCRIPTION_CLAIM_LIMIT_REACHED' ? 402 : 422;
       return res.status(statusCode).json({ success: false, error: guard.reason, code: guard.code });
+    }
+
+    // Rollout flag for the manual route's move to the shared decision and call
+    // builder. Paused means rollback: the route does not dial, because the
+    // previous manual path could not select the human-assisted squad. This sits
+    // after the guard so the payer-program rule applies either way.
+    if (!(await isDispatchFeatureEnabled(prisma, practiceId, DISPATCH_FEATURES.MANUAL_SHARED_BUILDER))) {
+      logger.warn('[POST /insurance/queue/trigger/:claimId] manual dispatch paused by rollout flag', {
+        claimId,
+        practiceId,
+      });
+      return res.status(503).json({
+        success: false,
+        error: 'Manual calling is temporarily paused. The automatic queue is unaffected.',
+        code: 'MANUAL_DISPATCH_PAUSED',
+      });
     }
 
     const planGate = await canMakeCall(practiceId);
@@ -776,18 +835,19 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       return res.status(422).json({ success: false, error: reserved.reason, code: reserved.code });
     }
 
-    const carrierConfig = CARRIER_CONFIGS[claim.carrierId];
-
-    const [practice, practiceSettings] = await Promise.all([
-      prisma.practice.findUnique({
-        where: { id: practiceId },
-        select: { name: true, billingPhone: true, npi: true, taxId: true },
-      }),
-      getPracticeSettings(prisma, practiceId),
-    ]);
-    const carrierSettings = practiceSettings.carrierConfigs.find(
-      (c) => c.carrierId === claim.carrierId,
-    );
+    // Reservation already flipped the claim to CALLING and counted an attempt.
+    // Any refusal after that point must give both back.
+    const releaseReservedSlot = () =>
+      prisma.$transaction([
+        prisma.insuranceClaim.update({
+          where: { id: claimId },
+          data: { status: claim.status },
+        }),
+        prisma.callQueue.update({
+          where: { claimId },
+          data: { status: 'PENDING', attempts: { decrement: 1 } },
+        }),
+      ]);
 
     // ── PHI RESOLUTION ────────────────────────────────────────────────────────
     // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
@@ -802,17 +862,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         patientToken: claim.patientToken,
         error: phiResult.error,
       });
-      // Reservation already flipped status to CALLING — release it.
-      await prisma.$transaction([
-        prisma.insuranceClaim.update({
-          where: { id: claimId },
-          data: { status: claim.status },
-        }),
-        prisma.callQueue.update({
-          where: { claimId },
-          data: { status: 'PENDING', attempts: { decrement: 1 } },
-        }),
-      ]);
+      await releaseReservedSlot();
       return res.status(422).json({
         success: false,
         error: 'PHI token has expired — re-import the claim to refresh it',
@@ -832,15 +882,33 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       purpose: 'manual_carrier_dispatch',
     });
 
-    // billingPhone is the CRTC disclosure / carrier callback number.
-    // escalationPhoneNumber is for staff takeover — do not conflate.
-    const practicePhone =
-      practice?.billingPhone?.trim() ||
-      practiceSettings.billingPhone?.trim() ||
-      practiceSettings.escalationPhoneNumber;
+    // Carriers need the patient name, DOB and subscriber id to find a claim; a
+    // call without them fails authentication and burns an attempt. Same check
+    // the scheduler applies. The scheduler also raises a staff gate here; the
+    // manual route just refuses, since the person clicking is already staff.
+    const completeness = checkPatientDataCompleteness(phiResult.phi);
+    if (!completeness.ok) {
+      await releaseReservedSlot();
+      return res.status(422).json({
+        success: false,
+        error: `Required claim data is missing (${completeness.missing.join(', ')}). Add it in the PMS and re-import before calling.`,
+        code: 'MISSING_REQUIRED_CLAIM_DATA',
+      });
+    }
 
-    // Build IVR instructions from carrier adapter knowledge base
-    const carrierIvrInstructions = carrierConfig.ivrHints.join(' | ');
+    // TELUS has no carrier-wide line; dial a verified TPA number or refuse.
+    const carrierDial = resolveCarrierDial(claim.carrierId, phiResult.phi);
+    if (!carrierDial.ok) {
+      await releaseReservedSlot();
+      return res.status(422).json({
+        success: false,
+        error: 'The TELUS AdjudiCare plan could not be matched to a verified provider phone number. Identify the underlying TPA and confirm its number before calling.',
+        code: carrierDial.code,
+      });
+    }
+
+    const callContext = await loadPracticeCallContext(prisma, practiceId, claim.carrierId, practiceSettings);
+    const callHints = await loadCarrierCallHints(prisma, claim.carrierId);
 
     // Final CARRIER_BLOCK check immediately before the live dial — closes the
     // window between the row-locked reservation above and the actual call,
@@ -851,16 +919,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // nesting its own lookup inside reserveDispatchSlot()'s transaction.
     const lateBlock = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
     if (!lateBlock.allowed) {
-      await prisma.$transaction([
-        prisma.insuranceClaim.update({
-          where: { id: claimId },
-          data: { status: claim.status },
-        }),
-        prisma.callQueue.update({
-          where: { claimId },
-          data: { status: 'PENDING', attempts: { decrement: 1 } },
-        }),
-      ]);
+      await releaseReservedSlot();
       return res.status(422).json({ success: false, error: lateBlock.reason, code: lateBlock.code });
     }
 
@@ -869,64 +928,41 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const attemptNumber = (reserved.reservation.queue?.attempts ?? 0) + 1;
     let vapiResult;
     try {
-      vapiResult = await vapiClient.initiateCall({
-        claimId: claim.id,
-        carrierId: claim.carrierId,
-        practiceId,
-        patientToken: claim.patientToken,
-        // ── PHI — from piiVault.detokenize() above; ephemeral, never stored ──────
-        patientName:        phiResult.phi.patientName,
-        patientDob:         phiResult.phi.dateOfBirth,
-        policyNumber:       phiResult.phi.subscriberId,
-        groupNumber:        phiResult.phi.groupPolicyNumber,
-        subscriberName:     phiResult.phi.subscriberName,
-        subscriberDob:      phiResult.phi.subscriberDateOfBirth,
-        // ── Claim fields ──────────────────────────────────────────────────────────
-        carrierPhone:       carrierConfig.phone,
-        claimNumber:        claim.claimNumber,
-        billedAmount:       Number(claim.billedAmount),
-        outstandingAmount:  Number(claim.outstandingAmount),
-        amountExpected:     claim.expectedAmount ? Number(claim.expectedAmount) : undefined,
-        daysOutstanding:    claim.daysOutstanding,
-        treatmentDate:      claim.servicedAt?.toISOString().split('T')[0],
-        claimSubmittedDate: claim.submittedAt?.toISOString().split('T')[0],
-        treatmentCodes:     claim.treatmentCodes ?? undefined,
-        // ── Practice identity ─────────────────────────────────────────────────────
-        practiceName:           practice?.name ?? '',
-        practiceNpi:            practice?.npi ?? undefined,
-        practiceTaxId:          practice?.taxId ?? undefined,
-        providerNumber:         carrierSettings?.providerNumber ?? '',
-        practicePhone,
-        languagePreference:     carrierSettings?.languagePreference ?? 'en',
-        carrierIvrInstructions,
-        // Stable for this attempt — see VapiAmbiguousOutcomeError below.
-        idempotencyKey:         `${claimId}:${attemptNumber}`,
-      });
+      vapiResult = await vapiClient.initiateCall(
+        buildVapiCallParams({
+          practiceId,
+          claim,
+          phi: phiResult.phi,
+          carrierPhone: carrierDial.carrierPhone,
+          context: callContext,
+          hints: callHints,
+          mode,
+          attemptNumber,
+        }),
+      );
     } catch (vapiErr) {
       const ambiguous = vapiErr instanceof VapiAmbiguousOutcomeError;
-      // Confirmed rejection: Vapi told us no call was created — safe to
-      // release the slot AND the attempt so the next click isn't wasted.
-      // Ambiguous (timeout/network): Vapi may have created the call — release
-      // CALLING so the claim isn't stuck, but keep the attempt counted rather
-      // than letting an unconfirmed outcome be retried for free up to 3 times.
-      await prisma.$transaction([
-        prisma.insuranceClaim.update({
-          where: { id: claimId },
-          data: { status: claim.status },
-        }),
-        prisma.callQueue.update({
-          where: { claimId },
-          data: ambiguous
-            ? {
-                status: 'PENDING',
-                dispatchDeferralCode: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
-                dispatchDeferralNextAction:
-                  'Verify in the Vapi dashboard whether this call was actually placed before retrying.',
-                dispatchDeferredAt: new Date(),
-              }
-            : { status: 'PENDING', attempts: { decrement: 1 } },
-        }),
-      ]);
+      if (ambiguous) {
+        // Timeout or network failure: a call may exist. Putting the claim back
+        // in the pool would let the scheduler dial it again, and the vendor
+        // idempotency key is not relied on. Keep the attempt counted and hold
+        // the claim for staff; no automatic retry.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
+          claimId,
+          queueEntryId: null,
+          claimNumber: claim.claimNumber,
+          carrierId: claim.carrierId,
+          outstandingAmount: claim.outstandingAmount,
+          kind: 'VAPI_DISPATCH_OUTCOME_UNKNOWN',
+          countAttempt: false,
+          attemptNumber,
+        });
+        throw vapiErr;
+      }
+      // Confirmed rejection: Vapi told us no call was created, so the slot and
+      // the attempt can both be given back and the next click isn't wasted.
+      await releaseReservedSlot();
       throw vapiErr;
     }
 
@@ -934,22 +970,40 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // If persistence fails, cancel the external call and restore the exact
     // reservation state atomically so the claim cannot remain falsely CALLING.
     try {
-      await prisma.callAttempt.create({
-        data: {
-          claimId: claim.id,
-          vapiCallId: vapiResult.vapiCallId,
-          initiatedAt: new Date(),
-          liveState: 'dialing',
-          activeAgent: 'IVR_Navigator',
-        },
+      await recordDispatchedCallAttempt(prisma, {
+        claimId: claim.id,
+        vapiCallId: vapiResult.vapiCallId,
+        isHumanAssisted: mode.humanAssisted,
       });
     } catch (persistenceError) {
-      const { terminationError } = await compensateFailedManualDispatch(prisma, {
+      const { terminationError, restored } = await compensateFailedManualDispatch(prisma, {
         claimId,
         vapiCallId: vapiResult.vapiCallId,
         reservation: reserved.reservation,
         terminateCall: (callId) => vapiClient.endVapiCall(callId),
       });
+      if (!restored) {
+        // The call may still be live with no record of it. Never release the
+        // claim for another automatic dial; leave an actionable escalation.
+        await holdClaimForUnresolvedCall(prisma, {
+          practiceId,
+          claimId,
+          queueEntryId: null,
+          claimNumber: claim.claimNumber,
+          carrierId: claim.carrierId,
+          outstandingAmount: claim.outstandingAmount,
+          kind: 'VAPI_CALL_NOT_CANCELLED',
+          vapiCallId: vapiResult.vapiCallId,
+          countAttempt: false,
+          attemptNumber,
+        }).catch((holdErr) => {
+          logger.error('[POST /insurance/queue/trigger/:claimId] CRITICAL: could not hold the claim for an uncancelled call', {
+            claimId,
+            vapiCallId: vapiResult.vapiCallId,
+            holdErr,
+          });
+        });
+      }
       logger.error('[POST /insurance/queue/trigger/:claimId] post-dispatch persistence failed', {
         claimId,
         vapiCallId: vapiResult.vapiCallId,
@@ -963,6 +1017,9 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       success: true,
       vapiCallId: vapiResult.vapiCallId,
       status: vapiResult.status,
+      executionMode: mode.humanAssisted ? 'hold_sentinel' : 'autonomous',
+      // Visible flag for claims with no payerType: PRIVATE was assumed (DEC-10).
+      ...(guard.payerTypeAssumed ? { payerTypeAssumed: true } : {}),
     });
   } catch (err) {
     logger.error('[POST /insurance/queue/trigger/:claimId]', { error: err });

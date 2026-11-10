@@ -31,6 +31,7 @@ function extractCookie(res: request.Response): string {
 
 const csvRows = (claimNumber: string) => [{
   claim_number: claimNumber,
+  payer_type: 'PRIVATE',
   patient_first_name: 'Jane',
   patient_last_name: 'Doe',
   carrier_name: 'Sun Life',

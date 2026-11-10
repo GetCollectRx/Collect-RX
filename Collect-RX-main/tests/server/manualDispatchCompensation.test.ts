@@ -36,7 +36,7 @@ describe('compensateFailedManualDispatch', () => {
       terminateCall,
     });
 
-    expect(result.terminationError).toBeNull();
+    expect(result).toMatchObject({ terminationError: null, restored: true });
     expect(terminateCall).toHaveBeenCalledWith('vapi-1');
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(insuranceClaim.update).toHaveBeenCalledWith({
@@ -57,7 +57,7 @@ describe('compensateFailedManualDispatch', () => {
     expect(callQueue.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('restores local state even if Vapi termination fails', async () => {
+  it('does NOT restore the claim to the pool when ending the call fails: a live call may exist', async () => {
     const insuranceClaim = { update: vi.fn().mockResolvedValue({}) };
     const callQueue = {
       update: vi.fn().mockResolvedValue({}),
@@ -77,11 +77,10 @@ describe('compensateFailedManualDispatch', () => {
       terminateCall: vi.fn().mockRejectedValue(terminationFailure),
     });
 
-    expect(result.terminationError).toBe(terminationFailure);
-    expect(insuranceClaim.update).toHaveBeenCalledWith({
-      where: { id: 'claim-1' },
-      data: { status: 'PENDING' },
-    });
-    expect(callQueue.deleteMany).toHaveBeenCalledWith({ where: { claimId: 'claim-1' } });
+    expect(result).toEqual({ terminationError: terminationFailure, restored: false });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(insuranceClaim.update).not.toHaveBeenCalled();
+    expect(callQueue.update).not.toHaveBeenCalled();
+    expect(callQueue.deleteMany).not.toHaveBeenCalled();
   });
 });

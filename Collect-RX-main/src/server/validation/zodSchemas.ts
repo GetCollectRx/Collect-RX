@@ -148,6 +148,7 @@ export const groupPmsImportBodySchema = z.object({
         pmsVendor: z.string().trim().min(1),
         records: z.array(z.record(z.string(), z.unknown())).min(1, 'at least one record is required'),
         sourceBalanceTotal: z.coerce.number().finite().optional(),
+        defaultPayerType: z.string().trim().optional(),
       }),
     )
     .min(1, 'at least one practice import is required')
@@ -186,6 +187,8 @@ export const pmsImportBodySchema = z
     /** @deprecated Use pmsVendor */
     pmsSource: z.string().trim().optional(),
     exportScope: z.enum(['full', 'partial']).optional(),
+    /** Payer program for rows with no Payer Type of their own; required for new claims. */
+    defaultPayerType: z.string().trim().optional(),
   })
   .passthrough();
 

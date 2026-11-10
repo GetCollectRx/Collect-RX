@@ -4,6 +4,7 @@ import { authenticateConnector } from '../middleware/authenticateConnector.js';
 import { strictLimiter } from '../middleware/rateLimiter.js';
 import { apiErrorMessageForResponse } from '../apiErrorMessage.js';
 import { runPmsImportPipeline } from '../pms/pmsImportPipeline.js';
+import { parsePayerTypeInput } from '../pms/payerTypeInput.js';
 import { recordConnectorHeartbeat } from '../services/desktopConnectorService.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
@@ -42,7 +43,12 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
 router.post('/claims/import', strictLimiter, async (req: Request, res: Response) => {
   try {
     const auth = req.connectorAuth!;
-    const body = req.body as { records?: unknown[]; pmsSource?: string; pmsVendor?: string };
+    const body = req.body as {
+      records?: unknown[];
+      pmsSource?: string;
+      pmsVendor?: string;
+      defaultPayerType?: unknown;
+    };
     const rows = body.records;
     if (!Array.isArray(rows)) {
       return res.status(400).json({
@@ -50,11 +56,16 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
         error: 'Expected JSON body { records: array, pmsVendor?: string }',
       });
     }
+    const payerTypeParse = parsePayerTypeInput(body.defaultPayerType);
+    if (!payerTypeParse.ok) {
+      return res.status(400).json({ success: false, error: payerTypeParse.error });
+    }
     const result = await runPmsImportPipeline(prisma, {
       practiceId: auth.practiceId,
       pmsSource: body.pmsVendor ?? body.pmsSource ?? 'abeldent',
       rows: rows as Record<string, unknown>[],
       sourceRecordCount: rows.length,
+      defaultPayerType: payerTypeParse.value ?? undefined,
     });
     await recordConnectorHeartbeat(auth.agentId, auth.practiceId, {
       status: result.failed > 0 ? 'error' : 'ok',

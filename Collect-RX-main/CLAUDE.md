@@ -229,7 +229,9 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 - Calls only Mon–Fri 8am–5pm Eastern time
 - Maximum 3 call attempts per claim
 - Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
-- Claims over 90 days old: skip AI, escalate to human immediately
+- Claims over 90 days old: in autonomous mode, skip AI and escalate to a human immediately. In Hold Sentinel mode (every practice today) age alone does not block; authorization, the recovery gate (open practice blockers, escalations, future recall dates) and the attempt cap decide, and the reason is logged (DEC-2)
+- Payer program: only private-insurance claims are dialed. CDCP and provincial claims are refused at dispatch on every path. A claim with no payer type is treated as PRIVATE and logged as unclassified; new claims must be classified on import (DEC-10). See `Collect-RX-main/src/carriers/payerProgram.ts`
+- The manual "Call now" route and the scheduler share one dispatch decision, call builder and claim reservation (`src/server/frontDesk/dispatch*.ts`). The manual route can be paused with the `dispatch.manual_shared_builder` feature flag; see `../docs/runbooks/manual-dispatch-rollback.md`
 
 ### CRTC Compliance — AI Disclosure
 CollectRx calls are ADAD non-solicitation (CRTC UTR Part IV Rule 4). Disclosure of automated nature, practice name, and callback number is mandatory within 10 seconds of a live representative answering. The compliance decision, canonical disclosure script, and list of invalid Validation Playbook language are recorded in `docs/compliance/crtc-disclosure-decision.md`. Any instruction to sound human or evade identification is invalid for Canadian operations.

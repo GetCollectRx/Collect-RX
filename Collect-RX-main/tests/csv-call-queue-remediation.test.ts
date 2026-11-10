@@ -23,6 +23,9 @@ vi.mock('../src/server/services/workQueueService.js', async (loadOriginal) => {
     syncEligibleCallQueueForPractice: syncCallQueue,
   };
 });
+vi.mock('../src/server/frontDesk/dispatchDecision.js', () => ({
+  resolveDispatchMode: vi.fn().mockResolvedValue({ humanAssisted: true, squadId: 'human-assisted-squad' }),
+}));
 vi.mock('../src/server/pms/practicePmsContext.js', () => ({
   resolvePmsImport: vi.fn().mockResolvedValue({ vendorId: 'other', importFamily: 'generic' }),
   ensurePracticePmsVendor: ensureVendor,
@@ -121,7 +124,7 @@ describe('CSV-to-call queue remediation', () => {
 
     expect(result.status).toBe('success');
     expect(prisma.$transaction).toHaveBeenCalledOnce();
-    expect(importClaims).toHaveBeenCalledWith(tx, [validRow], 'practice-1', 'generic');
+    expect(importClaims).toHaveBeenCalledWith(tx, [validRow], 'practice-1', 'generic', { defaultPayerType: undefined });
     expect(syncWorkItems).toHaveBeenCalledWith(tx, 'practice-1');
     expect(syncCallQueue).toHaveBeenCalledWith(tx, 'practice-1');
     expect(ensureVendor).toHaveBeenCalledWith(tx, 'practice-1', 'other');
@@ -167,23 +170,65 @@ describe('CSV-to-call queue remediation', () => {
           { id: 'claim-1', priority: 'HIGH' },
           { id: 'claim-2', priority: 'NORMAL' },
         ]),
+        count: vi.fn().mockResolvedValue(0),
       },
       callQueue: { createMany },
     };
 
     const result = await syncEligibleCallQueueForPractice(prisma as never, 'practice-1');
 
-    expect(result).toEqual({ created: 1 });
+    expect(result).toEqual({ created: 1, excludedByPayerProgram: 0 });
     expect(prisma.insuranceClaim.findMany).toHaveBeenCalledWith({
       where: expect.objectContaining({
         practiceId: 'practice-1',
         status: 'PENDING',
-        daysOutstanding: { gte: 30, lte: 90 },
+        daysOutstanding: { gte: 30 },
         queueEntry: null,
       }),
       select: { id: true, priority: true },
     });
     expect(createMany).toHaveBeenCalledTimes(2);
     expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+  });
+
+  it('queues only enabled payer programs, plus unclassified claims treated as PRIVATE (DEC-10)', async () => {
+    const { syncEligibleCallQueueForPractice } = await vi.importActual<
+      typeof import('../src/server/services/workQueueService.js')
+    >('../src/server/services/workQueueService.js');
+    const prisma = {
+      insuranceClaim: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(3),
+      },
+      callQueue: { createMany: vi.fn() },
+    };
+
+    const result = await syncEligibleCallQueueForPractice(prisma as never, 'practice-1');
+
+    expect(prisma.insuranceClaim.findMany.mock.calls[0][0].where.OR).toEqual([
+      { payerType: null },
+      { payerType: { in: ['PRIVATE'] } },
+    ]);
+    expect(prisma.insuranceClaim.count.mock.calls[0][0].where.payerType).toEqual({
+      notIn: ['PRIVATE'],
+      not: null,
+    });
+    expect(result).toEqual({ created: 0, excludedByPayerProgram: 3 });
+  });
+
+  it('keeps the 90 day ceiling in autonomous mode only (DEC-2)', async () => {
+    const { resolveDispatchMode } = await import('../src/server/frontDesk/dispatchDecision.js');
+    vi.mocked(resolveDispatchMode).mockResolvedValueOnce({ humanAssisted: false, squadId: undefined });
+    const { syncEligibleCallQueueForPractice } = await vi.importActual<
+      typeof import('../src/server/services/workQueueService.js')
+    >('../src/server/services/workQueueService.js');
+    const prisma = {
+      insuranceClaim: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
+      callQueue: { createMany: vi.fn() },
+    };
+
+    await syncEligibleCallQueueForPractice(prisma as never, 'practice-1');
+
+    expect(prisma.insuranceClaim.findMany.mock.calls[0][0].where.daysOutstanding).toEqual({ gte: 30, lte: 90 });
   });
 });

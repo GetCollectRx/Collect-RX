@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
-import { previewCsvFile } from '../lib/csvClientPreview'
+import { payerTypeBlockReason, previewCsvFile } from '../lib/csvClientPreview'
 import { useAppToast } from '../context/ToastContext'
 import type { PmsVendorCatalogEntry, PracticePmsInfo } from '../types/pms'
 import {
@@ -50,6 +50,8 @@ export default function CsvImportPage() {
     missingClaimsWarning: string | null
   } | null>(null)
   const [fullExport, setFullExport] = useState(true)
+  // No default: the practice must say which payer program the file's claims belong to.
+  const [payerType, setPayerType] = useState<'' | 'PRIVATE' | 'CDCP' | 'PROVINCIAL'>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,12 +86,13 @@ export default function CsvImportPage() {
   }, [])
 
   const runImport = async () => {
-    if (!file || !preview?.ready) return
+    if (!file || !preview?.ready || payerTypeBlockReason(preview.payerTypes, payerType)) return
     setUploading(true)
     setError(null)
     const fd = new FormData()
     fd.append('file', file)
     fd.append('exportScope', fullExport ? 'full' : 'partial')
+    if (preview.payerTypes.unclassified > 0) fd.append('defaultPayerType', payerType)
     try {
       const r = await apiFetch(`/api/admin/sync/import/${vendor}`, { method: 'POST', body: fd })
       const j = await r.json().catch(() => ({})) as {
@@ -275,6 +278,52 @@ export default function CsvImportPage() {
                     ))}
                   </Tbody>
                 </Table>
+                <div className="text-sm text-gray-700 dark:text-gray-300" data-testid="payer-type-summary">
+                  <p className="font-medium">Payer programs in this file</p>
+                  <p>
+                    {preview.payerTypes.counts.PRIVATE} private insurance, {preview.payerTypes.counts.CDCP} CDCP,{' '}
+                    {preview.payerTypes.counts.PROVINCIAL} provincial program, {preview.payerTypes.unclassified} without a program.
+                  </p>
+                  {preview.payerTypes.counts.CDCP + preview.payerTypes.counts.PROVINCIAL > 0 && (
+                    <p className="text-xs text-gray-500">
+                      Only private insurance claims are called today. CDCP and provincial claims are imported and tracked but not called.
+                    </p>
+                  )}
+                </div>
+                {preview.payerTypes.problems.length > 0 && (
+                  <div className="crx-alert px-4 py-3 text-sm" role="alert" data-testid="payer-type-problems">
+                    <p className="font-medium">These rows cannot be imported:</p>
+                    <ul className="list-disc pl-4">
+                      {preview.payerTypes.problems.slice(0, 5).map((p) => (
+                        <li key={p.row}>Row {p.row}: {p.message}</li>
+                      ))}
+                    </ul>
+                    {preview.payerTypes.problems.length > 5 && (
+                      <p>and {preview.payerTypes.problems.length - 5} more.</p>
+                    )}
+                  </div>
+                )}
+                {preview.payerTypes.unclassified > 0 && (
+                  <label htmlFor="csv-payer-type" className="block text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">
+                      Which payer program {preview.payerTypes.unclassified === 1 ? 'is the 1 row' : `are the ${preview.payerTypes.unclassified} rows`} without one for?
+                    </span>
+                    <select
+                      id="csv-payer-type"
+                      className="mt-1 block w-full rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800"
+                      value={payerType}
+                      onChange={(e) => setPayerType(e.target.value as typeof payerType)}
+                    >
+                      <option value="">Choose one</option>
+                      <option value="PRIVATE">Private insurance (employer or group plan)</option>
+                      <option value="CDCP">Canadian Dental Care Plan (CDCP)</option>
+                      <option value="PROVINCIAL">Provincial program</option>
+                    </select>
+                    <span className="block text-xs text-gray-500">
+                      Rows that already name their program (a Payer Type column, or a plan name that says CDCP) keep it. There is no default.
+                    </span>
+                  </label>
+                )}
                 <label htmlFor="csv-full-export" className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <input
                     id="csv-full-export"
@@ -291,7 +340,10 @@ export default function CsvImportPage() {
                   </span>
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void runImport()} disabled={!preview.ready || uploading}>
+                  <Button
+                    onClick={() => void runImport()}
+                    disabled={!preview.ready || uploading || payerTypeBlockReason(preview.payerTypes, payerType) !== null}
+                  >
                     {uploading ? 'Importing…' : `Import ${preview.rowCount} claims`}
                   </Button>
                   <Button variant="secondary" onClick={() => { setStep('prepare'); setFile(null); setPreview(null) }}>

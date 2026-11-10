@@ -39,9 +39,20 @@ vi.mock('../src/vapi/client.js', () => ({
 
 vi.mock('../src/carriers/adapter.js', () => ({
   validateDispatch: vi.fn().mockResolvedValue({ allowed: true }),
+  getTelusDialPhone: vi.fn(),
   CARRIER_CONFIGS: {
     sun_life: { carrierId: 'sun_life', displayName: 'Sun Life', phone: '+18005550100', ivrHints: [] },
   },
+}));
+
+vi.mock('../src/server/frontDesk/dispatchDecision.js', () => ({
+  resolveDispatchMode: vi.fn().mockResolvedValue({ humanAssisted: true, squadId: 'human-assisted-squad' }),
+  loadCarrierActiveCounts: vi.fn().mockResolvedValue(new Map()),
+}));
+
+vi.mock('../src/server/featureFlags/dispatchFeatures.js', () => ({
+  DISPATCH_FEATURES: { MANUAL_SHARED_BUILDER: 'dispatch.manual_shared_builder' },
+  isDispatchFeatureEnabled: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../src/services/insurance-denial-analytics.js', () => ({

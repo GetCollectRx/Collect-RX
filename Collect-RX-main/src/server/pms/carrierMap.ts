@@ -20,6 +20,7 @@ const CARRIER_ALIASES: Record<string, CarrierId> = {
   telus_adjudicare: 'telus_adjudicare',
   telus: 'telus_adjudicare',
   cdcp: 'sun_life',
+  canadian_dental_care_plan: 'sun_life',
   cdcp_sunlife: 'sun_life',
 };
 

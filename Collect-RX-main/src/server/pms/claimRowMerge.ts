@@ -68,6 +68,10 @@ function conflictIn(group: NormalizedPmsClaimRow[]): string | null {
   if (dentists.size > 1) {
     return 'Rows for this claim name different treating dentists. Fix the export and re-import; claim not imported.';
   }
+  const payerTypes = new Set(group.map((r) => r.payerType).filter((v) => v !== null));
+  if (payerTypes.size > 1) {
+    return 'Rows for this claim name different payer types. Fix the export and re-import; claim not imported.';
+  }
   return null;
 }
 
@@ -94,6 +98,7 @@ function mergeGroup(group: NormalizedPmsClaimRow[]): NormalizedPmsClaimRow {
     subscriberName: firstPresent(group.map((r) => r.subscriberName)),
     subscriberDateOfBirth: firstPresent(group.map((r) => r.subscriberDateOfBirth)),
     relationship: firstPresent(group.map((r) => r.relationship)),
+    payerType: firstPresent(group.map((r) => r.payerType)),
   };
 }
 
