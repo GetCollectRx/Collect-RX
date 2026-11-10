@@ -46,6 +46,7 @@ import { canMakeCall } from '../../src/server/plans/planBridge.js';
 import { OutboundInterceptor, type InterceptedRequest } from './outboundInterceptor.js';
 import { buildFakeCall, REP_SCRIPTS, type ScenarioId } from './fakeCarrier.js';
 import { RunLog } from './runLog.js';
+import { acquireSimLock, releaseSimLock } from './simLock.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CARRIERS_DIR = path.resolve(here, '../../carriers');
@@ -237,6 +238,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
   const dispatched: Array<{ scenario: ScenarioId; claimId: string; vapiCallId: string; carrierId: string; attemptId: string }> = [];
 
   beforeAll(async () => {
+    await acquireSimLock();
     interceptor.install();
     log.note('Stage 1 is offline: no audio, no Vapi, no carrier. Pickup timing, hold detection and scribe-after-transfer cannot be measured here (gaps 2 and 11).');
     log.note('Section 5 thresholds, Stage A and Option B are UNVERIFIED until the PRD is supplied (decision D9).');
@@ -310,6 +312,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     console.warn(`[sim-harness] run ${RUN_ID} verdict ${log.verdict()} report ${reportPath}`);
     interceptor.uninstall();
     await plain.$disconnect().catch(() => undefined);
+    releaseSimLock();
     for (const [k, v] of savedEnv) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;

@@ -48,3 +48,7 @@ DATABASE_URL=<throwaway test database> SIM_RUN_DIR=/tmp/crx-sim-runs npx vitest 
 ```
 
 Same safety rules as Stage 1: throwaway database only, nothing leaves the process, teardown scans the whole database for residue. A FAIL means a documented rule was broken. A FINDING is an observed behaviour a pilot practice would hit that no document calls intended. The queue tick works every practice in the database, so the suite parks other practices' queue rows before each tick to attribute dials correctly.
+
+## Stage 2
+
+`stage2/` holds the Carrier Twin: a scripted phone system the real Vapi squad can dial, with mutations that depart from what `carriers/*.json` believes and scoring against the twin's own ground truth. See [`stage2/README.md`](stage2/README.md) for what is verified offline and what still needs a live run.

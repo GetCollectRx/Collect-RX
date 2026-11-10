@@ -31,6 +31,7 @@ import { signUserToken } from '../../src/server/authToken.js';
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService.js';
 import { OutboundInterceptor, type InterceptedRequest } from './outboundInterceptor.js';
 import { RunLog } from './runLog.js';
+import { acquireSimLock, releaseSimLock } from './simLock.js';
 import {
   AWKWARD_NAMES,
   CARRIER_SPELLINGS,
@@ -332,7 +333,8 @@ async function teardown(): Promise<Array<{ table: string; rows: number }>> {
 }
 
 describe.skipIf(!dbReady)('dental office day: gaps a pilot practice would hit', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
+    await acquireSimLock();
     interceptor.install();
     log.note('Offline office-day run. No audio, no Vapi, no carrier. Complements Stage 1; known Stage 1 findings are not repeated here.');
   });
@@ -355,6 +357,7 @@ describe.skipIf(!dbReady)('dental office day: gaps a pilot practice would hit', 
     console.warn(`[sim-office] run ${RUN_ID} verdict ${log.verdict()} report ${reportPath}`);
     interceptor.uninstall();
     await plain.$disconnect().catch(() => undefined);
+    releaseSimLock();
     for (const [k, v] of savedEnv) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
