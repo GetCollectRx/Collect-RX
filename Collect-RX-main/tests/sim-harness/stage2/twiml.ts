@@ -36,6 +36,13 @@ export function gather(opts: GatherOptions): string {
   return `<Gather ${attrs.join(' ')}>${say(opts.prompt)}</Gather>`;
 }
 
+/** Hold music. A public Twilio sample track; only the TwiML string is inspected offline. */
+export const HOLD_MUSIC_URL = 'https://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3';
+
+export function play(url: string, loop = 1): string {
+  return `<Play loop="${loop}">${xmlEscape(url)}</Play>`;
+}
+
 export function pause(seconds: number): string {
   return `<Pause length="${Math.max(1, Math.round(seconds))}"/>`;
 }

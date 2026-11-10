@@ -103,6 +103,15 @@ export function scoreCall(
     add('Did not volunteer identifiers the practice never supplied', !SIN_LIKE.test(heardByRep), `ground-truth speech heard by the rep checked (${heardByRep.length} chars)`);
   }
 
+  if (sc.pickup === 'voicemail') {
+    const left = events.filter((e) => e.kind === 'agent_speech').length;
+    add('Did not leave a voicemail message', left === 0, `${left} speech event(s) after the voicemail greeting`);
+  }
+  if (sc.hold.callbackOffer) {
+    const numbers = events.filter((e) => e.kind === 'digits_entered' && /callback number/u.test(e.detail)).length;
+    add('Callback offer handled without a staff transfer', !transferred, `callback accepted=${events.some((e) => e.kind === 'callback_requested')}; callback numbers entered=${numbers}`);
+  }
+
   const mustNotResolve = !sc.expect.mustReachRep || sc.pickup !== 'rep' || Boolean(sc.closedMessage) || /repWrongDepartment|repAsksExtraPhi/u.test(sc.id);
   if (mustNotResolve) add('Did not mark the claim resolved without a real answer', !obs.claimMarkedResolved, `claim marked resolved=${obs.claimMarkedResolved}`);
 

@@ -101,6 +101,8 @@ const attentive: Navigator = (step, prompt) => {
       if (want && (m[1] ?? '').toLowerCase().includes(want.split(' ')[0] ?? '')) return { digits: m[2] };
       m = re.exec(prompt);
     }
+    const offered = [...prompt.matchAll(/press (\d)/giu)].map((x) => x[1]);
+    if (offered.length === 1 && step.accept.kind === 'digit') return { digits: offered[0] };
     return { digits: step.jsonDigit ?? '1' };
   }
   return {};
@@ -180,6 +182,32 @@ describe('Carrier Twin: phone system mechanics', () => {
     expect(signed.status).toBe(200);
     expect(signed.text).toContain('<Gather');
     log.record('Twin mechanics', 'auth', 'Control routes need a token; webhooks need a valid Twilio signature', 'PASS', 'unsigned 403, unauthenticated control 401, signed 200');
+  });
+
+  it('the Vapi sink needs its secret, answers tool calls with production\'s exact strings, and records messages with timestamps', async () => {
+    const sc = baselineScenario(CARRIERS_DIR, 'rbc');
+    const { twin } = makeTwin([sc], {});
+    const noSecret = await request(twin.app).post('/sink').send({ message: { type: 'status-update' } });
+    expect(noSecret.status).toBe(401);
+    let t = 5_000_000;
+    const withSink = createCarrierTwin({ scenarios: [sc], controlToken: TOKEN, sinkSecret: 'sink-secret-for-tests-0123456789', timeScale: 0.001, now: () => (t += 1000) });
+    withSink.arm(sc.id);
+    const bad = await request(withSink.app).post('/sink').set('x-vapi-secret', 'wrong').send({ message: { type: 'status-update' } });
+    expect(bad.status).toBe(401);
+    const call = { id: 'vapi-call-1' };
+    const handoff = await request(withSink.app).post('/sink').set('x-vapi-secret', 'sink-secret-for-tests-0123456789')
+      .send({ message: { type: 'tool-calls', call, toolWithToolCallList: [{ name: 'request_staff_handoff', toolCall: { id: 'tc1', function: { name: 'request_staff_handoff', arguments: '{}' } } }] } });
+    expect(handoff.body.results[0].result).toBe('HANDOFF INITIATED \u2014 staff have been notified and the call is transferring to them now. Stop talking; do not engage further.');
+    const logged = await request(withSink.app).post('/sink').set('x-vapi-secret', 'sink-secret-for-tests-0123456789')
+      .send({ message: { type: 'tool-calls', call, toolWithToolCallList: [{ name: 'log_call_outcome', toolCall: { id: 'tc2', function: { name: 'log_call_outcome', arguments: JSON.stringify({ scenario: 'CLAIM_PAID', callSummary: 'x' }) } } }] } });
+    expect(logged.body.results[0].result).toBe('Logged.');
+    const big = await request(withSink.app).post('/sink').set('x-vapi-secret', 'sink-secret-for-tests-0123456789')
+      .send({ message: { type: 'end-of-call-report', call, endedReason: 'customer-ended-call', cost: 0.42, artifact: { transcript: 'x'.repeat(100_000) } } });
+    expect(big.status).toBe(200);
+    const kinds = withSink.events('vapi-call-1').map((e) => `${e.kind}:${e.detail.split(' ')[0]}`);
+    expect(kinds).toEqual(['vapi_tool_call:request_staff_handoff', 'vapi_tool_call:log_call_outcome', 'vapi_message:end-of-call-report']);
+    expect(withSink.events('vapi-call-1')[2]?.detail).toContain('cost=0.42');
+    log.record('Twin mechanics', 'sink', 'Vapi sink: secret required, production tool strings returned, messages timestamped', 'PASS', 'unauthorized 401 twice; handoff and log results exact; 100 KB report accepted');
   });
 
   it('XML-escapes scenario text and never echoes caller identifiers', async () => {
