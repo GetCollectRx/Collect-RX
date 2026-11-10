@@ -78,6 +78,8 @@ const RESOLUTION_PATTERNS: RegExp[] = [
   /cheque\s+(was|has\s+been)\s+mailed/i,
   /eft\s+(was|has\s+been)\s+sent/i,
   /claim\s+(is\s+)?complete/i,
+  /(?:was|has\s+been|were|have\s+been)\s+paid(?:\s+in\s+full)?\b/i,
+  /paid\s+in\s+full/i,
   /reference\s+number\s+is/i,
 ];
 
@@ -104,6 +106,9 @@ const ESCALATION_PATTERNS: RegExp[] = [
   /dispute\s+(this\s+)?claim/i,
   /appeals\s+(department|process)/i,
   /formal\s+complaint/i,
+  /(?:need|needs|require|requires)\s+(?:a|my|the|our)\s+(?:supervisor|manager)/i,
+  /(?:supervisor|manager)\s+(?:to\s+)?(?:confirm|review|approve|verify)/i,
+  /(?:two|conflicting|different)\s+(?:different\s+)?statuses/i,
 ];
 
 // ---------------------------------------------------------------------------
