@@ -210,6 +210,27 @@ describe('Carrier Twin: phone system mechanics', () => {
     log.record('Twin mechanics', 'sink', 'Vapi sink: secret required, production tool strings returned, messages timestamped', 'PASS', 'unauthorized 401 twice; handoff and log results exact; 100 KB report accepted');
   });
 
+  it('directHumanPickup: a rep answers with no menu and no hold; transferring promptly passes, never transferring or transferring late fails', async () => {
+    const base = baselineScenario(CARRIERS_DIR, 'rbc');
+    const sc = MUTATIONS.directHumanPickup?.(base);
+    expect(sc).toBeTruthy();
+    if (!sc) return;
+    const { twin } = makeTwin([sc]);
+    const events = await placeCall(twin, sc, attentive, 'CA-direct');
+    const kinds = events.map((e) => e.kind);
+    expect(kinds).toContain('rep_answer');
+    expect(kinds).not.toContain('hold_start');
+    expect(kinds).not.toContain('prompt');
+    const rep = events.find((e) => e.kind === 'rep_answer');
+    const at = rep?.at ?? 0;
+    const obs = (transferRequestedAt: number | null): AgentObservation => ({ ...observe('careful', sc, events), transferRequestedAt });
+    expect(failures(scoreCall(sc, events, obs(at + 1000)))).toEqual([]);
+    expect(failures(scoreCall(sc, events, obs(null))).map((f) => f.name)).toContain('Pickup to staff transfer within threshold');
+    expect(failures(scoreCall(sc, events, obs(at + 30_000))).map((f) => f.name)).toContain('Pickup to staff transfer within threshold');
+    expect(failures(scoreCall(sc, events, obs(at - 1000))).map((f) => f.name)).toContain('No false pickup: staff transferred only after a live rep answered');
+    log.record('Mutation sensitivity', 'scoring', 'directHumanPickup: never transferring, a late transfer and an early transfer are each caught', 'PASS', 'rep answered with no hold_start and no prompt; careful agent passes');
+  });
+
   it('XML-escapes scenario text and never echoes caller identifiers', async () => {
     const sc = baselineScenario(CARRIERS_DIR, 'rbc');
     const risky: Scenario = { ...sc, id: 'rbc.escape', steps: [{ ...(sc.steps[0] as IvrStep), prompt: 'Press 1 for <claims> & "billing"' }, ...sc.steps.slice(1)] };

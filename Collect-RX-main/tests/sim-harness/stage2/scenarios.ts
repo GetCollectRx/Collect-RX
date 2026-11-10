@@ -278,6 +278,11 @@ Object.assign(MUTATIONS, {
     derive(b, 'holdMusic', `${b.carrierId}: hold with music and recorded messages`,
       ['agent must make no speech at all during hold'],
       { hold: { ...b.hold, music: true, announcementEverySeconds: 45, announcement: 'All of our representatives are currently assisting other callers. Please stay on the line.' } }),
+  /** A live rep answers at once with no menu and no hold. The agent still has to request the staff transfer, with no hold state to trigger it. */
+  directHumanPickup: (b: Scenario): Scenario =>
+    derive(b, 'directHumanPickup', `${b.carrierId}: a person answers immediately, no menu and no hold`,
+      ['agent that only hands off from a hold state never transfers the rep to staff', 'prompt that names a destination outside the squad leaves a rep with no valid target'],
+      { steps: [], hold: { ...b.hold, seconds: 0, announcementEverySeconds: null, announcement: '' }, expect: { ...b.expect, reachesHold: false, maxWrongKeys: 0, maxCallSeconds: 5 * 60 } }),
 });
 
 /** Registry scenario type to the twin mutation that implements it. */
