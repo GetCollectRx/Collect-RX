@@ -38,11 +38,15 @@ interface UpsertArg {
 // Test double for the Prisma client; only the methods the importer calls are stubbed.
 function makePrisma(existing: ExistingRow[] = [], failUpsert = false) {
   const upserts: UpsertArg[] = [];
+  const updates: Array<{ where: unknown; data: Record<string, unknown> }> = [];
   const tx = {
     insuranceClaim: {
       upsert: async (arg: UpsertArg) => {
         if (failUpsert) throw new Error('db down');
         upserts.push(arg);
+      },
+      update: async (arg: { where: unknown; data: Record<string, unknown> }) => {
+        updates.push(arg);
       },
     },
   };
@@ -50,7 +54,7 @@ function makePrisma(existing: ExistingRow[] = [], failUpsert = false) {
     insuranceClaim: { findMany: vi.fn(async () => existing) },
     $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx),
   };
-  return { prisma: stub as unknown as PrismaArg, upserts };
+  return { prisma: stub as unknown as PrismaArg, upserts, updates };
 }
 
 describe('importIndustryClaims', () => {
@@ -70,6 +74,20 @@ describe('importIndustryClaims', () => {
     expect(JSON.stringify(data)).not.toContain('1HGCM82633A004352');
     expect(JSON.stringify(data)).not.toContain('Jane');
     expect(data.patientToken).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('zeroes an existing claim the export now shows as paid, without minting a token for it', async () => {
+    const { vault, live } = makeVault();
+    const { prisma, upserts, updates } = makePrisma([{ claimNumber: 'CL-2', industryType: 'AUTO_COLLISION', carrierId: 'other' }]);
+    const res = await importIndustryClaims(prisma, vault, { practiceId: 'p1', industryType: 'AUTO_COLLISION', csvText: CSV, dateFormat: 'MDY' });
+    expect(res.zeroedExisting).toBe(1);
+    expect(res.skippedZeroBalance).toBe(0);
+    expect(updates).toEqual([
+      { where: { practiceId_claimNumber: { practiceId: 'p1', claimNumber: 'CL-2' } }, data: { outstandingAmount: '0.00' } },
+    ]);
+    expect(upserts.map((u) => u.create.claimNumber)).toEqual(['CL-1']);
+    // CL-1 mints a patient token and a VIN token; CL-2 mints none.
+    expect(live.size).toBe(2);
   });
 
   it('rejects DENTAL', async () => {
