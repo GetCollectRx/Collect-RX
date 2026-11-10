@@ -50,7 +50,8 @@
           "serverMessages": [
             "call.started",
             "end-of-call-report",
-            "status-update"
+            "status-update",
+            "transcript[transcriptType=\"final\"]"
           ],
           "analysisPlan": {
             "structuredDataPlan": {
@@ -209,6 +210,20 @@
           "maxDurationSeconds": 1800,
           "endCallPhrases": [
             "we will try again shortly"
+          ],
+          "serverMessages": [
+            "conversation-update",
+            "end-of-call-report",
+            "function-call",
+            "hang",
+            "speech-update",
+            "status-update",
+            "tool-calls",
+            "transfer-destination-request",
+            "handoff-destination-request",
+            "user-interrupted",
+            "assistant.started",
+            "transcript[transcriptType=\"final\"]"
           ]
         },
         "assistantDestinations": [
@@ -285,7 +300,8 @@
           "serverMessages": [
             "end-of-call-report",
             "status-update",
-            "tool-calls"
+            "tool-calls",
+            "transcript[transcriptType=\"final\"]"
           ],
           "analysisPlan": {
             "structuredDataPlan": {
@@ -478,7 +494,8 @@
           "serverMessages": [
             "call.started",
             "end-of-call-report",
-            "status-update"
+            "status-update",
+            "transcript[transcriptType=\"final\"]"
           ],
           "analysisPlan": {
             "structuredDataPlan": {
@@ -641,7 +658,8 @@
           "serverMessages": [
             "call.started",
             "end-of-call-report",
-            "status-update"
+            "status-update",
+            "transcript[transcriptType=\"final\"]"
           ],
           "analysisPlan": {
             "structuredDataPlan": {
