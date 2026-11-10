@@ -38,7 +38,9 @@ export const TIER_FEATURES: Record<BillingTier, readonly Feature[]> = {
   sentinel: BASE,
   core: RECOVERY,
   growth: RECOVERY,
-  scale: RECOVERY,
+  // Autonomous calling is the full product; Hold Sentinel is the entry offer
+  // for practices not yet ready to let the AI speak with the rep.
+  scale: [...RECOVERY, FEATURES.AUTONOMOUS_CALLS],
 };
 
 export const FEATURE_LABELS: Record<Feature, string> = {
@@ -57,7 +59,7 @@ export const FEATURE_UNLOCK_PLAN: Record<Feature, string | null> = {
   pre_visit_eligibility: 'Recovery',
   denial_recovery: 'Recovery',
   underpayment_recovery: 'Recovery',
-  autonomous_calls: null,
+  autonomous_calls: 'Scale',
 };
 
 export function tierAllows(tier: BillingTier | null | undefined, feature: Feature): boolean {
@@ -71,7 +73,7 @@ export function featuresForTier(tier: BillingTier | null | undefined): Feature[]
 
 /**
  * Autonomous calling requires both the practice's own setting and a plan that
- * includes it. No plan does today, so every call uses Hold Sentinel.
+ * includes it (Scale). On any other plan every call uses Hold Sentinel.
  */
 export function effectiveHumanAssisted(
   tier: BillingTier | null | undefined,

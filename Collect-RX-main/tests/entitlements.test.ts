@@ -23,10 +23,11 @@ describe('plan features', () => {
     }
   });
 
-  it('puts autonomous calling on no plan yet', () => {
-    for (const tier of ['trial', 'sentinel', 'core', 'growth', 'scale'] as const) {
+  it('puts autonomous calling on Scale only', () => {
+    for (const tier of ['trial', 'sentinel', 'core', 'growth'] as const) {
       expect(tierAllows(tier, FEATURES.AUTONOMOUS_CALLS)).toBe(false);
     }
+    expect(tierAllows('scale', FEATURES.AUTONOMOUS_CALLS)).toBe(true);
   });
 
   it('allows nothing without a plan', () => {
@@ -36,10 +37,17 @@ describe('plan features', () => {
 });
 
 describe('effectiveHumanAssisted', () => {
-  it('keeps every call on Hold Sentinel while no plan includes autonomous calling', () => {
-    expect(effectiveHumanAssisted('scale', false)).toBe(true);
-    expect(effectiveHumanAssisted('sentinel', undefined)).toBe(true);
+  it('keeps Hold Sentinel on every plan without autonomous calling, whatever the setting', () => {
+    for (const tier of ['trial', 'sentinel', 'core', 'growth'] as const) {
+      expect(effectiveHumanAssisted(tier, false)).toBe(true);
+    }
     expect(effectiveHumanAssisted(null, false)).toBe(true);
+  });
+
+  it('lets a Scale practice turn Hold Sentinel off, and keeps it on by default', () => {
+    expect(effectiveHumanAssisted('scale', false)).toBe(false);
+    expect(effectiveHumanAssisted('scale', true)).toBe(true);
+    expect(effectiveHumanAssisted('scale', undefined)).toBe(true);
   });
 });
 
@@ -61,6 +69,6 @@ describe('settingsUpdateForPlan', () => {
 describe('featureLockedMessage', () => {
   it('names the plan to upgrade to', () => {
     expect(featureLockedMessage(FEATURES.DENIAL_RECOVERY)).toMatch(/Recovery plan/);
-    expect(featureLockedMessage(FEATURES.AUTONOMOUS_CALLS)).toMatch(/not available on any plan/);
+    expect(featureLockedMessage(FEATURES.AUTONOMOUS_CALLS)).toMatch(/Scale plan/);
   });
 });
