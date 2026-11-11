@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "personas": [
+    {
+      "id": "practice_owner",
+      "label": "Practice Owner",
+      "authSource": "practice_user",
+      "effectiveUserRole": "practice_owner",
+      "jwtRole": "practice_owner",
+      "platformUserSession": false,
+      "phiAccess": true,
+      "scope": "single_practice",
+      "allowedActions": ["review_dashboard", "review_claims", "manage_users", "review_billing", "resolve_escalations"],
+      "forbiddenActions": ["cross_practice_access", "platform_break_glass", "manual_carrier_dial"]
+    },
+    {
+      "id": "office_manager",
+      "label": "Office Manager",
+      "authSource": "practice_user",
+      "effectiveUserRole": "office_manager",
+      "jwtRole": "office_manager",
+      "platformUserSession": false,
+      "phiAccess": true,
+      "scope": "single_practice",
+      "allowedActions": ["review_dashboard", "manage_users", "manage_carrier_config", "initiate_call", "resolve_escalations", "clear_gates"],
+      "forbiddenActions": ["cross_practice_access", "platform_break_glass"]
+    },
+    {
+      "id": "billing_coordinator",
+      "label": "Billing Coordinator",
+      "authSource": "practice_user",
+      "effectiveUserRole": "billing_coordinator",
+      "jwtRole": "billing_coordinator",
+      "platformUserSession": false,
+      "phiAccess": true,
+      "scope": "single_practice",
+      "allowedActions": ["review_claims", "import_claims", "initiate_call", "escalate_call", "resolve_escalations", "clear_gates"],
+      "forbiddenActions": ["manage_users", "cross_practice_access", "platform_break_glass"]
+    },
+    {
+      "id": "front_desk",
+      "label": "Front Desk",
+      "authSource": "practice_user",
+      "effectiveUserRole": "front_desk",
+      "jwtRole": "front_desk",
+      "platformUserSession": false,
+      "phiAccess": true,
+      "scope": "single_practice",
+      "allowedActions": ["view_console", "pause_claim", "take_over_call", "resolve_escalations", "clear_gates"],
+      "forbiddenActions": ["view_financial_analytics", "manage_users", "cross_practice_access", "platform_break_glass"]
+    },
+    {
+      "id": "associate_dentist",
+      "label": "Associate Dentist",
+      "authSource": "practice_user",
+      "effectiveUserRole": "associate_dentist",
+      "jwtRole": "associate_dentist",
+      "platformUserSession": false,
+      "phiAccess": true,
+      "scope": "provider_scoped",
+      "allowedActions": ["review_dashboard", "review_provider_claims", "review_document_requests"],
+      "forbiddenActions": ["initiate_call", "manage_users", "cross_provider_access", "cross_practice_access"]
+    },
+    {
+      "id": "accountant",
+      "label": "Accountant",
+      "authSource": "practice_user",
+      "effectiveUserRole": "accountant",
+      "jwtRole": "accountant",
+      "platformUserSession": false,
+      "phiAccess": false,
+      "scope": "single_practice_financial",
+      "allowedActions": ["review_aging", "review_financial_analytics", "review_billing"],
+      "forbiddenActions": ["review_patient_phi", "initiate_call", "manage_users", "cross_practice_access"]
+    },
+    {
+      "id": "group_admin",
+      "label": "Group Admin",
+      "authSource": "practice_user",
+      "effectiveUserRole": "group_admin",
+      "jwtRole": "group_admin",
+      "platformUserSession": false,
+      "phiAccess": false,
+      "scope": "organization",
+      "allowedActions": ["review_group_dashboard", "review_group_analytics", "review_group_billing"],
+      "forbiddenActions": ["review_patient_phi", "initiate_call", "platform_break_glass"]
+    },
+    {
+      "id": "auditor",
+      "label": "Auditor",
+      "authSource": "platform_user",
+      "effectiveUserRole": "auditor",
+      "jwtRole": "accountant",
+      "platformUserSession": true,
+      "phiAccess": true,
+      "scope": "grant_scoped_practices",
+      "allowedActions": ["review_granted_reports", "review_compliance_workspace", "export_compliance_evidence"],
+      "forbiddenActions": ["ungranted_practice_access", "mutate_claim", "initiate_call", "platform_break_glass"]
+    },
+    {
+      "id": "billing_ops_manager",
+      "label": "Billing Operations Manager",
+      "authSource": "platform_user",
+      "effectiveUserRole": "billing_ops_manager",
+      "jwtRole": "group_admin",
+      "platformUserSession": true,
+      "phiAccess": false,
+      "scope": "cross_practice_operations",
+      "allowedActions": ["review_portfolio", "review_queue", "manage_operations", "review_cross_practice_analytics"],
+      "forbiddenActions": ["review_patient_phi", "platform_break_glass", "impersonate_platform_admin"]
+    },
+    {
+      "id": "platform_admin",
+      "label": "Platform Admin",
+      "authSource": "platform_user",
+      "effectiveUserRole": "platform_admin",
+      "jwtRole": "group_admin",
+      "platformUserSession": true,
+      "phiAccess": false,
+      "scope": "platform",
+      "allowedActions": ["manage_platform", "manage_practice_grants", "review_platform_health", "authorized_break_glass"],
+      "forbiddenActions": ["routine_phi_access", "silent_break_glass", "impersonate_practice_user"]
+    },
+    {
+      "id": "platform_dev",
+      "label": "Technical Steward",
+      "authSource": "internal_platform",
+      "effectiveUserRole": "platform_dev",
+      "jwtRole": "platform_dev",
+      "platformUserSession": false,
+      "phiAccess": false,
+      "scope": "platform_diagnostics",
+      "allowedActions": ["review_system_health", "review_redacted_logs", "manage_test_configuration", "diagnose_failures"],
+      "forbiddenActions": ["routine_phi_access", "silent_production_mutation", "impersonate_platform_user"]
+    }
+  ]
+}

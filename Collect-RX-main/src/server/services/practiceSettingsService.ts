@@ -56,6 +56,9 @@ export function defaultPracticeSettings(): PracticeSettings {
     callWindowEnd: '17:00',
     escalationPhoneNumber: '',
     telusTpaMappings: {},
+    // V1 Hold Sentinel is the product sold first (ADR 0003), so new practices
+    // start in it; staff speak with the rep, the AI never does.
+    humanAssistedMode: true,
     retention: defaultRetentionSettings(),
   };
 }
@@ -95,6 +98,9 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.billingPhone === 'string' ? { billingPhone: o.billingPhone } : {}),
     ...(o.telusTpaMappings && typeof o.telusTpaMappings === 'object'
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
+      : {}),
+    ...(typeof o.humanAssistedMode === 'boolean'
+      ? { humanAssistedMode: o.humanAssistedMode }
       : {}),
     ...(Array.isArray(o.carrierConfigs)
       ? {

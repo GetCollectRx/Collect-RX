@@ -13,6 +13,8 @@ import { initiatePreVisitCall } from '../../vapi/client.js';
 import { piiVault } from '../../pii-vault.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { canMakeCall } from '../plans/planBridge.js';
+import { planTierForPractice } from '../plans/practiceEntitlements.js';
+import { FEATURES, effectiveHumanAssisted, tierAllows } from '../../billing/entitlements.js';
 import type { PreVisitJobPayload } from './preVisitJobs.js';
 import { writeAdjudicationEvent } from '../adjudication/writeAdjudicationEvent.js';
 import { tryTelusTx23PreVisit } from './electronicPreVisit.js';
@@ -60,6 +62,14 @@ export async function dispatchPreVisitCall(
     return { skipped: true, reason: planGate.reason ?? 'plan_gate' };
   }
 
+  // Private-carrier eligibility is a Recovery plan feature; CDCP calls are in
+  // every plan. Checked before detokenizing so a locked call never reads PHI.
+  const cdcpContext = jobType === 'PRE_VISIT_CDCP_PREDET' || payload.cdcpContext === true;
+  const planTier = await planTierForPractice(prisma, payload.practiceId);
+  if (!cdcpContext && !tierAllows(planTier, FEATURES.PRE_VISIT_ELIGIBILITY)) {
+    return { skipped: true, reason: 'not_in_plan' };
+  }
+
   if (!isWithinCallWindow()) {
     return {
       deferred: true,
@@ -92,8 +102,6 @@ export async function dispatchPreVisitCall(
   const carrierCfg = settings.carrierConfigs.find((c) => c.carrierId === payload.carrierId);
   const carrierMeta = CARRIER_CONFIGS[payload.carrierId];
 
-  const cdcpContext = jobType === 'PRE_VISIT_CDCP_PREDET' || payload.cdcpContext === true;
-
   const result = await initiatePreVisitCall({
     practiceId: payload.practiceId,
     patientToken: payload.patientToken,
@@ -101,6 +109,7 @@ export async function dispatchPreVisitCall(
     appointmentVerificationId: payload.appointmentVerificationId,
     preVisitType: cdcpContext ? 'cdcp_predet' : 'eligibility',
     cdcpContext,
+    humanAssisted: effectiveHumanAssisted(planTier, settings.humanAssistedMode),
     patientName: phi.patientName,
     patientDob: phi.dateOfBirth,
     policyNumber: phi.subscriberId,

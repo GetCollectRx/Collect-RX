@@ -46,15 +46,18 @@ const INITIAL_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 
 <p>For most Ontario practices it's 5–10 hours — staff on hold instead of with patients. CollectRx replaces that. Our AI voice agents call the carriers for you, check claim status, and flag what needs action, so your team stops waiting on hold. We cover the six major Canadian carriers — about 78% of the private dental market.</p>
 
-<p>The number most owners care about: our Core plan is <strong>$799/month and typically replaces around $3,000/month of front-desk phone time.</strong> You can try it <strong>free for 30 days — no card, no commitment</strong> — and watch recovered A/R show up in your dashboard before you decide anything.</p>
+<p>The number most owners care about: our Hold Sentinel plan is <strong>$399/month: we wait on hold with the carrier and transfer the call to your staff the moment a representative answers.</strong> You can try it <strong>free for 30 days — no card, no commitment</strong> — and watch recovered A/R show up in your dashboard before you decide anything.</p>
 
 <p>If that's worth a 15-minute look, just reply here or grab a time: {{BookingLink}}</p>
 
 <p>Best,<br>
 Khalid Egeh<br>
-Founder, CollectRx<br>
-khalid@collectrx.ca · {{SenderPhone}}<br>
+Founder<br>
+&nbsp;<br>
+CollectRx<br>
 {{MailingAddress}}</p>
+
+<p>khalid@collectrx.ca &middot; {{SenderPhone}}</p>
 
 <p><em>CollectRx sends A/R automation software for Canadian dental practices. If you'd rather not hear from us, reply "unsubscribe" and I won't email again.</em></p>`;
 
@@ -66,9 +69,13 @@ const FOLLOW_UP_EMAIL_BODY = `<p>Hi Dr. {{OwnerLastName}},</p>
 
 <p>Happy to send a 2-minute demo video instead of a call if that's easier — just say the word.</p>
 
-<p>Khalid<br>
-Founder, CollectRx · khalid@collectrx.ca · {{SenderPhone}}<br>
-{{MailingAddress}} · Reply "unsubscribe" to opt out.</p>`;
+<p>Khalid Egeh<br>
+Founder<br>
+&nbsp;<br>
+CollectRx<br>
+{{MailingAddress}}</p>
+
+<p>khalid@collectrx.ca &middot; {{SenderPhone}} &middot; Reply "unsubscribe" to opt out.</p>`;
 
 function getSubjectVariant(variant: 'a' | 'b' | 'c' = 'a'): string {
   switch (variant) {

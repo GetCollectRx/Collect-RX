@@ -1,0 +1,44 @@
+# BullMQ worker. Same image, SERVICE_ROLE=worker. Shares REDIS_URL with the app.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collectrx-worker
+  namespace: collectrx
+  labels: { app: collectrx, role: worker }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: collectrx, role: worker }
+  template:
+    metadata:
+      labels: { app: collectrx, role: worker }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/region
+                    operator: In
+                    values: ["ca-central-1"]
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: collectrx
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SERVICE_ROLE, value: worker }
+          envFrom:
+            - configMapRef: { name: collectrx-config }
+            - secretRef: { name: collectrx-secrets }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }

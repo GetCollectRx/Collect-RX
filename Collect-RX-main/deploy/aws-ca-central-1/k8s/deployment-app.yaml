@@ -1,0 +1,63 @@
+# Web/API process. Never scaled to zero: the hold-transfer endpoint must be warm
+# mid-call (same reason fly.toml sets auto_stop_machines = false).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collectrx-app
+  namespace: collectrx
+  labels: { app: collectrx, role: app }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: collectrx, role: app }
+  template:
+    metadata:
+      labels: { app: collectrx, role: app }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      # Keep pods in ca-central-1 zones only (cluster must already be in the region).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: collectrx, role: app }
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/region
+                    operator: In
+                    values: ["ca-central-1"]
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: app
+          image: collectrx   # replaced by kustomization.yaml images: (ECR, ca-central-1)
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 3000 }]
+          env:
+            - { name: SERVICE_ROLE, value: app }
+          envFrom:
+            - configMapRef: { name: collectrx-config }
+            - secretRef: { name: collectrx-secrets }
+          readinessProbe:
+            httpGet: { path: /api/health/ready, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /api/health/live, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }

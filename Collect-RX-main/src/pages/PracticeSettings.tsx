@@ -9,6 +9,7 @@ import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
 import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
+import { FEATURES } from '../billing/entitlements'
 
 type SettingsResponse = {
   success: boolean
@@ -16,6 +17,7 @@ type SettingsResponse = {
     practice: { id: string; name: string; timezone: string; recoveryMode?: 'CSV_FIRST' | 'PMS_WRITEBACK' } | null
     settings: PracticeSettings
     pms?: PracticePmsInfo
+    planFeatures?: string[]
   }
 }
 
@@ -39,6 +41,7 @@ export default function PracticeSettings() {
   const [telusValue, setTelusValue] = useState('')
   const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
   const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
+  const [autonomousInPlan, setAutonomousInPlan] = useState(false)
   const [recoveryMode, setRecoveryMode] = useState<'CSV_FIRST' | 'PMS_WRITEBACK'>('CSV_FIRST')
   const [recoveryModeSaving, setRecoveryModeSaving] = useState(false)
   const [recoveryModeError, setRecoveryModeError] = useState<string | null>(null)
@@ -64,6 +67,7 @@ export default function PracticeSettings() {
       const res = await apiFetchJson<SettingsResponse>(`/api/practices/${practiceId}/settings`)
       setSettings(res.data.settings)
       setPmsInfo(res.data.pms ?? null)
+      setAutonomousInPlan((res.data.planFeatures ?? []).includes(FEATURES.AUTONOMOUS_CALLS))
       setRecoveryMode(res.data.practice?.recoveryMode ?? 'CSV_FIRST')
       const triage = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
         `/api/practices/${practiceId}/triage-credential`,
@@ -329,6 +333,35 @@ export default function PracticeSettings() {
                   {label}
                 </label>
               ))}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Human-assisted mode (V1)"
+              subtitle="Practice staff speak with the carrier rep directly — CollectRx AI navigates the IVR, holds the line, and silently listens/logs. It never speaks to a rep. Requires an escalation phone below for the warm transfer."
+            />
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={!autonomousInPlan || settings.humanAssistedMode !== false}
+                  disabled={isReadOnly || !autonomousInPlan}
+                  onChange={(e) => setSettings({ ...settings, humanAssistedMode: e.target.checked })}
+                  className="rounded border-gray-300 text-crx-600 focus:ring-crx-500"
+                />
+                Human-assisted mode enabled
+              </label>
+              {!autonomousInPlan && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Every call uses Hold Sentinel. Autonomous calling, where CollectRx speaks with the rep, is not available on any plan yet.
+                </p>
+              )}
+              {(!autonomousInPlan || settings.humanAssistedMode !== false) && !settings.escalationPhoneNumber && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Set an escalation phone below — that's where calls transfer to staff once a rep answers.
+                </p>
+              )}
             </div>
           </Card>
 

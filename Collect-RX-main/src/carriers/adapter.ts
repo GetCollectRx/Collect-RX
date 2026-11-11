@@ -97,7 +97,7 @@ function buildCarrierConfigs(): Record<CarrierId, CarrierConfig> {
   const rules = carrierRulesJson.carriers as Record<string, Partial<CarrierRulesEntry>>;
   const configs = {} as Record<CarrierId, CarrierConfig>;
 
-  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as CarrierId[]) {
+  for (const carrierId of Object.keys(CARRIER_PHONE_MAP) as Exclude<CarrierId, 'other'>[]) {
     const entry = rules[carrierId];
     if (!entry?.dispatch || entry.isClearinghouse === undefined || entry.minWaitDayForClaims === undefined) {
       throw new Error(`carrier-configs.json is missing dispatch rules for carrier "${carrierId}"`);
@@ -529,6 +529,23 @@ export function getTelusTpa(memberId: string, groupNumber: string): string | nul
   try {
     const result = identifyTelusPlan(memberId, groupNumber);
     return result.identifiedTpa;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * For TELUS AdjudiCare claims: resolve the verified provider claim-status
+ * phone number for the identified TPA. Returns null whenever the TPA is
+ * unidentified OR identified-but-unverified — TELUS AdjudiCare has no
+ * single carrier-wide line, so there is no safe generic fallback to dial.
+ * Callers MUST escalate to a human on null rather than falling back to
+ * CARRIER_PHONE_MAP.telus_adjudicare (that value is a last-resort only,
+ * not a real per-TPA claims line — see client.ts).
+ */
+export function getTelusDialPhone(memberId: string, groupNumber: string): string | null {
+  try {
+    return identifyTelusPlan(memberId, groupNumber).dialPhone;
   } catch {
     return null;
   }

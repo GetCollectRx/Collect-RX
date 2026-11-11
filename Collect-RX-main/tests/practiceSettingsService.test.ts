@@ -17,6 +17,14 @@ describe('practiceSettingsService', () => {
       }
     });
 
+    it('starts new practices in Hold Sentinel (human-assisted) mode', () => {
+      expect(defaultPracticeSettings().humanAssistedMode).toBe(true);
+    });
+
+    it('keeps a practice that explicitly turned Hold Sentinel off', () => {
+      expect(parsePracticeSettings({ humanAssistedMode: false }).humanAssistedMode).toBe(false);
+    });
+
     it('defaults retention purging to disabled with 12/18/18-month windows', () => {
       const settings = defaultPracticeSettings();
       expect(settings.retention).toEqual({

@@ -7,23 +7,25 @@ async function dismissCookieNotice(page: import('@playwright/test').Page) {
   }
 }
 
-test('public download page lists pilot installers', async ({ page }) => {
+// The desktop connector download surface is gated off (src/pages/DesktopDownload.tsx —
+// `desktopConnectorAvailable = false`, since d156b36, 2026-09-20): the current pilot
+// intake is CSV-only, and installers stay hidden until product/security/deployment/
+// support explicitly re-enables this surface. These specs assert that gated state.
+test('public download page explains desktop connector is unavailable', async ({ page }) => {
   await page.goto('/download');
   await dismissCookieNotice(page);
 
-  // Heading is behind an aria-modal cookie dialog until dismissed; also wait for
-  // release fetch to finish (DataState hides children while loading).
-  await expect(page.getByRole('heading', { name: /CollectRx desktop/i })).toBeVisible({
-    timeout: 20_000,
-  });
-  await expect(page.getByText(/Download v/i)).toBeVisible();
-  await expect(page.getByText('Windows installer').first()).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: /Desktop connector unavailable/i }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Current supported intake: CSV only/i)).toBeVisible();
+  await expect(page.getByRole('link', { name: /Import a reviewed CSV export/i })).toBeVisible();
 });
 
 test('download page has accessible main landmark', async ({ page }) => {
   await page.goto('/download');
   await dismissCookieNotice(page);
-  await expect(page.getByRole('heading', { name: /CollectRx desktop/i }).or(page.locator('.page-title'))).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(
+    page.getByRole('heading', { name: /Desktop connector unavailable/i }).or(page.locator('.page-title')),
+  ).toBeVisible({ timeout: 20_000 });
 });

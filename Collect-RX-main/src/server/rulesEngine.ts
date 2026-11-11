@@ -4,7 +4,10 @@ import { syncWorkItemsForPractice } from './services/workQueueService.js';
 import { processEmrSyncOutboxBatch } from './emrSyncOutbox.js';
 import { processPaymentTraceDue } from './recovery/recoveryLoopService.js';
 import { escalateOverdueRecoveryActions } from './recovery/overdueActionEscalation.js';
-import { dispatchRecoveryPracticeAlerts } from './recovery/recoveryNotifications.js';
+import {
+  dispatchRecoveryPracticeAlerts,
+  isDemoPracticeForExternalAlerts,
+} from './recovery/recoveryNotifications.js';
 import { runDailyArCloseAllPractices } from './jobs/dailyArClose.js';
 import { sweepUpcomingAppointmentsAcrossPractices } from './preVisit/appointmentIngest.js';
 import {
@@ -64,15 +67,26 @@ export async function runRulesEngineTick(prisma: PrismaClient): Promise<void> {
   const now = new Date();
   if (now.getUTCMinutes() === 0) {
     try {
-      const practices = await prisma.practice.findMany({ select: { id: true } });
+      const practices = await prisma.practice.findMany({
+        select: { id: true, name: true, settings: true },
+      });
+      const recoveryDigestHour = Math.min(
+        23,
+        Math.max(0, Number(process.env.RECOVERY_ATTENTION_DIGEST_UTC_HOUR ?? 13)),
+      );
       for (const p of practices) {
         await runWithPracticeRls(p.id, async () => {
           await syncWorkItemsForPractice(prisma, p.id);
-          await dispatchRecoveryPracticeAlerts(prisma, p.id);
+          if (
+            now.getUTCHours() === recoveryDigestHour &&
+            !isDemoPracticeForExternalAlerts(p)
+          ) {
+            await dispatchRecoveryPracticeAlerts(prisma, p.id);
+          }
         });
       }
     } catch (err) {
-      logger.error('[rulesEngine] hourly work queue / recovery alerts failed', { error: err });
+      logger.error('[rulesEngine] hourly work queue / daily recovery digest failed', { error: err });
     }
   }
 
