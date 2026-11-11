@@ -77,6 +77,9 @@ fi
 export DATABASE_URL
 
 cd "$APP" || die "cannot enter $APP"
+# A fresh checkout has no generated database client, and the app cannot start without it.
+say "Generating the database client"
+npx --no-install prisma generate >"$WORK/generate.log" 2>&1 || { tail -20 "$WORK/generate.log"; die "prisma generate failed"; }
 say "Database ready; applying migrations"
 npx --no-install prisma migrate deploy >"$WORK/migrate.log" 2>&1 || { tail -20 "$WORK/migrate.log"; die "migrations failed"; }
 
