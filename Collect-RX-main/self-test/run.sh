@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Contained self-test of the CollectRx application.
 #
-#   bash self-test/run.sh
+#   bash self-test/run.sh            everything
+#   bash self-test/run.sh crawl      only the spec files whose name matches (any Playwright filter works)
 #
 # What it does: starts a throwaway database, a fake Vapi, and the real app server
 # with an allowlisted environment and an egress guard, then drives the real app
@@ -121,7 +122,7 @@ say "Running the self-test"
 SELFTEST_BASE_URL="http://127.0.0.1:$PORT" FAKE_VAPI_URL="http://127.0.0.1:$VAPI_PORT" \
 SELFTEST_DB_URL="$DATABASE_URL" SELFTEST_WEBHOOK_SECRET="$WEBHOOK_SECRET" SELFTEST_EGRESS_LOG="$EGRESS_LOG" SELFTEST_REPORT_DIR="$REPORT_DIR" \
 NO_PROXY="127.0.0.1,localhost" no_proxy="127.0.0.1,localhost" \
-  npx --no-install playwright test -c "$HERE/playwright.config.ts"
+  npx --no-install playwright test -c "$HERE/playwright.config.ts" "$@"
 STATUS=$?
 
 cp "$WORK/app.log" "$REPORT_DIR/app.log" 2>/dev/null

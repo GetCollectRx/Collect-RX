@@ -20,7 +20,19 @@ export default defineConfig({
       // Set when the Chromium that Playwright wants is not installed (for example a sandbox with its own build).
       executablePath: process.env.SELFTEST_CHROMIUM_PATH || undefined,
       // Browser-level containment: every host except loopback fails to resolve.
-      args: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost', '--no-sandbox'],
+      args: [
+        '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost',
+        '--no-sandbox',
+        // With a proxy configured, Chromium sends host names to the proxy and the resolver rule above never applies.
+        '--no-proxy-server',
+        // Keep the browser vendor's own services (updates, sync, safe browsing) from calling out during a run.
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-sync',
+        '--disable-default-apps',
+        '--no-default-browser-check',
+        '--safebrowsing-disable-auto-update',
+      ],
     },
   },
   projects: [{ name: 'self-test', use: { ...devices['Desktop Chrome'] } }],

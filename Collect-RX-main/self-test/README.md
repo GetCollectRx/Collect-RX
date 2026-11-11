@@ -10,6 +10,10 @@ bash self-test/run.sh
 
 It takes about a minute and writes `self-test/report/SELF-TEST-REPORT.md`. The exit code is non-zero only when a contract fails.
 
+## The crawl
+
+`bash self-test/run.sh crawl` takes about 15 minutes and writes `self-test/report/CRAWL-REPORT.md` with screenshots. It signs in as every reachable role (owner, office manager, billing coordinator, front desk, accountant, group admin, and an anonymous visitor), visits every route each role should and should not reach, clicks every safe button on every page the office manager can reach, and requests every static API path the frontend calls with no login. Each page is scored WORKS, PARTLY or BROKEN. Platform admin pages are untested because that role cannot be created through the product.
+
 ## What it does
 
 1. Starts a throwaway PostgreSQL 16 (or uses `SELFTEST_DATABASE_URL`, whose database name must contain `test` or `verify`).
@@ -42,7 +46,8 @@ It takes about a minute and writes `self-test/report/SELF-TEST-REPORT.md`. The e
 * A successful staff transfer needs an https `vapi.ai` control URL, which the app correctly refuses to send commands to anywhere else. That path is UNVERIFIED here.
 * The real email, billing, and carrier-portal integrations are off. What the app does when they are unconfigured is tested; what they do when configured is not.
 * The frontend is exercised through its real pages, but visual layout and accessibility are not judged beyond "renders without an error".
-* It has been run on Linux. The embedded-database path (no `SELFTEST_DATABASE_URL`) is the one you will use on a Mac and has not been run here.
+* Chromium is the only browser tested, and the crawl judges whether a page loads, not whether its numbers are right.
+* It has been run on Linux and, for `run.sh`, on a Mac. The embedded-database path (no `SELFTEST_DATABASE_URL`) is the one you will use on a Mac and has not been run here.
 
 ## Adding a journey
 
