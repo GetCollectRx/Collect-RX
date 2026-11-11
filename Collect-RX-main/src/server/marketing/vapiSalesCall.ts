@@ -5,6 +5,7 @@ import {
   buildSalesQualifierSystemPrompt,
   buildSalesQualifierVariableValues,
 } from './salesCallScript.js';
+import { vapiBaseUrl } from '../../vapi/baseUrl.js';
 
 export interface InitiateProspectCallResult {
   vapiCallId: string;
@@ -53,7 +54,7 @@ export async function initiateProspectSalesCall(
     },
   };
 
-  const res = await fetch('https://api.vapi.ai/call', {
+  const res = await fetch(`${vapiBaseUrl()}/call`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
