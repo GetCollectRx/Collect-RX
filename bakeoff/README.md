@@ -17,7 +17,8 @@ python3 evaluate.py --hours 100                   # the PRD figure; slow
 python3 evaluate.py --export-samples              # writes WAVs to corpus-sample/ to listen to
 ```
 
-Needs `numpy`, `ffmpeg`, `espeak-ng`.
+Needs `numpy`, `ffmpeg`, `espeak-ng`, `onnxruntime`, `pocketsphinx`, and the Silero VAD model (`bash fetch_models.sh`, gitignored).
+Use `--only <text>` to run one detector, for example `--only silero`.
 
 ## Limits, stated first
 

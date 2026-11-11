@@ -175,6 +175,7 @@ def main() -> None:
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--export-samples", action="store_true")
     ap.add_argument("--out", default=str(HERE / "results.json"))
+    ap.add_argument("--only", default="", help="run only detectors whose name contains this text")
     a = ap.parse_args()
     if a.export_samples:
         export_samples(a.seed)
@@ -182,13 +183,15 @@ def main() -> None:
     if a.quick:
         a.pickups, a.announcements, a.hours = 20, 40, 5.0
     report: dict = {"seed": a.seed, "corpus": "synthetic proxy (espeak-ng speech, synthesised chords); see README", "detectors": {}}
-    for det in DETECTORS:
+    for det in [d for d in DETECTORS if a.only in d.name]:
         t0 = time.time()
+        cap = getattr(det, "hour_cap", None)
+        hours = min(a.hours, cap) if cap else a.hours
         report["detectors"][det.name] = {
             "pickups": run_pickups(det, a.pickups, a.seed),
             "announcements": run_announcements(det, a.announcements, a.seed),
-            "holdHoursMusicOnly": run_hold_hours(det, a.hours, a.seed, announcements=False),
-            "holdHoursWithAnnouncements": run_hold_hours(det, a.hours, a.seed, announcements=True),
+            "holdHoursMusicOnly": run_hold_hours(det, hours, a.seed, announcements=False),
+            "holdHoursWithAnnouncements": run_hold_hours(det, hours, a.seed, announcements=True),
             "wallSeconds": round(time.time() - t0, 1),
         }
         print(json.dumps({det.name: report["detectors"][det.name]}, indent=2))

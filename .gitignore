@@ -45,3 +45,4 @@ bakeoff/.speech-cache/
 bakeoff/corpus-sample/
 bakeoff/results.json
 bakeoff/__pycache__/
+bakeoff/models/
