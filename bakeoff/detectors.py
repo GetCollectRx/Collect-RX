@@ -54,12 +54,16 @@ class ProductionEnergyDetector:
         return triggers
 
 
-HOLD_WORDS = {
-    "important", "stay", "line", "hold", "representative", "representatives", "assisting", "estimated",
-    "wait", "recorded", "quality", "training", "patience", "answered", "order", "website", "continue",
-    "available", "agent", "specialist", "visit", "moment", "minutes", "shortly",
-}
-GATE_SECONDS = 1.5  # decide on the first 1.5 s of a speech segment, as a streaming recogniser's partial would
+# Words that mark a recorded hold-line message. Strong words alone are enough; weak words need two.
+STRONG_HOLD_WORDS = {"important", "hold", "line", "representatives", "recorded", "estimated", "patience", "website", "wait", "stay", "queue", "voicemail"}
+WEAK_HOLD_WORDS = {"call", "thank", "representative", "agent", "available", "shortly", "moment", "continue", "assisting", "answered", "specialist", "minutes", "order"}
+GATE_SECONDS = 1.5  # default: decide on the first 1.5 s of a speech segment, as a streaming recogniser's partial would
+
+
+def is_recording_text(text: str) -> bool:
+    words = {w.strip(".,!?;:'\"[]()").lower() for w in text.split()}
+    words.discard("music")
+    return bool(words & STRONG_HOLD_WORDS) or len(words & WEAK_HOLD_WORDS) >= 2
 
 
 class SileroVad:
@@ -148,20 +152,20 @@ class VadAsrPhraseDetector(VadOnlyDetector):
 
     hour_cap: float | None = 5.0  # local ASR is slow; keep the hold-hours run short
 
-    def __init__(self, asr, refractory_seconds: float = 60.0) -> None:
+    def __init__(self, asr, refractory_seconds: float = 60.0, gate_seconds: float = GATE_SECONDS) -> None:
         super().__init__(refractory_seconds)
         self.asr = asr
-        self.name = f"silero-vad+{asr.name}-phrase-gate"
+        self.gate_seconds = gate_seconds
+        self.name = f"silero-vad+{asr.name}-phrase-gate-{gate_seconds:g}s"
 
     def detect(self, mulaw_frames: np.ndarray) -> list[float]:
         pcm, segs = self._segments(mulaw_frames)
         out: list[float] = []
         last = -1e18
         for start, end in segs:
-            gate_end = min(end, start + GATE_SECONDS)
+            gate_end = min(end, start + self.gate_seconds)
             text = self.asr.transcribe(pcm[int(start * SR): int(gate_end * SR)])
-            words = set(text.lower().split())
-            is_recording = len(words & HOLD_WORDS) >= 2
+            is_recording = is_recording_text(text)
             t = gate_end
             if not is_recording and t - last >= self.refractory:
                 out.append(t)
@@ -169,10 +173,16 @@ class VadAsrPhraseDetector(VadOnlyDetector):
         return out
 
 
-def _asr_detector() -> Detector:
-    from asr import PocketSphinxBackend
+def _build_detectors() -> list[Detector]:
+    from asr import PocketSphinxBackend, SherpaWhisperBackend
 
-    return VadAsrPhraseDetector(PocketSphinxBackend())
+    out: list[Detector] = [ProductionEnergyDetector(), VadOnlyDetector(), VadAsrPhraseDetector(PocketSphinxBackend())]
+    try:
+        whisper = SherpaWhisperBackend()
+        out += [VadAsrPhraseDetector(whisper, gate_seconds=1.5), VadAsrPhraseDetector(whisper, gate_seconds=3.0)]
+    except FileNotFoundError as e:
+        print(f"[bakeoff] whisper detectors skipped: {e}")
+    return out
 
 
-DETECTORS: list[Detector] = [ProductionEnergyDetector(), VadOnlyDetector(), _asr_detector()]
+DETECTORS: list[Detector] = _build_detectors()
