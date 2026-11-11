@@ -58,6 +58,27 @@ function assertPracticeParam(req: Request, res: Response): string | null {
   return practiceIdFromSession(req);
 }
 
+/**
+ * The live call a staff action applies to. The caller must name the call they
+ * selected, and it must belong to this practice and still be in progress. Taking
+ * "the first active call" would act on the wrong call when a practice has two.
+ */
+async function selectedActiveAttempt(req: Request, res: Response, practiceId: string) {
+  const callAttemptId = (req.body as { callAttemptId?: unknown } | undefined)?.callAttemptId;
+  if (typeof callAttemptId !== 'string' || callAttemptId.trim() === '') {
+    res.status(400).json({ success: false, error: 'callAttemptId is required' });
+    return null;
+  }
+  const attempt = await prisma.callAttempt.findFirst({
+    where: { id: callAttemptId.trim(), completedAt: null, claim: { practiceId } },
+  });
+  if (!attempt) {
+    res.status(404).json({ success: false, error: 'No active call' });
+    return null;
+  }
+  return attempt;
+}
+
 router.get('/:practiceId/active', async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
@@ -274,10 +295,8 @@ router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req:
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     const staffId = (req.body as { staffId?: string }).staffId ?? 'front_desk';
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await selectedActiveAttempt(req, res, practiceId);
+    if (!attempt) return;
 
     await prisma.callAttempt.update({
       where: { id: attempt.id },
@@ -315,10 +334,8 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await selectedActiveAttempt(req, res, practiceId);
+    if (!attempt) return;
 
     await endVapiCall(attempt.vapiCallId);
     void appendAuditLog(prisma, {
@@ -342,10 +359,8 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
     if (!phoneNumber?.trim()) {
       return res.status(400).json({ success: false, error: 'phoneNumber is required' });
     }
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const attempt = await selectedActiveAttempt(req, res, practiceId);
+    if (!attempt) return;
 
     await transferVapiCall(attempt.vapiCallId, phoneNumber.trim());
     await prisma.callAttempt.update({
