@@ -39,3 +39,9 @@ dump.rdb
 
 # Contained application self-test output
 Collect-RX-main/self-test/report/
+
+# Bake-off generated output (reproducible from seed)
+bakeoff/.speech-cache/
+bakeoff/corpus-sample/
+bakeoff/results.json
+bakeoff/__pycache__/
