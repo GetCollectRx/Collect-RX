@@ -57,4 +57,9 @@ describe('parseSimpleCsv quoted fields', () => {
     expect(() => parseSimpleCsv(`claim_number,notes\n${body}`)).not.toThrow();
     expect(() => parseSimpleCsv(`claim_number,notes\n${body}\nC,x`)).toThrow(/rows limit/);
   });
+
+  it('keeps a plain negative or signed amount readable and still escapes formulas', () => {
+    const rows = parseSimpleCsv('a,b,c,d,e\n-45.00,"-$1,200.50",+15,=SUM(A1),-1+1');
+    expect(rows[0]).toMatchObject({ a: '-45.00', b: '-$1,200.50', c: '+15', d: "'=SUM(A1)", e: "'-1+1" });
+  });
 });

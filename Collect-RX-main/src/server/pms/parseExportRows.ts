@@ -106,6 +106,11 @@ const CLAIM_ID_KEYS: Record<PmsImportFamily, string[]> = {
   ],
 };
 
+/** Claim identifier of a raw row, or null when the row has none. Lets callers name the claim of a row that fails normalization. */
+export function claimIdOf(raw: Record<string, unknown>, importFamily: PmsImportFamily): string | null {
+  return getCell(raw, ...CLAIM_ID_KEYS[importFamily]);
+}
+
 export function normalizePmsClaimRow(
   raw: Record<string, unknown>,
   importFamily: PmsImportFamily,

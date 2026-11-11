@@ -10,7 +10,7 @@ import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
 import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
 import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
 import { logger } from '../observability/logger.js';
-import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
+import { claimIdOf, normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { mergeClaimRows } from './claimRowMerge.js';
 import { closeClaimsMissingFromFullExport, type AbsentClaimResult } from './absentClaimHandler.js';
@@ -36,6 +36,13 @@ export interface RunPmsImportOptions {
 
 export type ExportScope = 'full' | 'partial';
 
+export type ImportRowError = {
+  claimNumber?: string;
+  /** 1-based position among the file's data rows, header excluded. */
+  dataRow?: number;
+  error: string;
+};
+
 export interface RunPmsImportResult {
   runId: string;
   pmsVendor: PmsVendorId;
@@ -45,7 +52,11 @@ export interface RunPmsImportResult {
   skipped: number;
   failed: number;
   driftPct: number | null;
-  errors: { claimNumber?: string; error: string }[];
+  errors: ImportRowError[];
+  /** Rows held back so the rest of the file could import. Empty on a clean file. */
+  quarantined: ImportRowError[];
+  /** Fully blank rows (for example trailing rows from a spreadsheet) that were ignored, not errors. */
+  blankRowsIgnored: number;
   paymentsVerified: number;
   dollarsRecoveredSyncVerified: number;
   /** Claims closed because a full export no longer lists them. */
@@ -58,32 +69,80 @@ export interface RunPmsImportResult {
   ediVersionMessage?: string;
 }
 
+interface PreflightResult {
+  goodRows: Record<string, unknown>[];
+  quarantined: ImportRowError[];
+  blankRowsIgnored: number;
+}
+
+function isBlankRow(raw: Record<string, unknown>): boolean {
+  return Object.values(raw).every((v) => v === undefined || v === null || String(v).trim() === '');
+}
+
+/**
+ * Splits the file into rows that can import and rows held back with a reason.
+ * Quarantine works per claim, not per row: a line-level export carries several
+ * rows for one claim, and importing only some of them would store wrong totals.
+ */
 function preflightImportRows(
   rows: Record<string, unknown>[],
   importFamily: Parameters<typeof normalizePmsClaimRow>[1],
-): { claimNumber?: string; error: string }[] {
-  const errors: { claimNumber?: string; error: string }[] = [];
-  const normalized: NormalizedPmsClaimRow[] = [];
-  for (const raw of rows) {
+): PreflightResult {
+  interface Entry {
+    raw: Record<string, unknown>;
+    dataRow: number;
+    norm?: NormalizedPmsClaimRow;
+    claimNumber?: string;
+    error?: string;
+  }
+  const entries: Entry[] = [];
+  let blankRowsIgnored = 0;
+  rows.forEach((raw, i) => {
+    if (isBlankRow(raw)) {
+      blankRowsIgnored += 1;
+      return;
+    }
+    const entry: Entry = { raw, dataRow: i + 1 };
     try {
-      const row = normalizePmsClaimRow(raw, importFamily);
-      normalized.push(row);
-      if (!mapToCarrierId(row.carrierName)) {
-        errors.push({
-          claimNumber: row.claimNumber,
-          error:
-            `Unrecognized insurance carrier ${row.carrierName ? `"${row.carrierName}"` : '(blank)'} — ` +
-            'claim not imported. Supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare.',
-        });
+      entry.norm = normalizePmsClaimRow(raw, importFamily);
+      entry.claimNumber = entry.norm.claimNumber;
+      if (!mapToCarrierId(entry.norm.carrierName)) {
+        entry.error =
+          `Unrecognized insurance carrier ${entry.norm.carrierName ? `"${entry.norm.carrierName}"` : '(blank)'} — ` +
+          'claim not imported. Supported: Sun Life, Canada Life, Manulife, Green Shield, RBC Insurance, TELUS AdjudiCare.';
       }
     } catch (err) {
-      errors.push({ error: (err as Error).message });
+      entry.error = (err as Error).message;
+      entry.claimNumber = claimIdOf(raw, importFamily) ?? undefined;
+    }
+    entries.push(entry);
+  });
+
+  const badClaims = new Map<string, string>();
+  for (const e of entries) {
+    if (e.error && e.claimNumber) badClaims.set(e.claimNumber, e.error);
+  }
+  const clean = entries.flatMap((e) => (e.norm && !e.error ? [e.norm] : []));
+  for (const conflict of mergeClaimRows(clean).conflicts) {
+    badClaims.set(conflict.claimNumber, conflict.error);
+  }
+
+  const goodRows: Record<string, unknown>[] = [];
+  const quarantined: ImportRowError[] = [];
+  for (const e of entries) {
+    if (e.error) {
+      quarantined.push({ claimNumber: e.claimNumber, dataRow: e.dataRow, error: e.error });
+    } else if (e.claimNumber && badClaims.has(e.claimNumber)) {
+      quarantined.push({
+        claimNumber: e.claimNumber,
+        dataRow: e.dataRow,
+        error: `${badClaims.get(e.claimNumber) ?? 'Another row for this claim was rejected.'} The whole claim was held back so its totals stay correct.`,
+      });
+    } else {
+      goodRows.push(e.raw);
     }
   }
-  for (const conflict of mergeClaimRows(normalized).conflicts) {
-    errors.push({ claimNumber: conflict.claimNumber, error: conflict.error });
-  }
-  return errors;
+  return { goodRows, quarantined, blankRowsIgnored };
 }
 
 export async function runPmsImportPipeline(
@@ -118,11 +177,13 @@ export async function runPmsImportPipeline(
   });
 
   try {
-    // Validate the entire file before the first claim, work item, or call-queue
-    // row is written. A malformed mixed file must not partially enter the live
-    // recovery workflow.
-    const preflightErrors = preflightImportRows(options.rows, importFamily);
-    if (preflightErrors.length > 0) {
+    // Validate every row before the first claim, work item, or call-queue row
+    // is written. Bad claims are quarantined with a reason and the rest of the
+    // file imports; a file with nothing importable is rejected whole.
+    const preflight = preflightImportRows(options.rows, importFamily);
+    const preflightErrors = preflight.quarantined;
+    const importableRows = preflight.goodRows;
+    if (importableRows.length === 0 && preflightErrors.length > 0) {
       await prisma.pmsImportRun.update({
         where: { id: run.id },
         data: {
@@ -145,6 +206,8 @@ export async function runPmsImportPipeline(
         failed: preflightErrors.length,
         driftPct: null,
         errors: preflightErrors,
+        quarantined: preflightErrors,
+        blankRowsIgnored: preflight.blankRowsIgnored,
         paymentsVerified: 0,
         dollarsRecoveredSyncVerified: 0,
         claimsClosedAsMissing: 0,
@@ -158,15 +221,24 @@ export async function runPmsImportPipeline(
       const transactionalPrisma = tx as unknown as PrismaClient;
       const importResult = await importPmsClaimsToPrisma(
         transactionalPrisma,
-        options.rows,
+        importableRows,
         options.practiceId,
         importFamily,
       );
 
+      // The declared totals describe the whole file. With rows held back they cannot
+      // reconcile, so the record count is reduced by the held and blank rows and the balance
+      // check falls back to comparing the import with itself. The held rows are
+      // reported to the caller instead.
+      const heldBack = preflightErrors.length;
       const validation = validateImportTotals({
-        sourceRecordCount: options.sourceRecordCount ?? options.rows.length,
+        sourceRecordCount:
+          options.sourceRecordCount === undefined
+            ? importableRows.length
+            : Math.max(0, options.sourceRecordCount - heldBack - preflight.blankRowsIgnored),
         importedRecordCount: importResult.sourceRowsAccounted,
-        sourceBalanceTotal: options.sourceBalanceTotal ?? importResult.importedBalanceTotal,
+        sourceBalanceTotal:
+          heldBack > 0 ? importResult.importedBalanceTotal : (options.sourceBalanceTotal ?? importResult.importedBalanceTotal),
         importedBalanceTotal: importResult.importedBalanceTotal,
       });
 
@@ -180,9 +252,17 @@ export async function runPmsImportPipeline(
       }
 
       let absent: AbsentClaimResult = { closed: 0, held: 0, warning: null };
-      if (options.exportScope === 'full') {
+      if (options.exportScope === 'full' && heldBack > 0) {
+        // A held-back claim looks absent from the file. Closing claims as resolved
+        // on that basis would hide them, so closure waits for a clean export.
+        absent = {
+          closed: 0,
+          held: 0,
+          warning: `${heldBack} row(s) were held back, so claims missing from this file were not closed. Fix those rows and re-import.`,
+        };
+      } else if (options.exportScope === 'full') {
         const claimNumbersInFile = new Set<string>();
-        for (const raw of options.rows) {
+        for (const raw of importableRows) {
           claimNumbersInFile.add(normalizePmsClaimRow(raw, importFamily).claimNumber);
         }
         absent = await closeClaimsMissingFromFullExport(
@@ -200,15 +280,15 @@ export async function runPmsImportPipeline(
       await transactionalPrisma.pmsImportRun.update({
         where: { id: run.id },
         data: {
-          status: 'success',
+          status: heldBack > 0 ? 'success_with_quarantine' : 'success',
           completedAt: new Date(),
           recordsImported: importResult.imported,
           recordsSkipped: importResult.skipped,
-          recordsFailed: 0,
+          recordsFailed: heldBack,
           importedBalanceTotal: importResult.importedBalanceTotal,
           driftPct: validation.driftPct,
           validationPassed: true,
-          errorLog: { validationMessages: [], rowErrors: [] },
+          errorLog: { validationMessages: [], rowErrors: preflightErrors.slice(0, 50) },
         },
       });
       return { importResult, validation, absent };
@@ -217,13 +297,15 @@ export async function runPmsImportPipeline(
     return {
       runId: run.id,
       pmsVendor: vendorId,
-      status: 'success',
+      status: preflightErrors.length > 0 ? 'success_with_quarantine' : 'success',
       validationPassed: true,
       imported: result.importResult.imported,
       skipped: result.importResult.skipped,
-      failed: 0,
+      failed: preflightErrors.length,
       driftPct: result.validation.driftPct,
-      errors: [],
+      errors: preflightErrors,
+      quarantined: preflightErrors,
+      blankRowsIgnored: preflight.blankRowsIgnored,
       paymentsVerified: result.importResult.paymentsVerified,
       dollarsRecoveredSyncVerified: result.importResult.dollarsRecoveredSyncVerified,
       claimsClosedAsMissing: result.absent.closed,

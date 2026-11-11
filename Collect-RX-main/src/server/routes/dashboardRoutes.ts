@@ -265,7 +265,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
         select: { name: true, billingPhone: true, npi: true, settings: true },
       }),
       prisma.pmsImportRun.findFirst({
-        where: { practiceId, status: 'success', recordsImported: { gt: 0 } },
+        where: { practiceId, status: { in: ['success', 'success_with_quarantine'] }, recordsImported: { gt: 0 } },
         orderBy: { startedAt: 'desc' },
         select: { id: true, recordsImported: true },
       }),
