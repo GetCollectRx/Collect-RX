@@ -148,6 +148,12 @@ describe('CarrierAdapter', () => {
       expect(isWithinCallWindow(late)).toBe(false);
     });
 
+    it('returns false on a public holiday that falls on a weekday', () => {
+      expect(isWithinCallWindow(new Date('2026-12-25T15:00:00Z'))).toBe(false);
+      expect(isWithinCallWindow(new Date('2026-05-18T14:00:00Z'))).toBe(false);
+      expect(isWithinCallWindow(new Date('2026-12-28T15:00:00Z'))).toBe(false);
+    });
+
     it('returns true for 10am Eastern on Monday', () => {
       // Monday 2024-04-08 10:00 Eastern = 14:00 UTC
       const mid = new Date('2024-04-08T14:00:00Z');
@@ -234,6 +240,60 @@ describe('CarrierAdapter', () => {
       });
       expect(r.allowed).toBe(false);
       expect(r.reason).toMatch(/BAAL/i);
+    });
+
+    describe('holiday, staff hours and practice NPI', () => {
+      const base = {
+        practiceId: 'practice-1',
+        claimId: 'claim-test-1',
+        carrierId: 'sun_life' as const,
+        daysOutstanding: 45,
+        attemptsSoFar: 0,
+        claimStatus: 'PENDING' as const,
+      };
+      // Tuesday 2026-11-10 09:00 Eastern.
+      const workday = new Date('2026-11-10T14:00:00Z');
+
+      it('names the holiday when a call is refused on one', async () => {
+        const r = await validateDispatch(makePrisma(), { ...base, scheduledFor: new Date('2026-12-25T15:00:00Z') });
+        expect(r).toMatchObject({ allowed: false, code: 'OUTSIDE_CALL_WINDOW' });
+        expect(r.reason).toMatch(/Christmas Day/u);
+      });
+
+      it('refuses a practice with no NPI, with letters in it, or with too few digits, and says what to fix', async () => {
+        for (const npi of [null, '', '   ', 'ABC-1234', '123']) {
+          const r = await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, practiceNpi: npi });
+          expect(r).toMatchObject({ allowed: false, code: 'MISSING_PRACTICE_IDENTIFIERS' });
+          expect(r.reason).toMatch(/practice settings/u);
+        }
+      });
+
+      it('allows a digit-only NPI, with spaces or dashes', async () => {
+        for (const npi of ['12345', '1234-567-890', '1234 567']) {
+          const r = await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, practiceNpi: npi });
+          expect(r.allowed).toBe(true);
+        }
+      });
+
+      it('skips the NPI check when the caller does not supply one', async () => {
+        const r = await validateDispatch(makePrisma(), { ...base, scheduledFor: workday });
+        expect(r.allowed).toBe(true);
+      });
+
+      it('refuses a human-assisted call when the practice staff are outside their own hours', async () => {
+        // 13:00 UTC is 06:00 in Phoenix (fixed UTC-7) but 08:00 in Toronto, so the Eastern window is open.
+        const early = new Date('2026-11-10T13:00:00Z');
+        const blocked = await validateDispatch(makePrisma(), { ...base, scheduledFor: early, practiceTimezone: 'America/Phoenix', staffAvailabilityRequired: true });
+        expect(blocked).toMatchObject({ allowed: false, code: 'OUTSIDE_STAFF_HOURS' });
+        expect(blocked.reason).toMatch(/America\/Phoenix/u);
+      });
+
+      it('does not apply the staff-hours rule to autonomous calls, or when no zone is given, or inside staff hours', async () => {
+        const early = new Date('2026-11-10T13:00:00Z');
+        expect((await validateDispatch(makePrisma(), { ...base, scheduledFor: early, practiceTimezone: 'America/Phoenix', staffAvailabilityRequired: false })).allowed).toBe(true);
+        expect((await validateDispatch(makePrisma(), { ...base, scheduledFor: early, staffAvailabilityRequired: true })).allowed).toBe(true);
+        expect((await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, practiceTimezone: 'America/Toronto', staffAvailabilityRequired: true })).allowed).toBe(true);
+      });
     });
 
     function makePrismaAtSubscriptionLimit(callAttemptFindFirst: () => Promise<{ id: string } | null>) {

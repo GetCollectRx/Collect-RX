@@ -17,6 +17,7 @@ import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
+import { canadianHolidayName, isWithinPracticeStaffHours } from './callCalendar.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -397,7 +398,9 @@ export async function checkCarrierAuthorizationGate(
  *      of this flat 30 is a pending product decision, not an engineering gap —
  *      see docs/operations/HUMAN-DECISIONS-PENDING.md item 1.
  *   5. Max attempts (>= 3 → reject)
- *   6. Call window (Mon–Fri 08:00–17:00 Eastern)
+ *   6. Practice NPI the phone menu can accept (when supplied)
+ *   7. Call window (Mon–Fri 08:00–17:00 Eastern, no public holidays)
+ *   8. Practice staff hours in the practice's own time zone (human-assisted only)
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
@@ -414,9 +417,18 @@ export async function validateDispatch(
     claimStatus: ClaimStatus;
     /** Fleet-wide active-call-per-carrier snapshot, gathered outside RLS scope. Omit to skip the concurrency guard. */
     carrierActiveCounts?: Map<CarrierId, number>;
+    /**
+     * The practice's own NPI or provincial registration number, which carrier phone menus ask for.
+     * Omit to skip the check; pass null or an empty string when the practice has none on file.
+     */
+    practiceNpi?: string | null;
+    /** The practice's IANA time zone, for the staff-hours check. Omit to skip the check. */
+    practiceTimezone?: string;
+    /** True in human-assisted mode: a staff member must be there to take the transfer when a rep answers. */
+    staffAvailabilityRequired?: boolean;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, practiceNpi, practiceTimezone, staffAvailabilityRequired } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -466,15 +478,37 @@ export async function validateDispatch(
     return { allowed: false, code: 'MAX_ATTEMPTS', reason: `Maximum 3 call attempts reached (${attemptsSoFar} so far)` };
   }
 
-  // 7. Business hours check (Mon–Fri 08:00–17:00 Eastern)
+  // 7. The practice must have an NPI the phone menu can accept. Without one the
+  // voice agent reaches the provider-number prompt and cannot answer it.
+  if (practiceNpi !== undefined) {
+    const npiProblem = practiceNpiProblem(practiceNpi);
+    if (npiProblem) {
+      return { allowed: false, code: 'MISSING_PRACTICE_IDENTIFIERS', reason: npiProblem };
+    }
+  }
+
+  // 8. Business hours check (Mon–Fri 08:00–17:00 Eastern, not a public holiday)
   const callTime = scheduledFor ?? new Date();
   if (!isWithinCallWindow(callTime)) {
+    const holiday = canadianHolidayName(callTime);
+    if (holiday) {
+      return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `No carrier calls on ${holiday}` };
+    }
     const easternHour = getEasternHour(callTime);
     const dayOfWeek = getEasternDayOfWeek(callTime);
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: 'Calls only permitted Mon–Fri (Eastern time)' };
     }
     return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
+  }
+
+  // 9. Human-assisted calls need staff at the practice, in the practice's own time zone.
+  if (staffAvailabilityRequired && practiceTimezone !== undefined && !callWindowForced() && !isWithinPracticeStaffHours(callTime, practiceTimezone)) {
+    return {
+      allowed: false,
+      code: 'OUTSIDE_STAFF_HOURS',
+      reason: `Practice staff are outside 08:00–17:00 Mon–Fri in ${practiceTimezone}, so a rep who answers could not be transferred to anyone`,
+    };
   }
 
   return { allowed: true };
@@ -537,6 +571,25 @@ function getEasternDayOfWeek(date: Date): number {
 }
 
 /**
+ * Why a practice's NPI cannot be keyed into a carrier phone menu, or null when it can.
+ * Menus take digits only, so letters cannot be entered even when a value exists.
+ */
+export function practiceNpiProblem(npi: string | null): string | null {
+  const value = (npi ?? '').trim();
+  if (value === '') {
+    return 'Practice NPI (provincial registration number) is not set. Carrier phone menus ask for it, so calls cannot proceed until it is added in practice settings.';
+  }
+  if (!/^[\d\s-]+$/u.test(value)) {
+    return 'Practice NPI contains letters or symbols. Carrier phone menus accept digits only, so calls cannot proceed until it is corrected in practice settings.';
+  }
+  const digits = value.replace(/\D/gu, '').length;
+  if (digits < 4 || digits > 20) {
+    return `Practice NPI has ${digits} digits. Carrier phone menus expect 4 to 20, so calls cannot proceed until it is corrected in practice settings.`;
+  }
+  return null;
+}
+
+/**
  * Test/staging escape hatch ONLY — refuses to activate in production, where
  * the Mon–Fri 08:00–17:00 Eastern window is a hard compliance rule.
  */
@@ -551,7 +604,7 @@ export function isWithinCallWindow(date = new Date()): boolean {
   if (callWindowForced()) return true;
   const hour = getEasternHour(date);
   const day = getEasternDayOfWeek(date);
-  return day >= 1 && day <= 5 && hour >= 8 && hour < 17;
+  return day >= 1 && day <= 5 && hour >= 8 && hour < 17 && canadianHolidayName(date) === null;
 }
 
 /**

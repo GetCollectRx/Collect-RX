@@ -227,6 +227,9 @@ If a carrier detects automation, **all calls to that carrier are suspended immed
 
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time
+- No calls on Ontario public holidays (New Year's Day, Family Day, Good Friday, Victoria Day, Canada Day, Labour Day, Thanksgiving, Christmas, Boxing Day; weekend holidays are observed on the next free weekday). Other provinces' holidays are not modelled
+- Human-assisted calls also need practice staff on duty: Mon–Fri 08:00–17:00 in the practice's own time zone, not a holiday (`OUTSIDE_STAFF_HOURS`)
+- A practice needs a digit-only NPI before any call: carrier phone menus ask for it (`MISSING_PRACTICE_IDENTIFIERS`)
 - Maximum 3 call attempts per claim
 - Claims younger than the carrier's minimum wait do not enter queue (21 days for TELUS AdjudiCare, 32 days for all other carriers — see `carrier-configs.json`)
 - Claims over 90 days old: skip AI, escalate to human immediately

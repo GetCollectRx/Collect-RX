@@ -113,7 +113,8 @@ async function makeOffice(opts: PracticeOpts): Promise<Office> {
       billingPhone: '+16135550101',
       faxNumber: '+16135550102',
       practiceAddress: '1 Synthetic Way, Ottawa ON',
-      npi: `SYN-${id.slice(0, 8)}`,
+      // Digits only: dispatch refuses an NPI a phone menu cannot accept. Synthetic and unique per office.
+      npi: `99${id.replace(/\D/gu, '').padEnd(8, '0').slice(0, 8)}`,
       billingTier: 'sentinel',
       subscriptionStatus: 'active',
       settings: JSON.parse(JSON.stringify({

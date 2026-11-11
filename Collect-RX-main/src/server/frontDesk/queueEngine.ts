@@ -440,6 +440,7 @@ async function settleBlockedCandidate(
       ]);
       return 'skip';
     case 'OUTSIDE_CALL_WINDOW':
+    case 'OUTSIDE_STAFF_HOURS':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
@@ -451,6 +452,17 @@ async function settleBlockedCandidate(
         DEFER_CLAIM_AGE_MS,
         'CLAIM_TOO_YOUNG',
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
+      return 'skip';
+    case 'MISSING_PRACTICE_IDENTIFIERS':
+      // Every claim for this practice is blocked by the same setting, and each
+      // row says what to fix instead of sitting unexplained.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        'MISSING_PRACTICE_IDENTIFIERS',
+        guardReason ?? 'Add the practice NPI in practice settings so carrier phone menus can be answered.',
       );
       return 'skip';
     case 'CARRIER_CONCURRENCY_LIMIT':
@@ -715,6 +727,20 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       }
     }
 
+    // Practice facts the dispatch guard needs, read once per tick: the NPI that
+    // phone menus ask for, and the zone and mode that decide whether staff are
+    // there to take a transfer.
+    const guardContext =
+      dispatchable.length === 0
+        ? null
+        : {
+            practice: await prisma.practice.findUnique({ where: { id: practiceId }, select: { npi: true, timezone: true } }),
+            humanAssisted: effectiveHumanAssisted(
+              await planTierForPractice(prisma, practiceId),
+              (await getPracticeSettings(prisma, practiceId)).humanAssistedMode,
+            ),
+          };
+
     for (const next of dispatchable) {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
@@ -726,6 +752,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
       carrierActiveCounts,
+      practiceNpi: guardContext?.practice?.npi ?? null,
+      practiceTimezone: guardContext?.practice?.timezone,
+      staffAvailabilityRequired: guardContext?.humanAssisted ?? false,
     });
 
     if (!guard.allowed) {

@@ -268,7 +268,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         billingPhone: bundle.practice.billingPhone,
         faxNumber: bundle.practice.faxNumber,
         practiceAddress: bundle.practice.practiceAddress,
-        npi: bundle.practice.registrationNumber,
+        // Digits only: the generator's registration number has letters, which dispatch refuses for a phone menu.
+        npi: '9900001',
         settings: JSON.parse(JSON.stringify({
           ...defaultPracticeSettings(),
           escalationPhoneNumber: ESCALATION_PHONE,

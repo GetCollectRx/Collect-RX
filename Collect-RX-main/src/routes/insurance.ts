@@ -448,6 +448,9 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
       skipped: result.skipped,
       failed: result.failed,
       errors: result.errors,
+      status: result.status,
+      quarantined: result.quarantined,
+      blankRowsIgnored: result.blankRowsIgnored,
       runId: result.runId,
       paymentsVerified: result.paymentsVerified,
       dollarsRecoveredSyncVerified: result.dollarsRecoveredSyncVerified,
@@ -584,8 +587,11 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const attemptsSoFar = claim.queueEntry?.attempts ?? claim.callAttempts.length;
     const practiceId = claim.practiceId;
 
+    const guardPractice = await prisma.practice.findUnique({ where: { id: practiceId }, select: { npi: true } });
+
     // Validate all dispatch rules (non-race-prone checks: CARRIER_BLOCK,
-    // days outstanding, business hours)
+    // days outstanding, business hours, practice NPI). Staff hours are not checked
+    // here: a staff member just asked for this call.
     const guard = await validateDispatch(prisma, {
       practiceId,
       claimId,
@@ -594,6 +600,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       attemptsSoFar,
       claimStatus: claim.status,
       scheduledFor: new Date(),
+      practiceNpi: guardPractice?.npi ?? null,
     });
 
     // Write guardrails audit log (non-blocking)
