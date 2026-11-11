@@ -21,22 +21,21 @@ const ROLE_LABELS: Record<string, string> = {
   accountant: 'Accountant',
 };
 
+/** Resolves true when an email was handed to the provider, false when none is configured and nothing was sent. */
 export async function sendInviteEmail(opts: {
   toEmail: string;
   practiceName: string;
   role: string;
   token: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
   const sg = await getSendGrid();
 
   if (!sg) {
-    logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {
-      to: opts.toEmail,
-      acceptUrl,
-    });
-    return;
+    // The accept link carries a live invite token, so it is not written to the log.
+    logger.warn('[invite] SENDGRID_API_KEY not set — invite email not sent', { to: opts.toEmail });
+    return false;
   }
 
   const from = {
@@ -70,4 +69,5 @@ export async function sendInviteEmail(opts: {
       </div>
     `,
   });
+  return true;
 }
