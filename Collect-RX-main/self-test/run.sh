@@ -15,6 +15,9 @@
 #
 # Other settings: SELFTEST_PORT (default 3120), FAKE_VAPI_PORT (3199), SELFTEST_REBUILD=1 to rebuild the frontend.
 set -uo pipefail
+# Job control gives every background server its own process group, so cleanup can stop it and its children.
+# (setsid would do the same but macOS does not ship it.)
+set -m
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="$(cd "$HERE/.." && pwd)"
@@ -29,7 +32,7 @@ PG_BIN=""
 PG_DATA=""
 
 cleanup() {
-  # Each server runs in its own process group (setsid), so killing the group also stops tsx and node children.
+  # Each server is its own process group (set -m), so killing the group also stops tsx and node children.
   for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill -- "-$p" >/dev/null 2>&1; done
   if [ "$PG_OWN" = 1 ] && [ -n "$PG_BIN" ]; then "$PG_BIN/pg_ctl" -D "$PG_DATA" -m immediate stop >/dev/null 2>&1; fi
   rm -rf "$WORK"
@@ -84,7 +87,7 @@ if [ ! -f "$APP/dist/index.html" ] || [ "${SELFTEST_REBUILD:-0}" = 1 ]; then
 fi
 
 # ── Fake Vapi and the real app ──────────────────────────────────────────────
-FAKE_VAPI_PORT="$VAPI_PORT" setsid node "$HERE/fakeVapi.mjs" >"$WORK/fake-vapi.log" 2>&1 & PIDS+=("$!")
+FAKE_VAPI_PORT="$VAPI_PORT" node "$HERE/fakeVapi.mjs" >"$WORK/fake-vapi.log" 2>&1 & PIDS+=("$!")
 for _ in $(seq 1 20); do curl -fsS -m 1 "http://127.0.0.1:$VAPI_PORT/__health" >/dev/null 2>&1 && break; sleep 0.5; done
 
 # Run tsx directly: going through npx makes npm itself look for updates on the network.
@@ -95,7 +98,7 @@ WEBHOOK_SECRET="selftest-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 JWT_SECRET_VALUE="selftest-jwt-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 say "Starting the app on :$PORT (allowlisted environment, egress guard on)"
 # env -i drops every inherited variable, so no third-party key or proxy can reach the app.
-setsid env -i PATH="$PATH" HOME="$WORK" TMPDIR="$WORK" \
+env -i PATH="$PATH" HOME="$WORK" TMPDIR="$WORK" \
   NODE_OPTIONS="--require $HERE/egressGuard.cjs" SELFTEST_EGRESS_LOG="$EGRESS_LOG" \
   DATABASE_URL="$DATABASE_URL" PORT="$PORT" JWT_SECRET="$JWT_SECRET_VALUE" \
   COLLECTRX_E2E=1 COLLECTRX_FORCE_CALL_WINDOW=1 \
