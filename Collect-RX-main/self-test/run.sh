@@ -58,7 +58,17 @@ else
   "$PG_BIN/initdb" -D "$PG_DATA" -U prisma -A trust >/dev/null 2>&1 || die "initdb failed"
   "$PG_BIN/pg_ctl" -D "$PG_DATA" -o "-p $PG_PORT -c listen_addresses=127.0.0.1 -c unix_socket_directories=$WORK" -l "$WORK/postgres.log" -w start >/dev/null 2>&1 || die "postgres failed to start (see $WORK/postgres.log)"
   PG_OWN=1
-  "$PG_BIN/createdb" -h 127.0.0.1 -p "$PG_PORT" -U prisma selftest_app >/dev/null 2>&1 || die "createdb failed"
+  # The embedded package ships no createdb, so the database is created through the repo's own pg driver.
+  (cd "$APP" && node -e '
+    const { createRequire } = require("module");
+    const { Client } = createRequire(process.cwd() + "/")("pg");
+    (async () => {
+      const c = new Client({ connectionString: "postgresql://prisma@127.0.0.1:" + process.argv[1] + "/postgres" });
+      await c.connect();
+      await c.query("create database selftest_app");
+      await c.end();
+    })().catch((e) => { console.error(e.message); process.exit(1); });
+  ' "$PG_PORT") || die "creating the database failed"
   DATABASE_URL="postgresql://prisma@127.0.0.1:$PG_PORT/selftest_app?schema=public&connection_limit=30&pool_timeout=20"
 fi
 export DATABASE_URL
