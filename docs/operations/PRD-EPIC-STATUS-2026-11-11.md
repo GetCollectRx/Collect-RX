@@ -37,7 +37,7 @@ This replaces the framing of `PRODUCT-STATUS-2026-11-11.md`, which audited the a
 
 | Requirement | Status |
 |---|---|
-| Legal rules keyed by carrier-and-line, not "dental" | **Violated by my change.** The NPI-before-dial rule in `validateDispatch` is a dental-style identifier rule and must be keyed by line. |
+| Legal rules keyed by carrier-and-line, not "dental" | Fixed 2026-11-12. The NPI-before-dial rule is keyed by line (`src/carriers/lineRequirements.ts`): required for dental and paramedical lines, not demanded elsewhere until payer packs exist. |
 | No calls to real carriers during build | Respected. My earlier question about real-carrier probes is withdrawn. |
 | Carrier AI-caller terms check as a launch gate | Not started. |
 | Vertical lanes on one platform | Types model 7 verticals. Only dental can be dialed. Non-dental claims are dashboard-only (`carrierId other` is skipped by the queue engine and refused by the Vapi client). |

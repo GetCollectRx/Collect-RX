@@ -601,6 +601,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       claimStatus: claim.status,
       scheduledFor: new Date(),
       practiceNpi: guardPractice?.npi ?? null,
+      industryType: claim.industryType,
     });
 
     // Write guardrails audit log (non-blocking)

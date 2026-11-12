@@ -753,6 +753,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       scheduledFor: new Date(),
       carrierActiveCounts,
       practiceNpi: guardContext?.practice?.npi ?? null,
+      industryType: next.claim.industryType,
       practiceTimezone: guardContext?.practice?.timezone,
       staffAvailabilityRequired: guardContext?.humanAssisted ?? false,
     });

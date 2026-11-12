@@ -18,6 +18,8 @@ import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
 import { canadianHolidayName, isWithinPracticeStaffHours } from './callCalendar.js';
+import { requiresPracticeNpi } from './lineRequirements.js';
+import type { IndustryType } from '../types/industry-claims.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -422,13 +424,15 @@ export async function validateDispatch(
      * Omit to skip the check; pass null or an empty string when the practice has none on file.
      */
     practiceNpi?: string | null;
+    /** Line of business of the claim. Decides which practice identifiers are required. Defaults to DENTAL. */
+    industryType?: IndustryType;
     /** The practice's IANA time zone, for the staff-hours check. Omit to skip the check. */
     practiceTimezone?: string;
     /** True in human-assisted mode: a staff member must be there to take the transfer when a rep answers. */
     staffAvailabilityRequired?: boolean;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, practiceNpi, practiceTimezone, staffAvailabilityRequired } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, practiceNpi, industryType, practiceTimezone, staffAvailabilityRequired } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -480,7 +484,7 @@ export async function validateDispatch(
 
   // 7. The practice must have an NPI the phone menu can accept. Without one the
   // voice agent reaches the provider-number prompt and cannot answer it.
-  if (practiceNpi !== undefined) {
+  if (practiceNpi !== undefined && requiresPracticeNpi(industryType ?? 'DENTAL')) {
     const npiProblem = practiceNpiProblem(practiceNpi);
     if (npiProblem) {
       return { allowed: false, code: 'MISSING_PRACTICE_IDENTIFIERS', reason: npiProblem };

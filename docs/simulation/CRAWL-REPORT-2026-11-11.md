@@ -152,3 +152,14 @@ Answered 200 with no login (check each is meant to be public):
 - `/api/health/metrics`
 - `/api/health/ready`
 
+## Corrections (2026-11-12)
+
+Three findings above were wrong or overstated. Found by reading the recorded screenshots and the code.
+
+| Earlier claim | What is true | State now |
+|---|---|---|
+| `/api/diagnostics` is public | It already returned 401 when `NODE_ENV=production`. The self-test server runs with `NODE_ENV` unset, which counted as non-production. No Dockerfile or `fly.toml` in the repo sets `NODE_ENV`, so a deployed app's protection is UNVERIFIED. | Fixed: open only when `NODE_ENV` is explicitly `test` or `development`; unset is treated as production. Also applied to the `/api/health/metrics` redaction. |
+| Accountant and group admin pages "crash" | They are access denials shown under "Something went wrong": "No auditor grant for this practice" (accountant) and "Role group_admin does not have access to patient PHI endpoints" (group admin). The group-admin pages are not in that role's sidebar, only reachable by URL. The accountant's own sidebar does link to the report pages, which deny without a grant. | Fixed the message: a denial now says "You do not have access to this page", what to do, and links home. The accountant flow gap remains: nothing tells an owner that an invited accountant needs a grant. |
+| Fonts never apply because of a CSP conflict | Confirmed, and the cause is exact: helmet adds `script-src-attr 'none'`, which blocks the inline `onload` on the Google Fonts link, so the stylesheet stays `media="print"`. | Fixed: plain stylesheet link, plus a test that fails on any inline handler in `index.html`. |
+| CARRIER_BLOCK across practices is broken | The code deliberately scopes a block to the practice and its sibling locations in the same organization (comments in `adapter.ts` say so). Blocking every customer when one practice is refused is a product decision, not a clear bug. | Not changed. Decision for Khalid. |
+| NPI-before-dial rule (PRD epic status doc) | Was keyed to every line. | Fixed: required for dental and paramedical lines only (`src/carriers/lineRequirements.ts`); other lines demand no identifier until their payer packs exist. |

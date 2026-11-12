@@ -268,6 +268,17 @@ describe('CarrierAdapter', () => {
         }
       });
 
+      it('requires the NPI for health lines and not for adjuster or program lines', async () => {
+        const missing = { ...base, scheduledFor: workday, practiceNpi: null };
+        for (const industryType of ['DENTAL', 'PARAMEDICAL_PHYSIO'] as const) {
+          expect(await validateDispatch(makePrisma(), { ...missing, industryType })).toMatchObject({ allowed: false, code: 'MISSING_PRACTICE_IDENTIFIERS' });
+        }
+        for (const industryType of ['AUTO_COLLISION', 'PROPERTY_RESTORATION', 'DME', 'ROOFING_TRADES', 'NEMT'] as const) {
+          const r = await validateDispatch(makePrisma(), { ...missing, industryType });
+          expect(r.code).not.toBe('MISSING_PRACTICE_IDENTIFIERS');
+        }
+      });
+
       it('allows a digit-only NPI, with spaces or dashes', async () => {
         for (const npi of ['12345', '1234-567-890', '1234 567']) {
           const r = await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, practiceNpi: npi });
