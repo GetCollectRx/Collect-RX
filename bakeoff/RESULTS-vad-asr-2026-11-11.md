@@ -35,4 +35,4 @@ Run 2026-11-11, seed 1. **Quick run only:** 20 scripted pickups, 40 announcement
 |---|---|
 | Decide the ASR backend: a Deepgram key and a spend cap (the cost is small per minute), or a local whisper-class model brought in another way | Khalid |
 | Run the phrase gate with that backend on the same corpus | The above |
-| Test an announcement fingerprint (repeated identical audio) | Real recordings, so the carrier terms check first |
+| Test an announcement fingerprint (repeated identical audio) | Real calls in a pilot, in shadow mode |

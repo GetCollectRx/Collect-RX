@@ -29,7 +29,7 @@ No free detector tested clears the PRD thresholds on this proxy corpus. A word-b
 | Idea | Needs |
 |---|---|
 | A production recogniser with streaming partials (Deepgram Nova-3) | Key and spend cap. May improve accuracy under music. Will not remove the vocabulary overlap. |
-| Fingerprint repeated announcements (carriers play identical audio) | Real recordings (carrier terms check first) |
-| Acoustic cues around pickup (music cuts abruptly, line noise, tone change) | Real recordings |
+| Fingerprint repeated announcements (carriers play identical audio) | Real calls in a pilot, in shadow mode |
+| Acoustic cues around pickup (music cuts abruptly, line noise, tone change) | Real calls in a pilot, in shadow mode |
 | A fixed, content-free prompt that a person answers and a recording does not | A product and compliance decision. The PRD allows one fixed line only in the autonomous ending. |
 | Longer decision windows with the missed-call path as the safety net | A product decision on how many seconds a rep will wait |

@@ -38,6 +38,6 @@ So any hold music above about -44 dBFS fires it, and a line carrying music fires
 
 | Step | Needs |
 |---|---|
-| Record real hold audio (carrier music, announcements, rep pickups) in a way that is allowed | A decision, and the carrier terms check from the PRD. Not done. |
+| Validate on real staff-handled calls in shadow mode during a pilot: the detector logs decisions, timestamps and numeric features, no audio retained, compared with the staff-transfer time and Claims_Scribe's record. Needs a live pilot. | A live call path and a pilot practice. Not started. |
 | Add an ASR-based detector and rerun | An ASR engine and a spend decision if it is a paid service |
 | Raise the run to the full 100 hold hours for any detector that passes at 20 | Time only |

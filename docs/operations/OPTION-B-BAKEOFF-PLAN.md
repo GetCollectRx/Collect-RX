@@ -54,3 +54,9 @@ Estimated total for the live part: about $5 to $10 (an estimate, not a measureme
 ## Parallel Vapi squad build
 
 Both tracks run. Squad work continues under the PRD epics (alert flow, call windows, metering in calls, practice proof). Anything that depends on the stream design (Epics 2 and 3) is built behind an interface so either option can plug in.
+
+## Real-audio validation (decided 2026-11-12)
+
+Real carrier audio is learned from the product's own staff-handled calls (ADR 0003: Claims_Scribe logs every one, and per-carrier profiles already include a HOLD_BEHAVIOR category). Nothing is recorded separately, no call is ended early, and no separate carrier-terms check is part of this plan.
+
+Until a pilot runs real calls, the detector evidence stays synthetic and the bake-off outcome is "not yet shown to work". When a pilot exists, the detector runs in shadow mode beside the production listener: per call it logs its decision times and numeric features, never audio, and the result is scored against the staff-transfer time and the Claims_Scribe record.
