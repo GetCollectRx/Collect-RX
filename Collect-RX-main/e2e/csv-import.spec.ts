@@ -21,7 +21,8 @@ test.describe('CSV import wizard', () => {
       timeout: 20_000,
     })
     await expect(page.getByRole('navigation', { name: 'Import steps' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Download sample template' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Download blank template' })).toBeVisible()
+    await expect(page.getByText('claim_number', { exact: true })).toBeVisible()
 
     await page.locator('#csv-file').setInputFiles(sampleCsv)
 

@@ -1,0 +1,212 @@
+{
+  "seed": 1,
+  "corpus": "synthetic proxy (espeak-ng speech, synthesised chords); see README",
+  "detectors": {
+    "silero-vad+whisper-small.en-phrase-gate-1.5s": {
+      "pickups": {
+        "detected_within_2s": 5,
+        "late": 7,
+        "missed": 0,
+        "false_before_pickup": 8,
+        "latencyMedianSeconds": 1.77,
+        "n": 20,
+        "passRate": 0.25,
+        "byMusicLevel": {
+          "music -28 to -22 dBFS": {
+            "n": 4,
+            "pass": 0
+          },
+          "music -22 to -14 dBFS": {
+            "n": 4,
+            "pass": 0
+          },
+          "music -38 to -28 dBFS": {
+            "n": 7,
+            "pass": 2
+          },
+          "music -50 to -38 dBFS": {
+            "n": 5,
+            "pass": 3
+          }
+        }
+      },
+      "announcements": {
+        "n": 40,
+        "falsePickups": 30,
+        "falseRate": 0.75,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "n": 10,
+            "false": 8
+          },
+          "music -22 to -14 dBFS": {
+            "n": 13,
+            "false": 8
+          },
+          "music -28 to -22 dBFS": {
+            "n": 2,
+            "false": 2
+          },
+          "music -38 to -28 dBFS": {
+            "n": 8,
+            "false": 5
+          },
+          "no music": {
+            "n": 7,
+            "false": 7
+          }
+        }
+      },
+      "holdHoursMusicOnly": {
+        "holdHours": 5.0,
+        "falsePickups": 2,
+        "per100Hours": 40.0,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "hours": 2.21,
+            "falsePickups": 2
+          },
+          "music -22 to -14 dBFS": {
+            "hours": 1.02,
+            "falsePickups": 0
+          },
+          "music -38 to -28 dBFS": {
+            "hours": 0.51,
+            "falsePickups": 0
+          },
+          "music -28 to -22 dBFS": {
+            "hours": 1.36,
+            "falsePickups": 0
+          }
+        }
+      },
+      "holdHoursWithAnnouncements": {
+        "holdHours": 5.0,
+        "falsePickups": 149,
+        "per100Hours": 2980.0,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "hours": 2.55,
+            "falsePickups": 81
+          },
+          "music -38 to -28 dBFS": {
+            "hours": 1.36,
+            "falsePickups": 49
+          },
+          "music -28 to -22 dBFS": {
+            "hours": 0.17,
+            "falsePickups": 2
+          },
+          "music -22 to -14 dBFS": {
+            "hours": 1.02,
+            "falsePickups": 17
+          }
+        }
+      },
+      "wallSeconds": 373.3
+    },
+    "silero-vad+whisper-small.en-phrase-gate-3s": {
+      "pickups": {
+        "detected_within_2s": 0,
+        "late": 14,
+        "missed": 0,
+        "false_before_pickup": 6,
+        "latencyMedianSeconds": null,
+        "n": 20,
+        "passRate": 0.0,
+        "byMusicLevel": {
+          "music -28 to -22 dBFS": {
+            "n": 4,
+            "pass": 0
+          },
+          "music -22 to -14 dBFS": {
+            "n": 4,
+            "pass": 0
+          },
+          "music -38 to -28 dBFS": {
+            "n": 7,
+            "pass": 0
+          },
+          "music -50 to -38 dBFS": {
+            "n": 5,
+            "pass": 0
+          }
+        }
+      },
+      "announcements": {
+        "n": 40,
+        "falsePickups": 17,
+        "falseRate": 0.425,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "n": 10,
+            "false": 3
+          },
+          "music -22 to -14 dBFS": {
+            "n": 13,
+            "false": 7
+          },
+          "music -28 to -22 dBFS": {
+            "n": 2,
+            "false": 2
+          },
+          "music -38 to -28 dBFS": {
+            "n": 8,
+            "false": 4
+          },
+          "no music": {
+            "n": 7,
+            "false": 1
+          }
+        }
+      },
+      "holdHoursMusicOnly": {
+        "holdHours": 5.0,
+        "falsePickups": 2,
+        "per100Hours": 40.0,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "hours": 2.21,
+            "falsePickups": 2
+          },
+          "music -22 to -14 dBFS": {
+            "hours": 1.02,
+            "falsePickups": 0
+          },
+          "music -38 to -28 dBFS": {
+            "hours": 0.51,
+            "falsePickups": 0
+          },
+          "music -28 to -22 dBFS": {
+            "hours": 1.36,
+            "falsePickups": 0
+          }
+        }
+      },
+      "holdHoursWithAnnouncements": {
+        "holdHours": 5.0,
+        "falsePickups": 129,
+        "per100Hours": 2580.0,
+        "byMusicLevel": {
+          "music -50 to -38 dBFS": {
+            "hours": 2.55,
+            "falsePickups": 65
+          },
+          "music -38 to -28 dBFS": {
+            "hours": 1.36,
+            "falsePickups": 46
+          },
+          "music -28 to -22 dBFS": {
+            "hours": 0.17,
+            "falsePickups": 2
+          },
+          "music -22 to -14 dBFS": {
+            "hours": 1.02,
+            "falsePickups": 16
+          }
+        }
+      },
+      "wallSeconds": 439.6
+    }
+  }
+}

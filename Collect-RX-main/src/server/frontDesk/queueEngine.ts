@@ -23,6 +23,7 @@ import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
+import { inFlightHumanAssistedCalls, readyStaffCount } from './staffPresence.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
@@ -440,6 +441,8 @@ async function settleBlockedCandidate(
       ]);
       return 'skip';
     case 'OUTSIDE_CALL_WINDOW':
+    case 'OUTSIDE_STAFF_HOURS':
+    case 'NO_STAFF_AVAILABLE':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
@@ -451,6 +454,17 @@ async function settleBlockedCandidate(
         DEFER_CLAIM_AGE_MS,
         'CLAIM_TOO_YOUNG',
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
+      return 'skip';
+    case 'MISSING_PRACTICE_IDENTIFIERS':
+      // Every claim for this practice is blocked by the same setting, and each
+      // row says what to fix instead of sitting unexplained.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        DEFER_STAFF_ACTION_MS,
+        'MISSING_PRACTICE_IDENTIFIERS',
+        guardReason ?? 'Add the practice NPI in practice settings so carrier phone menus can be answered.',
       );
       return 'skip';
     case 'CARRIER_CONCURRENCY_LIMIT':
@@ -715,6 +729,23 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       }
     }
 
+    // Practice facts the dispatch guard needs, read once per tick: the NPI that
+    // phone menus ask for, and the zone and mode that decide whether staff are
+    // there to take a transfer.
+    const guardContext =
+      dispatchable.length === 0
+        ? null
+        : {
+            practice: await prisma.practice.findUnique({ where: { id: practiceId }, select: { npi: true, timezone: true } }),
+            humanAssisted: effectiveHumanAssisted(
+              await planTierForPractice(prisma, practiceId),
+              (await getPracticeSettings(prisma, practiceId)).humanAssistedMode,
+            ),
+          };
+    // Read presence once per tick, and only for human-assisted practices. Calls dialed earlier in this same
+    // tick are counted through the in-flight number refreshed inside the loop below.
+    const readyStaff = guardContext?.humanAssisted ? await readyStaffCount(prisma, practiceId) : undefined;
+
     for (const next of dispatchable) {
     const attemptsSoFar = next.attempts;
     const guard = await validateDispatch(prisma, {
@@ -726,6 +757,12 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
       carrierActiveCounts,
+      practiceNpi: guardContext?.practice?.npi ?? null,
+      industryType: next.claim.industryType,
+      practiceTimezone: guardContext?.practice?.timezone,
+      staffAvailabilityRequired: guardContext?.humanAssisted ?? false,
+      readyStaff,
+      humanAssistedInFlight: readyStaff === undefined ? undefined : await inFlightHumanAssistedCalls(prisma, practiceId),
     });
 
     if (!guard.allowed) {

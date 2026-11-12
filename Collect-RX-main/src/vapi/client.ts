@@ -35,6 +35,7 @@
 import { CarrierId } from '@prisma/client';
 import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
 import { vapiCircuitBreaker } from './circuitBreaker.js';
+import { vapiBaseUrl } from './baseUrl.js';
 
 /**
  * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
@@ -228,7 +229,7 @@ export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
 
 // Overridable so test harnesses can point dispatch at a local mock instead of
 // live Vapi. Production deployments leave this unset.
-const VAPI_BASE_URL = (process.env.VAPI_BASE_URL || 'https://api.vapi.ai').replace(/\/$/, '');
+const VAPI_BASE_URL = vapiBaseUrl();
 
 function getApiKey(): string {
   const key = process.env.VAPI_API_KEY;

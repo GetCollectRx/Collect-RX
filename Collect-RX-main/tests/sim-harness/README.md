@@ -37,3 +37,18 @@ The report is written to `$SIM_RUN_DIR/<run id>/REPORT.md` (default: the OS temp
 ## What Stage 1 cannot prove
 
 Pickup timing, hold detection, false pickups, scribe hearing after transfer, and anything said by the live Vapi prompts. Those need Stage 2 (a live mock carrier) and the PRD thresholds.
+
+## Office day suite
+
+`officeDay.e2e.test.ts` plays the half of a dental office day that Stage 1 does not: a messy PMS export (BOM, CRLF, awkward names, carrier spellings, one bad row among good ones), claims at the 29, 30, 90 and 91 day boundaries, the Eastern call window including holidays and a western office, calls that never connect, retry spacing and escalation, a carrier block and its recovery, two practices sharing one carrier, webhook hygiene (bad signature, duplicates, out of order), a re-import after a claim closed, authorization and voice gates, TELUS routing, and a whole-day PHI sweep. Fixtures live in `officeFixtures.ts` and are synthetic.
+
+```bash
+cd Collect-RX-main
+DATABASE_URL=<throwaway test database> SIM_RUN_DIR=/tmp/crx-sim-runs npx vitest run tests/sim-harness/officeDay.e2e.test.ts
+```
+
+Same safety rules as Stage 1: throwaway database only, nothing leaves the process, teardown scans the whole database for residue. A FAIL means a documented rule was broken. A FINDING is an observed behaviour a pilot practice would hit that no document calls intended. The queue tick works every practice in the database, so the suite parks other practices' queue rows before each tick to attribute dials correctly.
+
+## Stage 2
+
+`stage2/` holds the Carrier Twin: a scripted phone system the real Vapi squad can dial, with mutations that depart from what `carriers/*.json` believes and scoring against the twin's own ground truth. See [`stage2/README.md`](stage2/README.md) for what is verified offline and what still needs a live run.

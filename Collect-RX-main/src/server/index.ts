@@ -86,7 +86,7 @@ import {
   assertPhiEncryptionAtRestConfigured,
 } from './crypto/phiEncryptionKey.js';
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
-import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken } from './healthMetricsExposure.js';
+import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken, isOpenEnvironment } from './healthMetricsExposure.js';
 import { getEventLoopHealth } from './observability/eventLoopHealth.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
@@ -488,7 +488,7 @@ app.get('/api/health/live', healthLimiter, (_req: Request, res: Response) => {
 // detail — in production it is unreachable at all without a valid
 // HEALTH_METRICS_TOKEN bearer, even if the token itself was never configured.
 app.get('/api/diagnostics', healthLimiter, async (req: Request, res: Response) => {
-  if (process.env.NODE_ENV === 'production' && !hasValidHealthMetricsToken(req)) {
+  if (!isOpenEnvironment() && !hasValidHealthMetricsToken(req)) {
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return;
   }

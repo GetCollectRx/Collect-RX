@@ -13,7 +13,7 @@
 import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
+import { vapiClient, VapiAmbiguousOutcomeError, getHumanAssistedSquadId } from '../vapi/client';
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
@@ -36,8 +36,8 @@ import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
-import { practiceHasFeature } from '../server/plans/practiceEntitlements.js';
-import { FEATURES, featureLockedMessage } from '../billing/entitlements.js';
+import { practiceHasFeature, planTierForPractice } from '../server/plans/practiceEntitlements.js';
+import { FEATURES, featureLockedMessage, effectiveHumanAssisted } from '../billing/entitlements.js';
 import multer from 'multer';
 import { blockAuditorWrites } from '../server/middleware/requireUserRole.js';
 import { preserveRlsAcrossMiddleware } from '../server/db/rlsContext.js';
@@ -448,6 +448,9 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
       skipped: result.skipped,
       failed: result.failed,
       errors: result.errors,
+      status: result.status,
+      quarantined: result.quarantined,
+      blankRowsIgnored: result.blankRowsIgnored,
       runId: result.runId,
       paymentsVerified: result.paymentsVerified,
       dollarsRecoveredSyncVerified: result.dollarsRecoveredSyncVerified,
@@ -584,8 +587,11 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const attemptsSoFar = claim.queueEntry?.attempts ?? claim.callAttempts.length;
     const practiceId = claim.practiceId;
 
+    const guardPractice = await prisma.practice.findUnique({ where: { id: practiceId }, select: { npi: true } });
+
     // Validate all dispatch rules (non-race-prone checks: CARRIER_BLOCK,
-    // days outstanding, business hours)
+    // days outstanding, business hours, practice NPI). Staff hours are not checked
+    // here: a staff member just asked for this call.
     const guard = await validateDispatch(prisma, {
       practiceId,
       claimId,
@@ -594,6 +600,8 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       attemptsSoFar,
       claimStatus: claim.status,
       scheduledFor: new Date(),
+      practiceNpi: guardPractice?.npi ?? null,
+      industryType: claim.industryType,
     });
 
     // Write guardrails audit log (non-blocking)
@@ -788,6 +796,13 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const carrierSettings = practiceSettings.carrierConfigs.find(
       (c) => c.carrierId === claim.carrierId,
     );
+    // V1: practice staff speak with the rep. Same rule as the queue engine: a
+    // human-assisted practice never dials the fully-autonomous squad, whether
+    // the call comes from the queue or from "Call now".
+    const humanAssisted = effectiveHumanAssisted(
+      await planTierForPractice(prisma, practiceId),
+      practiceSettings.humanAssistedMode,
+    );
 
     // ── PHI RESOLUTION ────────────────────────────────────────────────────────
     // Detokenize UUID → real PHI. PHI goes to Vapi as ephemeral call variables
@@ -899,6 +914,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         practicePhone,
         languagePreference:     carrierSettings?.languagePreference ?? 'en',
         carrierIvrInstructions,
+        squadId:                humanAssisted ? getHumanAssistedSquadId() : undefined,
         // Stable for this attempt — see VapiAmbiguousOutcomeError below.
         idempotencyKey:         `${claimId}:${attemptNumber}`,
       });
@@ -941,6 +957,9 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
           initiatedAt: new Date(),
           liveState: 'dialing',
           activeAgent: 'IVR_Navigator',
+          // Keeps the call out of the autonomous learning loop and lets the
+          // human-assisted outcome resolver read the scribe's structured log.
+          isHumanAssisted: humanAssisted,
         },
       });
     } catch (persistenceError) {

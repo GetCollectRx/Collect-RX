@@ -22,6 +22,28 @@ import {
 
 type Step = 'prepare' | 'preview' | 'result'
 
+interface AgingProblem {
+  code: string
+  field: string | null
+  message: string
+  suggestion?: string
+}
+
+interface AgingSpecField {
+  id: string
+  column: string
+  label: string
+  meaning: string
+  example: string
+  alsoAccepted: string[]
+}
+
+interface AgingCheck {
+  accepted: boolean
+  rowCount: number
+  problems: AgingProblem[]
+}
+
 const STEPS: { id: Step; label: string }[] = [
   { id: 'prepare', label: 'Prepare' },
   { id: 'preview', label: 'Preview' },
@@ -39,6 +61,9 @@ export default function CsvImportPage() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<ReturnType<typeof previewCsvFile> | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [check, setCheck] = useState<AgingCheck | null>(null)
+  const [spec, setSpec] = useState<{ fields: AgingSpecField[]; templateHeader: string } | null>(null)
   const [result, setResult] = useState<{
     imported: number
     skipped: number
@@ -59,8 +84,10 @@ export default function CsvImportPage() {
     Promise.all([
       apiFetchJson<{ vendors: PmsVendorCatalogEntry[] }>('/api/pms/catalog').catch(() => ({ vendors: [] })),
       apiFetchJson<{ success: boolean; data: PracticePmsInfo }>('/api/pms/context').catch(() => ({ success: false, data: null })),
+      apiFetchJson<{ success: boolean; data: { fields: AgingSpecField[]; templateHeader: string } }>('/api/admin/sync/aging-report-spec').catch(() => null),
     ])
-      .then(([cat, ctx]) => {
+      .then(([cat, ctx, specRes]) => {
+        if (specRes?.data) setSpec(specRes.data)
         setCatalog(cat.vendors ?? [])
         setPmsContext(ctx.data ?? null)
         if (ctx.data?.vendorId) setVendor(ctx.data.vendorId)
@@ -72,6 +99,8 @@ export default function CsvImportPage() {
   const onFilePick = useCallback(async (f: File | null) => {
     setFile(f)
     setResult(null)
+    setCheck(null)
+    setError(null)
     if (!f) {
       setPreview(null)
       setStep('prepare')
@@ -81,10 +110,34 @@ export default function CsvImportPage() {
     const p = previewCsvFile(text)
     setPreview(p)
     setStep('preview')
+    // The server decides whether the file is accepted, using the same rules the import applies.
+    setChecking(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      const r = await apiFetch('/api/admin/sync/import-check', { method: 'POST', body: fd })
+      const j = (await r.json().catch(() => ({}))) as { error?: string; data?: AgingCheck }
+      if (!r.ok || !j.data) throw new Error(j.error ?? 'Could not check the file')
+      setCheck(j.data)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setChecking(false)
+    }
   }, [])
 
+  const downloadTemplate = () => {
+    if (!spec) return
+    const url = URL.createObjectURL(new Blob([`${spec.templateHeader}\n`], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'collectrx-aging-report-template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const runImport = async () => {
-    if (!file || !preview?.ready) return
+    if (!file || !check?.accepted) return
     setUploading(true)
     setError(null)
     const fd = new FormData()
@@ -102,7 +155,14 @@ export default function CsvImportPage() {
         claimsClosedAsMissing?: number
         missingClaimsWarning?: string | null
       }
-      if (!r.ok) throw new Error(j.error ?? 'Import failed')
+      if (!r.ok) {
+        const refused = j as { code?: string; problems?: AgingProblem[] }
+        if (refused.code === 'AGING_REPORT_REJECTED' && Array.isArray(refused.problems)) {
+          setCheck({ accepted: false, rowCount: preview?.rowCount ?? 0, problems: refused.problems })
+          throw new Error('This file was not accepted. Nothing was imported.')
+        }
+        throw new Error(j.error ?? 'Import failed')
+      }
       await apiFetch('/api/work-queue/sync', { method: 'POST' }).catch(() => undefined)
 
       let rowErrors: { row?: number; message?: string }[] = []
@@ -146,7 +206,7 @@ export default function CsvImportPage() {
         <div className="px-6 pt-6 pb-5 border-b border-gray-100 dark:border-gray-800/60">
           <h1 className="page-title">Import claims from CSV</h1>
           <p className="page-subtitle mt-0.5">
-            Upload an outstanding-claims export from your practice management system. CollectRx maps common column names automatically.
+            Upload your insurance aging report as a CSV. The file must have the columns listed below, filled in, or it will not be accepted.
           </p>
         </div>
 
@@ -171,14 +231,42 @@ export default function CsvImportPage() {
               />
               <div className="space-y-4 text-sm">
                 <ol className="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
-                  <li>Export <strong>outstanding insurance claims</strong> (not patient balances) from your PMS.</li>
-                  <li>Include claim id, carrier, outstanding amount, and procedure codes if available.</li>
-                  <li>Save as <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">.csv</code> (UTF-8).</li>
+                  <li>In your practice software, run the <strong>insurance aging report</strong> (outstanding insurance claims, not patient balances), one row per claim.</li>
+                  <li>Export it as a <strong>CSV</strong>. The first row must be the column names.</li>
+                  <li>Make sure every column in the table below is there and filled in. Rename a column if your report calls it something else.</li>
+                  <li>Drop the file below. We check it before anything is imported. If a column is missing, empty or unclear, the whole file is refused and we tell you what to fix.</li>
                 </ol>
+                {spec && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <Thead>
+                        <Tr>
+                          <Th>Column name</Th>
+                          <Th>What it is</Th>
+                          <Th>Example</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {spec.fields.map((f) => (
+                          <Tr key={f.id}>
+                            <Td className="align-top"><code className="text-xs">{f.column}</code></Td>
+                            <Td className="align-top text-xs">
+                              {f.meaning}
+                              {f.alsoAccepted.length > 0 && (
+                                <span className="block text-gray-500 mt-1">Also accepted: {f.alsoAccepted.slice(0, 8).join(', ')}</span>
+                              )}
+                            </Td>
+                            <Td className="align-top text-xs">{f.example}</Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  <a href="/sample-claims.csv" download className="crx-btn-secondary inline-flex items-center text-sm">
-                    Download sample template
-                  </a>
+                  <Button variant="secondary" onClick={downloadTemplate} disabled={!spec}>
+                    Download blank template
+                  </Button>
                   <Link to="/settings" className="crx-btn-ghost inline-flex items-center text-sm">
                     Practice settings (PMS vendor)
                   </Link>
@@ -234,22 +322,24 @@ export default function CsvImportPage() {
                 subtitle={`${preview.rowCount} data rows detected in ${file.name}`}
               />
               <div className="space-y-4">
-                {preview.missingRequired.length > 0 && (
+                {checking && <p className="text-sm text-gray-600">Checking the file…</p>}
+                {check && !check.accepted && (
                   <div className="crx-alert px-4 py-3 text-sm" role="alert">
-                    <p className="font-semibold">Missing required columns</p>
-                    <ul className="mt-1 list-disc pl-4">
-                      {preview.missingRequired.map((m) => (
-                        <li key={m}>{m}</li>
+                    <p className="font-semibold">This file will not be accepted. Fix the following and upload it again.</p>
+                    <ul className="mt-1 list-disc pl-4 space-y-1">
+                      {check.problems.map((p, i) => (
+                        <li key={`${p.code}-${p.field ?? i}`}>
+                          {p.message}
+                          {p.suggestion && <span className="block text-xs">{p.suggestion}</span>}
+                        </li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {preview.missingRecommended.length > 0 && preview.ready && (
-                  <p className="text-xs text-gray-500">
-                    Optional columns not found: {preview.missingRecommended.join(', ')}. Import can still proceed.
-                  </p>
+                {check?.accepted && (
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">The file has every required column. Rows with a problem are held back with a reason, and the rest import.</p>
                 )}
-                {preview.ready && (
+                {check?.accepted && (
                   <p className="text-sm text-gray-600">
                     Mapped columns: {preview.normalizedHeaders.slice(0, 8).join(', ')}
                     {preview.normalizedHeaders.length > 8 ? '…' : ''}
@@ -291,10 +381,10 @@ export default function CsvImportPage() {
                   </span>
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void runImport()} disabled={!preview.ready || uploading}>
+                  <Button onClick={() => void runImport()} disabled={!check?.accepted || checking || uploading}>
                     {uploading ? 'Importing…' : `Import ${preview.rowCount} claims`}
                   </Button>
-                  <Button variant="secondary" onClick={() => { setStep('prepare'); setFile(null); setPreview(null) }}>
+                  <Button variant="secondary" onClick={() => { setStep('prepare'); setFile(null); setPreview(null); setCheck(null) }}>
                     Choose different file
                   </Button>
                 </div>

@@ -24,6 +24,8 @@ export async function createPracticeForTests(prisma: PrismaClient) {
       data: {
         name: `Fixture ${Date.now()}`,
         timezone: 'America/Toronto',
+        // Dispatch refuses a practice with no NPI, because phone menus ask for one. Synthetic digits only.
+        npi: '9900001',
         passwordHash,
       },
     }),

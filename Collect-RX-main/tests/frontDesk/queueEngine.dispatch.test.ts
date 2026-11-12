@@ -166,6 +166,8 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         practiceAddress: null,
       })),
     },
+    // Dispatch needs a ready person in human-assisted mode; these tests are about dispatch mechanics.
+    staffPresence: { count: vi.fn(async () => 1) },
     practiceDeskState: {
       findUnique: vi.fn(async () => null),
       upsert: vi.fn(async () => ({})),

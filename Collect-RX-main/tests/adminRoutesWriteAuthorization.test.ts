@@ -88,4 +88,24 @@ function cookieHeaderFrom(res: request.Response): string {
       await cleanupPracticeWithUsers(prisma, manager.practice.id);
     }
   });
+
+  it('an NPI that carrier phone menus cannot accept is refused at the settings screen, where it can be fixed', async () => {
+    const manager = await createPracticeWithOwnerForTests(prisma, { role: 'office_manager' });
+    try {
+      const login = await request(app).post('/api/auth/login').send({ email: manager.email, password: manager.password });
+      const cookie = cookieHeaderFrom(login);
+      const put = (npi: string) => request(app).put('/api/admin/practice-identity').set('Cookie', cookie).send({ npi });
+
+      const letters = await put('ABC-DEF');
+      expect(letters.status).toBe(400);
+      expect(letters.body.error).toMatch(/digits only/u);
+      expect((await put('123')).status).toBe(400);
+      expect((await put('9900001')).status).toBe(200);
+      expect((await request(app).get('/api/admin/practice-identity').set('Cookie', cookie)).body.npi).toBe('9900001');
+      // Clearing it stays possible; dispatch then blocks the practice with a reason instead.
+      expect((await put('')).status).toBe(200);
+    } finally {
+      await cleanupPracticeWithUsers(prisma, manager.practice.id);
+    }
+  });
 });

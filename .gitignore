@@ -36,3 +36,13 @@ test-results/
 
 # Local Redis snapshot (written to whatever cwd redis-server was launched from)
 dump.rdb
+
+# Contained application self-test output
+Collect-RX-main/self-test/report/
+
+# Bake-off generated output (reproducible from seed)
+bakeoff/.speech-cache/
+bakeoff/corpus-sample/
+bakeoff/results.json
+bakeoff/__pycache__/
+bakeoff/models/
