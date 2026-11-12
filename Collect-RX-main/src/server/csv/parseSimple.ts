@@ -10,7 +10,7 @@ import { CSV_LIMITS } from './csvValidator';
  *
  * SECURITY: CSV injection prevention (=, +, -, @, %) and size/row limits enforced.
  */
-const HEADER_ALIASES: Record<string, string> = {
+export const HEADER_ALIASES: Record<string, string> = {
   // Patient identity
   first_name: 'patient_first_name',
   fname: 'patient_first_name',
@@ -64,6 +64,18 @@ const HEADER_ALIASES: Record<string, string> = {
  */
 function canonicalFieldName(normalized: string): string {
   return HEADER_ALIASES[normalized] ?? normalized;
+}
+
+/**
+ * The first row's column names after the same normalization and alias mapping parseSimpleCsv applies,
+ * duplicates kept. Lets a caller see two columns collapsing onto one name, which a row object hides.
+ */
+export function readCsvHeaders(text: string): string[] {
+  const [headerRecord] = parseCsvRecords(text);
+  if (!headerRecord) return [];
+  return headerRecord.map((h) =>
+    canonicalFieldName(h.trim().toLowerCase().replace(/\s+/g, '_').replace(/\u201D/g, '')),
+  );
 }
 
 /**

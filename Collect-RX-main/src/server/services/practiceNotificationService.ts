@@ -10,7 +10,7 @@ import { runWithPracticeRls } from '../db/rlsContext.js';
 
 export interface PracticeNotification {
   practiceId: string;
-  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'LIVE_CALL_NEEDS_STAFF';
+  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'LIVE_CALL_NEEDS_STAFF' | 'PMS_IMPORT_FAILED';
   subject: string;
   message: string;
   claimId?: string;

@@ -41,7 +41,7 @@ This replaces the framing of `PRODUCT-STATUS-2026-11-11.md`, which audited the a
 | No calls to real carriers during build | Respected. My earlier question about real-carrier probes is withdrawn. |
 | Carrier AI-caller terms check as a launch gate | Not started. |
 | Vertical lanes on one platform | Types model 7 verticals. Only dental can be dialed. Non-dental claims are dashboard-only (`carrierId other` is skipped by the queue engine and refused by the Vapi client). |
-| Claim ingest | **Not in the PRD.** CSV upload works. The AbelDent agent is the only automatic feed, is AbelDent-specific, and is untested. |
+| Claim ingest | **Not in the PRD.** CSV is the decision of record. 2026-11-12: strict in-app file drop with instructions built (a file with a required column missing, empty or ambiguous is refused whole). The AbelDent agent is legacy and untested. No stale-upload alert yet. |
 
 ## Consequences for earlier work
 

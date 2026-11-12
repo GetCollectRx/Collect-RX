@@ -4,6 +4,8 @@
 
 CSV is the primary ingest path. Evidence in the repo: `docs/operations/PATH-TO-DELIVERY.md` item P4-07 ("PMS decision: CSV-first default"), `Practice.recoveryMode` defaulting to `CSV_FIRST`, `docs/csv-ar-rollout.md` labelling `PMS_WRITEBACK` the "Legacy AbelDent/desktop sync path", and the primary-path wording in `CLAUDE.md` and `docs/product/INGEST-AND-QUEUE.md`. The AbelDent desktop agent is legacy and optional. It was never run against a real install, nothing in the repo confirms AbelDent's database engine, and this proposal no longer recommends extending it. Option B below is therefore not pursued.
 
+Built 2026-11-12 (Khalid's decision): an in-app file drop with instructions and a strict header check. A file with a required column missing, empty, ambiguous or repeated is refused whole and nothing is imported (`src/server/csv/agingReportSpec.ts`, `POST /api/admin/sync/import-check`, the import screen). Still to build: stale-upload alerting and the alert lifecycle in `DECISIONS-2026-11-12.md`.
+
 The open question is not a vendor connection. It is how often a practice exports a report and uploads it, and whether that step can be scheduled or reduced.
 
 Status: PROPOSAL for Khalid's decision. Written 2026-11-11. Nothing here is built.
