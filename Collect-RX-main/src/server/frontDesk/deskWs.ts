@@ -20,6 +20,13 @@ function parseCookie(header: string | undefined, name: string): string | null {
 
 const WS_PATH = '/ws/desk';
 
+/**
+ * Roles that can take a live rep: the same people who can mark themselves available. Tokens carry the brief
+ * role, where office manager, billing coordinator and associate dentist all collapse to practice_owner.
+ * Accountants (auditor) and group admins stay out.
+ */
+const DESK_SOCKET_ROLES: ReadonlySet<string> = new Set(['front_desk', 'office_manager', 'practice_owner']);
+
 export function attachDeskWebSocket(server: Server): WebSocketServer {
   // noServer + a manually path-scoped 'upgrade' listener, not the {server, path}
   // shortcut, ws's own handleUpgrade() calls abortHandshake(socket, 400) for any
@@ -56,7 +63,7 @@ export function attachDeskWebSocket(server: Server): WebSocketServer {
     try {
       const auth = verifyAuthToken(token);
       const role = getUserRole(auth);
-      if (role !== 'front_desk') {
+      if (role === null || !DESK_SOCKET_ROLES.has(role)) {
         ws.close(4403, 'Forbidden');
         return;
       }

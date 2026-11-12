@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
+import { RepOnLineAlert } from './components/RepOnLineAlert'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
 const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
 const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
@@ -493,6 +494,7 @@ function AppShell() {
           health={sessionHealth}
           isPlatformAdmin={userRole === 'platform_admin'}
         />
+        <RepOnLineAlert />
         <DesktopConnectorBanner />
         <PlanUsageBanner />
         <main className="crx-app-content" id="main-content">

@@ -47,6 +47,7 @@ import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claims
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
 import { canTakeRep, inFlightHumanAssistedCalls, readyStaffCount } from '../server/frontDesk/staffPresence.js';
+import { broadcastDesk } from '../server/frontDesk/deskWs.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
 import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
 import { processHoldAndTransitions } from './holdTransitionProcessor.js';
@@ -301,6 +302,15 @@ async function handleStaffHandoffRequest(
         subjectId: vapiCallId,
         details: { reason: ready === 0 ? 'missed: no staff available' : 'missed: staff busy', readyStaff: ready, callsInFlight: inFlight },
       });
+      broadcastDesk(practiceId, {
+        type: 'handoff.missed',
+        data: {
+          claimRef: claim?.claimNumber ?? 'unknown',
+          carrierId: claim?.carrierId ?? null,
+          reason: ready === 0 ? 'no_staff_available' : 'staff_busy',
+          at: new Date().toISOString(),
+        },
+      });
       return missedHandoffResult;
     }
 
@@ -328,12 +338,21 @@ async function handleStaffHandoffRequest(
       console.error('[vapi-webhook] request_staff_handoff notification failed:', notifyErr);
     }
 
+    broadcastDesk(practiceId, {
+      type: 'handoff.requested',
+      data: { claimRef: claimLabel, carrierId: claim?.carrierId ?? null, amountText: amountText.trim(), at: new Date().toISOString() },
+    });
+
     // No SMS to the practice (founder decision): the ringing staff line is
     // the real-time signal, and the dashboard notification carries the context.
 
     return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
   } catch (err) {
     console.error('[vapi-webhook] request_staff_handoff failed:', err);
+    broadcastDesk(practiceId, {
+      type: 'handoff.missed',
+      data: { claimRef: claim?.claimNumber ?? 'unknown', carrierId: claim?.carrierId ?? null, reason: 'transfer_failed', at: new Date().toISOString() },
+    });
     return missedHandoffResult;
   }
 }

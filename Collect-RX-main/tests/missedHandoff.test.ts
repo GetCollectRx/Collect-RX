@@ -9,7 +9,7 @@ import {
 } from '../src/server/vapi/missedHandoff.js';
 import { validateRequiredDisclosure } from '../src/server/vapi/claimsValidatorWebhook.js';
 
-const { prismaMock, getSettings, transfer, notify } = vi.hoisted(() => ({
+const { prismaMock, getSettings, transfer, notify, broadcast, audit } = vi.hoisted(() => ({
   prismaMock: {
     practice: { findUnique: vi.fn() },
     insuranceClaim: { findUnique: vi.fn() },
@@ -20,9 +20,13 @@ const { prismaMock, getSettings, transfer, notify } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   transfer: vi.fn(),
   notify: vi.fn(),
+  broadcast: vi.fn(),
+  audit: vi.fn(),
 }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma: prismaMock }));
+vi.mock('../src/server/frontDesk/deskWs.js', () => ({ broadcastDesk: broadcast }));
+vi.mock('../src/server/audit/auditLog.js', () => ({ appendAuditLog: audit }));
 vi.mock('../src/vapi/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/vapi/client')>()),
   transferVapiCall: transfer,
@@ -116,6 +120,7 @@ describe('request_staff_handoff and log_call_outcome', () => {
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(transfer).toHaveBeenCalledWith('call-1', '4165550101');
     expect(res.body.results[0].result).toMatch(/^HANDOFF INITIATED/);
+    expect(broadcast).toHaveBeenCalledWith('practice-1', expect.objectContaining({ type: 'handoff.requested', data: expect.objectContaining({ claimRef: 'CLM-42', carrierId: 'sun_life' }) }));
   });
 
   it('does not make the agent speak when only the notification fails after a successful transfer', async () => {
@@ -132,6 +137,8 @@ describe('request_staff_handoff and log_call_outcome', () => {
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(transfer).not.toHaveBeenCalled();
     expect(res.body.results[0].result).toMatch(/Standing rule: get a reference number/);
+    expect(broadcast).toHaveBeenCalledWith('practice-1', expect.objectContaining({ type: 'handoff.missed', data: expect.objectContaining({ reason: 'no_staff_available' }) }));
+    expect(audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'frontdesk.handoff.missed', details: expect.objectContaining({ reason: 'missed: no staff available' }) }));
   });
 
   it('gives the reference-number script when every ready person is already on a call', async () => {
@@ -141,12 +148,15 @@ describe('request_staff_handoff and log_call_outcome', () => {
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(transfer).not.toHaveBeenCalled();
     expect(res.body.results[0].result).toMatch(/Standing rule: get a reference number/);
+    expect(broadcast).toHaveBeenCalledWith('practice-1', expect.objectContaining({ type: 'handoff.missed', data: expect.objectContaining({ reason: 'staff_busy' }) }));
+    expect(audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'frontdesk.handoff.missed', details: expect.objectContaining({ reason: 'missed: staff busy' }) }));
   });
 
   it('asks for a reference number with the disclosure when the transfer fails', async () => {
     getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
     transfer.mockRejectedValue(new Error('transfer failed'));
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(broadcast).toHaveBeenCalledWith('practice-1', expect.objectContaining({ type: 'handoff.missed', data: expect.objectContaining({ reason: 'transfer_failed' }) }));
     const result: string = res.body.results[0].result;
     expect(result).toMatch(/Standing rule: get a reference number/);
     expect(result).toContain('automated calling system on behalf of CollectRx Demo Practice');
