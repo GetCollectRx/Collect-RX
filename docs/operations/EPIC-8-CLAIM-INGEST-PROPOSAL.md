@@ -1,5 +1,11 @@
 # Epic 8 proposal: claim ingest with no staff time, any system, any vertical
 
+## Decision of record (added 2026-11-12)
+
+CSV is the primary ingest path. Evidence in the repo: `docs/operations/PATH-TO-DELIVERY.md` item P4-07 ("PMS decision: CSV-first default"), `Practice.recoveryMode` defaulting to `CSV_FIRST`, `docs/csv-ar-rollout.md` labelling `PMS_WRITEBACK` the "Legacy AbelDent/desktop sync path", and the primary-path wording in `CLAUDE.md` and `docs/product/INGEST-AND-QUEUE.md`. The AbelDent desktop agent is legacy and optional. It was never run against a real install, nothing in the repo confirms AbelDent's database engine, and this proposal no longer recommends extending it. Option B below is therefore not pursued.
+
+The open question is not a vendor connection. It is how often a practice exports a report and uploads it, and whether that step can be scheduled or reduced.
+
 Status: PROPOSAL for Khalid's decision. Written 2026-11-11. Nothing here is built.
 
 ## Why this epic exists
@@ -9,7 +15,7 @@ The PRD says each vertical has "claim fields and import mapping" and nothing mor
 | Feed | State |
 |---|---|
 | CSV upload in the browser | Works on the server (self-test). A person must export and upload every time. |
-| AbelDent desktop agent (reads the local SQL Server database every 15 minutes) | Hands-off, but AbelDent only, and never run against a real install. |
+| AbelDent desktop agent (reads a local database every 15 minutes, per the code) | Legacy and optional. AbelDent only, and never run against a real install. |
 | Other vendors in `pmsRegistry.ts` | Labels only. They fall back to CSV. |
 
 For the stated goal (insurance-facing businesses in all three PRD lanes, no vendor APIs), there is no feed today for any practice that is not AbelDent.
@@ -38,7 +44,7 @@ Acceptance:
 ## Recommendation (hedged)
 
 1. Build A as the default hands-off feed, with C as the guaranteed fallback so nobody is blocked.
-2. Keep B for AbelDent only, not generalised, until a customer needs another database.
+2. Do not extend B. The AbelDent agent stays as a legacy option.
 3. Run a research spike on D before committing to more agent work.
 
 Everything below the pipeline already exists and stays shared: `runPmsImportPipeline`, quarantine, work-queue sync. Only the front of the funnel changes.
