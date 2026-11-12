@@ -297,6 +297,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
           displayName: 'Synthetic front_desk',
         },
       });
+      // Human-assisted dispatch needs someone marked available to take a rep.
+      await plain.staffPresence.create({ data: { practiceId, userId: frontDesk.id, status: 'AVAILABLE' } });
     }
     log.note('Dispatch gates observed before any dial: voiceAgentEnabled (default false, VOICE_AGENT_DISABLED) and, per carrier, a Billing Agent Authorization Letter flag plus a provider number (CARRIER_NOT_AUTHORIZED). The synthetic practice sets all three in settings, as onboarding would.');
     log.record('Setup', '6', 'Gap 7 addendum: practice settings carry minimumClaimAgeDays (21 TELUS, 32 others)', 'FINDING', 'defaultCarrierConfigs() in practiceSettingsService.ts sets minimumClaimAgeDays, but validateDispatch (src/carriers/adapter.ts) never reads it; the flat 30-day floor is what gates. That is a fifth age number.');
@@ -414,8 +416,15 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     log.expect('3 Dispatch', '7', 'Call attempt starts in the live dialing state', attempt?.liveState === 'dialing' && attempt.isHumanAssisted, `liveState=${attempt?.liveState} activeAgent=${attempt?.activeAgent} isHumanAssisted=${attempt?.isHumanAssisted}`);
     log.record('3 Dispatch', '7', 'AR engine state machine (Claim_Queued ...) in the live path', 'FINDING',
       'src/services/arEngine/stateMachine.ts and reconciler.ts are imported by nothing outside src/services/arEngine/. The live path tracks CallAttempt.liveState instead. Brief Step 3/4 state-machine assertions test unwired code.');
-    log.record('3 Dispatch', '6', 'No dial with zero ready staff', 'FAIL',
-      'The practice has no staff presence or availability state, and the dial still went out. runDeskQueueTick has no staff-capacity gate (no availability check in src/server/frontDesk/queueEngine.ts); missed handoffs are handled after pickup by the staff_unavailable script.');
+    // Mark everyone off, tick with claims still waiting, and confirm nothing is dialled. Then restore.
+    const waiting = await plain.callQueue.count({ where: { practiceId, status: 'PENDING' } });
+    await plain.staffPresence.updateMany({ where: { practiceId }, data: { status: 'OFF' } });
+    const dialsBeforeOff = interceptor.dials().length;
+    await runDeskQueueTick(prisma);
+    const dialledWhileOff = interceptor.dials().length - dialsBeforeOff;
+    await plain.staffPresence.updateMany({ where: { practiceId }, data: { status: 'AVAILABLE' } });
+    log.expect('3 Dispatch', '6', 'No dial with zero ready staff', waiting > 0 && dialledWhileOff === 0,
+      `claims waiting=${waiting}; dials with nobody marked available=${dialledWhileOff} (staff_presence gate in validateDispatch, code NO_STAFF_AVAILABLE)`);
     if (attempt) createdAttemptIds.push(attempt.id);
   }, 60_000);
 

@@ -46,6 +46,7 @@ import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js'
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
+import { canTakeRep, inFlightHumanAssistedCalls, readyStaffCount } from '../server/frontDesk/staffPresence.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
 import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
 import { processHoldAndTransitions } from './holdTransitionProcessor.js';
@@ -283,6 +284,23 @@ async function handleStaffHandoffRequest(
       console.error(
         `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
       );
+      return missedHandoffResult;
+    }
+
+    // PRD missed-call path: a rep answered but nobody is marked available (or every ready person is
+    // already on a call). Do not ring a phone nobody is watching. Give the reference-number script instead.
+    const [ready, inFlight] = await runWithRlsBypass(async () => [
+      await readyStaffCount(prisma, practiceId),
+      await inFlightHumanAssistedCalls(prisma, practiceId),
+    ]);
+    if (!canTakeRep(ready, inFlight)) {
+      void appendAuditLog(prisma, {
+        practiceId,
+        action: 'frontdesk.handoff.missed',
+        subjectType: 'Call',
+        subjectId: vapiCallId,
+        details: { reason: ready === 0 ? 'missed: no staff available' : 'missed: staff busy', readyStaff: ready, callsInFlight: inFlight },
+      });
       return missedHandoffResult;
     }
 

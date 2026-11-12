@@ -268,6 +268,19 @@ describe('CarrierAdapter', () => {
         }
       });
 
+      it('refuses to dial a human-assisted call when nobody is available or all ready staff are busy', async () => {
+        const human = { ...base, scheduledFor: workday, staffAvailabilityRequired: true };
+        expect(await validateDispatch(makePrisma(), { ...human, readyStaff: 0, humanAssistedInFlight: 0 })).toMatchObject({ allowed: false, code: 'NO_STAFF_AVAILABLE' });
+        expect(await validateDispatch(makePrisma(), { ...human, readyStaff: 1, humanAssistedInFlight: 1 })).toMatchObject({ allowed: false, code: 'NO_STAFF_AVAILABLE' });
+        expect(await validateDispatch(makePrisma(), { ...human, readyStaff: 1, humanAssistedInFlight: 0 })).toMatchObject({ allowed: true });
+        expect(await validateDispatch(makePrisma(), { ...human, readyStaff: 2, humanAssistedInFlight: 1 })).toMatchObject({ allowed: true });
+      });
+
+      it('does not check staff presence for an autonomous call or when presence is not supplied', async () => {
+        expect(await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, readyStaff: 0, humanAssistedInFlight: 0 })).toMatchObject({ allowed: true });
+        expect(await validateDispatch(makePrisma(), { ...base, scheduledFor: workday, staffAvailabilityRequired: true })).toMatchObject({ allowed: true });
+      });
+
       it('requires the NPI for health lines and not for adjuster or program lines', async () => {
         const missing = { ...base, scheduledFor: workday, practiceNpi: null };
         for (const industryType of ['DENTAL', 'PARAMEDICAL_PHYSIO'] as const) {

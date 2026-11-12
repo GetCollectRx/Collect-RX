@@ -31,6 +31,7 @@ import type { EscalationResolution } from '../../types/practiceSettings.js';
 import { listMaxAttemptFailureReviews } from '../frontDesk/claimFailureReview.js';
 import { getPracticeHoldLedger } from '../recovery/holdLedger.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { listPresence, readyStaffCount, setPresence } from '../frontDesk/staffPresence.js';
 import { logger } from '../observability/logger.js';
 
 const router = Router();
@@ -78,6 +79,55 @@ async function selectedActiveAttempt(req: Request, res: Response, practiceId: st
   }
   return attempt;
 }
+
+const PRESENCE_STATUSES = ['AVAILABLE', 'BUSY', 'OFF'] as const;
+
+router.get('/:practiceId/presence', async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const entries = await listPresence(prisma, practiceId);
+    const me = authUserId(req.auth ?? req.practiceAuth);
+    const mine = entries.find((e) => e.userId === me) ?? null;
+    return res.json({
+      success: true,
+      data: { entries, readyCount: await readyStaffCount(prisma, practiceId), mine },
+    });
+  } catch (err) {
+    logger.error('[desk/presence] read failed', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
+router.put('/:practiceId/presence', blockAuditorWrites, async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const status = (req.body as { status?: unknown } | undefined)?.status;
+    if (typeof status !== 'string' || !(PRESENCE_STATUSES as readonly string[]).includes(status)) {
+      return res.status(400).json({ success: false, error: 'status must be AVAILABLE, BUSY or OFF' });
+    }
+    const userId = authUserId(req.auth ?? req.practiceAuth);
+    // Presence belongs to a person at this practice. A platform persona has no user row here.
+    const person = userId ? await prisma.user.findFirst({ where: { id: userId, practiceId, isActive: true }, select: { id: true } }) : null;
+    if (!person) {
+      return res.status(403).json({ success: false, error: 'Only a staff member of this practice can set availability' });
+    }
+    await setPresence(prisma, { practiceId, userId: person.id, status: status as (typeof PRESENCE_STATUSES)[number] });
+    void appendAuditLog(prisma, {
+      practiceId,
+      action: 'frontdesk.presence.set',
+      subjectType: 'User',
+      subjectId: person.id,
+      details: { status },
+      req,
+    });
+    return res.json({ success: true, data: { status, readyCount: await readyStaffCount(prisma, practiceId) } });
+  } catch (err) {
+    logger.error('[desk/presence] update failed', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
 
 router.get('/:practiceId/active', async (req: Request, res: Response) => {
   try {

@@ -141,6 +141,8 @@ async function makeOffice(opts: PracticeOpts): Promise<Office> {
       displayName: 'Synthetic front desk',
     },
   });
+  // Human-assisted dispatch needs someone marked available to take a rep.
+  await plain.staffPresence.create({ data: { practiceId: id, userId: staffId, status: 'AVAILABLE' } });
   practiceIds.push(id);
   return { id, staffId, token: signUserToken({ userId: staffId, practiceId: id, role: 'front_desk' }) };
 }
@@ -480,6 +482,8 @@ describe.skipIf(!dbReady)('dental office day: gaps a pilot practice would hit', 
       await importCsv(office.id, toOfficeCsv(rows), rows);
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(new Date(slot.iso));
+      // Presence goes stale after four hours, so mark the person available at the simulated instant.
+      await plain.staffPresence.updateMany({ where: { practiceId: office.id }, data: { updatedAt: new Date(slot.iso) } });
       const t = await tickFor(office.id);
       vi.useRealTimers();
       const dialled = t.dials.length > 0;

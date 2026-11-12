@@ -8,6 +8,7 @@ import { parseApiJson } from '../lib/parseApiJson'
 import type { DeskActiveCall, DeskCarrierBlock, DeskQueueEntry, DeskTranscriptLine } from '../types/frontDesk'
 import type { WsEvent } from '../types/ws'
 import { CarrierBlockModal } from '../components/CarrierBlockModal'
+import { StaffPresenceControl } from '../components/StaffPresenceControl'
 
 const AGENTS = ['IVR_Navigator', 'Claims_Agent', 'Escalation_Closer', 'Resolution_Closer'] as const
 
@@ -481,6 +482,8 @@ export default function LiveConsole() {
                 </span>
               )}
             </div>
+
+            {practiceId && <StaffPresenceControl practiceId={practiceId} />}
 
             <button
               type="button"

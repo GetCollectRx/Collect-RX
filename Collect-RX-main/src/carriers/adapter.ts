@@ -430,9 +430,13 @@ export async function validateDispatch(
     practiceTimezone?: string;
     /** True in human-assisted mode: a staff member must be there to take the transfer when a rep answers. */
     staffAvailabilityRequired?: boolean;
+    /** People marked available and still fresh. With staffAvailabilityRequired, omit to skip the ready-staff check. */
+    readyStaff?: number;
+    /** Human-assisted calls already open. A new call needs strictly more ready staff than this. */
+    humanAssistedInFlight?: number;
   },
 ): Promise<DispatchGuard> {
-  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, practiceNpi, industryType, practiceTimezone, staffAvailabilityRequired } = params;
+  const { practiceId, claimId, carrierId, daysOutstanding, attemptsSoFar, scheduledFor, claimStatus, carrierActiveCounts, practiceNpi, industryType, practiceTimezone, staffAvailabilityRequired, readyStaff, humanAssistedInFlight } = params;
 
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
@@ -512,6 +516,18 @@ export async function validateDispatch(
       allowed: false,
       code: 'OUTSIDE_STAFF_HOURS',
       reason: `Practice staff are outside 08:00–17:00 Mon–Fri in ${practiceTimezone}, so a rep who answers could not be transferred to anyone`,
+    };
+  }
+
+  // 10. Someone must be marked available, with capacity for one more live rep. Never dial into nobody.
+  if (staffAvailabilityRequired && readyStaff !== undefined && readyStaff <= (humanAssistedInFlight ?? 0)) {
+    return {
+      allowed: false,
+      code: 'NO_STAFF_AVAILABLE',
+      reason:
+        readyStaff === 0
+          ? 'No staff member is marked available, so a rep who answers could not be handed to anyone'
+          : `${humanAssistedInFlight ?? 0} human-assisted call(s) are already open and only ${readyStaff} staff member(s) are available`,
     };
   }
 

@@ -68,6 +68,7 @@ model Practice {
   users                          User[]
   usagePeriods                   UsagePeriod[]
   featureFlags                   FeatureFlag[]
+  staffPresence                  StaffPresence[]
   inviteTokens                   InviteToken[]
   notifications                  PracticeNotification[]
   deletionRequests               PHIPADeletionRequest[]
@@ -101,6 +102,7 @@ model User {
   practice                Practice             @relation(fields: [practiceId], references: [id])
   organizationMemberships OrganizationMember[]
   csvImportsByUser CsvImportLog[] @relation("csvImportsByUser")
+  staffPresence   StaffPresence[]
 
   @@index([practiceId])
   @@index([email])
@@ -1250,6 +1252,32 @@ model CarrierBlockEvent {
   @@index([practiceId, carrierId, blockedAt(sort: Desc)])
   @@index([resumedAt]) // null = still active block
   @@map("carrier_block_events")
+}
+
+enum StaffPresenceStatus {
+  AVAILABLE
+  BUSY
+  OFF
+
+  @@map("staff_presence_status")
+}
+
+/// Whether a staff member can take a live carrier rep right now. The dispatch guard needs at least one
+/// AVAILABLE row that is still fresh, and calls in flight never exceed the number of ready staff.
+/// A row older than the freshness window counts as OFF, so a forgotten toggle never means ready forever.
+model StaffPresence {
+  id         String              @id @default(uuid())
+  practiceId String              @map("practice_id")
+  userId     String              @map("user_id")
+  status     StaffPresenceStatus @default(OFF)
+  updatedAt  DateTime            @default(now()) @updatedAt @map("updated_at")
+
+  practice Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([practiceId, userId])
+  @@index([practiceId, status, updatedAt])
+  @@map("staff_presence")
 }
 
 /// One row per claim in the call queue. Tracks scheduling, retry count, state.

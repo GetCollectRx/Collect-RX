@@ -14,6 +14,8 @@ const { prismaMock, getSettings, transfer, notify } = vi.hoisted(() => ({
     practice: { findUnique: vi.fn() },
     insuranceClaim: { findUnique: vi.fn() },
     humanAssistedCallLog: { create: vi.fn() },
+    staffPresence: { count: vi.fn() },
+    callAttempt: { count: vi.fn() },
   },
   getSettings: vi.fn(),
   transfer: vi.fn(),
@@ -103,6 +105,8 @@ describe('request_staff_handoff and log_call_outcome', () => {
       billedAmount: 300,
     });
     prismaMock.humanAssistedCallLog.create.mockResolvedValue({});
+    prismaMock.staffPresence.count.mockResolvedValue(1);
+    prismaMock.callAttempt.count.mockResolvedValue(1);
     notify.mockResolvedValue(undefined);
   });
 
@@ -120,6 +124,23 @@ describe('request_staff_handoff and log_call_outcome', () => {
     notify.mockRejectedValue(new Error('db down'));
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(res.body.results[0].result).toMatch(/^HANDOFF INITIATED/);
+  });
+
+  it('does not ring a phone nobody is watching: no one available gives the reference-number script and no transfer', async () => {
+    getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
+    prismaMock.staffPresence.count.mockResolvedValue(0);
+    const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(transfer).not.toHaveBeenCalled();
+    expect(res.body.results[0].result).toMatch(/Standing rule: get a reference number/);
+  });
+
+  it('gives the reference-number script when every ready person is already on a call', async () => {
+    getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
+    prismaMock.staffPresence.count.mockResolvedValue(1);
+    prismaMock.callAttempt.count.mockResolvedValue(2);
+    const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(transfer).not.toHaveBeenCalled();
+    expect(res.body.results[0].result).toMatch(/Standing rule: get a reference number/);
   });
 
   it('asks for a reference number with the disclosure when the transfer fails', async () => {

@@ -23,6 +23,7 @@ import { createEscalation } from '../services/escalationService.js';
 import { appendPhiAccessEvent } from '../audit/auditLog.js';
 import { dispatchOpsAlert } from '../observability/opsAlerts.js';
 import logger from '../observability/logger.js';
+import { inFlightHumanAssistedCalls, readyStaffCount } from './staffPresence.js';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 // C-2: prevent concurrent ticks from dual-dispatching the same claim.
@@ -441,6 +442,7 @@ async function settleBlockedCandidate(
       return 'skip';
     case 'OUTSIDE_CALL_WINDOW':
     case 'OUTSIDE_STAFF_HOURS':
+    case 'NO_STAFF_AVAILABLE':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
@@ -740,6 +742,9 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
               (await getPracticeSettings(prisma, practiceId)).humanAssistedMode,
             ),
           };
+    // Read presence once per tick, and only for human-assisted practices. Calls dialed earlier in this same
+    // tick are counted through the in-flight number refreshed inside the loop below.
+    const readyStaff = guardContext?.humanAssisted ? await readyStaffCount(prisma, practiceId) : undefined;
 
     for (const next of dispatchable) {
     const attemptsSoFar = next.attempts;
@@ -756,6 +761,8 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       industryType: next.claim.industryType,
       practiceTimezone: guardContext?.practice?.timezone,
       staffAvailabilityRequired: guardContext?.humanAssisted ?? false,
+      readyStaff,
+      humanAssistedInFlight: readyStaff === undefined ? undefined : await inFlightHumanAssistedCalls(prisma, practiceId),
     });
 
     if (!guard.allowed) {
