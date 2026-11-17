@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNaviga
 import { CookieBanner } from './components/CookieBanner'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
 const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
+const LegalCallListening = lazy(() => import('./pages/LegalCallListening'))
 const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
 const Changelog = lazy(() => import('./pages/Changelog'))
 const PilotDemo = lazy(() => import('./pages/PilotDemo'))
@@ -667,6 +668,7 @@ function App() {
                 <Route path="/" element={<MarketingSite />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
                 <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/legal/call-listening" element={<LegalCallListening />} />
                 <Route path="/product" element={<ProductOnePager />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
