@@ -123,18 +123,22 @@ Source: [COLLECTRX-PILOT-PRD.md](../pilot/COLLECTRX-PILOT-PRD.md) and [CLIENT-DA
 
 | Item | Status | Notes |
 |------|--------|-------|
-| B3 / R1 agreements record | **Built, in draft PR** | Signup is blocked until all three agreements are accepted at their current version. One append-only row per user, agreement and version (`agreement_acceptances`, tenant RLS, update rejected by trigger). Registry: `src/server/agreements/agreementRegistry.ts`. |
-| R6 pause controls and feature-flag route fix (G3) | Not started | |
-| R7 / F1 support email and in-app link | Not started | Needs support address and stated response time from the owner. |
-| R10 site fixes | Not started | Needs growth copy in `docs/pilot/growth/`. |
-| C2, C6, E2, F2, F5 | Not started | |
+| B3 / R1 agreements record | **Merged** (PR 175) | Signup is blocked until all three agreements are accepted at their current version. One append-only row per user, agreement and version (`agreement_acceptances`, tenant RLS, update rejected by trigger). Registry: `src/server/agreements/agreementRegistry.ts`. The migration must be applied with `prisma migrate deploy` before the next production deploy. |
+| R6 pause controls and feature-flag route fix (G3) | **Merged** (PR 176) | System, practice and carrier pauses, enforced at dispatch after CARRIER_BLOCK and again before the dial, failing closed. Platform-admin routes under `/api/admin/pauses` and `/api/admin/feature-flags`. No migration. Admin UI pause card has not been checked visually. |
+| R7 / F1 support email and in-app link | Blocked | Needs the support address and stated response time from the owner. |
+| R10 site fixes | Blocked | Needs growth copy in `docs/pilot/growth/`. |
+| F2 status banner for active carrier block or outage | Ready to build | About 6 to 8 hours. Read-only over `CarrierBlockEvent` and the R6 pause state. No owner decision needed. |
+| E2 KPI display | Blocked | About 6 to 10 hours. Needs the growth KPI draft first. PRD R9 allows manual tracking, so the build is a stored KPI plus a line in the weekly report. |
+| C2 per-practice phone line | Not in pilot slice | About 20 to 30 hours. Calls use one global `VAPI_PHONE_NUMBER_ID`. Needs a product decision before any build. |
+| F5 leave cleanly | Wave 2 | 30 or more hours. Needs a retention schedule decision. Only per-patient deletion exists today. |
 | R3 handoff alert, R4 outcome entry | Blocked | Waiting on the alert channel decision below. |
-| R5 test call | Not started | |
+| C6 / R5 test call | Blocked | About 24 to 32 hours. Depends on R3. Must use the fake carrier and synthetic claims only. |
 | R8 $399 plan | Blocked | Waiting on owner approval. No Stripe price is created until then. |
 
 ### Open owner decisions
 
 - **Agreement wording.** Only the Terms of use has published text, and its page says counsel review is pending. The privacy and data agreement and the call-listening consent are recorded under version `draft-1`. Final text must be approved and the version bumped before any real practice signs up. The call-listening page (`/legal/call-listening`) is a draft that only describes current behaviour.
+- **Pause reason text.** The operator reason on a pause is free text and is not scrubbed for PHI. Choose a UI warning or a pattern check.
 - **Existing and invited users.** The record is written at signup only. Users added through invites, and accounts that already exist, have no acceptance row. Decide whether the pilot needs acceptance on invite and a re-accept prompt.
 - **Handoff alert channel (R3).** ADR 0003 says no SMS goes to the practice. Options: (1) in-app alert on the desk WebSocket with a sound and an accept button, no new channel, only works while a staff member has the app open; (2) in-app alert plus email, reaches staff away from the screen with a delay of seconds to minutes, email is already a configured channel; (3) in-app alert plus SMS to a staff number, fastest reach, requires amending ADR 0003 and adds PHI-adjacent messaging to review. Recommendation to discuss: option 2 for the pilot.
 
