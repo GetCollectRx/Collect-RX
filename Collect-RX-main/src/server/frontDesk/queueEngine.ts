@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
+import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
@@ -191,6 +192,8 @@ const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
 // Fleet-wide carrier concurrency limiting — when a carrier's active call
 // count hits its per-carrier ceiling, defer new attempts for the carrier.
+const DEFER_CARRIER_PAUSE_BASE_MS = 2 * 60 * 1000; // resume within minutes of the pause lifting
+const DEFER_CARRIER_PAUSE_JITTER_MS = 30 * 1000;
 const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
 const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
 
@@ -442,6 +445,9 @@ async function settleBlockedCandidate(
     case 'OUTSIDE_CALL_WINDOW':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
+    case 'PAUSED_SYSTEM':
+    case 'PAUSED_PRACTICE':
+    case 'PAUSE_STATE_UNAVAILABLE':
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
       return 'stop';
     case 'CLAIM_TOO_YOUNG':
@@ -451,6 +457,18 @@ async function settleBlockedCandidate(
         DEFER_CLAIM_AGE_MS,
         'CLAIM_TOO_YOUNG',
         'Wait until the claim reaches the minimum carrier-call age before retrying.',
+      );
+      return 'skip';
+    case 'PAUSED_CARRIER':
+      // Only this carrier is paused; other candidates in the batch may still
+      // dial. A short deferral lets the entry resume within minutes of the
+      // operator lifting the pause.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        withJitter(DEFER_CARRIER_PAUSE_BASE_MS, DEFER_CARRIER_PAUSE_JITTER_MS),
+        'PAUSED_CARRIER',
+        guardReason ?? 'Calling to this carrier is paused; retries automatically once the pause is lifted.',
       );
       return 'skip';
     case 'CARRIER_CONCURRENCY_LIMIT':
@@ -979,6 +997,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         reason: lateGuard.reason,
       });
       const disposition = await settleBlockedCandidate(prisma, next, lateGuard.code, lateGuard.reason);
+      if (disposition === 'stop') return;
+      continue;
+    }
+
+    // A pause set while this claim was being prepared must stop the dial too.
+    const latePause = await checkDispatchPause(prisma, { practiceId, carrierId: next.claim.carrierId });
+    if (!latePause.allowed) {
+      logger.warn('[deskQueueEngine] dispatch paused mid-dispatch — settling queue entry', {
+        claimId: next.claimId,
+        code: latePause.code,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, latePause.code, latePause.reason);
       if (disposition === 'stop') return;
       continue;
     }

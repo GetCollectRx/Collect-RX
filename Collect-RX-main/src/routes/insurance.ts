@@ -36,6 +36,7 @@ import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
+import { checkDispatchPause } from '../server/pauseControls/dispatchPause.js';
 import { practiceHasFeature } from '../server/plans/practiceEntitlements.js';
 import { FEATURES, featureLockedMessage } from '../billing/entitlements.js';
 import multer from 'multer';
@@ -849,7 +850,11 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // practices), not just this practice's own row, since that's the one
     // thing the in-transaction recheck above intentionally left out to avoid
     // nesting its own lookup inside reserveDispatchSlot()'s transaction.
-    const lateBlock = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
+    const carrierBlockGuard = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
+    // An operator pause set since the upfront check must stop the dial as well.
+    const lateBlock = carrierBlockGuard.allowed
+      ? await checkDispatchPause(prisma, { practiceId, carrierId: claim.carrierId })
+      : carrierBlockGuard;
     if (!lateBlock.allowed) {
       await prisma.$transaction([
         prisma.insuranceClaim.update({

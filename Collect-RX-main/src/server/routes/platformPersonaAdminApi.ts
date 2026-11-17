@@ -12,6 +12,34 @@ import type { UserRole } from '../../types/userRole.js';
 import { authPracticeId, authUserId, getUserRole, isPlatformAdmin } from '../accessControl/types.js';
 import { TIERS } from '../../billing/tiers.js';
 import { appendAuditLog } from '../audit/auditLog.js';
+import { z } from 'zod';
+import { CarrierId } from '@prisma/client';
+import { runWithRlsBypass } from '../db/rlsContext.js';
+import { logger } from '../observability/logger.js';
+import { CSV_AR_FEATURES, setCsvArFeaturePaused } from '../featureFlags/csvArFeatures.js';
+import {
+  PAUSE_REASON_MAX_LENGTH,
+  listActiveDispatchPauses,
+  setDispatchPause,
+  type PauseTarget,
+} from '../pauseControls/dispatchPause.js';
+
+const pauseBodySchema = z
+  .object({
+    paused: z.boolean(),
+    reason: z.string().trim().max(PAUSE_REASON_MAX_LENGTH).optional(),
+  })
+  .refine((b) => !b.paused || (b.reason !== undefined && b.reason.length > 0), {
+    message: 'reason is required when pausing',
+    path: ['reason'],
+  });
+
+const carrierPauseBodySchema = pauseBodySchema.and(z.object({ practiceId: z.string().uuid().optional() }));
+const featureFlagBodySchema = z.object({
+  paused: z.boolean(),
+  reason: z.string().trim().max(PAUSE_REASON_MAX_LENGTH).optional(),
+});
+const CSV_AR_FEATURE_VALUES: readonly string[] = Object.values(CSV_AR_FEATURES);
 
 export function createPlatformPersonaAdminRouter(): Router {
   const router = Router();
@@ -26,6 +54,123 @@ export function createPlatformPersonaAdminRouter(): Router {
     next();
   });
   router.use(requirePlatformAdmin);
+
+  // ── Staged rollout flags (platform-wide kill switch) ──────────────────────
+  router.get('/feature-flags', async (_req, res) => {
+    const rows = await runWithRlsBypass(() =>
+      prisma.featureFlag.findMany({
+        where: { practiceId: null, feature: { in: [...CSV_AR_FEATURE_VALUES] } },
+        select: { feature: true, paused: true, pauseReason: true, pausedAt: true },
+      }),
+    );
+    const byFeature = new Map(rows.map((r) => [r.feature, r]));
+    const data = CSV_AR_FEATURE_VALUES.map((feature) => {
+      const row = byFeature.get(feature);
+      return {
+        feature,
+        paused: row?.paused ?? false,
+        pauseReason: row?.pauseReason ?? null,
+        pausedAt: row?.pausedAt?.toISOString() ?? null,
+      };
+    });
+    return res.json({ success: true, data });
+  });
+
+  router.patch('/feature-flags/:feature', async (req, res) => {
+    const feature = req.params.feature;
+    if (!CSV_AR_FEATURE_VALUES.includes(feature)) {
+      return res.status(404).json({ success: false, error: 'Unknown feature flag' });
+    }
+    const parsed = featureFlagBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'paused (boolean) is required' });
+    }
+    const { paused, reason } = parsed.data;
+    await runWithRlsBypass(() =>
+      setCsvArFeaturePaused(
+        prisma,
+        null,
+        feature as (typeof CSV_AR_FEATURES)[keyof typeof CSV_AR_FEATURES],
+        paused,
+        reason,
+      ),
+    );
+    logger.warn('[platformAdmin] feature flag changed', { feature, paused, actorId: authUserId(req.auth) });
+    return res.json({ success: true, data: { feature, paused } });
+  });
+
+  // ── Calling pause controls (R6 / G3) ──────────────────────────────────────
+  router.get('/pauses', async (_req, res) => {
+    const pauses = await listActiveDispatchPauses(prisma);
+    return res.json({ success: true, data: { pauses, carriers: Object.values(CarrierId) } });
+  });
+
+  async function applyPause(
+    req: Request,
+    res: Response,
+    target: PauseTarget,
+    paused: boolean,
+    reason: string | null,
+  ) {
+    await setDispatchPause(prisma, target, paused, reason);
+    const actorId = authUserId(req.auth) ?? null;
+    // Operator-visible record without patient data. System and carrier-wide
+    // pauses have no tenant, so they log only; practice-scoped ones also land
+    // in that practice's tamper-evident audit chain.
+    logger.warn('[platformAdmin] calling pause changed', {
+      scope: target.scope,
+      practiceId: target.practiceId,
+      carrierId: target.carrierId ?? null,
+      paused,
+      actorId,
+    });
+    if (target.practiceId) {
+      void appendAuditLog(prisma, {
+        practiceId: target.practiceId,
+        action: paused ? 'platform_admin.calling_paused' : 'platform_admin.calling_resumed',
+        subjectType: 'Practice',
+        subjectId: target.practiceId,
+        details: { scope: target.scope, carrierId: target.carrierId ?? null, reason },
+        req,
+      });
+    }
+    return res.json({ success: true, data: { scope: target.scope, paused } });
+  }
+
+  router.put('/pauses/system', async (req, res) => {
+    const parsed = pauseBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid body' });
+    return applyPause(req, res, { scope: 'system', practiceId: null }, parsed.data.paused, parsed.data.reason ?? null);
+  });
+
+  router.put('/pauses/practices/:practiceId', async (req, res) => {
+    const practiceId = z.string().uuid().safeParse(req.params.practiceId);
+    if (!practiceId.success) return res.status(400).json({ success: false, error: 'Invalid practice id' });
+    const parsed = pauseBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid body' });
+    const practice = await prisma.practice.findUnique({ where: { id: practiceId.data }, select: { id: true } });
+    if (!practice) return res.status(404).json({ success: false, error: 'Practice not found' });
+    return applyPause(req, res, { scope: 'practice', practiceId: practiceId.data }, parsed.data.paused, parsed.data.reason ?? null);
+  });
+
+  router.put('/pauses/carriers/:carrierId', async (req, res) => {
+    const carrierId = z.nativeEnum(CarrierId).safeParse(req.params.carrierId);
+    if (!carrierId.success) return res.status(400).json({ success: false, error: 'Unknown carrier' });
+    const parsed = carrierPauseBodySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid body' });
+    const practiceId = parsed.data.practiceId ?? null;
+    if (practiceId) {
+      const practice = await prisma.practice.findUnique({ where: { id: practiceId }, select: { id: true } });
+      if (!practice) return res.status(404).json({ success: false, error: 'Practice not found' });
+    }
+    return applyPause(
+      req,
+      res,
+      { scope: 'carrier', practiceId, carrierId: carrierId.data },
+      parsed.data.paused,
+      parsed.data.reason ?? null,
+    );
+  });
 
   router.get('/practices', async (req, res) => {
     const rows = await prisma.practice.findMany({
