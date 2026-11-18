@@ -79,6 +79,7 @@ import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
 import { checkEmailProvider } from './email/mailer.js';
+import { buildSpaIndexHtml } from './spaShell.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import { assertDataResidencyAtStartup } from './dataResidency';
 import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
@@ -614,23 +615,14 @@ if (process.env.NODE_ENV === 'production') {
 
 let cachedSpaIndexHtml: string | null = null;
 
-function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/** SPA shell HTML with optional `<meta name="crx-public-api-origin">` for split static/API deployments. */
+/**
+ * SPA shell HTML. Express serves this shell itself, so `/api` is same-origin and the
+ * auth cookie stays first-party. The API-origin meta is only injected for a split
+ * static/API deployment, and only when SPA_INJECT_API_ORIGIN=true (see spaShell.ts).
+ */
 function getSpaIndexHtml(): string {
   if (cachedSpaIndexHtml !== null) return cachedSpaIndexHtml;
-  const raw = fs.readFileSync(indexHtmlPath, 'utf8');
-  const api = (process.env.PUBLIC_API_BASE_URL || '').trim().replace(/\/$/, '');
-  if (api) {
-    const meta = `<meta name="crx-public-api-origin" content="${escapeHtmlAttr(api)}" />`;
-    cachedSpaIndexHtml = /name="crx-public-api-origin"/i.test(raw)
-      ? raw.replace(/<meta\s+name="crx-public-api-origin"[^>]*>/i, meta)
-      : raw.replace('</head>', `${meta}\n</head>`);
-  } else {
-    cachedSpaIndexHtml = raw;
-  }
+  cachedSpaIndexHtml = buildSpaIndexHtml(fs.readFileSync(indexHtmlPath, 'utf8'), process.env);
   return cachedSpaIndexHtml;
 }
 
