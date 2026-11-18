@@ -61,15 +61,45 @@ export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       if (url.includes('/api/auth/login/platform-dev')) {
         return r
       }
-      try {
-        sessionStorage.setItem('crx_session_lapse', '1');
-      } catch {
-        /* ignore */
-      }
-      window.dispatchEvent(new CustomEvent('crx:session-expired', { detail: { url } }));
+      return describeSessionLapse(r, url).then(() => {
+        try {
+          sessionStorage.setItem('crx_session_lapse', '1');
+        } catch {
+          /* ignore */
+        }
+        window.dispatchEvent(new CustomEvent('crx:session-expired', { detail: { url } }));
+        return r;
+      });
     }
     return r;
   });
+}
+
+
+/**
+ * Records which request ended the session and the server's reason, so the sign-in screen can show it.
+ * A silent logout hides the real cause of a sign-in loop. Only the path is kept (no origin, no query
+ * string, which can carry patient or claim identifiers) and the server's short error text.
+ */
+async function describeSessionLapse(r: Response, url: string): Promise<void> {
+  try {
+    let path = url
+    try {
+      path = new URL(url, 'http://local.invalid').pathname
+    } catch {
+      path = url.split('?')[0] ?? url
+    }
+    let reason = ''
+    try {
+      const body = (await r.clone().json()) as { error?: unknown }
+      if (typeof body?.error === 'string') reason = body.error.slice(0, 120)
+    } catch {
+      /* body was not JSON */
+    }
+    sessionStorage.setItem('crx_session_lapse_detail', reason ? `${path}: ${reason}` : path)
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 /**
