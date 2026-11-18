@@ -53,7 +53,7 @@ export default function AcceptInvitePage() {
   }
 
   return (
-    <div className="crx-portal-root">
+    <div className="crx-portal">
       <div className="crx-portal-card">
         <div className="crx-portal-brand">
           <CollectRxLogoPortal />

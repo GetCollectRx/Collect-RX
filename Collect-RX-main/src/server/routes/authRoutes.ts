@@ -24,7 +24,7 @@ import {
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
-import { authLimiter } from '../middleware/rateLimiter';
+import { authLimiter, loginLimiter } from '../middleware/rateLimiter';
 import { getSubscriptionGateState } from '../stripe/billing';
 import { trialEndDate } from '../../billing/tiers.js';
 import { CURRENT_AGREEMENTS, checkAcceptedAgreements } from '../agreements/agreementRegistry.js';
@@ -317,7 +317,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login — email + password (practice staff or platform roles) */
-  r.post('/login', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = loginBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -364,7 +364,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-dev */
-  r.post('/login/platform-dev', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login/platform-dev', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       if (!platformDevPasswordConfigured()) {
         return res.status(503).json({
@@ -409,7 +409,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-user — legacy alias; main /login accepts platform emails too */
-  r.post('/login/platform-user', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login/platform-user', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       if (!email?.trim() || !password) {
