@@ -7,10 +7,15 @@ const seen: Array<{ bypass?: boolean; practiceId?: string } | undefined> = [];
 vi.mock('../src/lib/prisma.js', () => ({
   prisma: {
     user: {
-      findUnique: vi.fn(async () => {
-        seen.push(getRlsContext());
-        return { practiceId: 'p1', tokenExpiresAt: null, isActive: true };
-      }),
+      // Prisma queries are LAZY: they run when awaited or .then()-ed, not when created. This mock mirrors that,
+      // recording the RLS context at the moment the query actually executes (an eager mock hid a real bug where
+      // the query escaped the bypass because it was returned un-awaited).
+      findUnique: vi.fn(() => ({
+        then(resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) {
+          seen.push(getRlsContext());
+          return Promise.resolve({ practiceId: 'p1', tokenExpiresAt: null, isActive: true }).then(resolve, reject);
+        },
+      })),
     },
   },
 }));
