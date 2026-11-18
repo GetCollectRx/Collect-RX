@@ -17,6 +17,7 @@ export default defineConfig({
       STRIPE_SECRET_KEY: 'sk_test_4eC39HqLyjWDarjtT1zdp7dc',
       STRIPE_WEBHOOK_SECRET: 'whsec_test_00000000000000000000000000000000',
       VAPI_WEBHOOK_SECRET: 'test_vapi_secret_12345678',
+      JWT_SECRET: 'vitest-placeholder-not-for-production',
       VITEST: 'true',
       CONNECTOR_MONITOR_ENABLED: '0',
       DISABLE_SCHEDULER: '1',
