@@ -78,7 +78,7 @@ import type { RateLimitRequestHandler } from 'express-rate-limit';
 import IORedis from 'ioredis';
 import { app, prisma } from '../src/server/index.js';
 import {
-  authLimiter,
+  loginLimiter,
   strictLimiter,
   sessionStandardLimiter,
   anonStandardLimiter,
@@ -134,36 +134,75 @@ function cookieHeaderFrom(res: request.Response): string {
   return Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
 }
 
-describe.skipIf(!dbReady)('authLimiter — 5 attempts / 15 min on POST /api/auth/login', () => {
+async function withProductionLimiters<T>(fn: () => Promise<T>): Promise<T> {
+  // The login limiters skip when VITEST is true or NODE_ENV is not production.
+  const originalVitest = process.env.VITEST;
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.VITEST = 'false';
+  process.env.NODE_ENV = 'production';
+  try {
+    return await fn();
+  } finally {
+    process.env.VITEST = originalVitest;
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+}
+
+async function failedLogin(email: string): Promise<number> {
+  const res = await request(app).post('/api/auth/login').send({ email, password: 'wrong-password' });
+  return res.status;
+}
+
+describe.skipIf(!dbReady)('loginLimiter — 5 failed attempts / 15 min per account on POST /api/auth/login', () => {
   afterEach(async () => {
-    await clearLimiterState(authLimiter, 'auth');
+    await clearLimiterState(loginLimiter, 'login');
   });
 
-  it('the 6th login attempt from the same IP gets 429, not 401', async () => {
-    // authLimiter's skip condition is `skipForE2eOrVitest() || NODE_ENV !== 'production'`
-    // (src/server/middleware/rateLimiter.ts) — both must be defeated for this
-    // limiter to actually run.
-    const originalVitest = process.env.VITEST;
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.VITEST = 'false';
-    process.env.NODE_ENV = 'production';
-    try {
+  it('the 6th failed attempt for the same email gets 429, not 401', async () => {
+    await withProductionLimiters(async () => {
       const attempts: number[] = [];
+      for (let i = 0; i < 6; i++) attempts.push(await failedLogin('nonexistent-rate-limit-probe@fixture.test'));
+      expect(attempts.slice(0, 5).every((s) => s !== 429)).toBe(true);
+      expect(attempts[5]).toBe(429);
+    });
+  }, 30_000);
+
+  it('a locked-out email does not block a different account', async () => {
+    await withProductionLimiters(async () => {
+      for (let i = 0; i < 6; i++) await failedLogin('locked-account@fixture.test');
+      expect(await failedLogin('locked-account@fixture.test')).toBe(429);
+      expect(await failedLogin('other-account@fixture.test')).not.toBe(429);
+    });
+  }, 30_000);
+
+  it('successful logins do not count toward the limit', async () => {
+    const owner = await createPracticeWithOwnerForTests(prisma);
+    try {
+      await withProductionLimiters(async () => {
+        for (let i = 0; i < 8; i++) {
+          const res = await request(app).post('/api/auth/login').send({ email: owner.email, password: owner.password });
+          expect(res.status).toBe(200);
+        }
+      });
+    } finally {
+      await cleanupPracticeWithUsers(prisma, owner.practice.id);
+    }
+  }, 60_000);
+
+  it('never reads the client IP: requests from different addresses share one account bucket', async () => {
+    await withProductionLimiters(async () => {
+      const email = 'ip-independent@fixture.test';
+      const statuses: number[] = [];
       for (let i = 0; i < 6; i++) {
         const res = await request(app)
           .post('/api/auth/login')
-          .send({ email: 'nonexistent-rate-limit-probe@fixture.test', password: 'wrong-password' });
-        attempts.push(res.status);
+          .set('X-Forwarded-For', `203.0.113.${i + 1}`)
+          .send({ email, password: 'wrong-password' });
+        statuses.push(res.status);
       }
-      // The limiter runs before the handler body, so it doesn't matter that
-      // these credentials are bogus — every request still counts.
-      expect(attempts.slice(0, 5).every((s) => s !== 429)).toBe(true);
-      expect(attempts[5]).toBe(429);
-    } finally {
-      process.env.VITEST = originalVitest;
-      process.env.NODE_ENV = originalNodeEnv;
-    }
-  }, 20_000);
+      expect(statuses[5]).toBe(429);
+    });
+  }, 30_000);
 });
 
 describe.skipIf(!dbReady)('strictLimiter — 10 requests / min on expensive writes', () => {

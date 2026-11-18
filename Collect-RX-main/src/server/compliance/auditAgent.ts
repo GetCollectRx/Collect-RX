@@ -596,13 +596,13 @@ function checkRateLimiting(): ComplianceCheck[] {
   const results: ComplianceCheck[] = [];
 
   // E1 — Login endpoint rate limited (brute-force prevention)
-  const hasAuthLimiter = rateLimiter.includes('authLimiter') && rateLimiter.includes('max: 5') && rateLimiter.includes('15 * 60 * 1000');
+  const hasAuthLimiter = rateLimiter.includes('loginLimiter') && rateLimiter.includes('authLimiter') && rateLimiter.includes('max: 5') && rateLimiter.includes('15 * 60 * 1000');
   results.push(check(
     'E1', 'RATE_LIMITING', ['PHIPA', 'PIPEDA', 'OWASP'],
-    'Login endpoint rate limited to 5 attempts per 15 minutes per IP',
+    'Login endpoint rate limited to 5 failed attempts per 15 minutes per account (IP address not used)',
     'Prevents credential brute-forcing against the authentication endpoint.',
     hasAuthLimiter ? 'pass' : 'fail',
-    hasAuthLimiter ? 'rateLimiter.ts: authLimiter — max 5 / 15min window per IP.' : 'MISSING: authLimiter not found.',
+    hasAuthLimiter ? 'rateLimiter.ts: loginLimiter (5 failed / 15min per account, no IP) and authLimiter (5 / 15min, password-reset requests).' : 'MISSING: authLimiter not found.',
     { reference: 'OWASP A07 — Authentication Failures; PHIPA s.12 Security safeguards' },
   ));
 
