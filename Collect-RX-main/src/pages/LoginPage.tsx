@@ -19,8 +19,14 @@ export function LoginPage() {
   useEffect(() => {
     try {
       if (sessionStorage.getItem('crx_session_lapse') === '1') {
-        setSessionInfo('Your session expired. Please sign in again.')
+        const detail = sessionStorage.getItem('crx_session_lapse_detail')
+        setSessionInfo(
+          detail
+            ? `Your session ended. Please sign in again. (Reason: ${detail})`
+            : 'Your session expired. Please sign in again.',
+        )
         sessionStorage.removeItem('crx_session_lapse')
+        sessionStorage.removeItem('crx_session_lapse_detail')
       }
     } catch {
       /* ignore */
