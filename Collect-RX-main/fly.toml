@@ -38,8 +38,9 @@ primary_region = 'yyz'
 
 [deploy]
 # Runs as a one-off machine before the new release rolls out; a nonzero
-# exit blocks the deploy.
-release_command = 'npx prisma migrate deploy'
+# exit blocks the deploy. The wrapper checks for a failed migration and for missing CREATE on
+# schema public, prints the exact fix, then runs the same 'npx prisma migrate deploy'.
+release_command = 'node scripts/release-migrate.mjs'
 
 [processes]
 app = 'npm run start'
