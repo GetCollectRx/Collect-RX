@@ -7,6 +7,7 @@ import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js'
 import { runWithRlsBypass, runWithRlsContext } from '../db/rlsContext.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 import { prisma } from '../../lib/prisma.js';
+import { logSessionRejected } from '../observability/authEvents.js';
 
 declare global {
   namespace Express {
@@ -49,6 +50,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     const fromCookie = req.cookies?.[COOKIE_NAME] as string | undefined;
     const raw = fromBearer || fromCookie;
     if (!raw) {
+      logSessionRejected(req, 'no_token');
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
@@ -67,6 +69,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       payload.role === 'platform_dev';
 
     if (payload.role !== 'platform_dev' && !crossPractice && !(payload as UserAuthPayload).practiceId) {
+      logSessionRejected(req, 'token_without_practice');
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
@@ -108,20 +111,24 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       runWithRlsBypass(async () => await prisma.user.findUnique({ where: { id: userId }, select: { practiceId: true, tokenExpiresAt: true, isActive: true } }))
         .then((user) => {
           if (!user || !user.isActive) {
+            logSessionRejected(req, 'user_missing_or_inactive', userId);
             res.status(401).json({ error: 'Account is no longer active' });
             return;
           }
           if (user.practiceId !== practiceId) {
+            logSessionRejected(req, 'practice_mismatch', userId);
             res.status(401).json({ error: 'Invalid or expired session' });
             return;
           }
           if (payload.role === 'accountant' && user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
+            logSessionRejected(req, 'accountant_expired', userId);
             res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
             return;
           }
           continueWithRls(req, next);
         })
         .catch(() => {
+          logSessionRejected(req, 'session_lookup_failed', userId);
           // Fail CLOSED: if we cannot confirm the session's practice binding is
           // still valid, deny rather than grant PHI access on a DB hiccup.
           res.status(503).json({ error: 'Unable to verify access right now. Please retry.' });
@@ -131,6 +138,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
     continueWithRls(req, next);
   } catch {
+    logSessionRejected(req, 'invalid_token');
     res.status(401).json({ error: 'Invalid or expired session' });
   }
 }
