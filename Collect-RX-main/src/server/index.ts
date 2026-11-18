@@ -78,6 +78,7 @@ import { prisma } from '../lib/prisma';
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
+import { checkEmailProvider } from './email/mailer.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import { assertDataResidencyAtStartup } from './dataResidency';
 import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
@@ -259,6 +260,21 @@ try {
   logger.error('[server] FATAL', { error: e });
   process.exit(1);
 }
+
+// A dead or revoked email key does not stop the app, but it silently breaks
+// password resets and invites. Ask the provider once at boot and say so loudly.
+void checkEmailProvider().then((r) => {
+  if (r.ok) {
+    logger.info('[email] provider check passed', { provider: r.provider, detail: r.detail });
+  } else if (process.env.NODE_ENV === 'production') {
+    logger.error('[email] provider check FAILED: password reset and invite emails will not be delivered', {
+      provider: r.provider,
+      detail: r.detail,
+    });
+  } else {
+    logger.warn('[email] provider check skipped or failed (non-production)', { provider: r.provider, detail: r.detail });
+  }
+});
 
 assertPostgresTlsInProduction();
 assertDataResidencyAtStartup();
