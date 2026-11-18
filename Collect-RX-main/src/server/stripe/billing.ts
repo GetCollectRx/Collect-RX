@@ -237,10 +237,19 @@ export async function getSubscriptionGateState(
       subscriptionPlanId: true,
       subscriptionCurrentPeriodStart: true,
       subscriptionCurrentPeriodEnd: true,
+      billingTier: true,
+      trialEndsAt: true,
     },
   });
 
-  const active = skipped || isSubscriptionStatusActive(p?.subscriptionStatus);
+  // A new practice registers on the trial tier with trialEndsAt set. Honor it only while the
+  // practice has never had a Stripe subscription, so a cancelled customer cannot fall back in.
+  const inTrial =
+    p?.billingTier === 'trial' &&
+    !p.subscriptionStatus &&
+    p.trialEndsAt != null &&
+    p.trialEndsAt.getTime() > Date.now();
+  const active = skipped || inTrial || isSubscriptionStatusActive(p?.subscriptionStatus);
   const { plan, usage } = await getSubscriptionUsageState(db, practiceId, p);
 
   return {
