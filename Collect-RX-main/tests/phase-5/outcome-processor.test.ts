@@ -84,6 +84,27 @@ describe('OutcomeProcessor.classifyOutcome', () => {
     expect(result.outcome).toBe('ESCALATED');
   });
 
+  it('detects RESOLVED when the rep says the claim was paid in full by direct deposit', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'That claim was paid in full on the last payment run, by direct deposit.',
+    }));
+    expect(result.outcome).toBe('RESOLVED');
+  });
+
+  it('does not treat "was not paid" as resolved', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'That claim was not paid because the policy had lapsed.',
+    }));
+    expect(result.outcome).not.toBe('RESOLVED');
+  });
+
+  it('detects ESCALATED when the rep gives conflicting statuses and needs a supervisor', () => {
+    const result = classifyOutcome(makePayload({
+      transcript: 'I am seeing two different statuses here, and I would need a supervisor to confirm which one is right.',
+    }));
+    expect(result.outcome).toBe('ESCALATED');
+  });
+
   it('returns FAILED on failed call status', () => {
     const result = classifyOutcome(makePayload({
       call: { id: 'x', status: 'failed', durationSeconds: 0 },
