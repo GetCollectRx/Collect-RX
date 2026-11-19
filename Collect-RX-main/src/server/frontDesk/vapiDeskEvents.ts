@@ -15,7 +15,9 @@ import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
 import { deletePostCallAudio, processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
-import { appendAuditLog } from '../audit/auditLog.js';
+import { appendAuditLog, appendPhiAccessEvent } from '../audit/auditLog.js';
+import { piiVault } from '../../pii-vault.js';
+import { redactTranscript } from '../../services/guardrails/transcriptRedaction.js';
 import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
 import { logger } from '../observability/logger.js';
 
@@ -95,9 +97,23 @@ export async function processVapiDeskWebhook(
 
     // PHI SCRUB: apply before persisting — live utterances may contain policy
     // numbers, DOBs, or patient names spoken aloud by the carrier IVR or rep.
-    // scrubTranscriptPhi mirrors the same patterns used on the end-of-call
-    // consolidated transcript in processCallEnded (vapiWebhook.ts).
-    const scrubbedText = scrubTranscriptPhi(payload.transcript);
+    // Pattern scrubbing alone does not remove names, so the claim's known PHI
+    // values are redacted first, while the token is still valid mid-call.
+    const det = piiVault.detokenize(attempt.claim.patientToken, 'live-transcript-redaction', {
+      practiceId: attempt.claim.practiceId,
+    });
+    if (det.success && det.phi) {
+      await appendPhiAccessEvent(prisma, {
+        practiceId: attempt.claim.practiceId,
+        operation: 'detokenize_for_transcript_redaction',
+        recordType: 'InsuranceClaim',
+        recordId: attempt.claim.id,
+        purpose: 'live_transcript_redaction',
+      });
+    }
+    const scrubbedText = scrubTranscriptPhi(
+      redactTranscript(payload.transcript, det.success && det.phi ? det.phi : null),
+    );
     const line = await prisma.callTranscriptLine.create({
       data: {
         practiceId: attempt.claim.practiceId,
@@ -178,6 +194,101 @@ export async function processVapiDeskWebhook(
   }
 }
 
+/**
+ * Records whether the automated-caller disclosure was heard in the call's
+ * opening (CRTC ADAD). Matches the canonical phrases from Claims_Agent's
+ * firstMessage in vapi-squad-config.json; a carrier saying "this call appears
+ * to be automated" must not count as our disclosure.
+ */
+async function writeDisclosureResolution(
+  prisma: PrismaClient,
+  params: { practiceId: string; subjectId: string; vapiCallId: string; transcript: string | undefined },
+): Promise<void> {
+  const { practiceId, subjectId, vapiCallId, transcript } = params;
+  if (transcript) {
+    // The opening utterance (first ~300 chars, about 20 seconds of speech).
+    const opening = transcript.slice(0, 300).toLowerCase();
+    const disclosureVerified =
+      opening.includes('automated calling system') ||
+      opening.includes('automated calling') ||
+      opening.includes('computer-generated system');
+    await appendAuditLog(prisma, {
+      practiceId,
+      action: disclosureVerified ? 'ADAD_DISCLOSURE_VERIFIED' : 'ADAD_DISCLOSURE_UNVERIFIED',
+      subjectType: 'CallAttempt',
+      subjectId,
+      details: { vapiCallId, verified: disclosureVerified },
+    });
+    return;
+  }
+  // No transcript — call was too short or transcript not available.
+  await appendAuditLog(prisma, {
+    practiceId,
+    action: 'ADAD_DISCLOSURE_UNVERIFIED',
+    subjectType: 'CallAttempt',
+    subjectId,
+    details: { vapiCallId, verified: false, reason: 'no_transcript' },
+  });
+}
+
+/**
+ * applyCarrierBlock completes every open attempt for the blocked carrier and
+ * hangs those calls up, so their end-of-call reports arrive for attempts that
+ * are already complete. Claim recovery stays skipped for them, but the
+ * post-call duties still run: zero-retention audio deletion, call duration,
+ * usage metering and the disclosure entry. Each step checks whether it already
+ * happened, so a redelivered report changes nothing.
+ */
+async function finishBlockTerminatedCall(
+  prisma: PrismaClient,
+  payload: VapiWebhookPayload,
+  vapiCallId: string,
+  attempt: { id: string; durationSeconds: number | null; validationResult: unknown; practiceId: string },
+): Promise<void> {
+  const durationSeconds = payload.call.durationSeconds;
+  if (attempt.durationSeconds === null && typeof durationSeconds === 'number') {
+    await prisma.callAttempt.update({ where: { id: attempt.id }, data: { durationSeconds } });
+  }
+
+  const validation = attempt.validationResult;
+  const deletionRecorded =
+    typeof validation === 'object' && validation !== null && !Array.isArray(validation) && 'audioDeletion' in validation;
+  if (!deletionRecorded) {
+    await deletePostCallAudio(prisma, {
+      attemptId: attempt.id,
+      practiceId: attempt.practiceId,
+      vapiCallId,
+      recordingUrl: payload.recordingUrl ?? null,
+    });
+  }
+
+  const disclosureLogged = await prisma.auditLog.findFirst({
+    where: {
+      practiceId: attempt.practiceId,
+      subjectId: attempt.id,
+      action: { in: ['ADAD_DISCLOSURE_VERIFIED', 'ADAD_DISCLOSURE_UNVERIFIED'] },
+    },
+    select: { id: true },
+  });
+  if (!disclosureLogged) {
+    await writeDisclosureResolution(prisma, {
+      practiceId: attempt.practiceId,
+      subjectId: attempt.id,
+      vapiCallId,
+      transcript: payload.transcript,
+    });
+  }
+
+  try {
+    const usageResult = await recordCallUsage({ practiceId: attempt.practiceId, vapiCallId });
+    if (usageResult.recorded) {
+      await maybeSendPlanUsageAlertEmails(prisma, attempt.practiceId);
+    }
+  } catch (usageErr) {
+    logger.error('[vapi-webhook] usage recording failed for block-terminated call (non-fatal)', { error: usageErr });
+  }
+}
+
 async function processCallEndedDesk(
   prisma: PrismaClient,
   payload: VapiWebhookPayload,
@@ -186,10 +297,26 @@ async function processCallEndedDesk(
 ): Promise<void> {
   const existing = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    select: { id: true, completedAt: true, claimId: true },
+    select: {
+      id: true,
+      completedAt: true,
+      claimId: true,
+      outcome: true,
+      durationSeconds: true,
+      validationResult: true,
+      claim: { select: { practiceId: true } },
+    },
   });
 
   if (existing?.completedAt) {
+    if (existing.outcome === 'BLOCK_DETECTED') {
+      await finishBlockTerminatedCall(prisma, payload, vapiCallId, {
+        id: existing.id,
+        durationSeconds: existing.durationSeconds,
+        validationResult: existing.validationResult,
+        practiceId: existing.claim.practiceId,
+      });
+    }
     recordVapiWebhook('duplicate');
     return;
   }
@@ -264,38 +391,12 @@ async function processCallEndedDesk(
   // H-5a: CRTC ADAD — always write a resolution log entry, even when there is
   // no transcript. ADAD_DISCLOSURE_SCHEDULED was written at call.started;
   // leaving it unresolved gives a false picture in compliance audits.
-  {
-    const subjectId = attemptAfter?.id ?? existing?.id ?? vapiCallId;
-    if (payload.transcript) {
-      // Check the opening utterance (first ~300 chars ≈ 20 seconds of speech).
-      // Match the actual disclosure phrases from Claims_Agent.firstMessage in
-      // vapi-squad-config.json — use multi-phrase match to avoid false positives
-      // (e.g. carrier saying "this call appears to be automated" should NOT verify).
-      // Require 'automated calling' or 'automated calling system' — the canonical phrase.
-      const opening = payload.transcript.slice(0, 300).toLowerCase();
-      const disclosureVerified =
-        opening.includes('automated calling system') ||
-        opening.includes('automated calling') ||
-        opening.includes('computer-generated system');
-      await appendAuditLog(prisma, {
-        practiceId: claim.practiceId,
-        action: disclosureVerified ? 'ADAD_DISCLOSURE_VERIFIED' : 'ADAD_DISCLOSURE_UNVERIFIED',
-        subjectType: 'CallAttempt',
-        subjectId,
-        details: { vapiCallId, verified: disclosureVerified },
-      });
-    } else {
-      // No transcript — call was too short or transcript not available.
-      // Log as unverified so the compliance record is complete.
-      await appendAuditLog(prisma, {
-        practiceId: claim.practiceId,
-        action: 'ADAD_DISCLOSURE_UNVERIFIED',
-        subjectType: 'CallAttempt',
-        subjectId,
-        details: { vapiCallId, verified: false, reason: 'no_transcript' },
-      });
-    }
-  }
+  await writeDisclosureResolution(prisma, {
+    practiceId: claim.practiceId,
+    subjectId: attemptAfter?.id ?? existing?.id ?? vapiCallId,
+    vapiCallId,
+    transcript: payload.transcript,
+  });
 
   // Prefer the outcome actually persisted by processRecoveryCallEnded() over
   // the locally-recomputed `processed` above: for a V1 human-assisted call,
