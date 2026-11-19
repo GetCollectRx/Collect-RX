@@ -1,12 +1,13 @@
 /**
  * Practice Notification Service
  * Sends notifications to practices about CDCP reconsiderations, learning cycles, and other events
- * Integrations: DB (dashboard), Email (SendGrid), SMS (Twilio), Slack (webhooks)
+ * Integrations: DB (dashboard), Email (Resend or SendGrid via email/mailer.ts), SMS (Twilio), Slack (webhooks)
  */
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
 import { runWithPracticeRls } from '../db/rlsContext.js';
+import { isEmailConfigured, resolveFrom, sendMail } from '../email/mailer.js';
 
 export interface PracticeNotification {
   practiceId: string;
@@ -45,21 +46,15 @@ async function sendEmail(
   text: string,
   html?: string,
 ): Promise<boolean> {
-  const apiKey = process.env.SENDGRID_API_KEY?.trim();
-  if (!apiKey || to.length === 0) {
+  if (!isEmailConfigured() || to.length === 0) {
     logger.warn('[practiceNotificationService] Email skipped: no API key or recipients', {});
     return false;
   }
 
   try {
-    const sg = await import('@sendgrid/mail');
-    sg.default.setApiKey(apiKey);
-    await sg.default.send({
+    await sendMail({
       to,
-      from: {
-        email: process.env.SENDGRID_FROM_EMAIL || 'notifications@collectrx.ca',
-        name: 'CollectRx',
-      },
+      from: resolveFrom('notifications@collectrx.ca'),
       subject: subject.slice(0, 200),
       text,
       html: html || `<p>${text.replace(/\n/g, '<br>')}</p>`,

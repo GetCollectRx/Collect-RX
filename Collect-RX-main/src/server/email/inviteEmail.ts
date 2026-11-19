@@ -1,12 +1,7 @@
 import { logger } from '../observability/logger.js';
+import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
 import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
-async function getSendGrid() {
-  if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = (await import('@sendgrid/mail')).default;
-  sg.setApiKey(process.env.SENDGRID_API_KEY);
-  return sg;
-}
 
 function appBaseUrl(): string {
   return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
@@ -29,22 +24,18 @@ export async function sendInviteEmail(opts: {
 }): Promise<void> {
   const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
-  const sg = await getSendGrid();
 
-  if (!sg) {
-    logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {
+  if (!isEmailConfigured()) {
+    logger.info('[invite] no email provider key set — skipping email', {
       to: opts.toEmail,
       acceptUrl,
     });
     return;
   }
 
-  const from = {
-    email: process.env.SENDGRID_FROM_EMAIL || 'ops@collectrx.ca',
-    name: process.env.SENDGRID_FROM_NAME || 'CollectRx',
-  };
+  const from = resolveFrom('ops@collectrx.ca');
 
-  await sg.send({
+  await sendMail({
     to: opts.toEmail,
     from,
     subject: `You've been invited to CollectRx — ${opts.practiceName}`,
