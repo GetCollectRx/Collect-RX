@@ -15,7 +15,7 @@ Three stages. Features open only through a paid upgrade (no usage-based or time-
 |---|---|---|---|
 | 1 | Hold Sentinel (`sentinel`), and the 30-day trial | $399/month, 1,000 min, $0.25/min overage | Calls through Hold Sentinel with staff handoff, reference number capture on a missed handoff, aged AR dashboard, CSV import, **CDCP tools** (predetermination and reconsideration tracking, denial work on CDCP claims) |
 | 2 | Recovery (`core`; Growth and Scale are larger sizes of it) | $799 / $1,999 / $2,499 | Everything in stage 1, plus pre-visit eligibility for private carriers (calls and TELUS Tx23), denial evidence and resubmission tracking on non-CDCP claims, underpayment recovery |
-| 3 | Autonomous | Not on any plan | The AI speaks with the rep. Opens per carrier only after the graduation criteria in ADR 0003 are met |
+| 3 | Autonomous | Scale (amended 2026-11-07, see below) | The AI speaks with the rep |
 
 CDCP sits in stage 1 because it is the entry point: practices feel that pain now.
 
@@ -23,12 +23,12 @@ CDCP sits in stage 1 because it is the entry point: practices feel that pain now
 
 - Plan membership lives in one file, `Collect-RX-main/src/billing/entitlements.ts`. An org-billed practice gets the organization's plan (`src/server/plans/practiceEntitlements.ts`).
 - Enforcement is at the server, not only in the UI:
-  - Claim calls (`queueEngine.ts`) and pre-visit calls (`preVisitDispatch.ts`) use Hold Sentinel unless the plan includes autonomous calling. No plan does, so the practice setting alone cannot reach the autonomous squad.
+  - Claim calls (`queueEngine.ts`) and pre-visit calls (`preVisitDispatch.ts`) use Hold Sentinel unless the plan includes autonomous calling. Only Scale does, so on any other plan the practice setting alone cannot reach the autonomous squad.
   - Private-carrier eligibility is not queued (`appointmentVerification.ts`) and is skipped at dispatch with `not_in_plan` before any PHI is read (`preVisitDispatch.ts`).
   - Denial evidence routes return 403 on non-CDCP claims, and underpayment routes return 403, without the Recovery plan (`src/routes/insurance.ts`).
   - Saving settings with Hold Sentinel turned off stores it as on when the plan has no autonomous calling. It is rewritten rather than rejected, so practices that saved `false` before plans existed can still save other settings.
 - Background detection (denial evidence items, underpayment cases found on import) still runs on every plan. The data is there when a practice upgrades, and it feeds carrier learning. Only the tools to work it are locked.
-- The Billing page lists what the plan includes and which plan opens the rest. The Settings toggle is locked while autonomous calling is on no plan.
+- The Billing page lists what the plan includes and which plan opens the rest. The Settings toggle is locked unless the plan includes autonomous calling.
 
 ## Pricing notes
 
@@ -47,3 +47,12 @@ CDCP sits in stage 1 because it is the entry point: practices feel that pain now
 - Practices on Recovery today lose nothing.
 - Trial practices see the stage 1 feature set, so the trial demonstrates the product they would first buy.
 - Adding a feature to a stage is a one-line change in `TIER_FEATURES`, but every new feature also needs a server-side check where it is used.
+
+## Amendment, 2026-11-07
+
+The founder set the direction: autonomous calling is the goal of the product, the full product unleashed. Hold Sentinel is the entry offer that builds trust with practices wary of AI. Autonomous calling is now included in the Scale plan only. Hold Sentinel, Recovery and Growth stay Hold Sentinel only.
+
+- A Scale practice still uses Hold Sentinel until its owner turns it off in Settings; new practices start with it on.
+- This replaces "opens per carrier only after the graduation criteria in ADR 0003 are met" for plan membership. Per-carrier graduation (ADR 0005, PR #146, not merged) would further limit which carriers a Scale practice can call autonomously; when #146 lands, the two rules combine and both must allow it.
+- Before release: practices that stored Hold Sentinel off before plans existed still hold `false`. Any such practice on Scale switches to autonomous calling when this ships, so they are checked in production first.
+
