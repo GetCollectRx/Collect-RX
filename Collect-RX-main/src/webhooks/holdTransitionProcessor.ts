@@ -9,6 +9,8 @@
 import { prisma as db } from '../lib/prisma';
 import type { VapiWebhookPayload } from '../vapi/client';
 import { logger } from '../server/observability/logger';
+import { hybridCallFlowEnabled, phasesForAgent } from '../server/frontDesk/callPhase';
+import { closeCallPhases, recordCallPhase } from '../server/frontDesk/callPhaseStore';
 
 interface HoldTransitionContext {
   callAttemptId: string;
@@ -142,6 +144,36 @@ export async function processHoldAndTransitions(
     await processAgentTransition(payload, context);
   }
 
+  if (hybridCallFlowEnabled() && payload.type === 'call.ended') {
+    await recordHybridCallPhases(payload, context);
+  }
+
   // status-update could carry mid-call agent transition events in the future
   // (currently not used, but reserved for real-time squad state updates)
+}
+
+/**
+ * Hybrid call flow: turn the end-of-call report into phase entries, then close
+ * the call. The report names only the last squad member, so menu and hold time
+ * that happened earlier stays unobserved (null) rather than guessed. Real time
+ * menu and hold boundaries need a live signal source (Epic 2).
+ */
+async function recordHybridCallPhases(
+  payload: VapiWebhookPayload,
+  context: HoldTransitionContext,
+): Promise<void> {
+  const collectrx = payload.analysis?.collectrx as unknown;
+  const transition =
+    collectrx && typeof collectrx === 'object'
+      ? (collectrx as Record<string, unknown>).agentTransition
+      : undefined;
+  if (transition && typeof transition === 'object') {
+    const { toAgent, transitionedAt } = transition as Record<string, unknown>;
+    if (typeof toAgent === 'string') {
+      const at = typeof transitionedAt === 'string' ? new Date(transitionedAt) : undefined;
+      await recordCallPhase(db, context.callAttemptId, phasesForAgent(toAgent), at ? { at } : {});
+    }
+  }
+  const endedAt = payload.call.endedAt ? new Date(payload.call.endedAt) : new Date();
+  await closeCallPhases(db, context.callAttemptId, Number.isNaN(endedAt.getTime()) ? new Date() : endedAt);
 }

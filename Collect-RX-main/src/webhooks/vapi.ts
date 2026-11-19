@@ -21,7 +21,7 @@ import { Router, Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
-import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
+import { transferVapiCall, VapiControlUnavailableError, type VapiWebhookPayload } from '../vapi/client';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import {
@@ -33,6 +33,7 @@ import {
 } from '../server/vapi/missedHandoff.js';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import { logger } from '../server/observability/logger.js';
+import { recordCallPhaseByVapiId } from '../server/frontDesk/callPhaseStore.js';
 import {
   claimVapiWebhookForProcessing,
   hashWebhookBody,
@@ -279,6 +280,8 @@ async function handleStaffHandoffRequest(
         }),
       );
     }
+    // A live rep is on the line as soon as Hold_Sentinel asks for staff, whether or not the transfer works.
+    await runWithRlsBypass(() => recordCallPhaseByVapiId(prisma, vapiCallId, 'rep_answered'));
     if (!escalationPhone) {
       console.error(
         `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
@@ -286,7 +289,19 @@ async function handleStaffHandoffRequest(
       return missedHandoffResult;
     }
 
-    await transferVapiCall(vapiCallId, escalationPhone);
+    try {
+      await transferVapiCall(vapiCallId, escalationPhone);
+      await runWithRlsBypass(() => recordCallPhaseByVapiId(prisma, vapiCallId, 'staff_or_agent'));
+    } catch (transferErr) {
+      // Coarse reason only: no control URL, destination number or response body.
+      logger.error('[vapi-webhook] request_staff_handoff transfer failed', {
+        vapiCallId,
+        practiceId,
+        reason: transferErr instanceof VapiControlUnavailableError ? transferErr.reason : 'unexpected',
+        status: transferErr instanceof VapiControlUnavailableError ? transferErr.status : undefined,
+      });
+      throw transferErr;
+    }
 
     const amt = Number(claim?.outstandingAmount);
     const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
