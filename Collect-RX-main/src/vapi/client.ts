@@ -35,6 +35,7 @@
 import { CarrierId } from '@prisma/client';
 import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
 import { vapiCircuitBreaker } from './circuitBreaker.js';
+import { isSandboxMode } from '../server/sandbox/sandboxMode.js';
 
 /**
  * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
@@ -616,6 +617,9 @@ function assertVapiControlUrl(raw: unknown): string {
   } catch {
     throw new Error('[VapiClient] call control URL is not a valid URL');
   }
+  // The live sandbox serves its own control URLs from the in-process mock
+  // Vapi API, which is the only non-Vapi origin ever accepted.
+  if (isSandboxMode() && parsed.origin === new URL(VAPI_BASE_URL).origin) return parsed.toString();
   const host = parsed.hostname.toLowerCase();
   if (parsed.protocol !== 'https:' || !(host === 'vapi.ai' || host.endsWith('.vapi.ai'))) {
     throw new Error('[VapiClient] call control URL is not an https vapi.ai URL');

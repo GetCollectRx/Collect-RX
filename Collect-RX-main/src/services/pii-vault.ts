@@ -257,7 +257,8 @@ export async function handlePostCallAudioDeletion(
     const vapiKey = process.env.VAPI_API_KEY;
     if (!vapiKey) throw new Error('VAPI_API_KEY not set');
 
-    const vapiRes = await fetch(`https://api.vapi.ai/call/${vapiCallId}/recording`, {
+    const vapiBase = (process.env.VAPI_BASE_URL || 'https://api.vapi.ai').replace(/\/$/, '');
+    const vapiRes = await fetch(`${vapiBase}/call/${vapiCallId}/recording`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${vapiKey}`,
