@@ -7,6 +7,7 @@ import { requirePlanUsageAccess } from '../middleware/requirePlanUsageAccess.js'
 import { createBillingCheckoutSession, createBillingPortalSession, getSubscriptionGateState } from '../stripe/billing';
 import { apiClientErrorMessage } from '../apiErrorMessage.js';
 import { confirmOverage, getPlanSummary } from '../plans/planBridge.js';
+import { practiceFeatures } from '../plans/practiceEntitlements.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import type { PracticeSettings } from '../../types/practiceSettings.js';
 import { logger } from '../observability/logger.js';
@@ -60,9 +61,11 @@ export function createBillingRouter(prisma: PrismaClient): Router {
       const subscription = await getSubscriptionGateState(prisma, practiceId);
       const plan = await getPlanSummary(practiceId, practice?.subscriptionCurrentPeriodEnd);
       const settings = await getPracticeSettings(prisma, practiceId);
+      const features = await practiceFeatures(prisma, practiceId);
       res.json({
         success: true,
         plan,
+        features,
         subscription,
         practiceName: practice?.name ?? null,
         visibility: {

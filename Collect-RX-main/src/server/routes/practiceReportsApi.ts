@@ -22,6 +22,8 @@ import { blockFrontDeskReports, blockAuditorWrites, requireBillingOps } from '..
 import { withGrantChecks } from '../middleware/grantChecks.js';
 import { getUserRole, isPracticeOwner, isPlatformAdmin } from '../accessControl/types.js';
 import { buildSimpleReportPdf } from '../lib/simpleReportPdf.js';
+import { practiceFeatures, practiceHasFeature } from '../plans/practiceEntitlements.js';
+import { FEATURES, settingsUpdateForPlan } from '../../billing/entitlements.js';
 
 /** Escape untrusted text before interpolating into report HTML (prevents XSS via practice/patient names). */
 function escapeHtml(value: unknown): string {
@@ -241,7 +243,8 @@ export function createPracticeReportsRouter(): Router {
         where: { id: practiceId },
         select: { id: true, name: true, timezone: true, recoveryMode: true },
       });
-      res.json({ success: true, data: { practice, settings, pms } });
+      const planFeatures = await practiceFeatures(prisma, practiceId);
+      res.json({ success: true, data: { practice, settings, pms, planFeatures } });
     } catch (err) {
       res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
     }
@@ -306,7 +309,11 @@ export function createPracticeReportsRouter(): Router {
         res.status(403).json({ success: false, error: 'Only practice owner or platform admin may update settings' });
         return;
       }
-      const settings = await updatePracticeSettings(prisma, practiceId, req.body);
+      const body = settingsUpdateForPlan(
+        req.body,
+        await practiceHasFeature(prisma, practiceId, FEATURES.AUTONOMOUS_CALLS),
+      );
+      const settings = await updatePracticeSettings(prisma, practiceId, body);
       res.json({ success: true, data: settings });
     } catch (err) {
       const msg = apiErrorMessageForResponse(err);

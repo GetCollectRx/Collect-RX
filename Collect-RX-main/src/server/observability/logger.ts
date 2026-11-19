@@ -60,6 +60,15 @@ const PHI_FIELD_NAMES = new Set([
   'treatment_date', 'treatmentDate',
   'claim_submitted_date', 'claimSubmittedDate',
   'group_number', 'groupNumber',
+  // Multi-vertical import (industryClaimImport): raw identifiers seen before tokenization.
+  'insured_name', 'insuredName',
+  'vin', 'VIN', 'vehicle_vin', 'vehicleVin',
+  'subscriber_id', 'subscriberId',
+  'group_policy_number', 'groupPolicyNumber',
+  'health_card_number', 'healthCardNumber',
+  'patient_id', 'patientId', 'mrn', 'MRN',
+  'primary_reference_id', 'primaryReferenceId',
+  'secondary_reference_id', 'secondaryReferenceId',
 ]);
 
 const PHI_REDACTED_VALUE = '[redacted:phi]';

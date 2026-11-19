@@ -5,6 +5,12 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // This script uses its own standalone PrismaClient (above), not the app's
+  // RLS-extended singleton — FORCE RLS still applies at the Postgres session
+  // level regardless of which client library talks to it, and this script
+  // never sets app.practice_id, so every table it seeds needs the bypass var
+  // set explicitly once, up front.
+  await prisma.$executeRawUnsafe("SELECT set_config('app.rls_bypass', 'true', false)");
   console.log('🌱 Seeding database (baseline practice, no claims)...');
 
   const defaultPassword = (process.env.SEED_PRACTICE_PASSWORD || '').trim();

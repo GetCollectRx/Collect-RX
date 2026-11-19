@@ -59,6 +59,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { correlationIdMiddleware } from './middleware/correlationId.js';
+import { authenticate } from './middleware/authenticate.js';
+import { auditPhiAccessMiddleware } from './middleware/auditPhiAccess.js';
 import { logger } from './observability/logger.js';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -76,7 +78,10 @@ import { prisma } from '../lib/prisma';
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
+import { checkEmailProvider } from './email/mailer.js';
+import { buildSpaIndexHtml } from './spaShell.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
+import { assertDataResidencyAtStartup } from './dataResidency';
 import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
 import {
   assertPersistentPhiVaultConfigured,
@@ -115,6 +120,7 @@ import callsRouter            from '../routes/calls';
 import carriersRouter         from '../routes/carriers';
 import analyticsRouter        from '../routes/analytics';
 import eligibilityRouter      from '../routes/eligibility';
+import ontarioBillingRouter   from './routes/ontarioBillingRoutes.js';
 import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
@@ -257,7 +263,23 @@ try {
   process.exit(1);
 }
 
+// A dead or revoked email key does not stop the app, but it silently breaks
+// password resets and invites. Ask the provider once at boot and say so loudly.
+void checkEmailProvider().then((r) => {
+  if (r.ok) {
+    logger.info('[email] provider check passed', { provider: r.provider, detail: r.detail });
+  } else if (process.env.NODE_ENV === 'production') {
+    logger.error('[email] provider check FAILED: password reset and invite emails will not be delivered', {
+      provider: r.provider,
+      detail: r.detail,
+    });
+  } else {
+    logger.warn('[email] provider check skipped or failed (non-production)', { provider: r.provider, detail: r.detail });
+  }
+});
+
 assertPostgresTlsInProduction();
+assertDataResidencyAtStartup();
 assertPhiEncryptionAtRestConfigured();
 assertPersistentPhiVaultConfigured();
 assertEmrSyncWebhookUrlConfiguredAtBoot();
@@ -322,19 +344,40 @@ app.use(
 // Twilio's application/x-www-form-urlencoded voice webhook; both parsers are
 // needed, each only acts on its own content-type and leaves the other alone.
 // ─────────────────────────────────────────────────────────────────────────────
-app.use(
-  '/api/webhooks/hold-park',
-  webhookLimiter,
-  express.json(),
-  express.urlencoded({ extended: false }),
-  holdParkTestRouter,
-);
+const holdParkEngineeringHarnessEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true';
+
+if (process.env.NODE_ENV === 'production' && process.env.HOLD_PARK_TEST_ENABLED === 'true') {
+  throw new Error('HOLD_PARK_TEST_ENABLED is forbidden in production');
+}
+
+if (holdParkEngineeringHarnessEnabled) {
+  app.use(
+    '/api/webhooks/hold-park',
+    webhookLimiter,
+    express.json(),
+    express.urlencoded({ extended: false }),
+    holdParkTestRouter,
+  );
+}
 
 app.post(
   '/api/webhooks/sendgrid',
   webhookLimiter,
   express.raw({ type: 'application/json' }),
   makeSendgridEventWebhookHandler(prisma),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo booking (Calendly / Cal.com) — RAW body MUST be mounted before
+// express.json(). Both providers sign the exact raw request bytes; verifying
+// against a re-serialized JSON object would fail even with the right secret.
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(
+  '/api/webhooks/demo-booking',
+  webhookLimiter,
+  express.raw({ type: 'application/json' }),
+  createDemoBookingWebhookRouter(prisma),
 );
 
 app.use(
@@ -349,12 +392,6 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(correlationIdMiddleware);
-
-app.use(
-  '/api/webhooks/demo-booking',
-  webhookLimiter,
-  createDemoBookingWebhookRouter(prisma),
-);
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -499,6 +536,10 @@ app.use('/api', anonStandardLimiter);
 // ─────────────────────────────────────────────────────────────────────────────
 // API routes
 // ─────────────────────────────────────────────────────────────────────────────
+// Required PHI access-intent audit. Audit-store failure prevents execution.
+app.use('/api/insurance', authenticate, auditPhiAccessMiddleware);
+app.use('/api/calls', authenticate, auditPhiAccessMiddleware);
+app.use('/api/admin/audit-log', authenticate, auditPhiAccessMiddleware);
 app.use('/api/auth',       createAuthRouter(prisma));
 app.use('/api/auth/sso',   createSsoRouter(prisma));
 app.use('/api/group',      createGroupAdminRouter(prisma));
@@ -531,6 +572,7 @@ app.use('/api/carriers',   carriersRouter);
 app.use('/api/analytics',  analyticsRouter);
 app.use('/api/telemetry',   productTelemetryRouter);
 app.use('/api/eligibility', eligibilityRouter);
+app.use('/api/ontario-billing', ontarioBillingRouter);
 app.use('/api/queue',       queueRouter);
 app.use('/api',            createEarlyAccessRouter(prisma));
 app.use('/api/connector',  createConnectorRouter());
@@ -575,23 +617,14 @@ if (process.env.NODE_ENV === 'production') {
 
 let cachedSpaIndexHtml: string | null = null;
 
-function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/** SPA shell HTML with optional `<meta name="crx-public-api-origin">` for split static/API deployments. */
+/**
+ * SPA shell HTML. Express serves this shell itself, so `/api` is same-origin and the
+ * auth cookie stays first-party. The API-origin meta is only injected for a split
+ * static/API deployment, and only when SPA_INJECT_API_ORIGIN=true (see spaShell.ts).
+ */
 function getSpaIndexHtml(): string {
   if (cachedSpaIndexHtml !== null) return cachedSpaIndexHtml;
-  const raw = fs.readFileSync(indexHtmlPath, 'utf8');
-  const api = (process.env.PUBLIC_API_BASE_URL || '').trim().replace(/\/$/, '');
-  if (api) {
-    const meta = `<meta name="crx-public-api-origin" content="${escapeHtmlAttr(api)}" />`;
-    cachedSpaIndexHtml = /name="crx-public-api-origin"/i.test(raw)
-      ? raw.replace(/<meta\s+name="crx-public-api-origin"[^>]*>/i, meta)
-      : raw.replace('</head>', `${meta}\n</head>`);
-  } else {
-    cachedSpaIndexHtml = raw;
-  }
+  cachedSpaIndexHtml = buildSpaIndexHtml(fs.readFileSync(indexHtmlPath, 'utf8'), process.env);
   return cachedSpaIndexHtml;
 }
 
@@ -833,7 +866,9 @@ async function afterListen(server: ReturnType<typeof app.listen> | https.Server)
   startPadReconciliationScheduler(prisma);
 
   attachDeskWebSocket(server);
-  attachHoldParkAudioStream(server);
+  if (holdParkEngineeringHarnessEnabled) {
+    attachHoldParkAudioStream(server);
+  }
 
   startDeskQueueEngine(prisma);
   startOpsMonitor(prisma);

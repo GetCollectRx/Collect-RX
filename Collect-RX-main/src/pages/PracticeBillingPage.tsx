@@ -4,6 +4,7 @@ import { usePractice } from '../context/PracticeContext'
 import { resolveApiUrl } from '../lib/resolveApiUrl'
 import { apiFetchJson } from '../lib/apiFetch'
 import { fmtCad, paidTierCards } from '../website/pricingContent'
+import { FEATURES, FEATURE_LABELS, FEATURE_UNLOCK_PLAN, type Feature } from '../billing/entitlements'
 
 type UsageAlert = {
   level: 'info' | 'warning' | 'critical'
@@ -45,6 +46,7 @@ type PlanPayload = {
     alerts: UsageAlert[]
     cycleEndsAt?: string | null
   }
+  features?: Feature[]
   subscription: {
     enforce: boolean
     active: boolean
@@ -472,6 +474,8 @@ export default function PracticeBillingPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800 pt-3">
                 Lifetime AR recovered: <span className="font-medium text-gray-700 dark:text-gray-200">{fmtMoney(plan.lifetime.recoveredCents)}</span>
               </p>
+
+              {planData?.features && <PlanFeatureList included={planData.features} />}
             </section>
 
             {isPracticeOwner && (
@@ -633,6 +637,30 @@ export default function PracticeBillingPage() {
           </>
         )}
       </main>
+    </div>
+  )
+}
+
+function PlanFeatureList({ included }: { included: Feature[] }) {
+  return (
+    <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-1.5">
+      <p className="text-xs uppercase tracking-wide text-gray-400">What your plan includes</p>
+      <ul className="space-y-1">
+        {Object.values(FEATURES).map((feature) => {
+          const on = included.includes(feature)
+          const unlockPlan = FEATURE_UNLOCK_PLAN[feature]
+          return (
+            <li key={feature} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span className={on ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>
+                {FEATURE_LABELS[feature]}
+              </span>
+              <span className={`text-xs ${on ? 'text-crx-600 dark:text-crx-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                {on ? 'Included' : unlockPlan ? `${unlockPlan} plan` : 'Not available yet'}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

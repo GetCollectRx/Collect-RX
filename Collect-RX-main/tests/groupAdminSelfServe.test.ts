@@ -5,6 +5,7 @@
  * Phase 1 flow).
  */
 import { afterAll, describe, expect, it } from 'vitest';
+import { CURRENT_AGREEMENTS } from '../src/server/agreements/agreementRegistry.js';
 import request from 'supertest';
 import { app, prisma } from '../src/server/index.js';
 import { createPracticeForTests, createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
@@ -60,6 +61,7 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
   afterAll(async () => {
     for (const practiceId of practiceIds) {
       await prisma.pmsImportRun.deleteMany({ where: { practiceId } });
+      await prisma.callQueue.deleteMany({ where: { practiceId } });
       await prisma.insuranceClaim.deleteMany({ where: { practiceId } });
     }
     if (ownerUserId) await prisma.user.deleteMany({ where: { id: ownerUserId } });
@@ -97,6 +99,7 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
       displayName: 'Fixture Owner',
       email: `dso-owner-${suffix}@fixture.test`,
       password: 'fixture-dso-owner-pw',
+      acceptedAgreements: CURRENT_AGREEMENTS.map((a) => ({ kind: a.kind, version: a.version })),
       organizationName: `Fixture Self-Serve DSO ${suffix}`,
       additionalPractices: [{ practiceName: `Fixture Location B ${suffix}` }],
     });
@@ -125,6 +128,7 @@ describe.skipIf(!dbReady)('Self-serve org signup → co-admin invite → batch P
       displayName: 'Solo Owner',
       email: `solo-owner-${suffix}@fixture.test`,
       password: 'fixture-solo-owner-pw',
+      acceptedAgreements: CURRENT_AGREEMENTS.map((a) => ({ kind: a.kind, version: a.version })),
     });
 
     expect(registerRes.status).toBe(201);

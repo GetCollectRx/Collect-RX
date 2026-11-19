@@ -7,7 +7,7 @@
 import type { CarrierId, ClaimPriority, ClaimStatus, Prisma } from '@prisma/client';
 
 /** Months from service date to carrier submission / appeal deadline (product rules). */
-export const CARRIER_APPEAL_WINDOW_MONTHS: Record<CarrierId, number> = {
+export const CARRIER_APPEAL_WINDOW_MONTHS: Record<Exclude<CarrierId, 'other'>, number> = {
   sun_life: 12,
   manulife: 12,
   canada_life: 12,
@@ -89,6 +89,9 @@ export function computeDeadlineDaysRemaining(
   carrierId: CarrierId,
   referenceDate: Date,
 ): number {
+  // Non-dental payers (`other`) have no product-defined appeal window yet: report
+  // no deadline pressure instead of NaN from an undefined month count.
+  if (carrierId === 'other') return Number.MAX_SAFE_INTEGER;
   const months = CARRIER_APPEAL_WINDOW_MONTHS[carrierId];
   const deadline = addCalendarMonths(serviceDate, months);
   return Math.floor((deadline.getTime() - referenceDate.getTime()) / DAY_MS);

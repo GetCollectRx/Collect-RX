@@ -1,9 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 import { apiFetch } from '../lib/apiFetch'
 import { HOME_ROUTE } from '../types/userRole'
 import { usePractice } from '../context/PracticeContext'
+
+interface AgreementDefinition {
+  kind: string
+  version: string
+  title: string
+  path: string
+  summary: string
+}
 
 export default function SignupPage() {
   const navigate = useNavigate()
@@ -12,6 +20,19 @@ export default function SignupPage() {
   const [additionalLocations, setAdditionalLocations] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [agreements, setAgreements] = useState<AgreementDefinition[]>([])
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/auth/agreements')
+      .then(res => res.json() as Promise<{ agreements: AgreementDefinition[] }>)
+      .then(data => { if (!cancelled) setAgreements(data.agreements) })
+      .catch(() => { if (!cancelled) setError('Could not load the agreements. Please refresh and try again.') })
+    return () => { cancelled = true }
+  }, [])
+
+  const allAccepted = agreements.length > 0 && agreements.every(a => accepted[a.kind] === true)
 
   function addLocation() {
     setAdditionalLocations(locs => [...locs, ''])
@@ -43,6 +64,7 @@ export default function SignupPage() {
           displayName: form.displayName,
           email: form.email,
           password: form.password,
+          acceptedAgreements: agreements.map(a => ({ kind: a.kind, version: a.version })),
           ...(additionalPractices.length > 0
             ? { organizationName: form.organizationName, additionalPractices }
             : {}),
@@ -63,7 +85,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="crx-portal-root">
+    <div className="crx-portal">
       <div className="crx-portal-card">
         <div className="crx-portal-brand">
           <CollectRxLogoPortal />
@@ -171,11 +193,29 @@ export default function SignupPage() {
             />
           </div>
 
+          <fieldset style={{ border: 'none', padding: 0, margin: '12px 0' }}>
+            <legend className="crx-portal-label">Agreements</legend>
+            {agreements.map(a => (
+              <label key={a.kind} className="crx-portal-note" style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={accepted[a.kind] === true}
+                  onChange={e => setAccepted(prev => ({ ...prev, [a.kind]: e.target.checked }))}
+                  required
+                />
+                <span>
+                  {a.summary}{' '}
+                  <a href={a.path} target="_blank" rel="noopener noreferrer" className="crx-portal-link">Read the {a.title.toLowerCase()}</a>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
           {error && (
             <div className="crx-portal-alert error" role="alert">{error}</div>
           )}
 
-          <button type="submit" disabled={busy} className="crx-portal-btn">
+          <button type="submit" disabled={busy || !allAccepted} className="crx-portal-btn">
             {busy ? 'Creating account…' : 'Create account'}
           </button>
         </form>

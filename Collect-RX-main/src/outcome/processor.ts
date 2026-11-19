@@ -13,6 +13,7 @@
 
 import type { CallOutcome } from '@prisma/client';
 import type { VapiWebhookPayload } from '../vapi/client';
+import { transcriptSignalsCarrierBlock } from '../server/frontDesk/carrierBlockPhrases.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,7 +51,7 @@ const BLOCK_SIGNAL_PATTERNS: RegExp[] = [
   /detected\s+bot\s+activity/i,
   // Added 2026-08-09 — found via adversarial phrase testing (tests/carrierBlockPhraseGap.test.ts):
   // reps object to automation without ever using the literal words "bot"/"automated calls".
-  /(?:doesn.?t|does\s+not|won.?t|will\s+not|can.?t|cannot)\s+(?:allow|accept|permit|process)\s+(?:automated|bots?|robocalls?|auto[- ]?dialers?)/i,
+  /(?:doesn.?t|does\s+not|don.?t|do\s+not|won.?t|will\s+not|can.?t|cannot)\s+(?:allow|accept|permit|process)\s+(?:automated|bots?|robocalls?|auto[- ]?dialers?)/i,
   /(?:not|isn.?t|is\s+not)\s+a\s+real\s+person/i,
   /remove\s+(?:this|your)\s+(?:number|line)\s+from\s+(?:your|the)\s+(?:calling\s+)?system/i,
   /will\s+not\s+answer\s+(?:again|this\s+number|your\s+calls)/i,
@@ -339,8 +340,14 @@ export function classifyOutcome(payload: VapiWebhookPayload): ProcessedOutcome {
   const durationSeconds = payload.call.durationSeconds ?? null;
   const transcriptUrl = payload.recordingUrl ?? null;
 
-  // ── Automation / bot block (regex only — not in legacy substring list) ───
-  if (BLOCK_SIGNAL_PATTERNS.some((p) => p.test(blockScanText))) {
+  // ── Automation / bot block (regex list plus the shared live phrase list) ───
+  // The live-transcript phrase list (carrierBlockPhrases.ts) is checked here too:
+  // the two detectors had drifted apart, so a refusal worded only in the live
+  // list ("we don't work with robots") was never caught at end of call.
+  if (
+    BLOCK_SIGNAL_PATTERNS.some((p) => p.test(blockScanText)) ||
+    transcriptSignalsCarrierBlock(blockScanText)
+  ) {
     return {
       outcome: 'BLOCK_DETECTED',
       outcomeDetail:

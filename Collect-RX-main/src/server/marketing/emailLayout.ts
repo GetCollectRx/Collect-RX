@@ -3,6 +3,8 @@
  * Table layout for email client compatibility.
  */
 
+import { FOUNDER_SIGNATURE_HTML } from '../email/founderSignature.js';
+
 const BRAND = {
   cream: '#fcfcfa',
   parchment: '#f8f5ee',
@@ -15,7 +17,6 @@ const BRAND = {
 
 const LOGO_URL = process.env.MARKETING_LOGO_URL || 'https://www.collectrx.ca/collectrx-mark.png';
 const SITE_URL = process.env.MARKETING_SITE_URL || 'https://www.collectrx.ca';
-const MAILING_ADDRESS = process.env.MARKETING_MAILING_ADDRESS || 'PO Box [TBD], Toronto, ON';
 
 export interface OutreachEmailLayoutOptions {
   /** Inner HTML — paragraphs, lists, etc. CTA may be included in body or passed separately. */
@@ -79,8 +80,10 @@ export function wrapOutreachEmail(opts: OutreachEmailLayoutOptions): string {
           ${ctaBlock}
           <tr>
             <td style="padding:16px 32px 28px;border-top:1px solid ${BRAND.border};">
+              <p style="margin:0 0 12px;font-family:Inter,system-ui,sans-serif;font-size:13px;line-height:1.6;color:${BRAND.graphite};">
+                ${FOUNDER_SIGNATURE_HTML}
+              </p>
               <p style="margin:0;font-family:Inter,system-ui,sans-serif;font-size:13px;line-height:1.5;color:${BRAND.graphite};">
-                Khalid Egeh | CollectRx | ${escapeHtml(MAILING_ADDRESS)}<br />
                 <a href="${escapeAttr(SITE_URL)}" style="color:${BRAND.greenDark};">collectrx.ca</a><br /><br />
                 To stop receiving emails from CollectRx, reply with &ldquo;unsubscribe&rdquo; in the subject line.
               </p>

@@ -4,7 +4,7 @@ import { COOKIE_NAME, verifyAuthToken } from '../authToken';
 import { getUserRole, type AuthJwtPayload, type UserAuthPayload } from '../accessControl/types.js'
 import { assertPhiRouteAllowed } from '../accessControl/phiRoutes.js';
 import { practiceIdFromRequestHints } from '../accessControl/practiceContext.js';
-import { runWithRlsContext } from '../db/rlsContext.js';
+import { runWithRlsBypass, runWithRlsContext } from '../db/rlsContext.js';
 import { expandMirroredCollectRxOrigins, readAllowedOriginsRaw } from '../corsAllowedOrigins';
 import { prisma } from '../../lib/prisma.js';
 
@@ -99,7 +99,13 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     // login JWT's claims, so skipping this particular check for them is safe.
     if (payload.role !== 'platform_dev' && !crossPractice && !payload.platformUserSession) {
       const { userId, practiceId } = payload as UserAuthPayload;
-      prisma.user.findUnique({ where: { id: userId }, select: { practiceId: true, tokenExpiresAt: true, isActive: true } })
+      // The session check runs before any practice context exists, so it must read the user row under
+      // an explicit bypass. The "User" table has FORCE ROW LEVEL SECURITY; without a context the lookup
+      // returns no row and every valid login is rejected as "Account is no longer active". The result is
+      // still checked against the JWT's practiceId below, so the bypass cannot widen access. The query must be
+      // awaited INSIDE the callback: a Prisma query is lazy and only runs when awaited, so returning it
+      // un-awaited would execute it after the bypass context has ended.
+      runWithRlsBypass(async () => await prisma.user.findUnique({ where: { id: userId }, select: { practiceId: true, tokenExpiresAt: true, isActive: true } }))
         .then((user) => {
           if (!user || !user.isActive) {
             res.status(401).json({ error: 'Account is no longer active' });

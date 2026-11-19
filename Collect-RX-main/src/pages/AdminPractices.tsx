@@ -23,6 +23,13 @@ const FEATURE_LABELS: Record<string, string> = {
   'csv_ar.compliance_workspace': 'Compliance workspace',
 }
 
+type ActivePause = {
+  scope: 'system' | 'practice' | 'carrier'
+  practiceId: string | null
+  carrierId: string | null
+  reason: string | null
+}
+
 type AdminPractice = {
   id: string
   name: string
@@ -46,6 +53,40 @@ export default function AdminPractices() {
   const [flags, setFlags] = useState<FeatureFlagState[]>([])
   const [flagsError, setFlagsError] = useState<string | null>(null)
   const [flagBusy, setFlagBusy] = useState<string | null>(null)
+  const [pauses, setPauses] = useState<ActivePause[]>([])
+  const [carriers, setCarriers] = useState<string[]>([])
+  const [pauseReason, setPauseReason] = useState('')
+  const [pauseError, setPauseError] = useState<string | null>(null)
+  const [pauseBusy, setPauseBusy] = useState<string | null>(null)
+
+  const loadPauses = useCallback(() => {
+    apiFetchJson<{ success: boolean; data: { pauses: ActivePause[]; carriers: string[] } }>('/api/admin/pauses')
+      .then((res) => { setPauses(res.data.pauses); setCarriers(res.data.carriers) })
+      .catch((e) => setPauseError((e as Error).message))
+  }, [])
+
+  async function setPause(key: string, path: string, paused: boolean) {
+    if (paused && pauseReason.trim() === '') { setPauseError('Enter a short reason first (no patient information).'); return }
+    setPauseBusy(key)
+    setPauseError(null)
+    try {
+      const res = await apiFetch(path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused, ...(paused ? { reason: pauseReason.trim() } : {}) }),
+      })
+      if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? 'Failed to update pause') }
+      loadPauses()
+    } catch (e) {
+      setPauseError((e as Error).message)
+    } finally {
+      setPauseBusy(null)
+    }
+  }
+
+  const isSystemPaused = pauses.some((p) => p.scope === 'system')
+  const isPracticePaused = (id: string) => pauses.some((p) => p.scope === 'practice' && p.practiceId === id)
+  const isCarrierPaused = (id: string) => pauses.some((p) => p.scope === 'carrier' && p.practiceId === null && p.carrierId === id)
 
   const loadFlags = useCallback(() => {
     apiFetchJson<{ success: boolean; data: FeatureFlagState[] }>('/api/admin/feature-flags')
@@ -61,7 +102,8 @@ export default function AdminPractices() {
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
     loadFlags()
-  }, [loadFlags])
+    loadPauses()
+  }, [loadFlags, loadPauses])
 
   async function toggleFlag(feature: string, nextPaused: boolean) {
     setFlagBusy(feature)
@@ -112,6 +154,52 @@ export default function AdminPractices() {
                     onClick={() => void toggleFlag(f.feature, !f.paused)}
                   >
                     {f.paused ? 'Resume' : 'Pause'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Calling pause" subtitle="Stops new carrier calls within minutes. Calls already live are not cut off." />
+          {pauseError && <p className="text-sm text-red-600 dark:text-red-400 mb-2">{pauseError}</p>}
+          <input
+            type="text"
+            maxLength={200}
+            value={pauseReason}
+            onChange={(e) => setPauseReason(e.target.value)}
+            placeholder="Reason for pausing (no patient information)"
+            className="w-full mb-3 rounded border border-gray-200 dark:border-gray-700 bg-transparent px-2 py-1 text-sm"
+          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <p className="text-sm text-gray-900 dark:text-gray-100">All calling, every practice</p>
+              <div className="flex items-center gap-2">
+                <Badge color={isSystemPaused ? 'red' : 'green'}>{isSystemPaused ? 'Paused' : 'Live'}</Badge>
+                <Button size="sm" variant="secondary" disabled={pauseBusy === 'system'} onClick={() => void setPause('system', '/api/admin/pauses/system', !isSystemPaused)}>
+                  {isSystemPaused ? 'Resume' : 'Pause'}
+                </Button>
+              </div>
+            </div>
+            {carriers.map((c) => (
+              <div key={c} className="flex items-center justify-between gap-3 py-1.5">
+                <p className="text-sm text-gray-900 dark:text-gray-100">Carrier {c}, every practice</p>
+                <div className="flex items-center gap-2">
+                  <Badge color={isCarrierPaused(c) ? 'red' : 'green'}>{isCarrierPaused(c) ? 'Paused' : 'Live'}</Badge>
+                  <Button size="sm" variant="secondary" disabled={pauseBusy === `carrier:${c}`} onClick={() => void setPause(`carrier:${c}`, `/api/admin/pauses/carriers/${c}`, !isCarrierPaused(c))}>
+                    {isCarrierPaused(c) ? 'Resume' : 'Pause'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {practices.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 py-1.5">
+                <p className="text-sm text-gray-900 dark:text-gray-100">Practice {p.name}</p>
+                <div className="flex items-center gap-2">
+                  <Badge color={isPracticePaused(p.id) ? 'red' : 'green'}>{isPracticePaused(p.id) ? 'Paused' : 'Live'}</Badge>
+                  <Button size="sm" variant="secondary" disabled={pauseBusy === `practice:${p.id}`} onClick={() => void setPause(`practice:${p.id}`, `/api/admin/pauses/practices/${p.id}`, !isPracticePaused(p.id))}>
+                    {isPracticePaused(p.id) ? 'Resume' : 'Pause'}
                   </Button>
                 </div>
               </div>

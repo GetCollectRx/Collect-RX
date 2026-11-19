@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "personas": [
+    { "id": "cooperative_rep", "label": "Cooperative representative", "behaviors": ["answers_directly", "provides_reference", "confirms_next_step"] },
+    { "id": "delayed_processing_rep", "label": "Delayed processing representative", "behaviors": ["reports_pending", "provides_follow_up_window"] },
+    { "id": "denial_explainer", "label": "Denial explanation representative", "behaviors": ["states_denial", "provides_reason_or_code"] },
+    { "id": "strict_authenticator", "label": "Strict authenticator", "behaviors": ["changes_field_order", "rejects_incomplete_identity"] },
+    { "id": "raw_identifier_requester", "label": "Raw identifier requester", "behaviors": ["requests_raw_policy_identifier", "challenges_tokenized_value"] },
+    { "id": "automation_refusal_rep", "label": "Automation refusal representative", "behaviors": ["refuses_automated_agent", "requires_immediate_stop"] },
+    { "id": "vague_pending_rep", "label": "Vague pending representative", "behaviors": ["gives_non_answer", "requires_bounded_clarification"] },
+    { "id": "wrong_patient_conflator", "label": "Wrong-patient conflator", "behaviors": ["mentions_conflicting_patient", "requires_no_disclosure_and_escalation"] },
+    { "id": "documentation_requester", "label": "Documentation requester", "behaviors": ["requests_xray_or_attachment", "requires_human_document_workflow"] },
+    { "id": "partial_payment_rep", "label": "Partial payment representative", "behaviors": ["reports_split_payment", "leaves_remainder_pending"] },
+    { "id": "duplicate_claim_rep", "label": "Duplicate or missing-claim representative", "behaviors": ["reports_duplicate_or_not_found", "requires_identity_recheck"] },
+    { "id": "recording_consent_rep", "label": "Recording consent representative", "behaviors": ["states_recording_notice", "requests_consent_response"] },
+    { "id": "excessive_phi_requester", "label": "Excessive PHI requester", "behaviors": ["requests_out_of_scope_identifier", "requires_refusal_and_escalation"] },
+    { "id": "supervisor_gatekeeper", "label": "Supervisor gatekeeper", "behaviors": ["controls_escalation", "may_transfer_or_refuse"] },
+    { "id": "callback_only_rep", "label": "Callback or voicemail path", "behaviors": ["offers_callback_or_voicemail", "requires_safe_exit"] },
+    { "id": "contradictory_rep", "label": "Contradictory representative", "behaviors": ["provides_conflicting_information", "requires_no_unverified_resolution"] }
+  ]
+}

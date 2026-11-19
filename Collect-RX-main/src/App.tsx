@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNaviga
 import { CookieBanner } from './components/CookieBanner'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
 const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
+const LegalCallListening = lazy(() => import('./pages/LegalCallListening'))
 const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
 const Changelog = lazy(() => import('./pages/Changelog'))
 const PilotDemo = lazy(() => import('./pages/PilotDemo'))
@@ -31,6 +32,7 @@ const ArCommandCenter       = lazy(() => import('./pages/ArCommandCenter'))
 const InsuranceClaims       = lazy(() => import('./pages/InsuranceClaims'))
 const InsuranceClaimDetail  = lazy(() => import('./pages/InsuranceClaimDetail'))
 const PreTreatmentEstimate  = lazy(() => import('./pages/PreTreatmentEstimate'))
+const PreVisitBlueprintPage = lazy(() => import('./pages/PreVisitBlueprintPage'))
 const WorkQueue             = lazy(() => import('./pages/WorkQueue'))
 const SyncOpsDashboard      = lazy(() => import('./pages/SyncOpsDashboard'))
 const DesktopDownload       = lazy(() => import('./pages/DesktopDownload'))
@@ -184,6 +186,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
       { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
       { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
     ],
   },
@@ -240,6 +243,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
       { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
     ],
   },
   {
@@ -539,6 +543,7 @@ function AppShell() {
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
           <Route path="/pre-treatment-estimate" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreTreatmentEstimate /></ProtectedRoute>} />
+          <Route path="/pre-visit-blueprint" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitBlueprintPage /></ProtectedRoute>} />
           <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
           <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
           <Route path="/group/pms-import" element={<GroupAdminRoute><GroupPmsImportPage /></GroupAdminRoute>} />
@@ -661,6 +666,9 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
+                <Route path="/legal/terms" element={<LegalTerms />} />
+                <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/legal/call-listening" element={<LegalCallListening />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<AuthGate />} />
@@ -670,6 +678,7 @@ function App() {
                 <Route path="/" element={<MarketingSite />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
                 <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/legal/call-listening" element={<LegalCallListening />} />
                 <Route path="/product" element={<ProductOnePager />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />

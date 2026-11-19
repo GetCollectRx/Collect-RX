@@ -14,6 +14,7 @@ export async function persistTranscriptText(
       where: { vapiCallId },
       select: {
         id: true,
+        transcriptText: true,
         claim: { select: { id: true, patientToken: true, practiceId: true } },
       },
     });
@@ -26,33 +27,39 @@ export async function persistTranscriptText(
       };
     }
 
-    const rawTranscript = transcript && transcript.trim().length > 0 ? transcript.trim() : null;
-    let transcriptText: string | null = rawTranscript;
-
-    if (rawTranscript) {
-      let phi = null;
-      if (callAttempt.claim) {
-        const det = piiVault.detokenize(callAttempt.claim.patientToken, 'transcript-redaction', {
-          practiceId: callAttempt.claim.practiceId,
-        });
-        if (det.success && det.phi) {
-          phi = det.phi;
-          await appendPhiAccessEvent(prisma, {
-            practiceId: callAttempt.claim.practiceId,
-            operation: 'detokenize_for_transcript_redaction',
-            recordType: 'InsuranceClaim',
-            recordId: callAttempt.claim.id,
-            purpose: 'transcript_redaction',
-          });
-        }
-        // Token expired/missing: fall through with phi === null — the
-        // pattern-only pass in redactTranscript still runs below. Do not
-        // block persistence on a vault miss; an unredacted-by-name transcript
-        // still gets pattern redaction, which is strictly better than either
-        // failing the whole write or skipping redaction silently.
-      }
-      transcriptText = redactTranscript(rawTranscript, phi);
+    // First write wins. A redelivered end-of-call report can arrive after the
+    // PHI token was revoked, when only pattern redaction is possible; letting
+    // it overwrite would replace a name-redacted transcript with a leakier one.
+    if (callAttempt.transcriptText !== null) {
+      return { callAttemptId: callAttempt.id, persisted: true };
     }
+
+    const rawTranscript = transcript && transcript.trim().length > 0 ? transcript.trim() : null;
+    if (!rawTranscript) {
+      return { callAttemptId: callAttempt.id, persisted: false, error: 'No transcript to persist' };
+    }
+    let phi = null;
+    if (callAttempt.claim) {
+      const det = piiVault.detokenize(callAttempt.claim.patientToken, 'transcript-redaction', {
+        practiceId: callAttempt.claim.practiceId,
+      });
+      if (det.success && det.phi) {
+        phi = det.phi;
+        await appendPhiAccessEvent(prisma, {
+          practiceId: callAttempt.claim.practiceId,
+          operation: 'detokenize_for_transcript_redaction',
+          recordType: 'InsuranceClaim',
+          recordId: callAttempt.claim.id,
+          purpose: 'transcript_redaction',
+        });
+      }
+      // Token expired/missing: fall through with phi === null — the
+      // pattern-only pass in redactTranscript still runs below. Do not
+      // block persistence on a vault miss; an unredacted-by-name transcript
+      // still gets pattern redaction, which is strictly better than either
+      // failing the whole write or skipping redaction silently.
+    }
+    const transcriptText = redactTranscript(rawTranscript, phi);
 
     await prisma.callAttempt.update({
       where: { id: callAttempt.id },

@@ -1,15 +1,17 @@
 /**
  * Practice Notification Service
  * Sends notifications to practices about CDCP reconsiderations, learning cycles, and other events
- * Integrations: DB (dashboard), Email (SendGrid), SMS (Twilio), Slack (webhooks)
+ * Integrations: DB (dashboard), Email (Resend or SendGrid via email/mailer.ts), SMS (Twilio), Slack (webhooks)
  */
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
+import { runWithPracticeRls } from '../db/rlsContext.js';
+import { isEmailConfigured, resolveFrom, sendMail } from '../email/mailer.js';
 
 export interface PracticeNotification {
   practiceId: string;
-  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE';
+  type: 'CDCP_RECONSIDERATION' | 'LEARNING_CYCLE_COMPLETE' | 'VALIDATION_ESCALATION' | 'CARRIER_BLOCK' | 'PAYMENT_RECEIVED' | 'PAYMENT_FAILED' | 'CLAIM_DENIED' | 'ACTION_OVERDUE' | 'LIVE_CALL_NEEDS_STAFF';
   subject: string;
   message: string;
   claimId?: string;
@@ -44,21 +46,15 @@ async function sendEmail(
   text: string,
   html?: string,
 ): Promise<boolean> {
-  const apiKey = process.env.SENDGRID_API_KEY?.trim();
-  if (!apiKey || to.length === 0) {
+  if (!isEmailConfigured() || to.length === 0) {
     logger.warn('[practiceNotificationService] Email skipped: no API key or recipients', {});
     return false;
   }
 
   try {
-    const sg = await import('@sendgrid/mail');
-    sg.default.setApiKey(apiKey);
-    await sg.default.send({
+    await sendMail({
       to,
-      from: {
-        email: process.env.SENDGRID_FROM_EMAIL || 'notifications@collectrx.ca',
-        name: 'CollectRx',
-      },
+      from: resolveFrom('notifications@collectrx.ca'),
       subject: subject.slice(0, 200),
       text,
       html: html || `<p>${text.replace(/\n/g, '<br>')}</p>`,
@@ -167,15 +163,17 @@ export async function sendCdcpReconsiderationNotification(
       severity: data.status === 'submitted' ? 'warning' : 'info',
     });
 
-    // Email staff
-    const staff = await prisma.user.findMany({
-      where: {
-        practiceId: data.practiceId,
-        isActive: true,
-        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-      },
-      select: { email: true },
-    });
+    // Email staff — background call path, no ambient RLS context.
+    const staff = await runWithPracticeRls(data.practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId: data.practiceId,
+          isActive: true,
+          role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -251,15 +249,17 @@ export async function sendLearningCycleSummaryNotification(
       severity: 'info',
     });
 
-    // Email practice owners
-    const owners = await prisma.user.findMany({
-      where: {
-        practiceId: data.practiceId,
-        isActive: true,
-        role: 'practice_owner',
-      },
-      select: { email: true },
-    });
+    // Email practice owners — background call path, no ambient RLS context.
+    const owners = await runWithPracticeRls(data.practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId: data.practiceId,
+          isActive: true,
+          role: 'practice_owner',
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = owners.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {
@@ -323,15 +323,17 @@ export async function sendCriticalAlert(
       severity: 'critical',
     });
 
-    // Email staff
-    const staff = await prisma.user.findMany({
-      where: {
-        practiceId,
-        isActive: true,
-        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-      },
-      select: { email: true },
-    });
+    // Email staff — background call path, no ambient RLS context.
+    const staff = await runWithPracticeRls(practiceId, () =>
+      prisma.user.findMany({
+        where: {
+          practiceId,
+          isActive: true,
+          role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+        },
+        select: { email: true },
+      }),
+    );
 
     const emailTo = staff.map(u => u.email).filter(Boolean);
     if (emailTo.length > 0) {

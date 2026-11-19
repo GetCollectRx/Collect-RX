@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { runWithPracticeRls } from '../db/rlsContext.js';
 import { getPracticeSettings, updatePracticeSettings } from '../services/practiceSettingsService.js';
 import { getPlanSummary, type UsageAlert } from './planBridge.js';
 import { sendPlanUsageAlertEmail } from '../email/planUsageAlert.js';
@@ -45,14 +46,18 @@ export async function maybeSendPlanUsageAlertEmails(
   const fresh = codes.filter((c) => !sent[c]);
   if (fresh.length === 0) return;
 
-  const users = await prisma.user.findMany({
-    where: {
-      practiceId,
-      isActive: true,
-      role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
-    },
-    select: { email: true, displayName: true, role: true },
-  });
+  // This is a scheduled/background call path, not a request — no ambient RLS
+  // context exists here.
+  const users = await runWithPracticeRls(practiceId, () =>
+    prisma.user.findMany({
+      where: {
+        practiceId,
+        isActive: true,
+        role: { in: ['practice_owner', 'office_manager', 'billing_coordinator'] },
+      },
+      select: { email: true, displayName: true, role: true },
+    }),
+  );
 
   const recipients = users.filter((u) => {
     if (u.role === 'practice_owner') return true;

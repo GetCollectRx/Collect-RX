@@ -20,26 +20,15 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Copy root package-lock.json to workspace
-        # Collect-RX-main is an npm workspace member; its own package-lock.json
-        # drifts stale (unused, last touched 2026-05-24) since dependency changes
-        # only ever get made against the actively-maintained root lockfile. The
-        # Docker build's context is Collect-RX-main/, so it can't reach the root
-        # lockfile itself — copy it in before the build sees it. Root cause of
-        # the @tailwindcss/oxide "Cannot find native binding" failures on every
-        # 2026-07-29 deploy attempt: root's lockfile has 4.3.0 with the full
-        # optional-platform set; the stale workspace copy was locked to 4.2.4
-        # against a package.json that had already moved past it.
-        run: cp package-lock.json Collect-RX-main/
+      - name: Verify locked dependencies
+        run: npm ci --ignore-scripts --dry-run
 
       - name: Deploy to collect-rx (production)
-        working-directory: Collect-RX-main
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy -c fly.toml -a collect-rx --remote-only
+        run: flyctl deploy -c Collect-RX-main/fly.toml -a collect-rx --remote-only --dockerfile Collect-RX-main/Dockerfile.monorepo
 
-      # P2.2 — Fly's own health-check-gated rollout (fly.toml's [[http_service.checks]]
-      # against /api/health/ready, combined with release_command's migrate-deploy gate)
+      # Fly's app and worker checks plus release_command's migrate-deploy gate
       # already blocks a release that can't reach the DB from ever taking traffic; this
       # is a deeper, post-traffic check (deployed successfully, but is it actually
       # correct?) that flyctl's own health check can't see. A failure here does NOT

@@ -70,13 +70,15 @@
  * DB-dependent; skipped with a clear log if DATABASE_URL is unreachable.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import express from 'express';
 import request from 'supertest';
 import type { RateLimitRequestHandler } from 'express-rate-limit';
 import IORedis from 'ioredis';
 import { app, prisma } from '../src/server/index.js';
 import {
-  authLimiter,
+  loginLimiter,
   strictLimiter,
   sessionStandardLimiter,
   anonStandardLimiter,
@@ -132,36 +134,75 @@ function cookieHeaderFrom(res: request.Response): string {
   return Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
 }
 
-describe.skipIf(!dbReady)('authLimiter — 5 attempts / 15 min on POST /api/auth/login', () => {
+async function withProductionLimiters<T>(fn: () => Promise<T>): Promise<T> {
+  // The login limiters skip when VITEST is true or NODE_ENV is not production.
+  const originalVitest = process.env.VITEST;
+  const originalNodeEnv = process.env.NODE_ENV;
+  process.env.VITEST = 'false';
+  process.env.NODE_ENV = 'production';
+  try {
+    return await fn();
+  } finally {
+    process.env.VITEST = originalVitest;
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+}
+
+async function failedLogin(email: string): Promise<number> {
+  const res = await request(app).post('/api/auth/login').send({ email, password: 'wrong-password' });
+  return res.status;
+}
+
+describe.skipIf(!dbReady)('loginLimiter — 5 failed attempts / 15 min per account on POST /api/auth/login', () => {
   afterEach(async () => {
-    await clearLimiterState(authLimiter, 'auth');
+    await clearLimiterState(loginLimiter, 'login');
   });
 
-  it('the 6th login attempt from the same IP gets 429, not 401', async () => {
-    // authLimiter's skip condition is `skipForE2eOrVitest() || NODE_ENV !== 'production'`
-    // (src/server/middleware/rateLimiter.ts) — both must be defeated for this
-    // limiter to actually run.
-    const originalVitest = process.env.VITEST;
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.VITEST = 'false';
-    process.env.NODE_ENV = 'production';
-    try {
+  it('the 6th failed attempt for the same email gets 429, not 401', async () => {
+    await withProductionLimiters(async () => {
       const attempts: number[] = [];
+      for (let i = 0; i < 6; i++) attempts.push(await failedLogin('nonexistent-rate-limit-probe@fixture.test'));
+      expect(attempts.slice(0, 5).every((s) => s !== 429)).toBe(true);
+      expect(attempts[5]).toBe(429);
+    });
+  }, 30_000);
+
+  it('a locked-out email does not block a different account', async () => {
+    await withProductionLimiters(async () => {
+      for (let i = 0; i < 6; i++) await failedLogin('locked-account@fixture.test');
+      expect(await failedLogin('locked-account@fixture.test')).toBe(429);
+      expect(await failedLogin('other-account@fixture.test')).not.toBe(429);
+    });
+  }, 30_000);
+
+  it('successful logins do not count toward the limit', async () => {
+    const owner = await createPracticeWithOwnerForTests(prisma);
+    try {
+      await withProductionLimiters(async () => {
+        for (let i = 0; i < 8; i++) {
+          const res = await request(app).post('/api/auth/login').send({ email: owner.email, password: owner.password });
+          expect(res.status).toBe(200);
+        }
+      });
+    } finally {
+      await cleanupPracticeWithUsers(prisma, owner.practice.id);
+    }
+  }, 60_000);
+
+  it('never reads the client IP: requests from different addresses share one account bucket', async () => {
+    await withProductionLimiters(async () => {
+      const email = 'ip-independent@fixture.test';
+      const statuses: number[] = [];
       for (let i = 0; i < 6; i++) {
         const res = await request(app)
           .post('/api/auth/login')
-          .send({ email: 'nonexistent-rate-limit-probe@fixture.test', password: 'wrong-password' });
-        attempts.push(res.status);
+          .set('X-Forwarded-For', `203.0.113.${i + 1}`)
+          .send({ email, password: 'wrong-password' });
+        statuses.push(res.status);
       }
-      // The limiter runs before the handler body, so it doesn't matter that
-      // these credentials are bogus — every request still counts.
-      expect(attempts.slice(0, 5).every((s) => s !== 429)).toBe(true);
-      expect(attempts[5]).toBe(429);
-    } finally {
-      process.env.VITEST = originalVitest;
-      process.env.NODE_ENV = originalNodeEnv;
-    }
-  }, 20_000);
+      expect(statuses[5]).toBe(429);
+    });
+  }, 30_000);
 });
 
 describe.skipIf(!dbReady)('strictLimiter — 10 requests / min on expensive writes', () => {
@@ -394,12 +435,12 @@ describe('telemetryEventsLimiter — 1000 requests / min, no skip (always active
   }, 60_000);
 });
 
-describe('publicLimiter — 60 requests / min — DEAD CODE, not wired to any route', () => {
+describe('publicLimiter — 60 requests / min — wired to /api/public/prospect-unsubscribe', () => {
   afterEach(async () => {
     await clearLimiterState(publicLimiter, 'public');
   });
 
-  it('the middleware itself enforces its configured limit correctly, if it is ever wired up', async () => {
+  it('the middleware itself enforces its configured limit correctly', async () => {
     const originalVitest = process.env.VITEST;
     process.env.VITEST = 'false';
     try {
@@ -409,23 +450,29 @@ describe('publicLimiter — 60 requests / min — DEAD CODE, not wired to any ro
     }
   }, 30_000);
 
-  it('documents the real bug this surfaced: no route in the server applies it, and the routes it was built for do not exist', () => {
-    // publicLimiter's own doc comment: "unauthenticated public routes (e.g.
-    // email unsubscribe)". grep across the entire src/ tree found exactly one
-    // other reference to it: src/server/compliance/auditAgent.ts, which only
-    // string-matches that the text "publicLimiter" and "max: 60" appear
-    // somewhere in rateLimiter.ts's source — a check that the declaration
-    // exists, not that anything uses it.
-    //
-    // Worse: the two unsubscribe URLs this limiter was clearly meant to
-    // protect — GET /api/public/email-unsubscribe and
-    // GET /api/public/prospect-unsubscribe (built in
-    // src/server/email/unsubscribeUrl.ts and embedded in the
-    // List-Unsubscribe email headers) — have no route handler anywhere in
-    // src/server at all. Clicking either link would 404. This is a real,
-    // separate compliance gap (CASL/CAN-SPAM one-click unsubscribe is
-    // advertised via headers but non-functional), out of scope to fix inside
-    // a rate-limiter test file — flagged here for a dedicated pass.
-    expect(true).toBe(true);
+  it('is actually applied to the live prospect-unsubscribe route (was dead code, now fixed)', () => {
+    // This test used to document a real bug: publicLimiter was declared but
+    // wired to no route, and the two unsubscribe URLs it was clearly meant
+    // to protect 404'd — a live CASL/CAN-SPAM compliance gap (one-click
+    // unsubscribe advertised in email headers but non-functional). That was
+    // fixed in src/server/routes/publicUnsubscribeRoutes.ts (see its own
+    // header comment) and mounted at src/server/index.ts's
+    // `app.use('/api/public', createPublicUnsubscribeRouter(prisma))` —
+    // confirmed by direct source citation, not assumed, per this file's
+    // stated methodology (see header comment above).
+    const routeSource = readFileSync(
+      resolve(import.meta.dirname, '../src/server/routes/publicUnsubscribeRoutes.ts'),
+      'utf-8',
+    );
+    expect(routeSource).toContain("import { publicLimiter } from '../middleware/rateLimiter.js'");
+    expect(routeSource).toContain('r.use(publicLimiter)');
+    expect(routeSource).toMatch(/r\.(get|post)\('\/prospect-unsubscribe'/);
+
+    // GET /api/public/email-unsubscribe (src/server/email/unsubscribeUrl.ts)
+    // is still unhandled — but that URL is for the retired patient-balance
+    // payment-reminder flow (`balanceId`/`e=` params), which CLAUDE.md marks
+    // out of scope (patient/client payment collection is retired). Not
+    // re-flagged as an active compliance gap; noted here so it isn't
+    // rediscovered as a surprise later.
   });
 });

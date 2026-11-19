@@ -11,7 +11,7 @@
 ```bash
 # On the demo/staging server:
 cd /path/to/Collect-RX
-git pull origin prd  # Always use prd branch for demos
+git pull origin main  # Always demo from main
 
 # Create fresh demo practice
 export SEED_PRACTICE_PASSWORD="Demo_Pass_2026"

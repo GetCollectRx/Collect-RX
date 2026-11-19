@@ -17,7 +17,9 @@ const CARRIER_BLOCK_PHRASES_BASELINE = [
   // as its primary refusal trigger, but the baseline never covered the exact wording —
   // the deterministic scanner couldn't catch the case the squad prompt itself anticipates.
   "we don't work with robots",
+  "we do not work with robots",
   "i'm ending this call",
+  "i am ending this call",
 ] as const;
 
 const GENERIC_IVR_TERMS = new Set(['automated', 'bot', 'ivr', 'menu', 'system']);

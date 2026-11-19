@@ -10,6 +10,7 @@ import type { PrismaClient } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { activateMandate, fetchAndApplyPayment } from '../gocardless/padService.js';
 import type { GoCardlessWebhookEvent } from '../gocardless/client.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 function verifySignature(rawBody: Buffer, signatureHeader: string | undefined, secret: string): boolean {
   if (!signatureHeader) return false;
@@ -49,23 +50,29 @@ export function gocardlessWebhookHandler(prisma: PrismaClient) {
       return;
     }
 
-    let processed = 0;
-    for (const event of payload.events) {
-      try {
-        await prisma.processedGoCardlessEvent.create({ data: { id: event.id } });
-      } catch (e: unknown) {
-        if ((e as { code?: string }).code === 'P2002') continue; // already processed
-        throw e;
-      }
+    // No session exists on a webhook call — activateMandate/fetchAndApplyPayment
+    // look mandates/payments up by their external GoCardless id, not practiceId,
+    // so there is no per-request tenant scope to derive here in the first place.
+    const processed = await runWithRlsBypass(async () => {
+      let count = 0;
+      for (const event of payload.events) {
+        try {
+          await prisma.processedGoCardlessEvent.create({ data: { id: event.id } });
+        } catch (e: unknown) {
+          if ((e as { code?: string }).code === 'P2002') continue; // already processed
+          throw e;
+        }
 
-      if (event.resource_type === 'mandates' && event.action === 'active' && event.links.mandate) {
-        await activateMandate(prisma, event.links.mandate);
-        processed += 1;
-      } else if (event.resource_type === 'payments' && event.links.payment) {
-        await fetchAndApplyPayment(prisma, event.links.payment);
-        processed += 1;
+        if (event.resource_type === 'mandates' && event.action === 'active' && event.links.mandate) {
+          await activateMandate(prisma, event.links.mandate);
+          count += 1;
+        } else if (event.resource_type === 'payments' && event.links.payment) {
+          await fetchAndApplyPayment(prisma, event.links.payment);
+          count += 1;
+        }
       }
-    }
+      return count;
+    });
 
     res.json({ received: true, processed, total: payload.events.length });
   };

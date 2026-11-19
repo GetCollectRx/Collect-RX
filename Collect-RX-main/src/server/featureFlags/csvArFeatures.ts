@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 /** Staged CSV-first AR capabilities — per-practice feature flags. */
 export const CSV_AR_FEATURES = {
@@ -18,16 +19,20 @@ export async function isCsvArFeatureEnabled(
   practiceId: string,
   feature: CsvArFeature,
 ): Promise<boolean> {
-  const flag = await prisma.featureFlag.findFirst({
-    where: {
-      feature,
-      OR: [{ practiceId }, { practiceId: null }],
-    },
-    orderBy: { practiceId: 'desc' },
-  });
-  // Default ON when no flag row exists — staged rollout uses explicit pause rows.
-  if (!flag) return true;
-  return !flag.paused;
+  // Platform-wide rows (practice_id NULL) are invisible inside a practice's RLS
+  // scope, so the lookup runs outside it. It reads one flag row, no tenant data.
+  // A pause at either level wins; the feature is ON only when no row pauses it.
+  const pausedRow = await runWithRlsBypass(() =>
+    prisma.featureFlag.findFirst({
+      where: {
+        feature,
+        paused: true,
+        OR: [{ practiceId }, { practiceId: null }],
+      },
+      select: { id: true },
+    }),
+  );
+  return pausedRow === null;
 }
 
 export async function setCsvArFeaturePaused(

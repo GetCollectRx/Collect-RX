@@ -1,32 +1,26 @@
 /**
- * Send a password reset email via SendGrid.
- * Falls back to console logging when SENDGRID_API_KEY is not configured.
+ * Send a password reset email through the configured mail provider (see mailer.ts).
+ * Falls back to console logging when no provider key is configured.
  */
 import { logger } from '../observability/logger.js';
+import { resolveAppBaseUrl } from './appLinks.js';
+import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
+import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
-async function getSendGrid() {
-  if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = (await import('@sendgrid/mail')).default;
-  sg.setApiKey(process.env.SENDGRID_API_KEY);
-  return sg;
-}
 
-function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
-}
 
 /**
- * Call once at process startup in production. Without SENDGRID_API_KEY,
+ * Call once at process startup in production. Without an email provider key,
  * sendPasswordResetEmail() silently falls back to console-logging the reset
  * URL instead of emailing it — safe for local dev, dangerous in production
  * (an operator would believe reset emails are going out when they are not).
  * Mirrors assertJwtConfigAtStartup() in ../authToken.ts.
  */
 export function assertPasswordResetEmailConfigAtStartup(): void {
-  if (process.env.NODE_ENV === 'production' && !process.env.SENDGRID_API_KEY) {
+  if (process.env.NODE_ENV === 'production' && !isEmailConfigured()) {
     throw new Error(
-      'SENDGRID_API_KEY is required in production (password reset emails would otherwise ' +
-      'silently log the reset URL to the console instead of sending it)',
+      'RESEND_API_KEY or SENDGRID_API_KEY is required in production (password reset emails ' +
+      'would otherwise silently log the reset URL to the console instead of sending it)',
     );
   }
 }
@@ -35,24 +29,21 @@ export async function sendPasswordResetEmail(
   toEmail: string,
   displayName: string,
   token: string,
+  baseUrl?: string,
 ): Promise<void> {
-  const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
-  const sg = await getSendGrid();
+  const resetUrl = `${baseUrl ?? resolveAppBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
 
-  if (!sg) {
-    logger.info('[password-reset] SENDGRID_API_KEY not set — skipping email', {
+  if (!isEmailConfigured()) {
+    logger.info('[password-reset] no email provider key set — skipping email', {
       recipient: toEmail,
       resetUrl,
     });
     return;
   }
 
-  const from = {
-    email: process.env.SENDGRID_FROM_EMAIL || 'noreply@collectrx.ca',
-    name: process.env.SENDGRID_FROM_NAME || 'CollectRx',
-  };
+  const from = resolveFrom('noreply@collectrx.ca');
 
-  await sg.send({
+  await sendMail({
     to: toEmail,
     from,
     subject: 'Reset your CollectRx password',
@@ -66,7 +57,7 @@ export async function sendPasswordResetEmail(
       '',
       'If you did not request this, you can safely ignore this email.',
       '',
-      '— CollectRx',
+      FOUNDER_SIGNATURE_TEXT,
     ].join('\n'),
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -78,6 +69,7 @@ export async function sendPasswordResetEmail(
           Reset password
         </a>
         <p style="color:#888;font-size:13px">Link expires in 1 hour. If you did not request this, ignore this email.</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:16px">${FOUNDER_SIGNATURE_HTML}</p>
       </div>
     `,
   });

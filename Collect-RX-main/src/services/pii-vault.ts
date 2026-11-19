@@ -204,10 +204,30 @@ export function purgeExpired(): number {
 export interface AudioDeletionResult {
   vapiDeleted: boolean;
   twilioDeleted: boolean;
-  recordingUrl: string | null;
+  /** Always null: storage locations must never propagate into audit/error records. */
+  recordingUrl: null;
   deletedAt: string;
   errors: string[];
 }
+
+export type AudioDeletionRetryState =
+  | { status: 'retrying'; attempts: number; maxAttempts: number; lastAttemptAt: string }
+  | {
+      status: 'resolved';
+      attempts: number;
+      resolvedAt: string;
+      vapiDeleted: true;
+      twilioDeleted: true;
+    }
+  | {
+      status: 'unresolved_terminal';
+      attempts: number;
+      maxAttempts: number;
+      unresolvedAt: string;
+      vapiDeleted: boolean;
+      twilioDeleted: boolean;
+      errorCodes: string[];
+    };
 
 /**
  * Delete a call recording from Vapi and (if present) Twilio storage.
@@ -250,11 +270,10 @@ export async function handlePostCallAudioDeletion(
       // 404 means already deleted or never stored — treat as success
       vapiDeleted = true;
     } else {
-      const body = await vapiRes.text().catch(() => '');
-      errors.push(`Vapi DELETE failed: HTTP ${vapiRes.status} — ${body}`);
+      errors.push(`VAPI_HTTP_${vapiRes.status}`);
     }
-  } catch (err) {
-    errors.push(`Vapi DELETE error: ${err instanceof Error ? err.message : String(err)}`);
+  } catch {
+    errors.push('VAPI_REQUEST_ERROR');
   }
 
   // 2. Delete from Twilio if the recording URL is a Twilio URL
@@ -266,7 +285,7 @@ export async function handlePostCallAudioDeletion(
       const twilioToken = process.env.TWILIO_AUTH_TOKEN;
 
       if (!twilioSid || !twilioToken) {
-        errors.push('TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set — Twilio recording not deleted');
+        errors.push('TWILIO_CREDENTIALS_MISSING');
       } else {
         const deleteUrl = recordingUrl.replace(/\.json$/, '') + '.json';
         const twilioRes = await fetch(deleteUrl, {
@@ -279,12 +298,11 @@ export async function handlePostCallAudioDeletion(
         if (twilioRes.ok || twilioRes.status === 404) {
           twilioDeleted = true;
         } else {
-          const body = await twilioRes.text().catch(() => '');
-          errors.push(`Twilio DELETE failed: HTTP ${twilioRes.status} — ${body}`);
+          errors.push(`TWILIO_HTTP_${twilioRes.status}`);
         }
       }
-    } catch (err) {
-      errors.push(`Twilio DELETE error: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      errors.push('TWILIO_REQUEST_ERROR');
     }
   } else {
     // No Twilio URL — mark as not applicable (not an error)
@@ -297,7 +315,64 @@ export async function handlePostCallAudioDeletion(
     console.info('[PIIVault] zero-retention: recording deleted for call', vapiCallId, { deletedAt });
   }
 
-  return { vapiDeleted, twilioDeleted, recordingUrl, deletedAt, errors };
+  return { vapiDeleted, twilioDeleted, recordingUrl: null, deletedAt, errors };
+}
+
+/** Run bounded vendor deletion retries and expose each state for durable storage. */
+export async function deleteAudioWithBoundedRetry(
+  vapiCallId: string,
+  recordingUrl: string | null,
+  options: {
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    onState?: (state: AudioDeletionRetryState) => Promise<void>;
+  } = {},
+): Promise<{ result: AudioDeletionResult; state: AudioDeletionRetryState }> {
+  const maxAttempts = Math.max(1, Math.min(5, options.maxAttempts ?? 3));
+  const baseDelayMs = Math.max(0, options.baseDelayMs ?? 250);
+  let result: AudioDeletionResult = {
+    vapiDeleted: false,
+    twilioDeleted: false,
+    recordingUrl: null,
+    deletedAt: new Date().toISOString(),
+    errors: ['DELETION_NOT_ATTEMPTED'],
+  };
+
+  for (let attempts = 1; attempts <= maxAttempts; attempts += 1) {
+    await options.onState?.({
+      status: 'retrying',
+      attempts,
+      maxAttempts,
+      lastAttemptAt: new Date().toISOString(),
+    });
+    result = await handlePostCallAudioDeletion(vapiCallId, recordingUrl);
+    if (result.vapiDeleted && result.twilioDeleted) {
+      const state: AudioDeletionRetryState = {
+        status: 'resolved',
+        attempts,
+        resolvedAt: new Date().toISOString(),
+        vapiDeleted: true,
+        twilioDeleted: true,
+      };
+      await options.onState?.(state);
+      return { result, state };
+    }
+    if (attempts < maxAttempts && baseDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempts - 1)));
+    }
+  }
+
+  const state: AudioDeletionRetryState = {
+    status: 'unresolved_terminal',
+    attempts: maxAttempts,
+    maxAttempts,
+    unresolvedAt: new Date().toISOString(),
+    vapiDeleted: result.vapiDeleted,
+    twilioDeleted: result.twilioDeleted,
+    errorCodes: result.errors,
+  };
+  await options.onState?.(state);
+  return { result, state };
 }
 
 /**
@@ -323,6 +398,7 @@ export const piiVault = {
   isValid,
   purgeExpired,
   handlePostCallAudioDeletion,
+  deleteAudioWithBoundedRetry,
   isReadyForAudioDeletion,
   LLM_RESIDENCY_HEADERS,
 } as const;

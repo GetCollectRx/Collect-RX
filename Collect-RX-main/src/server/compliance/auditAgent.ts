@@ -490,7 +490,12 @@ function checkAuditTrail(): ComplianceCheck[] {
   const results: ComplianceCheck[] = [];
 
   // D1 — Append-only audit log in database
-  const hasAuditLog = auditLog.includes('prisma.auditLog.create') && auditLog.includes('appendAuditLog');
+  // The writer runs inside an interactive transaction so the tenant advisory
+  // lock and hash-chain read/write share one connection. Accept either the
+  // legacy direct-client call or the transaction-client equivalent.
+  const hasAuditLog =
+    (auditLog.includes('prisma.auditLog.create') || auditLog.includes('tx.auditLog.create')) &&
+    auditLog.includes('appendAuditLog');
   const hasAuditLogSchema = prismaSchema.includes('AuditLog') || prismaSchema.includes('auditLog');
   results.push(check(
     'D1', 'AUDIT_TRAIL', ['PHIPA', 'PIPEDA'],
@@ -591,13 +596,13 @@ function checkRateLimiting(): ComplianceCheck[] {
   const results: ComplianceCheck[] = [];
 
   // E1 — Login endpoint rate limited (brute-force prevention)
-  const hasAuthLimiter = rateLimiter.includes('authLimiter') && rateLimiter.includes('max: 5') && rateLimiter.includes('15 * 60 * 1000');
+  const hasAuthLimiter = rateLimiter.includes('loginLimiter') && rateLimiter.includes('authLimiter') && rateLimiter.includes('max: 5') && rateLimiter.includes('15 * 60 * 1000');
   results.push(check(
     'E1', 'RATE_LIMITING', ['PHIPA', 'PIPEDA', 'OWASP'],
-    'Login endpoint rate limited to 5 attempts per 15 minutes per IP',
+    'Login endpoint rate limited to 5 failed attempts per 15 minutes per account (IP address not used)',
     'Prevents credential brute-forcing against the authentication endpoint.',
     hasAuthLimiter ? 'pass' : 'fail',
-    hasAuthLimiter ? 'rateLimiter.ts: authLimiter — max 5 / 15min window per IP.' : 'MISSING: authLimiter not found.',
+    hasAuthLimiter ? 'rateLimiter.ts: loginLimiter (5 failed / 15min per account, no IP) and authLimiter (5 / 15min, password-reset requests).' : 'MISSING: authLimiter not found.',
     { reference: 'OWASP A07 — Authentication Failures; PHIPA s.12 Security safeguards' },
   ));
 

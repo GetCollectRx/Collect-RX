@@ -23,5 +23,5 @@
 
   <!-- Badge -->
   <rect x="430" y="478" width="220" height="40" rx="20" fill="#E8F5F0"/>
-  <text x="540" y="504" font-family="Inter, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#0F6E56" text-anchor="middle">PHIPA &amp; PIPEDA compliant</text>
+  <text x="540" y="504" font-family="Inter, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#0F6E56" text-anchor="middle">Privacy controls for a supervised pilot</text>
 </svg>
