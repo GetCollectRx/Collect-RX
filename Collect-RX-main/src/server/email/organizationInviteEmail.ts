@@ -1,19 +1,18 @@
 import { logger } from '../observability/logger.js';
+import { resolveAppBaseUrl } from './appLinks.js';
 import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
 import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 
-function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
-}
 
 export async function sendOrganizationInviteEmail(opts: {
   toEmail: string;
   organizationName: string;
   inviterPracticeName: string;
   token: string;
+  baseUrl?: string;
 }): Promise<void> {
-  const acceptUrl = `${appBaseUrl()}/organizations/accept-invite?token=${encodeURIComponent(opts.token)}`;
+  const acceptUrl = `${opts.baseUrl ?? resolveAppBaseUrl()}/organizations/accept-invite?token=${encodeURIComponent(opts.token)}`;
 
   if (!isEmailConfigured()) {
     logger.info('[org-invite] no email provider key set — skipping email', {
