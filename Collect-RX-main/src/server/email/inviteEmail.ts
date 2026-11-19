@@ -1,11 +1,9 @@
 import { logger } from '../observability/logger.js';
+import { resolveAppBaseUrl } from './appLinks.js';
 import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
 import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 
-function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
-}
 
 const ROLE_LABELS: Record<string, string> = {
   practice_owner: 'Practice Owner',
@@ -21,8 +19,9 @@ export async function sendInviteEmail(opts: {
   practiceName: string;
   role: string;
   token: string;
+  baseUrl?: string;
 }): Promise<void> {
-  const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
+  const acceptUrl = `${opts.baseUrl ?? resolveAppBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
 
   if (!isEmailConfigured()) {

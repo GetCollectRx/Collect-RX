@@ -3,13 +3,11 @@
  * Falls back to console logging when no provider key is configured.
  */
 import { logger } from '../observability/logger.js';
+import { resolveAppBaseUrl } from './appLinks.js';
 import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
 import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
 
-function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
-}
 
 /**
  * Call once at process startup in production. Without an email provider key,
@@ -31,8 +29,9 @@ export async function sendPasswordResetEmail(
   toEmail: string,
   displayName: string,
   token: string,
+  baseUrl?: string,
 ): Promise<void> {
-  const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+  const resetUrl = `${baseUrl ?? resolveAppBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
 
   if (!isEmailConfigured()) {
     logger.info('[password-reset] no email provider key set — skipping email', {

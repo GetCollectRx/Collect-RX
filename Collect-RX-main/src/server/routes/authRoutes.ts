@@ -45,6 +45,7 @@ import { callerAdminOrganizationId } from '../accessControl/organizationContext.
 import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
+import { appBaseUrlFromRequest } from '../email/appLinks.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
 import { runWithRlsContext } from '../db/rlsContext.js';
@@ -825,7 +826,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const token = await issuePasswordResetToken(prisma, user.id);
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
-      void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
+      void sendPasswordResetEmail(user.email, user.displayName, token, appBaseUrlFromRequest(req)).catch((e: unknown) => {
         logger.error('[password-reset] email send failed', { error: e });
       });
 
@@ -1109,7 +1110,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       // delivery failure (bad credentials, SendGrid outage) must not report
       // total failure, since the invite is still valid and usable via its link.
       try {
-        await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
+        await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token, baseUrl: appBaseUrlFromRequest(req) });
         return res.json({ invited: true, emailSent: true });
       } catch (emailErr) {
         console.error('invite email send failed (token still created):', emailErr);
