@@ -47,6 +47,7 @@ import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
+import { logLoginEvent } from '../observability/authEvents.js';
 import { runWithRlsContext } from '../db/rlsContext.js';
 import {
   consumePasswordResetToken,
@@ -328,6 +329,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const practiceUser = await prisma.user.findUnique({ where: { email } });
       if (practiceUser?.isActive) {
         if (practiceUser.role === 'accountant' && practiceUser.tokenExpiresAt && practiceUser.tokenExpiresAt < new Date()) {
+          logLoginEvent('accountant_access_expired', email);
           return res.status(401).json({ error: 'Account access has expired. Contact your Office Manager to renew.' });
         }
         // Phase 4 FR-5: domain-based SSO enforcement, checked live at login
@@ -335,6 +337,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         const { findEnforcingSsoOrgForEmail } = await import('../sso/organizationSsoService.js');
         const ssoOrg = await findEnforcingSsoOrgForEmail(prisma, email);
         if (ssoOrg) {
+          logLoginEvent('sso_required', email);
           return res.status(403).json({
             error: 'Your organization requires single sign-on. Use your SSO login link instead of a password.',
             ssoLoginUrl: `/api/auth/sso/${ssoOrg.orgSlug}/login`,
@@ -342,8 +345,10 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         }
         const ok = await bcrypt.compare(password, practiceUser.passwordHash);
         if (!ok) {
+          logLoginEvent('wrong_password', email);
           return res.status(401).json({ error: 'Invalid credentials' });
         }
+        logLoginEvent('success', email);
         return respondPracticeLogin(req, res, practiceUser);
       }
 
@@ -356,6 +361,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         return respondPlatformUserLogin(req, res, platformUser);
       }
 
+      logLoginEvent('no_such_active_user', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     } catch (e) {
       logger.error('[authRoutes] Login error', { error: e });
