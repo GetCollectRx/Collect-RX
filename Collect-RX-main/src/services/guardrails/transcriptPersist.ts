@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { VapiWebhookPayload } from '../../vapi/client';
 import { TranscriptPersistResult } from './types';
-import { piiVault } from '../../pii-vault.js';
+import { piiVault, type PatientPHI } from '../../pii-vault.js';
 import { appendPhiAccessEvent } from '../../server/audit/auditLog.js';
 import { redactTranscript } from './transcriptRedaction.js';
 
@@ -38,7 +38,7 @@ export async function persistTranscriptText(
     if (!rawTranscript) {
       return { callAttemptId: callAttempt.id, persisted: false, error: 'No transcript to persist' };
     }
-    let phi = null;
+    let phi: PatientPHI | null = null;
     if (callAttempt.claim) {
       const det = piiVault.detokenize(callAttempt.claim.patientToken, 'transcript-redaction', {
         practiceId: callAttempt.claim.practiceId,
@@ -69,6 +69,7 @@ export async function persistTranscriptText(
     return {
       callAttemptId: callAttempt.id,
       persisted: true,
+      identifiers: phi,
     };
   } catch (err) {
     return {

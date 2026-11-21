@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
+import type { PatientPHI } from '../src/pii-vault.js';
 import {
   extractLessonsFromCall,
   getApprovedNavigationNotes,
 } from '../src/server/learning/carrierLessons.js';
 import { probeClaimStatus } from '../src/server/triage/claimStatusProbe.js';
 import { shouldProposeLessons } from '../src/webhooks/vapiNormalizer.js';
+
+const TEST_PHI: PatientPHI = {
+  patientName: 'Zorvex Quillane',
+  dateOfBirth: '1980-01-02',
+  subscriberId: 'SUB-ZQ-778812',
+  groupPolicyNumber: 'GRP-ZQ-55091',
+};
 
 function anthropicResponse(lessons: unknown) {
   return {
@@ -51,7 +59,7 @@ describe('extractLessonsFromCall', () => {
       },
     ])));
     const { prisma, created } = lessonPrisma();
-    const stored = await extractLessonsFromCall(prisma, 'attempt-1');
+    const stored = await extractLessonsFromCall(prisma, 'attempt-1', TEST_PHI);
     expect(stored).toBe(1);
     expect(created[0].carrierId).toBe('rbc');
     expect(created[0].sourceCallAttemptId).toBe('attempt-1');
@@ -69,7 +77,7 @@ describe('extractLessonsFromCall', () => {
       },
     ])));
     const { prisma, created } = lessonPrisma();
-    expect(await extractLessonsFromCall(prisma, 'attempt-1')).toBe(0);
+    expect(await extractLessonsFromCall(prisma, 'attempt-1', TEST_PHI)).toBe(0);
     expect(created).toHaveLength(0);
   });
 
@@ -83,7 +91,7 @@ describe('extractLessonsFromCall', () => {
     const { prisma, created } = lessonPrisma({
       findMany: vi.fn().mockResolvedValue([{ observation: 'known thing' }]),
     });
-    expect(await extractLessonsFromCall(prisma, 'attempt-1')).toBe(0);
+    expect(await extractLessonsFromCall(prisma, 'attempt-1', TEST_PHI)).toBe(0);
     expect(created).toHaveLength(0);
   });
 
@@ -93,7 +101,7 @@ describe('extractLessonsFromCall', () => {
     const { prisma } = lessonPrisma();
     (prisma.callAttempt.findUnique as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValue({ transcriptText: 'short', claim: { carrierId: 'rbc' } });
-    expect(await extractLessonsFromCall(prisma, 'attempt-1')).toBe(0);
+    expect(await extractLessonsFromCall(prisma, 'attempt-1', TEST_PHI)).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

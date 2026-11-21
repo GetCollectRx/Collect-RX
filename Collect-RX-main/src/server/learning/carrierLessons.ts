@@ -16,6 +16,8 @@
 
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { LLM_RESIDENCY_HEADERS } from '../../services/pii-vault';
+import type { PatientPHI } from '../../pii-vault.js';
+import { leaksKnownIdentifier } from './lessonIdentifierFilter.js';
 import {
   assertAllowedEvalModel,
   assertAnthropicEvalAllowed,
@@ -72,7 +74,7 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-async function runExtraction(transcript: string, carrierId: string): Promise<ExtractedLesson[]> {
+async function runExtraction(transcript: string, carrierId: string, phi: PatientPHI): Promise<ExtractedLesson[]> {
   assertAnthropicEvalAllowed('carrierLessons');
   assertAllowedEvalModel(LESSON_MODEL, 'carrierLessons');
   const response = await fetch(ANTHROPIC_API_URL, {
@@ -103,6 +105,15 @@ async function runExtraction(transcript: string, carrierId: string): Promise<Ext
 
   const data = (await response.json()) as { content: Array<{ type: string; text: string }> };
   const text = data.content?.find((c) => c.type === 'text')?.text ?? '{}';
+  return parseExtractedLessons(text, phi);
+}
+
+/**
+ * Turns the model reply into lessons that pass the shape check and the
+ * known-identifier check for this call. Exported so the PHI gate can be tested
+ * without a model call.
+ */
+export function parseExtractedLessons(text: string, phi: PatientPHI): ExtractedLesson[] {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return [];
 
@@ -116,7 +127,9 @@ async function runExtraction(transcript: string, carrierId: string): Promise<Ext
     const category = CATEGORIES.find((c) => c === l.category);
     if (!category) continue;
     if (typeof l.observation !== 'string' || typeof l.recommendation !== 'string') continue;
-    if (containsIdentifierLikeContent(l.observation + ' ' + l.recommendation)) continue;
+    const lessonText = l.observation + ' ' + l.recommendation;
+    if (containsIdentifierLikeContent(lessonText)) continue;
+    if (leaksKnownIdentifier(lessonText, phi)) continue;
     lessons.push({
       category,
       observation: l.observation.slice(0, 500),
@@ -131,10 +144,17 @@ async function runExtraction(transcript: string, carrierId: string): Promise<Ext
  * Extract and store lessons from a completed call. Non-fatal by design —
  * callers should treat a throw here as loggable, never blocking.
  */
+/**
+ * `phi` is the call's identifiers, supplied by the caller from the transcript
+ * persist step. Without them the filter cannot run, so nothing is sent to the
+ * model and nothing is stored.
+ */
 export async function extractLessonsFromCall(
   prisma: PrismaClient,
   callAttemptId: string,
+  phi: PatientPHI | null,
 ): Promise<number> {
+  if (!phi) return 0;
   const attempt = await prisma.callAttempt.findUnique({
     where: { id: callAttemptId },
     select: {
@@ -150,7 +170,7 @@ export async function extractLessonsFromCall(
   });
   if (proposedCount >= MAX_PROPOSED_PER_CARRIER) return 0;
 
-  const extracted = await runExtraction(attempt.transcriptText, carrierId);
+  const extracted = await runExtraction(attempt.transcriptText, carrierId, phi);
   if (extracted.length === 0) return 0;
 
   const existing = await prisma.carrierLesson.findMany({
