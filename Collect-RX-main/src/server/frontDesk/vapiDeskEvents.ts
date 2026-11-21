@@ -178,6 +178,20 @@ export async function processVapiDeskWebhook(
   }
 }
 
+// Written once, after every end-of-call duty a live-blocked call still owes, so its
+// presence is the durable marker that end-of-call already ran.
+async function hasAdadResolution(prisma: PrismaClient, attemptId: string): Promise<boolean> {
+  const entry = await prisma.auditLog.findFirst({
+    where: {
+      subjectType: 'CallAttempt',
+      subjectId: attemptId,
+      action: { in: ['ADAD_DISCLOSURE_VERIFIED', 'ADAD_DISCLOSURE_UNVERIFIED'] },
+    },
+    select: { id: true },
+  });
+  return entry !== null;
+}
+
 async function processCallEndedDesk(
   prisma: PrismaClient,
   payload: VapiWebhookPayload,
@@ -186,10 +200,18 @@ async function processCallEndedDesk(
 ): Promise<void> {
   const existing = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    select: { id: true, completedAt: true, claimId: true },
+    select: { id: true, completedAt: true, claimId: true, liveState: true },
   });
 
-  if (existing?.completedAt) {
+  // A live refusal completes the attempt before the call ends, so completion alone
+  // no longer proves end-of-call ran. Until the ADAD resolution entry exists, the
+  // blocked call still owes its audio deletion and usage metering.
+  const awaitingEndOfCall =
+    existing?.completedAt != null &&
+    existing.liveState === 'carrier_blocked' &&
+    !(await hasAdadResolution(prisma, existing.id));
+
+  if (existing?.completedAt && !awaitingEndOfCall) {
     recordVapiWebhook('duplicate');
     return;
   }
@@ -216,7 +238,20 @@ async function processCallEndedDesk(
 
   const processed = resolveOutcomeFromWebhookPayload(payload);
 
-  if (processed.carrierBlockDetected) {
+  // The carrier was already blocked live, so the block, claim routing and
+  // duplicate-block alert are not repeated. Only the end-of-call duties remain.
+  if (awaitingEndOfCall && existing) {
+    await prisma.callAttempt.update({
+      where: { id: existing.id },
+      data: { durationSeconds: processed.durationSeconds },
+    });
+    await deletePostCallAudio(prisma, {
+      attemptId: existing.id,
+      practiceId: claim.practiceId,
+      vapiCallId,
+      recordingUrl: payload.recordingUrl ?? null,
+    });
+  } else if (processed.carrierBlockDetected) {
     // H-3: complete the callAttempt row BEFORE applying the carrier block.
     // Without this, the attempt is left with completedAt = null, which causes
     // the queue engine's activeAttempt check to block ALL dispatch for this
