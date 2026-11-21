@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
+import type { PatientPHI } from '../src/pii-vault.js';
 import { extractLessonsFromCall } from '../src/server/learning/carrierLessons.js';
+
+const TEST_PHI: PatientPHI = {
+  patientName: 'Zorvex Quillane',
+  dateOfBirth: '1980-01-02',
+  subscriberId: 'SUB-ZQ-778812',
+  groupPolicyNumber: 'GRP-ZQ-55091',
+};
 
 interface AnthropicRequestBody {
   system: string;
@@ -56,7 +64,7 @@ describe('carrier lesson extractor treats transcripts as untrusted', () => {
       });
     }) as typeof fetch;
 
-    const stored = await extractLessonsFromCall(fakePrisma(), 'attempt-1');
+    const stored = await extractLessonsFromCall(fakePrisma(), 'attempt-1', TEST_PHI);
 
     expect(stored).toBe(0);
     expect(captured).not.toBeNull();
