@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { generatePracticeBundle } from '../../../tools/phi-guard/src/synthetic/factory.js';
 import type { SyntheticRecord } from '../../../tools/phi-guard/src/synthetic/generate.js';
 import { prisma } from '../../src/lib/prisma.js';
-import { piiVault } from '../../src/pii-vault.js';
+import { piiVault, type PatientPHI } from '../../src/pii-vault.js';
 import * as legacyVault from '../../src/services/pii-vault.js';
 import { parseSimpleCsv } from '../../src/server/csv/parseSimple.js';
 import { runPmsImportPipeline } from '../../src/server/pms/pmsImportPipeline.js';
@@ -235,7 +235,7 @@ async function teardown(): Promise<{ residual: Array<{ table: string; rows: numb
 }
 
 describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline against a fake carrier', () => {
-  const dispatched: Array<{ scenario: ScenarioId; claimId: string; vapiCallId: string; carrierId: string; attemptId: string }> = [];
+  const dispatched: Array<{ scenario: ScenarioId; claimId: string; vapiCallId: string; carrierId: string; attemptId: string; lessonPhi: PatientPHI | null }> = [];
 
   beforeAll(async () => {
     await acquireSimLock();
@@ -463,7 +463,13 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         continue;
       }
       createdAttemptIds.push(attempt.id);
-      dispatched.push({ scenario, claimId, vapiCallId, carrierId: claim.carrierId, attemptId: attempt.id });
+      // Resolved at dispatch, while the token is live, as production does before
+      // desk processing revokes it on a terminal outcome.
+      const lessonDet = piiVault.detokenize(claim.patientToken, 'sim-harness-lesson-filter', { practiceId });
+      dispatched.push({
+        scenario, claimId, vapiCallId, carrierId: claim.carrierId, attemptId: attempt.id,
+        lessonPhi: lessonDet.success ? lessonDet.phi ?? null : null,
+      });
       const step = `4-7 ${scenario}`;
       const fake = buildFakeCall({
         carriersDir: CARRIERS_DIR,
@@ -609,7 +615,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
       ],
     });
     const before = interceptor.requests.length;
-    const stored = await extractLessonsFromCall(plain, paid.attemptId);
+    const stored = await extractLessonsFromCall(plain, paid.attemptId, paid.lessonPhi);
     const sent = interceptor.requests.slice(before).find((r) => r.disposition === 'anthropic_stub');
     const sentLeaks = leaks(JSON.stringify(sent?.body ?? ''));
     log.expect('8 Learning', '16,21', 'Transcript sent to the extraction model contains zero synthetic PHI', Boolean(sent) && sentLeaks.length === 0,
@@ -620,7 +626,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     log.expect('8 Learning', '16', 'Identifier filter drops a lesson containing a date', !dobLesson, `date lesson stored=${dobLesson}`);
     const nameLesson = lessons.some((l) => leaks(l.observation).length > 0);
     log.expect('8 Learning', '16', 'Identifier filter drops a lesson containing a patient name', !nameLesson,
-      `name lesson stored=${nameLesson}. containsIdentifierLikeContent (carrierLessons.ts) only matches 6+ digit runs and ISO dates; names reach PROPOSED and only human review stops them.`);
+      `name lesson stored=${nameLesson}. leaksKnownIdentifier (src/server/learning/lessonIdentifierFilter.ts) drops lessons that repeat the call's name, date of birth or identifiers, resolved from the transcript persist step.`);
     const nav = lessons.find((l) => l.category === 'IVR_NAVIGATION');
     if (nav) {
       const notesBefore = await getApprovedNavigationNotes(plain, paid.carrierId as CarrierId);
@@ -631,7 +637,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     }
     if (routine) {
       interceptor.queueLessonResponse({ lessons: [] });
-      const zero = await extractLessonsFromCall(plain, routine.attemptId);
+      const zero = await extractLessonsFromCall(plain, routine.attemptId, routine.lessonPhi);
       log.expect('8 Learning', '16', 'Zero lessons is accepted for a routine call', zero === 0, `stored=${zero}`);
     }
   }, 60_000);
