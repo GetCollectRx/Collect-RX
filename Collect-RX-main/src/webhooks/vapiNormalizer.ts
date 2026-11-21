@@ -26,6 +26,8 @@ interface NativeCall {
 interface NativeServerMessage {
   type?: unknown;
   status?: unknown;
+  role?: unknown;
+  transcriptType?: unknown;
   endedReason?: unknown;
   startedAt?: unknown;
   endedAt?: unknown;
@@ -135,6 +137,20 @@ export function normalizeVapiWebhook(parsed: unknown): VapiWebhookPayload | null
         status: 'started',
         startedAt,
       },
+      metadata,
+    };
+  }
+
+  // Live refusal detection needs the carrier's words as they are spoken. Only
+  // final carrier-side utterances qualify: partials repeat the same speech, and
+  // assistant lines are our own voice, which must never be read as the carrier's.
+  if (msgType === 'transcript') {
+    const text = asString(msg.transcript);
+    if (msg.role !== 'user' || msg.transcriptType !== 'final' || !text) return null;
+    return {
+      type: 'transcript',
+      call: { id: callId, status: 'in-progress' },
+      transcript: text,
       metadata,
     };
   }
