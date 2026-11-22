@@ -55,10 +55,13 @@ async function getText(url) {
   });
 }
 
+let launchError = null;
+
 async function waitFor(label, fn, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastError = '';
   while (Date.now() < deadline) {
+    if (launchError) throw launchError;
     try {
       const v = await fn();
       if (v) return v;
@@ -122,7 +125,8 @@ try {
   const stubPort = stub.address().port;
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'crx-smoke-'));
 
-  child = spawn(exe, [`--remote-debugging-port=${debugPort}`, `--user-data-dir=${userData}`], {
+  const extraArgs = (process.env.SMOKE_EXTRA_ARGS || '').split(' ').filter(Boolean);
+  child = spawn(exe, [`--remote-debugging-port=${debugPort}`, `--user-data-dir=${userData}`, ...extraArgs], {
     env: { ...process.env, COLLECTRX_API_ORIGIN: `http://127.0.0.1:${stubPort}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -131,6 +135,13 @@ try {
   child.stderr.on('data', (d) => (log += d));
   child.on('exit', (code) => {
     log += `\n[process exited with code ${code}]`;
+  });
+  // A launch failure (wrong path, missing runtime) must end the run as a clean FAIL.
+  const launchFailed = new Promise((_, reject) => {
+    child.on('error', (err) => reject(new Error(`could not start the app: ${err.message}`)));
+  });
+  launchFailed.catch((err) => {
+    launchError = err;
   });
 
   const ui = await waitFor(
