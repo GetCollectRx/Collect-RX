@@ -1,6 +1,6 @@
 # Webhook Signature Validation & Security Audit Trail
 
-**Status**: Security Audit Finding #9 — Implemented August 15, 2026
+**Status (checked 2026-11-22)**: The centralized validator named below (`src/server/webhooks/webhookSecurityValidator.ts`) is not loaded by the server entry point (`src/server/index.ts`). A static import scan finds it imported only by `tests/webhookSecurityValidator.test.ts`. The per-service "Active" rows in the table below were not re-verified in this check. Treat them as unverified until each route is traced. The validator is tracked under R-100 (wire or delete).
 
 This document describes the centralized webhook security validation framework and comprehensive audit logging for all incoming webhooks (Vapi, Stripe, SendGrid, GoCardless, Validator).
 

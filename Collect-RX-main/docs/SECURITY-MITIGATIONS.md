@@ -1,12 +1,24 @@
-# Emergency Security Mitigations (Wednesday Pilot)
+# Security Mitigations (August 2026 audit findings)
 
-**Status**: Deployed for Wednesday launch  
-**Effective**: August 15, 2026  
-**Full fixes scheduled**: Post-launch (week of August 22)
+**Status (checked 2026-11-22)**: Not all controls named below are loaded by the running app. See the reachability table. A control counts as in place only when the server entry point loads it.
+**Original date**: August 15, 2026. The "deployed" wording in the first version of this file is withdrawn.
 
 ## Overview
 
-Three critical security findings from the August 15 audit require emergency safeguards before the Wednesday pilot launch. These mitigations reduce risk while full fixes are being developed post-launch.
+Three findings from the August 15 audit led to the controls below. This file says which of them the running app loads today. The check is a static import scan from `src/server/index.ts` (the `start` script in `Collect-RX-main/package.json`), so a module loaded only through a path built at run time would be missed.
+
+| Control named | File | Loaded by `src/server/index.ts`? | Used by |
+|---|---|---|---|
+| Audit logging (base) | `src/server/audit/auditLog.ts` | Yes | Running app |
+| PHI access audit middleware | `src/server/middleware/auditPhiAccess.ts` | Yes | Running app |
+| Log redaction (field and content) | `src/server/observability/logger.ts` | Yes | Running app. This is the redaction in use, not `phiRedactor.ts` |
+| Immutable audit log | `src/server/audit/immutableAuditLog.ts` | No | Tests only (`tests/security/immutableAuditLog.test.ts`) |
+| Standalone PHI redactor | `src/server/logging/phiRedactor.ts` | No | Tests only (`tests/security/phiRedaction.test.ts`) |
+| Vapi security controls | `src/server/vapi/vapiSecurityControls.ts` | No | Tests only (`tests/security/vapiSecurity.test.ts`) |
+| Vapi webhook handler | `src/server/vapi/vapiWebhook.ts`, `src/webhooks/vapi.ts` | Yes | Running app |
+| Webhook signature validator | `src/server/webhooks/webhookSecurityValidator.ts` | No | Tests only (`tests/webhookSecurityValidator.test.ts`) |
+
+The four "No" rows are tracked under R-100 of the PRD v2 build (wire or delete). Until they are wired, the mitigations sections below describe intended controls, not running ones.
 
 ---
 

@@ -34,7 +34,12 @@ Reserved and not delegated (not decided in this log): legal and PHIPA conclusion
 | Hold seconds migration (`CallAttempt.holdSeconds`) | Approved in principle. Prepare the migration on a branch. Do not merge it until Stage 1 is re-run and Khalid approves. | Needed for R-011 and R-016. A schema change is reversible on a branch, not on main. | Branch to be prepared. Merge needs approval. |
 | Stage 2 owned-number run | Not run. | Reserved spending and vendor contact. | Deferred to Khalid. |
 
-## Questions for counsel (UNVERIFIED, not answered here)
+## Update 2026-11-22: token rotation and push
+
+- Khalid confirmed the GitHub token has been rotated. Pushing feature branches and opening draft PRs is allowed. Pushing to `main`, merging and force-pushing stay prohibited.
+- Counsel review is not being commissioned. Every legal and PHIPA item below is UNVERIFIED. None is treated as passed. The product stays at simulation level (PRD R-114).
+
+## Questions for counsel (UNVERIFIED, not answered here, counsel review not commissioned)
 
 1. Is a call window starting at 09:00 recipient local time (D6) sufficient under CRTC and provincial rules for automated calls to carriers and their staff? UNVERIFIED.
 2. Does the statement upload path (D9) raise any privacy question under PIPEDA or PHIPA when a practice uploads carrier statements that contain patient identifiers? UNVERIFIED.

@@ -1,10 +1,13 @@
 # CollectRx platform
 
-Monorepo-style workspace for **CollectRx** — dental-insurance carrier follow-up that reduces staff time spent navigating IVRs and waiting on hold. Practice SaaS billing is supported; patient/client collections, negotiation, settlement, and payment direction are out of scope.
+Monorepo-style workspace for **CollectRx**, which recovers insurance accounts receivable for Canadian dental practices. The v1 product is Hold Sentinel with staff handoff: the squad dials the carrier, navigates the phone menu, waits on hold, and hands the live rep to practice staff ([ADR 0003](docs/adr/0003-v1-hold-sentinel-wedge.md), [ADR 0004](docs/adr/0004-product-tiers.md)). Practice SaaS billing is supported. Patient and client collections are out of scope (see [CLAUDE.md](CLAUDE.md)).
 
-The supported practice intake is **CSV only**. It requires no local installation and no access to the practice-management system. Dormant connector experiments remain in the repository for possible future work but are not a supported or advertised product capability.
+Practice intake today:
 
-**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. Launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md). Phased backlog: [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md).
+- **CSV import** is the supported path. The import pipeline is `Collect-RX-main/src/server/pms/pmsImportPipeline.ts`, and `other` (generic CSV) is a registered vendor in `Collect-RX-main/src/server/pms/pmsRegistry.ts`.
+- **AbelDent connector** code is in `Collect-RX-main/desktop/services/abeldent-sync.cjs`. It runs only when `ABELDENT_SCHEMA_MAP` is set. It has not been verified against a real AbelDent export, so its status is unverified (PRD v2 item R-050).
+
+**Goal:** A **deployment-ready** product (staging + production), not a throwaway demo. Launch path: [docs/operations/PATH-TO-DELIVERY.md](docs/operations/PATH-TO-DELIVERY.md). Phased backlog: [OUTSTANDING-FIXES-PRODUCT-READY.md](OUTSTANDING-FIXES-PRODUCT-READY.md) (a ticket backlog, not a status source).
 
 ## Monorepo commands (canonical app)
 
