@@ -317,7 +317,13 @@ export function createPracticeReportsRouter(): Router {
       res.json({ success: true, data: settings });
     } catch (err) {
       const msg = apiErrorMessageForResponse(err);
-      if (msg.includes('callWindow') || msg.includes('E.164') || msg.includes('minimumClaimAgeDays')) {
+      if (
+        msg.includes('callWindow') ||
+        msg.includes('E.164') ||
+        msg.includes('minimumClaimAgeDays') ||
+        msg.includes('staffedHours') ||
+        msg.includes('designatedIndividualUserId')
+      ) {
         res.status(422).json({ success: false, error: msg });
         return;
       }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
+import { isWithinStaffedHours } from '../../lib/staffedHours.js'
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, resolvePracticeCallerId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
@@ -788,6 +789,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       where: { id: practiceId },
       select: {
         name: true,
+        timezone: true,
         billingPhone: true,
         npi: true,
         taxId: true,
@@ -808,6 +810,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       carrierGraduated: await isCarrierGraduated(prisma, next.claim.carrierId),
     });
     const humanAssisted = endingDecision.humanAssisted;
+    // A Hold Sentinel call hands the live rep to staff, so it must not start
+    // when nobody is at the desk to take it. This only ever holds calls back:
+    // the carrier block, pause and call-window checks have already run, and a
+    // practice that never set staffed hours is limited by the call window alone.
+    if (
+      humanAssisted &&
+      practiceSettings.staffedHours &&
+      !isWithinStaffedHours(practiceSettings.staffedHours, practice?.timezone ?? '')
+    ) {
+      logger.info('[deskQueueEngine] outside staffed hours — not dialing for this practice', { practiceId });
+      return;
+    }
     const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
       (c) => c.carrierId === next.claim.carrierId,
     );

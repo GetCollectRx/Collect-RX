@@ -75,7 +75,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
       // total failure, since the invite is still valid and usable via its link.
       let emailSent = true;
       try {
-        await sendInviteEmail({
+        emailSent = await sendInviteEmail({
           toEmail: primaryContact.email,
           practiceName: organizationName,
           role: 'group_admin',

@@ -14,22 +14,26 @@ const ROLE_LABELS: Record<string, string> = {
   accountant: 'Accountant',
 };
 
+/**
+ * Resolves true only when the invite email was handed to a mail provider.
+ * Resolves false when no provider is configured, so callers can tell the
+ * inviter the email did not go out and give them the link instead of claiming
+ * success. A provider failure still throws.
+ */
 export async function sendInviteEmail(opts: {
   toEmail: string;
   practiceName: string;
   role: string;
   token: string;
   baseUrl?: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const acceptUrl = `${opts.baseUrl ?? resolveAppBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
 
   if (!isEmailConfigured()) {
-    logger.info('[invite] no email provider key set — skipping email', {
-      to: opts.toEmail,
-      acceptUrl,
-    });
-    return;
+    // The accept link carries a live invite token, so it is deliberately not logged.
+    logger.info('[invite] no email provider key set — skipping email', { to: opts.toEmail });
+    return false;
   }
 
   const from = resolveFrom('ops@collectrx.ca');
@@ -60,4 +64,5 @@ export async function sendInviteEmail(opts: {
       </div>
     `,
   });
+  return true;
 }

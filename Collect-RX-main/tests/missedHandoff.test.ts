@@ -9,15 +9,17 @@ import {
 } from '../src/server/vapi/missedHandoff.js';
 import { validateRequiredDisclosure } from '../src/server/vapi/claimsValidatorWebhook.js';
 
-const { prismaMock, getSettings, transfer, notify } = vi.hoisted(() => ({
+const { prismaMock, getSettings, transfer, notify, broadcast } = vi.hoisted(() => ({
   prismaMock: {
     practice: { findUnique: vi.fn() },
+    user: { findFirst: vi.fn() },
     insuranceClaim: { findUnique: vi.fn() },
     humanAssistedCallLog: { create: vi.fn() },
   },
   getSettings: vi.fn(),
   transfer: vi.fn(),
   notify: vi.fn(),
+  broadcast: vi.fn(),
 }));
 
 vi.mock('../src/lib/prisma', () => ({ prisma: prismaMock }));
@@ -27,6 +29,7 @@ vi.mock('../src/vapi/client', async (importOriginal) => ({
 }));
 vi.mock('../src/server/services/practiceSettingsService.js', () => ({ getPracticeSettings: getSettings }));
 vi.mock('../src/server/services/practiceNotificationService.js', () => ({ sendPracticeNotification: notify }));
+vi.mock('../src/server/frontDesk/deskWs.js', () => ({ broadcastDesk: broadcast }));
 vi.mock('../src/server/db/rlsContext.js', () => ({
   runWithRlsBypass: <T>(fn: () => T) => fn(),
 }));
@@ -103,6 +106,8 @@ describe('request_staff_handoff and log_call_outcome', () => {
       billedAmount: 300,
     });
     prismaMock.humanAssistedCallLog.create.mockResolvedValue({});
+    prismaMock.user.findFirst.mockResolvedValue(null);
+    broadcast.mockReset();
     notify.mockResolvedValue(undefined);
   });
 
@@ -111,6 +116,65 @@ describe('request_staff_handoff and log_call_outcome', () => {
     transfer.mockResolvedValue(undefined);
     const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(transfer).toHaveBeenCalledWith('call-1', '4165550101');
+    expect(res.body.results[0].result).toMatch(/^HANDOFF INITIATED/);
+  });
+
+  it('puts a screen alert on the desk once the transfer goes through', async () => {
+    getSettings.mockResolvedValue({
+      escalationPhoneNumber: '4165550101',
+      billingPhone: '4165550100',
+      designatedIndividualUserId: 'user-9',
+    });
+    prismaMock.user.findFirst.mockResolvedValue({ displayName: 'Dana Reyes' });
+    transfer.mockResolvedValue(undefined);
+    await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    const [practiceId, event] = broadcast.mock.calls[0];
+    expect(practiceId).toBe('practice-1');
+    expect(event).toMatchObject({
+      type: 'handoff.requested',
+      data: {
+        callId: 'call-1',
+        claimNumber: 'CLM-42',
+        carrierId: 'sun_life',
+        outstandingAmount: 300,
+        designatedName: 'Dana Reyes',
+      },
+    });
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith({
+      where: { id: 'user-9', practiceId: 'practice-1' },
+      select: { displayName: true },
+    });
+  });
+
+  it('still alerts the desk, without a name, when no designated individual is set', async () => {
+    getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
+    transfer.mockResolvedValue(undefined);
+    await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(broadcast.mock.calls[0][1].data.designatedName).toBeNull();
+    expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('does not alert the desk when the transfer fails, since no call is coming', async () => {
+    getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
+    transfer.mockRejectedValue(new Error('transfer failed'));
+    await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('does not alert the desk when no staff line is set up', async () => {
+    getSettings.mockResolvedValue({ billingPhone: '4165550100' });
+    await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('keeps the agent silent even if the screen alert itself fails after the transfer', async () => {
+    getSettings.mockResolvedValue({ escalationPhoneNumber: '4165550101', billingPhone: '4165550100' });
+    transfer.mockResolvedValue(undefined);
+    broadcast.mockImplementation(() => {
+      throw new Error('socket gone');
+    });
+    const res = await post(toolCall('request_staff_handoff', {}, { claimId: 'claim-42', practiceId: 'practice-1' }));
     expect(res.body.results[0].result).toMatch(/^HANDOFF INITIATED/);
   });
 
