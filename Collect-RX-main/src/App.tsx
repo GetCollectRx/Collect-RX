@@ -10,6 +10,7 @@ const PilotDemo = lazy(() => import('./pages/PilotDemo'))
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { isPracticeGroupAdmin } from './lib/personaRole'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
+import { HandoffAlertBanner } from './components/HandoffAlertBanner'
 import { PlanUsageBanner } from './components/PlanUsageBanner'
 import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
@@ -486,6 +487,7 @@ function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <div className="crx-app flex min-h-screen">
+      <HandoffAlertBanner />
       <CommandPalette />
       <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="crx-app-main">
