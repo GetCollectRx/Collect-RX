@@ -51,3 +51,19 @@ export function consumeLoginRedirect(): string | null {
     return null
   }
 }
+
+/** Pages a signed-in person should be moved off: the root and the sign-in page. */
+export function isPostAuthEntryPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return path === '/' || path === '/login'
+}
+
+/**
+ * Where to send a person once their session is ready. A saved return path is
+ * used only from an entry page, so it can never override a page they opened on
+ * purpose, such as a direct link to Settings. Null means stay where they are.
+ */
+export function resolvePostAuthTarget(pathname: string, savedRedirect: string | null, home: string): string | null {
+  if (!isPostAuthEntryPath(pathname)) return null
+  return savedRedirect ?? home
+}
