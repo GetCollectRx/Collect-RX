@@ -6,8 +6,8 @@
  *     dashboard, CSV import, and the CDCP tools, since CDCP is the entry point.
  *   Recovery (core, growth, scale): adds pre-visit eligibility for private
  *     carriers, non-CDCP denial evidence, and underpayment recovery.
- *   Autonomous (AI speaks with the rep): on no plan yet. It opens per carrier
- *     only after the graduation criteria in ADR 0003 are met.
+ *   Autonomous (AI speaks with the rep): on no plan unless AUTONOMOUS_PLAN_TIERS
+ *     names one, and then only per carrier after graduation (ADR 0005).
  *
  * Tier membership is data here; enforcement lives at the server boundary
  * (dispatch, routes), so hiding a button is never the only lock.
@@ -60,8 +60,24 @@ export const FEATURE_UNLOCK_PLAN: Record<Feature, string | null> = {
   autonomous_calls: null,
 };
 
+/**
+ * Plans that include autonomous calling, from the comma-separated
+ * AUTONOMOUS_PLAN_TIERS env var (for example "core,growth,scale"). Unset means
+ * no plan, which is the ADR 0004 default. Opening a plan here is not enough on
+ * its own: each carrier must also graduate (ADR 0005).
+ */
+export function autonomousPlanTiers(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set(
+    (env.AUTONOMOUS_PLAN_TIERS ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 export function tierAllows(tier: BillingTier | null | undefined, feature: Feature): boolean {
   if (!tier) return false;
+  if (feature === FEATURES.AUTONOMOUS_CALLS) return autonomousPlanTiers().has(tier);
   return TIER_FEATURES[tier].includes(feature);
 }
 
@@ -70,14 +86,17 @@ export function featuresForTier(tier: BillingTier | null | undefined): Feature[]
 }
 
 /**
- * Autonomous calling requires both the practice's own setting and a plan that
- * includes it. No plan does today, so every call uses Hold Sentinel.
+ * Autonomous calling requires three things: a plan that includes it, the
+ * practice's own setting, and (when the caller knows the carrier) a graduated
+ * carrier (ADR 0005). Missing any one keeps the call on Hold Sentinel.
  */
 export function effectiveHumanAssisted(
   tier: BillingTier | null | undefined,
   humanAssistedMode: boolean | undefined,
+  options: { carrierGraduated?: boolean } = {},
 ): boolean {
   if (!tierAllows(tier, FEATURES.AUTONOMOUS_CALLS)) return true;
+  if (options.carrierGraduated === false) return true;
   return humanAssistedMode !== false;
 }
 

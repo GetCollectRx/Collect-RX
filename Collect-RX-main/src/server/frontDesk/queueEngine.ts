@@ -12,7 +12,8 @@ import { canMakeCall } from '../plans/planBridge.js';
 import { CALL_TIMEOUTS } from '../../billing/tiers.js';
 import { getPracticeSettings } from '../services/practiceSettingsService.js';
 import { planTierForPractice } from '../plans/practiceEntitlements.js';
-import { effectiveHumanAssisted } from '../../billing/entitlements.js';
+import { hybridAttemptFields, selectCallEnding } from './callPhase.js';
+import { isCarrierGraduated } from '../learning/autonomyGraduation.js';
 import { piiVault } from '../../pii-vault.js';
 import { checkPatientDataCompleteness, raiseMissingPatientDataGate } from './patientDataCompleteness.js';
 import { probeClaimStatus } from '../triage/claimStatusProbe.js';
@@ -801,10 +802,14 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // The plan, not only the practice's toggle, decides whether the AI may
     // speak with the rep: a practice can't reach autonomous calling by
     // flipping a setting its plan doesn't include.
-    const humanAssisted = effectiveHumanAssisted(
-      await planTierForPractice(prisma, practiceId),
-      practiceSettings.humanAssistedMode,
-    );
+    // And per carrier: the AI speaks with a carrier's reps only after that
+    // carrier has graduated on staff-handled call evidence (ADR 0005).
+    const endingDecision = selectCallEnding({
+      tier: await planTierForPractice(prisma, practiceId),
+      humanAssistedMode: practiceSettings.humanAssistedMode,
+      carrierGraduated: await isCarrierGraduated(prisma, next.claim.carrierId),
+    });
+    const humanAssisted = endingDecision.humanAssisted;
     // A Hold Sentinel call hands the live rep to staff, so it must not start
     // when nobody is at the desk to take it. This only ever holds calls back:
     // the carrier block, pause and call-window checks have already run, and a
@@ -1071,16 +1076,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     carrierActiveCounts.set(next.claim.carrierId, (carrierActiveCounts.get(next.claim.carrierId) ?? 0) + 1);
 
     try {
+      const initiatedAt = new Date();
       const attempt = await prisma.callAttempt.create({
         data: {
           claimId: next.claimId,
           vapiCallId: vapiResult.vapiCallId,
-          initiatedAt: new Date(),
+          initiatedAt,
           liveState: 'dialing',
           activeAgent: 'IVR_Navigator',
           // Excludes this call from CarrierLesson extraction (learning loop
           // webhook path) — that pipeline is scoped to the autonomous squad only.
           isHumanAssisted: humanAssisted,
+          ...hybridAttemptFields(endingDecision, initiatedAt),
         },
       });
 
