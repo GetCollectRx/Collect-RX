@@ -1,0 +1,152 @@
+# Builds the desktop app and launches it on a real Windows and a real macOS machine.
+# The installer is installed the way a practice would install it (Windows), the app is
+# started against a stub API, and Collect-RX-main/scripts/desktop-smoke.mjs checks that the
+# window shows the sign-in screen and that /api calls get through. A screenshot of the
+# window is uploaded as an artifact.
+#
+# This is not signed-build verification: signing, SmartScreen and Gatekeeper behaviour are
+# separate checks (see the desktop backlog).
+
+name: CollectRx desktop smoke
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Collect-RX-main/electron-shell/**'
+      - 'Collect-RX-main/desktop/**'
+      - 'Collect-RX-main/scripts/desktop-smoke.mjs'
+      - 'Collect-RX-main/package.json'
+      - 'Collect-RX-main/src/**'
+      - '.github/workflows/collectrx-desktop-smoke.yml'
+
+concurrency:
+  group: collectrx-desktop-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+  NODE_OPTIONS: --max-old-space-size=6144
+
+jobs:
+  windows:
+    name: Windows (install, launch, uninstall)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Build the desktop UI bundle
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npm run build:renderer:desktop
+
+      - name: Package the Windows installer
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npx --no-install -p electron-builder electron-builder --win nsis --x64 --publish never
+
+      - name: Install silently
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem Collect-RX-main/dist-electron -Filter '*Setup*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'No Setup exe produced' }
+          Write-Host "Installing $($installer.Name) ($([math]::Round($installer.Length / 1MB)) MB)"
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer exited with code $($p.ExitCode)" }
+          $roots = @("$env:LOCALAPPDATA\Programs", $env:ProgramFiles, ${env:ProgramFiles(x86)})
+          $exe = $roots | Where-Object { $_ } | ForEach-Object { Get-ChildItem $_ -Filter 'CollectRx.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (-not $exe) { throw 'CollectRx.exe not found after install' }
+          "CRX_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Installed at $($exe.FullName)"
+
+      - name: Launch and smoke test
+        shell: pwsh
+        run: node Collect-RX-main/scripts/desktop-smoke.mjs --exe "$env:CRX_EXE" --out smoke-out
+
+      - name: Uninstall silently
+        shell: pwsh
+        run: |
+          Get-Process CollectRx -ErrorAction SilentlyContinue | Stop-Process -Force
+          $dir = Split-Path $env:CRX_EXE
+          $un = Get-ChildItem $dir -Filter 'Uninstall*.exe' | Select-Object -First 1
+          if (-not $un) { throw 'Uninstaller not found' }
+          $p = Start-Process -FilePath $un.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller exited with code $($p.ExitCode)" }
+          Start-Sleep -Seconds 5
+          if (Test-Path $env:CRX_EXE) { throw 'CollectRx.exe still present after uninstall' }
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-windows
+          path: smoke-out/*
+          if-no-files-found: warn
+          retention-days: 7
+
+  macos:
+    name: macOS (unzip, launch)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (workspace)
+        run: npm ci
+
+      - name: Build the desktop UI bundle
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+        run: npm run build:renderer:desktop
+
+      - name: Package the macOS app
+        working-directory: Collect-RX-main
+        env:
+          NODE_ENV: production
+          COPYFILE_DISABLE: '1'
+        run: npx --no-install -p electron-builder electron-builder --mac zip --arm64 --publish never
+
+      - name: Unzip the app
+        run: |
+          zip_file=$(find Collect-RX-main/dist-electron -maxdepth 1 -name '*arm64*mac*.zip' | head -n 1)
+          test -n "$zip_file"
+          echo "Unzipping $zip_file"
+          mkdir -p mac-app
+          ditto -x -k "$zip_file" mac-app
+          app=$(find mac-app -maxdepth 2 -name 'CollectRx.app' | head -n 1)
+          test -n "$app"
+          echo "CRX_EXE=$PWD/$app/Contents/MacOS/CollectRx" >> "$GITHUB_ENV"
+
+      - name: Launch and smoke test
+        run: node Collect-RX-main/scripts/desktop-smoke.mjs --exe "$CRX_EXE" --out smoke-out
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-macos
+          path: smoke-out/*
+          if-no-files-found: warn
+          retention-days: 7
