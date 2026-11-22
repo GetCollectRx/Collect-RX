@@ -22,6 +22,16 @@ Reserved and not delegated (not decided in this log): legal and PHIPA conclusion
 | D12 | Reviewer for each done table | A fresh session at each gate now. External developer review before Gate 1. | The external review costs money, so I cannot commission it. | Fresh-session review decided. External review open. |
 | D13 to D15 | Not defined in PRD v2 | No decision recorded. The PRD defines decisions D1 to D12 only. | Recording a decision for an item not in the document would invent its content. | Khalid to confirm what D13 to D15 refer to. |
 
+## Document truth (R-002, R-003, R-004)
+
+| Item | Decision | Reason | Status |
+|---|---|---|---|
+| Root README and app README | Rewritten to match the code. Patient A/R, SQLite, synthetic balances and patient payment links removed. | Each statement cites a file. The old text described retired scope. | Done on `docs/prd-v2-truth-fixes`. |
+| Security controls named in SECURITY-MITIGATIONS.md and WEBHOOK-SIGNATURE-VALIDATION.md | Each control marked as loaded or tests-only, with the reachability scan as evidence. Unloaded controls tracked under R-100. | R-003 requires named controls to be loaded or wired. Wiring is R-100, not this change. | Done. Wiring open. |
+| PRD v2 as the single source (R-004) | Partial. PRD v2 is outside the repo, so repo docs cannot link to it. Persona names in it are not copied into the repo. | Repo of record is R-112. Copying the PRD needs a decision on where it lives. | Open. Recommend a repo home under `docs/prd-v2`, names removed, after review. |
+| "Dental folder CLAUDE.md" (R-002) | Not in this repository. Not edited. | It cannot be verified or edited from here. | UNVERIFIED. Owner to edit it. |
+| AbelDent versus CSV-only (root README) | Root README now states CSV is supported and AbelDent is unverified. | The code has the connector. The PRD says AbelDent first. Those must be reconciled. | Open for product choice. |
+
 ## Other delegated items
 
 | Item | Decision | Reason | Status |
