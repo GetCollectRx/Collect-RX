@@ -560,7 +560,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
       const res = await request(deskApp)
         .post(`/api/desk/${practiceId}/active/takeover`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ phoneNumber: ESCALATION_PHONE, staffId: frontDesk.id, callAttemptId: selected.id, vapiCallId: selected.vapiCallId });
+        .send({ phoneNumber: ESCALATION_PHONE, staffId: frontDesk.id, callId: selected.id });
       return { status: res.status, path: interceptor.transfers().slice(before)[0]?.path ?? 'none' };
     };
     const pickOne = await takeover({ id: b.id, vapiCallId: 'sim-concurrent-b' });
@@ -570,7 +570,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     } else {
       const target = '/sim-concurrent-b/control';
       log.expect('Gap 3', '17', 'Takeover targets the selected call (B selected twice)', pickOne.path === target && pickTwo.path === target,
-        `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
+        `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. Takeover, pause and end-call act on the callId sent (resolveConsoleCall in frontDeskApi.ts) and refuse with 409 when it is missing and several calls are open.`);
     }
     await plain.callAttempt.updateMany({ where: { id: { in: [a.id, b.id] } }, data: { completedAt: new Date() } });
     log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall reads call.monitor.controlUrl from GET /call/{id} and posts the documented transfer command to it (docs.vapi.ai/calls/call-features); the interceptor stands in for the control host.');
