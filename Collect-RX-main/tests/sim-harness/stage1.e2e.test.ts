@@ -576,7 +576,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     } else {
       const target = '/sim-concurrent-b/control';
       log.expect('Gap 3', '17', 'Takeover targets the selected call (B selected twice)', pickOne.path === target && pickTwo.path === target,
-        `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. frontDeskApi.ts:341 reads only phoneNumber and staffId, and :345 uses findFirst with no orderBy; pause (:277) and end-call (:318) share the pattern.`);
+        `selected B -> ${pickOne.path}; selected B again -> ${pickTwo.path}. The takeover route (src/server/routes/frontDeskApi.ts) acts on the callAttemptId the console sends, through selectActiveCall, and refuses rather than guessing when several calls are live.`);
     }
     await plain.callAttempt.updateMany({ where: { id: { in: [a.id, b.id] } }, data: { completedAt: new Date() } });
     log.record('Gap 4', '8', 'Transfer method in use', 'FINDING', 'transferVapiCall reads call.monitor.controlUrl from GET /call/{id} and posts the documented transfer command to it (docs.vapi.ai/calls/call-features); the interceptor stands in for the control host.');

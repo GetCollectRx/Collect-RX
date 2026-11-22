@@ -22,6 +22,7 @@ import {
 import { clearCarrierBlock } from '../frontDesk/carrierBlockService.js';
 import { endVapiCall, transferVapiCall } from '../../vapi/client.js';
 import { refreshDeskQueueBroadcast } from '../frontDesk/deskQueueBroadcast.js';
+import { selectActiveCall } from '../frontDesk/activeCallSelection.js';
 import { broadcastDesk } from '../frontDesk/deskWs.js';
 import type { ActiveAgent } from '../../types/frontDesk.js';
 import { requireFrontDeskOnly, blockAuditorWrites } from '../middleware/requireUserRole.js';
@@ -269,15 +270,27 @@ router.delete('/:practiceId/queue/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * The call a desk action applies to. The console sends the attempt it shows as
+ * `callAttemptId`; the server never picks an arbitrary live call on its behalf.
+ */
+async function selectDeskCall(practiceId: string, body: unknown) {
+  const requestedId = (body as { callAttemptId?: unknown } | undefined)?.callAttemptId;
+  const active = await prisma.callAttempt.findMany({
+    where: { completedAt: null, claim: { practiceId } },
+    select: { id: true, vapiCallId: true, activeAgent: true },
+  });
+  return selectActiveCall(active, requestedId);
+}
+
 router.post('/:practiceId/active/pause-agent', requireFrontDeskOnly, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
     const staffId = (req.body as { staffId?: string }).staffId ?? 'front_desk';
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const selection = await selectDeskCall(practiceId, req.body);
+    if (!selection.ok) return res.status(selection.status).json({ success: false, error: selection.error });
+    const attempt = selection.call;
 
     await prisma.callAttempt.update({
       where: { id: attempt.id },
@@ -315,10 +328,9 @@ router.post('/:practiceId/active/end-call', requireFrontDeskOnly, async (req: Re
   try {
     const practiceId = assertPracticeParam(req, res);
     if (!practiceId) return;
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const selection = await selectDeskCall(practiceId, req.body);
+    if (!selection.ok) return res.status(selection.status).json({ success: false, error: selection.error });
+    const attempt = selection.call;
 
     await endVapiCall(attempt.vapiCallId);
     void appendAuditLog(prisma, {
@@ -342,10 +354,9 @@ router.post('/:practiceId/active/takeover', requireFrontDeskOnly, async (req: Re
     if (!phoneNumber?.trim()) {
       return res.status(400).json({ success: false, error: 'phoneNumber is required' });
     }
-    const attempt = await prisma.callAttempt.findFirst({
-      where: { completedAt: null, claim: { practiceId } },
-    });
-    if (!attempt) return res.status(404).json({ success: false, error: 'No active call' });
+    const selection = await selectDeskCall(practiceId, req.body);
+    if (!selection.ok) return res.status(selection.status).json({ success: false, error: selection.error });
+    const attempt = selection.call;
 
     await transferVapiCall(attempt.vapiCallId, phoneNumber.trim());
     await prisma.callAttempt.update({
