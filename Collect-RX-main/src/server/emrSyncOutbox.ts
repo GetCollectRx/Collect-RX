@@ -68,7 +68,7 @@ export interface EmrOutboxBatchResult {
 /**
  * Drain pending `emr_sync_outbox` rows (runs on each rules-engine tick — worker + in-process).
  *
- * - Set `EMR_SYNC_WEBHOOK_URL` to POST each row as JSON to your bridge (AbelDent, etc.). 2xx → mark processed.
+ * - Set `EMR_SYNC_WEBHOOK_URL` to POST each row as JSON to your bridge. 2xx → mark processed.
  * - Or `EMR_OUTBOX_DEV_ACK=1` in local dev to mark rows processed without HTTP (avoids infinite backlog).
  * - If neither is set, rows stay pending and a one-line warning is logged when the queue is non-empty.
  */

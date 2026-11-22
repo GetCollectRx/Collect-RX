@@ -107,7 +107,7 @@ export interface Patient {
 }
 
 // ---------------------------------------------------------------------------
-// Eligibility Snapshot (cached from IVR/Abeldent)
+// Eligibility Snapshot (cached from IVR / PMS)
 // ---------------------------------------------------------------------------
 
 export interface EligibilitySnapshot {

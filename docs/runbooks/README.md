@@ -28,7 +28,6 @@ Per-incident runbooks for the CollectRx API/worker in production. Each follows t
 | [`worker-job-failures-and-dlq.md`](./worker-job-failures-and-dlq.md) | `worker_job_failed` | Critical |
 | [`api-errors-or-down.md`](./api-errors-or-down.md) | `liveness`, `high_5xx_rate` | Critical / High |
 | [`emr-sync-failures.md`](./emr-sync-failures.md) | `emr_outbox_failures` | High |
-| [`desktop-connector-sync-issues.md`](./desktop-connector-sync-issues.md) | `connector_stale`, `connector_sync_failed` | High |
 | [`cogs-breaker-tripped.md`](./cogs-breaker-tripped.md) | `cogs_breaker` | High |
 | [`ops-alerting-disabled.md`](./ops-alerting-disabled.md) | `ops_alerting_disabled` | Critical (nothing else will page anyone until this is fixed) |
 | [`deploy-rollback.md`](./deploy-rollback.md) | (procedure, not an alert ID) | — used after a deploy-correlated regression from any of the above |

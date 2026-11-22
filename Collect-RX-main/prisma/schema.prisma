@@ -1292,7 +1292,7 @@ model CallQueue {
   @@map("call_queue")
 }
 
-/// Outbound events for practice EMR / PMS connectors (AbelDent, etc.). Worker drains `processedAt IS NULL`.
+/// Outbound events for practice EMR / PMS connectors. Worker drains `processedAt IS NULL`.
 model EmrSyncOutbox {
   id          String    @id @default(uuid())
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -1499,7 +1499,7 @@ enum WorkItemSource {
   @@map("work_item_source")
 }
 
-/// Nightly PMS export import audit (Dentrix / AbelDent file drops).
+/// Nightly PMS export import audit (PMS file drops).
 model PmsImportRun {
   id                   String    @id @default(uuid())
   practiceId           String    @map("practice_id")
@@ -1774,7 +1774,7 @@ model PmsWritebackLog {
   practiceId        String    @map("practiceId")
   source            String
   claimRef          String    @map("claimRef")
-  abeldentPatientId String?   @map("abeldentPatientId")
+  pmsPatientId      String?   @map("abeldentPatientId")
   payload           Json
   processedAt       DateTime? @map("processedAt")
   processError      String?   @map("processError")

@@ -72,11 +72,6 @@ function applyAgentConfigToEnv(config) {
     apiUrl: 'COLLECTRX_API_URL',
     apiToken: 'COLLECTRX_API_TOKEN',
     connectorToken: 'COLLECTRX_CONNECTOR_TOKEN',
-    abeldentServer: 'ABELDENT_SERVER',
-    abeldentDatabase: 'ABELDENT_DATABASE',
-    practiceId: 'ABELDENT_PRACTICE_ID',
-    schemaMap: 'ABELDENT_SCHEMA_MAP',
-    syncIntervalMinutes: 'SYNC_INTERVAL_MINUTES',
     dashboardUrl: 'COLLECTRX_DASHBOARD_URL',
   };
   for (const [key, envName] of Object.entries(map)) {

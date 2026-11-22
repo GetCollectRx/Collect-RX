@@ -39,7 +39,7 @@
 //                        by the tokenizer's UUID (`claim_id_token`), never a
 //                        raw patient or claim identifier — and validated
 //                        before Sync_Pending allows any write-back to the
-//                        practice's ledger (e.g. the AbelDent connector).
+//                        practice's ledger (e.g. a PMS connector).
 //
 //   5. reconciler.ts     Independently of any single call, compares the
 //                        practice's aging report against the population of

@@ -13,7 +13,7 @@ const baseProspect: Prospect = makeProspect({
   website: 'https://downtown.ca',
   stage: 'closed_won',
   source: 'referral',
-  pmsHint: 'Abeldent',
+  pmsHint: 'Dentrix',
   sequenceStep: 0,
   sequenceCompleted: true,
   closedWonAt: new Date(),

@@ -77,7 +77,7 @@ export interface NormalizedPmsClaimRow {
   subscriberDateOfBirth: string | null;
   /** Relationship to subscriber — 'self' | 'spouse' | 'dependent' */
   relationship: string | null;
-  /** AbelDent / CDAnet transaction type (e.g. T11 pre-auth denial) */
+  /** CDAnet transaction type (e.g. T11 pre-auth denial) */
   transactionType: string | null;
   denialReasonCode: string | null;
   /**
@@ -90,7 +90,6 @@ export interface NormalizedPmsClaimRow {
 }
 
 const CLAIM_ID_KEYS: Record<PmsImportFamily, string[]> = {
-  abeldent: ['Claim ID', 'ClaimID', 'Claim Number', 'claim_number', 'Ref', 'Reference', 'id'],
   dentrix: ['Claim ID', 'ClaimID', 'Claim Number', 'claim_number', 'Ref', 'Reference', 'id', 'Claim #'],
   generic: [
     'Claim ID',

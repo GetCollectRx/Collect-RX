@@ -180,7 +180,7 @@ export function validateGapEstimate(body: unknown): GapEstimateInput {
 export interface WritebackInput {
   source: 'resolution_closer' | 'escalation_closer';
   claimRef: string;
-  abeldentPatientId: string | undefined;
+  pmsPatientId: string | undefined;
   payload: Record<string, unknown>;
 }
 
@@ -191,13 +191,13 @@ export function validateWriteback(body: unknown): WritebackInput {
     throw new ValidationError('source', 'source must be resolution_closer or escalation_closer');
   }
   const claimRef = requireString(b.claim_ref, 'claim_ref', { max: 120, pattern: CLAIM_REF_RE });
-  const abeldentPatientId = optionalString(b.abeldent_patient_id, 'abeldent_patient_id', {
+  const pmsPatientId = optionalString(b.pms_patient_id, 'pms_patient_id', {
     max: 80,
     pattern: TOKEN_RE,
   });
   const rawPayload = b.payload;
   if (rawPayload == null) {
-    return { source, claimRef, abeldentPatientId, payload: {} };
+    return { source, claimRef, pmsPatientId, payload: {} };
   }
   if (typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
     throw new ValidationError('payload', 'payload must be a JSON object');
@@ -209,7 +209,7 @@ export function validateWriteback(body: unknown): WritebackInput {
   return {
     source,
     claimRef,
-    abeldentPatientId,
+    pmsPatientId,
     payload: rawPayload as Record<string, unknown>,
   };
 }

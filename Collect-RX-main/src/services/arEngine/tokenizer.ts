@@ -34,7 +34,7 @@ export type { PatientPHI } from '../../pii-vault.js';
 export interface TokenizeContext {
   /** Tenant boundary — tokens are practice-scoped, never global. */
   practiceId: string;
-  /** Free-text audit trail entry, e.g. "csv_import:row_42" or "abeldent_sync". */
+  /** Free-text audit trail entry, e.g. "csv_import:row_42" or "pms_sync". */
   callerContext: string;
 }
 

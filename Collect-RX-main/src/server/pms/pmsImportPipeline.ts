@@ -6,10 +6,7 @@ import {
   syncEligibleCallQueueForPractice,
   syncWorkItemsForPractice,
 } from '../services/workQueueService.js';
-import { checkAbeldentEdiVersion } from './abeldentEdiVersionGuard.js';
 import { ensurePracticePmsVendor, resolvePmsImport } from './practicePmsContext.js';
-import { PMS_VENDOR_PROFILES } from './pmsRegistry.js';
-import { logger } from '../observability/logger.js';
 import { normalizePmsClaimRow, type NormalizedPmsClaimRow } from './parseExportRows.js';
 import { mapToCarrierId } from './carrierMap.js';
 import { mergeClaimRows } from './claimRowMerge.js';
@@ -52,10 +49,6 @@ export interface RunPmsImportResult {
   claimsClosedAsMissing: number;
   /** Set when the mass-absence guardrail held closures for staff review. */
   missingClaimsWarning: string | null;
-  /** Set when Abeldent EDI version check detects legacy CDAnet v2 or ITRANS 1.x */
-  ediMigrationRequired?: boolean;
-  ediVersionStatus?: string;
-  ediVersionMessage?: string;
 }
 
 function preflightImportRows(
@@ -92,19 +85,6 @@ export async function runPmsImportPipeline(
 ): Promise<RunPmsImportResult> {
   const resolved = await resolvePmsImport(prisma, options.practiceId, options.pmsSource);
   const { vendorId, importFamily } = resolved;
-  const profile = PMS_VENDOR_PROFILES[vendorId];
-
-  // ── AbelDent EDI version guard (import-only; does not affect phone routing) ─
-  let ediGuardResult: ReturnType<typeof checkAbeldentEdiVersion> | null = null;
-  if (profile.supportsEdiVersionGuard) {
-    ediGuardResult = checkAbeldentEdiVersion(options.rows);
-    if (ediGuardResult.migrationRequired) {
-      logger.warn('[PmsImportPipeline] AbelDent EDI migration required', {
-        practiceId: options.practiceId,
-        message: ediGuardResult.message,
-      });
-    }
-  }
 
   const run = await prisma.pmsImportRun.create({
     data: {
@@ -228,16 +208,6 @@ export async function runPmsImportPipeline(
       dollarsRecoveredSyncVerified: result.importResult.dollarsRecoveredSyncVerified,
       claimsClosedAsMissing: result.absent.closed,
       missingClaimsWarning: result.absent.warning,
-      // EDI version guard results (Abeldent only)
-      ...(ediGuardResult
-        ? {
-            ediMigrationRequired: ediGuardResult.migrationRequired,
-            ediVersionStatus: ediGuardResult.status,
-            ediVersionMessage: ediGuardResult.migrationRequired
-              ? ediGuardResult.message
-              : undefined,
-          }
-        : {}),
     };
   } catch (err) {
     await prisma.pmsImportRun.update({

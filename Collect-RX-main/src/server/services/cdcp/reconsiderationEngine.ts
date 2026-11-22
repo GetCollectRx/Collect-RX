@@ -175,7 +175,7 @@ export function triageReconsiderationQueue(
     });
 }
 
-// ─── Sync Detection Hook (called by Abeldent connector) ──────────────────────
+// ─── Sync Detection Hook (called by a PMS connector) ──────────────────────
 
 export interface SyncDetectionResult {
   deniedClaims: CdcpDeniedClaim[];
@@ -184,10 +184,10 @@ export interface SyncDetectionResult {
 }
 
 /**
- * Called by the Abeldent sync connector whenever Transaction 11 (CDCP pre-auth)
+ * Called by a PMS sync connector whenever Transaction 11 (CDCP pre-auth)
  * records are ingested. Identifies denied claims and creates reconsideration records.
  */
-export function processAbeldentSyncDenials(
+export function processSyncDenials(
   incomingClaims: CdcpDeniedClaim[],
   existingReconsiderationClaimIds: Set<string>,
   generateId: () => string,

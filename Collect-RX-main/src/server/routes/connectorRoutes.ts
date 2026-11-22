@@ -52,7 +52,7 @@ router.post('/claims/import', strictLimiter, async (req: Request, res: Response)
     }
     const result = await runPmsImportPipeline(prisma, {
       practiceId: auth.practiceId,
-      pmsSource: body.pmsVendor ?? body.pmsSource ?? 'abeldent',
+      pmsSource: body.pmsVendor ?? body.pmsSource ?? 'other',
       rows: rows as Record<string, unknown>[],
       sourceRecordCount: rows.length,
     });

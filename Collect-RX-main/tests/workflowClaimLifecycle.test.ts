@@ -2,7 +2,7 @@
  * End-to-end workflow: CSV practice onboarding -> admin visibility -> work queue ->
  * call escalation -> front-desk resolution -> aging report.
  *
- * Mirrors the real operator story: a practice with no AbelDent connector onboards via
+ * Mirrors the real operator story: a practice with no PMS connector onboards via
  * CSV (the primary onboarding path per CLAUDE.md), a platform admin confirms the practice
  * is visible, a claim escalates during a carrier call, and front desk resolves it.
  *

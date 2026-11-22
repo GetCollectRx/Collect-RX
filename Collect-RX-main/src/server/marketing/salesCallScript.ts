@@ -33,7 +33,7 @@ ${capabilities}
 
 1. Confirm whether unresolved insurance AR is a pain point for their office.
 2. Learn roughly how they handle follow-up today (in-house, billing company, rarely).
-3. Note PMS if they mention it (AbelDent, Dentrix, etc.). Do not guess.
+3. Note PMS if they mention it (Dentrix, Open Dental, etc.). Do not guess.
 4. If interest: offer demo at ${DEMO_LINK} or ask for a good time for a human follow-up.
 5. If not interested: thank them politely and end. Do not push.
 

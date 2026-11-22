@@ -298,7 +298,7 @@ export default function PracticeSettings() {
             <div className="space-y-3 max-w-md">
               <Select
                 label="PMS vendor"
-                value={settings.pmsVendor ?? pmsInfo?.vendorId ?? 'abeldent'}
+                value={settings.pmsVendor ?? pmsInfo?.vendorId ?? 'other'}
                 disabled={isReadOnly}
                 onChange={(e) =>
                   setSettings({ ...settings, pmsVendor: e.target.value as PmsVendorId })
@@ -306,7 +306,7 @@ export default function PracticeSettings() {
               >
                 {(pmsCatalog.length > 0
                   ? pmsCatalog
-                  : [{ id: 'abeldent' as PmsVendorId, displayName: 'AbelDent' }]
+                  : [{ id: 'other' as PmsVendorId, displayName: 'Other / CSV export' }]
                 ).map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.displayName}

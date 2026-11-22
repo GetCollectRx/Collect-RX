@@ -79,7 +79,7 @@ describe.skipIf(!dbReady)('Connector routes (integration)', () => {
     const res = await request(app)
       .post('/api/connector/claims/import')
       .set(auth())
-      .send({ records: [], pmsVendor: 'abeldent' });
+      .send({ records: [], pmsVendor: 'other' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.imported).toBe(0);

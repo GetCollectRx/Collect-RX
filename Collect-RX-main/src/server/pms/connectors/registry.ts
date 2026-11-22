@@ -1,7 +1,7 @@
 /**
- * PMS connector registry — AbelDent is production; Dentrix is a registered stub for phase 2.
+ * PMS connector registry — Dentrix is a registered stub for a later phase; no connector is production yet.
  */
-export type PmsConnectorId = 'abeldent' | 'dentrix';
+export type PmsConnectorId = 'dentrix';
 
 export interface PmsConnectorDescriptor {
   id: PmsConnectorId;
@@ -12,12 +12,6 @@ export interface PmsConnectorDescriptor {
 }
 
 export const PMS_CONNECTORS: PmsConnectorDescriptor[] = [
-  {
-    id: 'abeldent',
-    label: 'AbelDent',
-    ingestMode: 'desktop_connector',
-    status: 'production',
-  },
   {
     id: 'dentrix',
     label: 'Dentrix',

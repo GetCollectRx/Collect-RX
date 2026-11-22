@@ -220,16 +220,9 @@ async function initDashboardTarget() {
 
 // WINDOW_ENTRY_URL set in initDashboardTarget() before createWindow()
 
-// Dev: resolve directly to desktop/services/abeldent-sync.cjs
-// Packaged: electron-builder copies desktop/ into resources/app/desktop/
-const SYNC_SERVICE_PATH = path.join(__dirname, '..', 'desktop', 'services', 'abeldent-sync.cjs');
-
 // ── State ────────────────────────────────────────────────────────────────────
 let mainWindow  = null;
 let tray        = null;
-let syncProcess = null;
-let syncStatus  = 'starting';
-let syncLastMsg = 'Starting…';
 let loadFallbackAttempted = false;
 app.isQuitting  = false;
 
@@ -245,43 +238,20 @@ function makeDotIcon(hex) {
   );
 }
 
-const ICONS = {
-  healthy  : makeDotIcon('#22c55e'),
-  error    : makeDotIcon('#ef4444'),
-  starting : makeDotIcon('#f59e0b'),
-};
-
-const TOOLTIPS = {
-  healthy  : 'CollectRx — Sync active',
-  error    : 'CollectRx — Sync error',
-  starting : 'CollectRx — Starting…',
-};
+const TRAY_ICON = makeDotIcon('#22c55e');
 
 // ── Tray ─────────────────────────────────────────────────────────────────────
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'Open CollectRx', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
     { type: 'separator' },
-    { label: `Sync: ${syncStatus}`, enabled: false },
-    { label: 'Trigger manual sync', click: () => triggerManualSync() },
-    { type: 'separator' },
     { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
 }
 
-function setStatus(status, message) {
-  syncStatus  = status;
-  syncLastMsg = message || TOOLTIPS[status] || status;
-  if (!tray) return;
-  tray.setImage(ICONS[status] || ICONS.starting);
-  tray.setToolTip(TOOLTIPS[status] || 'CollectRx');
-  tray.setContextMenu(buildTrayMenu());
-  mainWindow?.webContents.send('sync-status-changed', { status, message: syncLastMsg });
-}
-
 function createTray() {
-  tray = new Tray(ICONS.starting);
-  tray.setToolTip(TOOLTIPS.starting);
+  tray = new Tray(TRAY_ICON);
+  tray.setToolTip('CollectRx');
   tray.setContextMenu(buildTrayMenu());
   tray.on('double-click', () => { mainWindow?.show(); mainWindow?.focus(); });
 }
@@ -343,74 +313,7 @@ function createWindow() {
   });
 }
 
-// ── Sync service ──────────────────────────────────────────────────────────────
-function spawnSyncService() {
-  if (!process.env.ABELDENT_SCHEMA_MAP?.trim()) {
-    console.log('[Sync] ABELDENT_SCHEMA_MAP not set — PMS connector idle (CSV / cloud mode)');
-    setStatus('healthy', 'Cloud mode — no local PMS sync');
-    return;
-  }
-  if (!fs.existsSync(SYNC_SERVICE_PATH)) {
-    console.log('[Sync] Service not found at', SYNC_SERVICE_PATH, '— skipping');
-    setStatus('starting', 'Sync service not yet configured');
-    return;
-  }
-
-  console.log('[Sync] Spawning', SYNC_SERVICE_PATH);
-  setStatus('starting', 'Sync service starting…');
-
-  syncProcess = spawn(process.execPath, [SYNC_SERVICE_PATH], {
-    env: {
-      PATH                        : process.env.PATH,
-      NODE_ENV                    : process.env.NODE_ENV,
-      ABELDENT_SERVER             : process.env.ABELDENT_SERVER,
-      ABELDENT_DATABASE           : process.env.ABELDENT_DATABASE,
-      ABELDENT_PRACTICE_ID        : process.env.ABELDENT_PRACTICE_ID,
-      ABELDENT_SCHEMA_MAP         : process.env.ABELDENT_SCHEMA_MAP,
-      ABELDENT_MIN_DAYS           : process.env.ABELDENT_MIN_DAYS,
-      ABELDENT_MIN_DAYS_BALANCE   : process.env.ABELDENT_MIN_DAYS_BALANCE,
-      ABELDENT_PATIENT_LEDGER_TABLE: process.env.ABELDENT_PATIENT_LEDGER_TABLE,
-      SCHEMA_MAP_PATH             : process.env.SCHEMA_MAP_PATH,
-      COLLECTRX_API_URL           : process.env.COLLECTRX_API_URL || COLLECTRX_PROD_API_ORIGIN,
-      COLLECTRX_API_TOKEN         : process.env.COLLECTRX_API_TOKEN || process.env.COLLECTRX_CONNECTOR_TOKEN,
-      COLLECTRX_CONNECTOR_TOKEN   : process.env.COLLECTRX_CONNECTOR_TOKEN,
-      SYNC_INTERVAL_MINUTES       : process.env.SYNC_INTERVAL_MINUTES,
-    },
-    stdio      : ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-
-  syncProcess.stdout.on('data', (chunk) => {
-    const line = chunk.toString().trim();
-    if (line.includes('SYNC_OK'))    setStatus('healthy', line);
-    if (line.includes('SYNC_ERROR')) setStatus('error',   line);
-  });
-
-  syncProcess.stderr.on('data', (chunk) => {
-    const line = chunk.toString().trim();
-    // Sanitized only — stderr can carry PHI field values from DB/Prisma errors.
-    console.error('[Sync err]', line.replace(/\S+@\S+/g, '[redacted]').slice(0, 200));
-    if (line.toLowerCase().includes('error')) setStatus('error', 'Sync error — check logs');
-  });
-
-  syncProcess.on('exit', (code) => {
-    syncProcess = null;
-    if (!app.isQuitting) {
-      setStatus('error', `Sync stopped (code ${code}). Restarting in 30s…`);
-      setTimeout(spawnSyncService, 30_000);
-    }
-  });
-}
-
-function triggerManualSync() {
-  if (syncProcess && !syncProcess.killed) {
-    syncProcess.stdin?.write('SYNC_NOW\n');
-  }
-}
-
 // ── IPC ───────────────────────────────────────────────────────────────────────
-ipcMain.handle('get-sync-status',    () => ({ status: syncStatus, message: syncLastMsg }));
-ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; });
 ipcMain.handle('get-app-version',    () => app.getVersion());
 ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
 // Only the app's own window may raise or clear the handoff alert.
@@ -507,7 +410,6 @@ app.whenReady().then(async () => {
   await initDashboardTarget();
   createTray();
   createWindow();
-  spawnSyncService();
   setupAutoUpdater();
   runStartupHealthScan();
 });
@@ -520,7 +422,6 @@ app.on('window-all-closed', (e) => e.preventDefault()); // stay in tray on Windo
 
 app.on('before-quit', () => {
   app.isQuitting = true;
-  syncProcess?.kill('SIGTERM');
   if (desktopServerHandle) {
     void desktopServerHandle.close().catch(() => {});
     desktopServerHandle = null;

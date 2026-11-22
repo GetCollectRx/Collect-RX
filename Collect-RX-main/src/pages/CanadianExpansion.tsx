@@ -68,7 +68,7 @@ type WritebackEntry = {
   id: string
   source: string
   claimRef: string
-  abeldentPatientId: string | null
+  pmsPatientId: string | null
   payload: unknown
   processedAt: string | null
   processError: string | null
@@ -121,7 +121,7 @@ export default function CanadianExpansion() {
   const [wbForm, setWbForm] = useState({
     source: 'resolution_closer' as 'resolution_closer' | 'escalation_closer',
     claimRef: '',
-    abeldentPatientId: '',
+    pmsPatientId: '',
     payloadJson: '{"paymentRef":"CHQ-0000","pmsStatus":"paid"}',
   })
 
@@ -217,7 +217,7 @@ export default function CanadianExpansion() {
         body: JSON.stringify({
           source: wbForm.source,
           claim_ref: wbForm.claimRef.trim(),
-          abeldent_patient_id: wbForm.abeldentPatientId.trim() || undefined,
+          pms_patient_id: wbForm.pmsPatientId.trim() || undefined,
           payload,
         }),
       })
@@ -272,7 +272,7 @@ export default function CanadianExpansion() {
             <StatTile
               label="Write-backs (7d)"
               value={String(metrics.pmsWritebacksLast7Days)}
-              sub="logged for AbelDent sync"
+              sub="logged for PMS sync"
               icon="🔁"
               accent="green"
             />
@@ -441,7 +441,7 @@ export default function CanadianExpansion() {
           </Card>
 
           <Card>
-            <CardHeader title="MOD-04: PMS write-back log" subtitle="Cloud audit trail; execute SQL UPDATE on-prem via AbelDent connector." />
+            <CardHeader title="MOD-04: PMS write-back log" subtitle="Cloud audit trail; the practice's PMS bridge applies the update." />
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 gap-2">
                 <div>
@@ -467,9 +467,9 @@ export default function CanadianExpansion() {
                   onChange={(e) => setWbForm((f) => ({ ...f, claimRef: e.target.value }))}
                 />
                 <Input
-                  label="AbelDent patient ID (optional)"
-                  value={wbForm.abeldentPatientId}
-                  onChange={(e) => setWbForm((f) => ({ ...f, abeldentPatientId: e.target.value }))}
+                  label="PMS patient ID (optional)"
+                  value={wbForm.pmsPatientId}
+                  onChange={(e) => setWbForm((f) => ({ ...f, pmsPatientId: e.target.value }))}
                 />
                 <div>
                   <label htmlFor="wb-payload" className="text-2xs font-semibold text-gray-500 uppercase">Payload (JSON, non-PHI)</label>
@@ -499,7 +499,7 @@ export default function CanadianExpansion() {
                       const state = w.processError
                         ? { label: `error: ${w.processError.slice(0, 40)}`, cls: 'text-red-600' }
                         : w.processedAt
-                        ? { label: 'applied to AbelDent', cls: 'text-green-600' }
+                        ? { label: 'applied to PMS', cls: 'text-green-600' }
                         : { label: 'pending desktop sync', cls: 'text-amber-600' }
                       return (
                         <Tr key={w.id}>

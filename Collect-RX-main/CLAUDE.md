@@ -38,17 +38,6 @@ npm run build:main
 
 # Package Windows .exe installer (requires Windows or CI)
 npx electron-builder --windows --x64 --config electron-builder.config.js
-
-# Abeldent schema discovery (requires access to AbelDent SQL Server and `npm install mssql`)
-npm run abeldent:discover -- --server "localhost\\SQLEXPRESS" --database AbelDent --out schema-discovery.json
-
-# After discovery: copy schema-map.example.json → schema-map.json, edit if column names differ, then:
-npm run abeldent:validate-queries
-# (script uses: --discovery schema-discovery.json --map schema-map.json — adjust paths as needed)
-
-# Emit SQL the sync service will run (for review or docs):
-npm run abeldent:emit-queries
-# Point the desktop sync at a map file: ABELDENT_SCHEMA_MAP=./schema-map.json
 ```
 
 CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
@@ -206,14 +195,9 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 **TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. Carrier-configs.json documents a per-carrier minimum claim wait (day 21 for TELUS, day 32 for all other carriers), but `validateDispatch()` (`src/carriers/adapter.ts`) does not currently enforce those per-carrier numbers — every carrier, TELUS included, is gated by one flat 30-day floor. See [`docs/operations/HUMAN-DECISIONS-PENDING.md`](../docs/operations/HUMAN-DECISIONS-PENDING.md) item 1 for the options on whether to start enforcing the documented per-carrier minimums.
 
-### Abeldent Connector (Phase 4)
+### PMS-agnostic by design
 
-Abeldent Local Plus is dental practice management software running on SQL Server at the practice site.
-
-1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
-2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
-3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
-4. `desktop/services/abeldent-sync.cjs` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
+Nothing here is built around one practice management system. Every PMS onboards through CSV import; there is no PMS-specific sync service.
 
 ---
 
@@ -246,7 +230,7 @@ Key eligibility tables: `eligibility_snapshots`, `eligibility_estimates`, `estim
 
 ## Windows build & deployment
 
-The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
+The Electron app is packaged as a signed NSIS `.exe` installer for the Windows front-desk app. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
 Never ship an unsigned build to the pilot site.
 
@@ -257,4 +241,3 @@ Never ship an unsigned build to the pilot site.
 1. Add an entry to `src/services/eligibility/rules/carrier-configs.json` following the existing structure
 2. Add the carrier ID to the `Carrier` enum in `src/services/eligibility/types.ts`
 3. Add test cases to `tests/eligibility.test.ts` covering the new carrier's deductible, annual max, and coverage tiers
-4. Update `CARRIER_NAME_MAP` in `scripts/sync-query-builder.cjs` if the carrier name appears in Abeldent data
