@@ -10,6 +10,7 @@ import {
   formatZodError,
 } from '../validation/zodSchemas.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
+import { appBaseUrlFromRequest } from '../email/appLinks.js';
 import { unusedLegacyPasswordHash, createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { saveOrganizationSsoConfig, getOrganizationSsoConnectionByOrgId } from '../sso/organizationSsoService.js';
 
@@ -79,6 +80,7 @@ export function createOrgAdminRouter(prisma: PrismaClient): Router {
           practiceName: organizationName,
           role: 'group_admin',
           token: invite.token,
+          baseUrl: appBaseUrlFromRequest(req),
         });
       } catch (emailErr) {
         console.error('org admin invite email send failed (token still created):', emailErr);

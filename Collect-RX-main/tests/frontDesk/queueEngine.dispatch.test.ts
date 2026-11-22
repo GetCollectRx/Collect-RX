@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 
 const validateDispatchMock = vi.fn();
 const checkCarrierBlockMock = vi.fn();
+const checkDispatchPauseMock = vi.fn();
 const initiateCallMock = vi.fn();
 const endVapiCallMock = vi.fn();
 const detokenizeMock = vi.fn();
@@ -11,6 +12,10 @@ const canMakeCallMock = vi.fn();
 const completenessMock = vi.fn();
 const raiseGateMock = vi.fn();
 const transitionClaimRecoveryMock = vi.fn();
+
+vi.mock('../../src/server/pauseControls/dispatchPause.js', () => ({
+  checkDispatchPause: (...args: unknown[]) => checkDispatchPauseMock(...args),
+}));
 
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
@@ -32,12 +37,18 @@ vi.mock('../../src/carriers/adapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/vapi/client.js', () => ({
-  initiateCall: (...args: unknown[]) => initiateCallMock(...args),
-  endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
-  getHumanAssistedSquadId: () => 'squad-hold-sentinel',
-  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
-}));
+// resolvePracticeCallerId stays real so these tests exercise the actual
+// authorization rule instead of a copy of it.
+vi.mock('../../src/vapi/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/vapi/client.js')>();
+  return {
+    resolvePracticeCallerId: actual.resolvePracticeCallerId,
+    initiateCall: (...args: unknown[]) => initiateCallMock(...args),
+    endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
+    getHumanAssistedSquadId: () => 'squad-hold-sentinel',
+    VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
+  };
+});
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
   refreshDeskQueueBroadcast: vi.fn(),
@@ -164,6 +175,8 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         npi: null,
         taxId: null,
         practiceAddress: null,
+        vapiPhoneNumberId: null as string | null,
+        callerIdAuthorizedAt: null as Date | null,
       })),
     },
     practiceDeskState: {
@@ -234,6 +247,8 @@ beforeEach(() => {
   // defaults to allowed so tests that don't care about CARRIER_BLOCK aren't
   // incidentally blocked by it; tests that do care override this directly.
   checkCarrierBlockMock.mockResolvedValue({ allowed: true });
+  // Operator pause re-check immediately before the dial; defaults to not paused.
+  checkDispatchPauseMock.mockResolvedValue({ allowed: true });
   probeClaimStatusMock.mockResolvedValue(null);
   detokenizeMock.mockReturnValue(phiSuccess());
   initiateCallMock.mockResolvedValue({ vapiCallId: 'vapi-1' });
@@ -355,6 +370,44 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it("dials from the practice's own number once its caller ID is authorized", async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: new Date('2026-11-01T00:00:00.000Z'),
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ vapiPhoneNumberId: 'practice-phone' });
+  });
+
+  it('keeps the shared number when the practice number was registered but never authorized', async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: null,
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0].vapiPhoneNumberId).toBeUndefined();
   });
 
   it('defers a head claim whose PHI token expired and dispatches the next eligible claim', async () => {
@@ -480,6 +533,53 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
     expect(validateDispatchMock).toHaveBeenCalledTimes(1);
     expect(prisma.callQueue.update).not.toHaveBeenCalled();
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the whole practice without dialing when the system is paused at validation time', async () => {
+    const prisma = tickPrisma([queueEntry('1'), queueEntry('2')]);
+    validateDispatchMock.mockResolvedValueOnce({ allowed: false, code: 'PAUSED_SYSTEM', reason: 'paused' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the practice when pause state is unreadable (fail closed)', async () => {
+    const prisma = tickPrisma([queueEntry('1'), queueEntry('2')]);
+    validateDispatchMock.mockResolvedValueOnce({ allowed: false, code: 'PAUSE_STATE_UNAVAILABLE', reason: 'unreadable' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('defers a carrier-paused head claim and dispatches the next carrier in the same tick', async () => {
+    const paused = queueEntry('1');
+    const eligible = queueEntry('2', { carrierId: 'manulife' });
+    const prisma = tickPrisma([paused, eligible]);
+    validateDispatchMock
+      .mockResolvedValueOnce({ allowed: false, code: 'PAUSED_CARRIER', reason: 'carrier paused' })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.callQueue.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'q-1' } }));
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('does not dial when a pause lands between validation and the dial (late re-check)', async () => {
+    const entry = queueEntry('1');
+    const prisma = tickPrisma([entry]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    checkDispatchPauseMock.mockResolvedValue({ allowed: false, code: 'PAUSED_PRACTICE', reason: 'paused' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(checkDispatchPauseMock).toHaveBeenCalled();
     expect(initiateCallMock).not.toHaveBeenCalled();
   });
 

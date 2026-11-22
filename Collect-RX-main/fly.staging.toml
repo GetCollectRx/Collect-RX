@@ -7,7 +7,7 @@ primary_region = 'yyz'
 [build]
 
 [deploy]
-release_command = 'npx prisma migrate deploy'
+release_command = 'node scripts/release-migrate.mjs'
 
 [processes]
 app = 'npm run start'

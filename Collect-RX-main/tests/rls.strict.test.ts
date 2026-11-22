@@ -255,3 +255,57 @@ afterAll(async () => {
   await adminPrisma.$disconnect();
   await strictPrisma.$disconnect();
 });
+
+/**
+ * Session lifecycle under the restricted role. Regression for a production outage: right after a deploy
+ * every valid login was bounced back to the sign-in screen because the session check read the "User" row
+ * (FORCE ROW LEVEL SECURITY) with no RLS context. Table-isolation tests above could not see it; only a
+ * real register, login and authenticated request against the restricted role can.
+ */
+describe.skipIf(!dbReady || !strictRls)('session lifecycle under the restricted role', () => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `strict-session-${suffix}@fixture.test`;
+  const password = 'Strict-Session-Pass-123';
+  let practiceId = '';
+
+  afterAll(async () => {
+    if (practiceId) {
+      await adminPrisma.user.deleteMany({ where: { practiceId } });
+      await adminPrisma.practice.deleteMany({ where: { id: practiceId } }).catch(() => undefined);
+    }
+  });
+
+  it('register, login and an authenticated request succeed; an inactive account is still rejected', async () => {
+    const { default: request } = await import('supertest');
+    const { app } = await import('../src/server/index.js');
+
+    const agreements = await request(app).get('/api/auth/agreements');
+    expect(agreements.status).toBe(200);
+    const acceptedAgreements = (agreements.body.agreements as Array<{ kind: string; version: string }>).map((a) => ({
+      kind: a.kind,
+      version: a.version,
+    }));
+
+    const registered = await request(app)
+      .post('/api/auth/register')
+      .send({ practiceName: `Strict Session ${suffix}`, displayName: 'Strict Tester', email, password, acceptedAgreements });
+    expect(registered.status).toBe(201);
+    practiceId = registered.body.practiceId as string;
+
+    const agent = request.agent(app);
+    const login = await agent.post('/api/auth/login').send({ email, password });
+    expect(login.status).toBe(200);
+
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(200);
+    expect(me.body.user?.email).toBe(email);
+
+    const claims = await agent.get('/api/insurance/claims');
+    expect(claims.status).toBe(200);
+
+    // The bypass must not widen access: a deactivated account is still turned away.
+    await adminPrisma.user.updateMany({ where: { practiceId }, data: { isActive: false } });
+    const after = await agent.get('/api/auth/me');
+    expect(after.status).toBe(401);
+  }, 60_000);
+});

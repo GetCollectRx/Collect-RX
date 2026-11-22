@@ -38,6 +38,13 @@ model Practice {
   npi                            String?
   /// HST/GST business registration number — some carriers require for payment processing.
   taxId                          String?                   @map("tax_id")
+  /// The practice's own number registered in Vapi, so carriers see the practice as the caller.
+  /// Call code must go through resolvePracticeCallerId in src/vapi/client.ts and never read this directly:
+  /// it is only usable once callerIdAuthorizedAt is set.
+  vapiPhoneNumberId              String?                   @map("vapi_phone_number_id")
+  /// When the practice authorized CollectRx to place calls as its own number. Never set this without
+  /// a confirmed number setup, or calls would silently fall back to the shared CollectRx number.
+  callerIdAuthorizedAt           DateTime?                 @map("caller_id_authorized_at")
   // ─── Stripe Billing (platform) ────────────────────────────────────────────
   /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
   stripeCustomerId               String?                   @unique
@@ -81,6 +88,7 @@ model Practice {
   dentists                       Dentist[]
   cdcpCoverages                  CdcpCoverage[]
   callDispatchIntents            CallDispatchIntent[]
+  agreementAcceptances AgreementAcceptance[]
 }
 
 /// Individual user account within a practice (or spanning practices for group_admin).
@@ -101,6 +109,7 @@ model User {
   practice                Practice             @relation(fields: [practiceId], references: [id])
   organizationMemberships OrganizationMember[]
   csvImportsByUser CsvImportLog[] @relation("csvImportsByUser")
+  agreementAcceptances AgreementAcceptance[]
 
   @@index([practiceId])
   @@index([email])
@@ -2574,3 +2583,23 @@ model WebhookAuditLog {
   @@map("webhook_audit_logs")
 }
  
+
+/// Append-only record of one user accepting one version of one agreement.
+/// Rows are never updated: a database trigger rejects UPDATE. A new version
+/// is a new row, so history shows exactly which text each user agreed to.
+model AgreementAcceptance {
+  id         String   @id @default(uuid())
+  practiceId String   @map("practice_id")
+  userId     String   @map("user_id")
+  kind       String
+  version    String
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+  /// signup for first acceptance, reacceptance after a version bump.
+  source     String   @default("signup")
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, version])
+  @@index([practiceId, kind])
+  @@map("agreement_acceptances")
+}

@@ -17,6 +17,7 @@ import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
+import { checkDispatchPause } from '../server/pauseControls/dispatchPause.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -421,6 +422,10 @@ export async function validateDispatch(
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
   if (!blockGuard.allowed) return blockGuard;
+
+  // 1b. Operator pause (system, practice or carrier) — refuses new dials only.
+  const pauseGuard = await checkDispatchPause(prisma, { practiceId, carrierId });
+  if (!pauseGuard.allowed) return pauseGuard;
 
   // 2. Fleet-wide per-carrier concurrency ceiling
   const concurrencyGuard = checkCarrierConcurrency(carrierId, carrierActiveCounts);
