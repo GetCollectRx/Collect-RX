@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
+import { defaultStaffedHours } from '../../src/lib/staffedHours.js';
 
 const validateDispatchMock = vi.fn();
 const checkCarrierBlockMock = vi.fn();
@@ -7,6 +8,7 @@ const checkDispatchPauseMock = vi.fn();
 const initiateCallMock = vi.fn();
 const endVapiCallMock = vi.fn();
 const detokenizeMock = vi.fn();
+const practiceSettingsMock = vi.fn();
 const probeClaimStatusMock = vi.fn();
 const canMakeCallMock = vi.fn();
 const completenessMock = vi.fn();
@@ -71,13 +73,17 @@ vi.mock('../../src/server/plans/practiceEntitlements.js', () => ({
 }));
 
 vi.mock('../../src/server/services/practiceSettingsService.js', () => ({
-  getPracticeSettings: vi.fn(async () => ({
+  getPracticeSettings: (...args: unknown[]) => practiceSettingsMock(...args),
+}));
+
+function defaultTestSettings(): Record<string, unknown> {
+  return {
     voiceAgentEnabled: true,
     billingPhone: '416-555-0100',
     escalationPhoneNumber: '416-555-0101',
     carrierConfigs: [],
-  })),
-}));
+  };
+}
 
 vi.mock('../../src/pii-vault.js', () => ({
   piiVault: { detokenize: (...args: unknown[]) => detokenizeMock(...args) },
@@ -171,6 +177,7 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
       findMany: vi.fn(async () => [{ id: 'p1' }]),
       findUnique: vi.fn(async () => ({
         name: 'CollectRx Demo Practice',
+        timezone: 'America/New_York',
         billingPhone: '416-555-0100',
         npi: null,
         taxId: null,
@@ -242,6 +249,7 @@ function phiSuccess() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  practiceSettingsMock.mockResolvedValue(defaultTestSettings());
   canMakeCallMock.mockResolvedValue({ allowed: true });
   // Pre-dial re-check added alongside the upfront validateDispatch mock above —
   // defaults to allowed so tests that don't care about CARRIER_BLOCK aren't
@@ -376,6 +384,7 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     const prisma = tickPrisma([queueEntry('1')]);
     prisma.practice.findUnique.mockResolvedValueOnce({
       name: 'CollectRx Demo Practice',
+      timezone: 'America/New_York',
       billingPhone: '416-555-0100',
       npi: null,
       taxId: null,
@@ -395,6 +404,7 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     const prisma = tickPrisma([queueEntry('1')]);
     prisma.practice.findUnique.mockResolvedValueOnce({
       name: 'CollectRx Demo Practice',
+      timezone: 'America/New_York',
       billingPhone: '416-555-0100',
       npi: null,
       taxId: null,
@@ -810,5 +820,72 @@ describe('runDeskQueueTick resilience', () => {
 
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-1' });
+  });
+});
+
+
+describe('runDeskQueueTick staffed hours', () => {
+  const mondayTenEastern = new Date('2026-11-23T10:00:00-05:00');
+  const saturdayNoonEastern = new Date('2026-11-28T12:00:00-05:00');
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function freezeClock(at: Date) {
+    // Only Date is faked so the tick's own timers and promises still run.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+  }
+
+  it('does not dial a Hold Sentinel call when the practice is outside its staffed hours', async () => {
+    freezeClock(saturdayNoonEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('dials during staffed hours', async () => {
+    freezeClock(mondayTenEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('dials as before when the practice never set staffed hours', async () => {
+    freezeClock(saturdayNoonEastern);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("judges staffed hours in the practice's own timezone", async () => {
+    // 10:00 Eastern is 07:00 in Vancouver, before a 09:00 start.
+    freezeClock(mondayTenEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      timezone: 'America/Vancouver',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: null,
+      callerIdAuthorizedAt: null,
+    });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).not.toHaveBeenCalled();
   });
 });

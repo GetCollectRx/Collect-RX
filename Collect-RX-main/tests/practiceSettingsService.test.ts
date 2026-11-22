@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { PrismaClient } from '@prisma/client';
 import {
   defaultPracticeSettings,
   parsePracticeSettings,
+  updatePracticeSettings,
   validatePracticeSettingsUpdate,
 } from '../src/server/services/practiceSettingsService.js';
+import { defaultStaffedHours } from '../src/lib/staffedHours.js';
 
 describe('practiceSettingsService', () => {
   describe('defaultPracticeSettings', () => {
@@ -164,6 +167,74 @@ describe('practiceSettingsService', () => {
         c.carrierId === 'sun_life' ? { ...c, authorizationSubmitted: false, authorizationSubmittedAt: null } : c,
       );
       expect(validatePracticeSettingsUpdate({ carrierConfigs })).toBeNull();
+    });
+  });
+});
+
+describe('staffed hours and the designated individual', () => {
+  it('leaves staffed hours unset for a practice that never configured them', () => {
+    expect(defaultPracticeSettings().staffedHours).toBeUndefined();
+    expect(parsePracticeSettings({}).staffedHours).toBeUndefined();
+  });
+
+  it('keeps a saved schedule and the designated individual when settings are read back', () => {
+    const staffedHours = defaultStaffedHours();
+    staffedHours.mon = { open: true, start: '07:00', end: '19:00' };
+    const parsed = parsePracticeSettings({ staffedHours, designatedIndividualUserId: 'user-1' });
+    expect(parsed.staffedHours).toEqual(staffedHours);
+    expect(parsed.designatedIndividualUserId).toBe('user-1');
+  });
+
+  it('ignores a stored schedule that is malformed instead of dispatching on it', () => {
+    expect(parsePracticeSettings({ staffedHours: { mon: { open: true, start: 'late', end: 'later' } } }).staffedHours)
+      .toBeUndefined();
+  });
+
+  it('accepts hours wider than the engine call window, since the engine window is a separate limit', () => {
+    const wide = defaultStaffedHours();
+    wide.mon = { open: true, start: '06:00', end: '21:00' };
+    expect(validatePracticeSettingsUpdate({ staffedHours: wide })).toBeNull();
+  });
+
+  it('rejects an incomplete or backwards schedule with a staffedHours message', () => {
+    const backwards = defaultStaffedHours();
+    backwards.fri = { open: true, start: '17:00', end: '09:00' };
+    expect(validatePracticeSettingsUpdate({ staffedHours: backwards })).toMatch(/staffedHours fri start must be before end/);
+    expect(validatePracticeSettingsUpdate({ staffedHours: {} as never })).toMatch(/staffedHours/);
+  });
+
+  describe('updatePracticeSettings designated individual', () => {
+    function prismaWith(userRow: { id: string } | null) {
+      const update = vi.fn(async () => ({}));
+      return {
+        client: {
+          user: { findFirst: vi.fn(async () => userRow) },
+          practice: { findUnique: vi.fn(async () => ({ settings: {} })), update },
+        } as unknown as PrismaClient,
+        update,
+      };
+    }
+
+    it('saves a designated individual who is an active user of this practice', async () => {
+      const { client, update } = prismaWith({ id: 'user-1' });
+      const saved = await updatePracticeSettings(client, 'practice-1', { designatedIndividualUserId: 'user-1' });
+      expect(saved.designatedIndividualUserId).toBe('user-1');
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses someone who is not an active user of this practice, and saves nothing', async () => {
+      const { client, update } = prismaWith(null);
+      await expect(
+        updatePracticeSettings(client, 'practice-1', { designatedIndividualUserId: 'someone-else' }),
+      ).rejects.toThrow(/designatedIndividualUserId must be an active user of this practice/);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('scopes the lookup to this practice and to active users', async () => {
+      const { client } = prismaWith({ id: 'user-1' });
+      await updatePracticeSettings(client, 'practice-1', { designatedIndividualUserId: 'user-1' });
+      const findFirst = (client.user.findFirst as unknown as ReturnType<typeof vi.fn>);
+      expect(findFirst.mock.calls[0][0].where).toEqual({ id: 'user-1', practiceId: 'practice-1', isActive: true });
     });
   });
 });

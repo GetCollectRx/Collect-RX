@@ -7,6 +7,7 @@ import {
 } from '../components/ui'
 import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
 import { canEditPracticeSetup, pickOwnerSetupSettings } from '../lib/practiceSetupAccess'
+import { WhoTakesTheCallCard, type StaffOption } from '../components/WhoTakesTheCallCard'
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
 import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
@@ -44,6 +45,9 @@ export default function PracticeSettings() {
   const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
   const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
   const [autonomousInPlan, setAutonomousInPlan] = useState(false)
+  const [practiceTimezone, setPracticeTimezone] = useState('')
+  const [staff, setStaff] = useState<StaffOption[]>([])
+  const [staffLoadFailed, setStaffLoadFailed] = useState(false)
   const [recoveryMode, setRecoveryMode] = useState<'CSV_FIRST' | 'PMS_WRITEBACK'>('CSV_FIRST')
   const [recoveryModeSaving, setRecoveryModeSaving] = useState(false)
   const [recoveryModeError, setRecoveryModeError] = useState<string | null>(null)
@@ -72,6 +76,7 @@ export default function PracticeSettings() {
       setPmsInfo(res.data.pms ?? null)
       setAutonomousInPlan((res.data.planFeatures ?? []).includes(FEATURES.AUTONOMOUS_CALLS))
       setRecoveryMode(res.data.practice?.recoveryMode ?? 'CSV_FIRST')
+      setPracticeTimezone(res.data.practice?.timezone ?? '')
       const triage = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
         `/api/practices/${practiceId}/triage-credential`,
       )
@@ -86,6 +91,14 @@ export default function PracticeSettings() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!canEditSetup) return
+    setStaffLoadFailed(false)
+    void apiFetchJson<{ users: StaffOption[] }>('/api/auth/users')
+      .then((d) => setStaff(d.users ?? []))
+      .catch(() => setStaffLoadFailed(true))
+  }, [canEditSetup])
 
   useEffect(() => {
     void apiFetchJson<{ vendors: PmsVendorCatalogEntry[] }>('/api/pms/catalog')
@@ -235,7 +248,7 @@ export default function PracticeSettings() {
           {isReadOnly && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
               {canEditSetup
-                ? 'Most settings are read-only for your role. You can set the call window, escalation phone, voice agent switch and provider numbers, then press Save setup.'
+                ? 'Most settings are read-only for your role. You can set the call window, who takes the call and your staffed hours, the voice agent switch and provider numbers, then press Save setup.'
                 : 'Read-only view, changes are disabled.'}
             </p>
           )}
@@ -385,9 +398,21 @@ export default function PracticeSettings() {
             </div>
           </Card>
 
+          <WhoTakesTheCallCard
+            settings={settings}
+            onChange={setSettings}
+            disabled={!canEditSetup}
+            timeZone={practiceTimezone}
+            staff={staff}
+            staffLoadFailed={staffLoadFailed}
+          />
+
           <Card>
-            <CardHeader title="Call window" subtitle="Practice-wide calling hours (ET)" />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <CardHeader
+              title="Call window"
+              subtitle="The hours CollectRx may dial carriers (Eastern). Your own staffed hours are set in Who takes the call, and when."
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Start"
                 value={settings.callWindowStart}
@@ -399,13 +424,6 @@ export default function PracticeSettings() {
                 value={settings.callWindowEnd}
                 disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, callWindowEnd: e.target.value })}
-              />
-              <Input
-                label="Escalation phone (E.164)"
-                hint="Where calls transfer to your staff once a rep answers. Start with + and the country code, like +16135550100."
-                value={settings.escalationPhoneNumber}
-                disabled={!canEditSetup}
-                onChange={(e) => setSettings({ ...settings, escalationPhoneNumber: e.target.value })}
               />
             </div>
           </Card>
