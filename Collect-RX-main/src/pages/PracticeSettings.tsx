@@ -6,7 +6,7 @@ import {
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
 import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
-import { canEditPracticeSetup } from '../lib/practiceSetupAccess'
+import { canEditPracticeSetup, pickOwnerSetupSettings } from '../lib/practiceSetupAccess'
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
 import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
@@ -218,6 +218,16 @@ export default function PracticeSettings() {
                 {saving ? 'Saving…' : 'Save all'}
               </Button>
             )}
+            {isReadOnly && canEditSetup && (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={saving}
+                onClick={() => void save(pickOwnerSetupSettings(settings), true)}
+              >
+                {saving ? 'Saving…' : 'Save setup'}
+              </Button>
+            )}
           </div>
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
@@ -225,7 +235,7 @@ export default function PracticeSettings() {
           {isReadOnly && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
               {canEditSetup
-                ? 'Most settings are read-only for your role. You can set the call window and escalation phone in the Call window card below.'
+                ? 'Most settings are read-only for your role. You can set the call window, escalation phone, voice agent switch and provider numbers, then press Save setup.'
                 : 'Read-only view, changes are disabled.'}
             </p>
           )}
@@ -336,7 +346,7 @@ export default function PracticeSettings() {
                   <input
                     type="checkbox"
                     checked={settings[key]}
-                    disabled={isReadOnly}
+                    disabled={key === 'voiceAgentEnabled' ? !canEditSetup : isReadOnly}
                     onChange={(e) => setSettings({ ...settings, [key]: e.target.checked })}
                     className="rounded border-gray-300 text-crx-600 focus:ring-crx-500"
                   />
@@ -398,27 +408,6 @@ export default function PracticeSettings() {
                 onChange={(e) => setSettings({ ...settings, escalationPhoneNumber: e.target.value })}
               />
             </div>
-            {isReadOnly && canEditSetup && (
-              <div className="mt-4 flex justify-end">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={saving}
-                  onClick={() =>
-                    void save(
-                      {
-                        callWindowStart: settings.callWindowStart,
-                        callWindowEnd: settings.callWindowEnd,
-                        escalationPhoneNumber: settings.escalationPhoneNumber,
-                      },
-                      true,
-                    )
-                  }
-                >
-                  {saving ? 'Saving…' : 'Save call window and escalation phone'}
-                </Button>
-              </div>
-            )}
           </Card>
 
           <Card padding="none">
@@ -488,7 +477,7 @@ export default function PracticeSettings() {
                           type="text"
                           className="w-full text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
                           value={c.providerNumber}
-                          disabled={isReadOnly}
+                          disabled={!canEditSetup}
                           maxLength={50}
                           placeholder="e.g. ON-123456"
                           onChange={(e) => updateCarrier(idx, { providerNumber: e.target.value })}
