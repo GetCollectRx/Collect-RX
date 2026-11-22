@@ -38,6 +38,13 @@ model Practice {
   npi                            String?
   /// HST/GST business registration number — some carriers require for payment processing.
   taxId                          String?                   @map("tax_id")
+  /// The practice's own number registered in Vapi, so carriers see the practice as the caller.
+  /// Call code must go through resolvePracticeCallerId in src/vapi/client.ts and never read this directly:
+  /// it is only usable once callerIdAuthorizedAt is set.
+  vapiPhoneNumberId              String?                   @map("vapi_phone_number_id")
+  /// When the practice authorized CollectRx to place calls as its own number. Never set this without
+  /// a confirmed number setup, or calls would silently fall back to the shared CollectRx number.
+  callerIdAuthorizedAt           DateTime?                 @map("caller_id_authorized_at")
   // ─── Stripe Billing (platform) ────────────────────────────────────────────
   /// Stripe Billing (platform) — practice pays CollectRx. Distinct from Connect Express accounts.
   stripeCustomerId               String?                   @unique
