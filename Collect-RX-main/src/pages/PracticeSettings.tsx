@@ -6,6 +6,7 @@ import {
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
 import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
+import { canEditPracticeSetup } from '../lib/practiceSetupAccess'
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
 import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
@@ -36,6 +37,7 @@ export default function PracticeSettings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<UserRole | null>(() => resolveUserRole(ctx))
   const [telusKey, setTelusKey] = useState('')
   const [telusValue, setTelusValue] = useState('')
@@ -50,6 +52,7 @@ export default function PracticeSettings() {
   const [triageBusy, setTriageBusy] = useState(false)
 
   const isReadOnly = resolveIsReadOnly(ctx, userRole)
+  const canEditSetup = canEditPracticeSetup(ctx.role, isReadOnly)
 
   useEffect(() => {
     const derived = resolveUserRole(ctx)
@@ -90,11 +93,11 @@ export default function PracticeSettings() {
       .catch(() => setPmsCatalog([]))
   }, [])
 
-  async function save(partial: Partial<PracticeSettings>) {
-    if (!practiceId || isReadOnly) return
+  async function save(partial: Partial<PracticeSettings>, setupOnly = false) {
+    if (!practiceId || (isReadOnly && !(setupOnly && canEditSetup))) return
     setSaving(true)
     setMessage(null)
-    setError(null)
+    setSaveError(null)
     try {
       const res = await apiFetchJson<{ success: boolean; data: PracticeSettings }>(
         `/api/practices/${practiceId}/settings`,
@@ -103,7 +106,9 @@ export default function PracticeSettings() {
       setSettings(res.data)
       setMessage('Settings saved')
     } catch (e) {
-      setError((e as Error).message)
+      // Shown inline: the page-level error state replaces the whole form, which
+      // would throw away what the user just typed over a simple validation error.
+      setSaveError((e as Error).message)
     } finally {
       setSaving(false)
     }
@@ -216,8 +221,13 @@ export default function PracticeSettings() {
           </div>
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
+          {saveError && <p className="text-xs text-red-600 dark:text-red-400" role="alert">{saveError}</p>}
           {isReadOnly && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {canEditSetup
+                ? 'Most settings are read-only for your role. You can set the call window and escalation phone in the Call window card below.'
+                : 'Read-only view, changes are disabled.'}
+            </p>
           )}
 
           <Card>
@@ -371,22 +381,44 @@ export default function PracticeSettings() {
               <Input
                 label="Start"
                 value={settings.callWindowStart}
-                disabled={isReadOnly}
+                disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, callWindowStart: e.target.value })}
               />
               <Input
                 label="End"
                 value={settings.callWindowEnd}
-                disabled={isReadOnly}
+                disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, callWindowEnd: e.target.value })}
               />
               <Input
                 label="Escalation phone (E.164)"
+                hint="Where calls transfer to your staff once a rep answers. Start with + and the country code, like +16135550100."
                 value={settings.escalationPhoneNumber}
-                disabled={isReadOnly}
+                disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, escalationPhoneNumber: e.target.value })}
               />
             </div>
+            {isReadOnly && canEditSetup && (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() =>
+                    void save(
+                      {
+                        callWindowStart: settings.callWindowStart,
+                        callWindowEnd: settings.callWindowEnd,
+                        escalationPhoneNumber: settings.escalationPhoneNumber,
+                      },
+                      true,
+                    )
+                  }
+                >
+                  {saving ? 'Saving…' : 'Save call window and escalation phone'}
+                </Button>
+              </div>
+            )}
           </Card>
 
           <Card padding="none">
