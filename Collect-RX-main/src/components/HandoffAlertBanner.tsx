@@ -3,6 +3,7 @@ import { usePractice } from '../context/PracticeContext'
 import { getDesktopSessionToken } from '../lib/desktopAuth'
 import { resolveWsUrl } from '../lib/resolveWsUrl'
 import { startAlertTone } from '../lib/alertTone'
+import { raiseHandoffNudge, requestHandoffNotifyPermission } from '../lib/handoffNotify'
 import {
   HANDOFF_ALERT_TTL_MS,
   HANDOFF_TAB_TITLE,
@@ -42,6 +43,7 @@ export function HandoffAlertBanner() {
       }
       ws.onmessage = (ev) => {
         const msg = JSON.parse(ev.data as string) as WsEvent | { type: 'connected' }
+        if (msg.type === 'connected') requestHandoffNotifyPermission()
         if (msg.type === 'handoff.requested') dispatch({ type: 'requested', alert: msg.data })
       }
       ws.onclose = (ev) => {
@@ -65,6 +67,7 @@ export function HandoffAlertBanner() {
     const requestedAt = alert.requestedAt
     const expiry = setTimeout(() => dispatch({ type: 'expired', requestedAt }), HANDOFF_ALERT_TTL_MS)
     const stopTone = startAlertTone()
+    const stopNudge = raiseHandoffNudge()
     const originalTitle = document.title
     let flashed = true
     document.title = HANDOFF_TAB_TITLE
@@ -75,6 +78,7 @@ export function HandoffAlertBanner() {
     return () => {
       clearTimeout(expiry)
       stopTone()
+      stopNudge()
       clearInterval(flash)
       document.title = originalTitle
     }

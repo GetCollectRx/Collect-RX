@@ -15,7 +15,9 @@ const {
   nativeImage,
   ipcMain,
   shell,
+  Notification,
 } = require('electron');
+const { createHandoffNudge } = require('./handoffNudge.cjs');
 const path  = require('path');
 const fs    = require('fs');
 const { spawn } = require('child_process');
@@ -411,6 +413,21 @@ ipcMain.handle('get-sync-status',    () => ({ status: syncStatus, message: syncL
 ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; });
 ipcMain.handle('get-app-version',    () => app.getVersion());
 ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
+// Only the app's own window may raise or clear the handoff alert.
+const handoffNudge = createHandoffNudge({ Notification, getWindow: () => mainWindow });
+function isFromMainWindow(event) {
+  return Boolean(mainWindow) && event.sender === mainWindow.webContents;
+}
+ipcMain.handle('crx-handoff-alert-show', (event) => {
+  if (!isFromMainWindow(event)) return false;
+  handoffNudge.show();
+  return true;
+});
+ipcMain.handle('crx-handoff-alert-clear', (event) => {
+  if (!isFromMainWindow(event)) return false;
+  handoffNudge.clear();
+  return true;
+});
 ipcMain.handle('restart-to-update',  () => {
   if (!isDev) {
     const { autoUpdater } = require('electron-updater');
