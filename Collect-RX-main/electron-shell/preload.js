@@ -33,4 +33,6 @@ contextBridge.exposeInMainWorld('collectrx', {
   },
   restartToUpdate  : () => ipcRenderer.invoke('restart-to-update'),
   retryDashboardLoad: () => ipcRenderer.invoke('retry-dashboard-load'),
+  showHandoffAlert : () => ipcRenderer.invoke('crx-handoff-alert-show'),
+  clearHandoffAlert: () => ipcRenderer.invoke('crx-handoff-alert-clear'),
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultPracticeSettings } from '../server/services/practiceSettingsService'
+import { defaultStaffedHours } from './staffedHours'
 import { canEditPracticeSetup, pickOwnerSetupSettings } from './practiceSetupAccess'
 
 describe('canEditPracticeSetup', () => {
@@ -37,7 +38,9 @@ describe('pickOwnerSetupSettings', () => {
       'callWindowEnd',
       'callWindowStart',
       'carrierConfigs',
+      'designatedIndividualUserId',
       'escalationPhoneNumber',
+      'staffedHours',
       'voiceAgentEnabled',
     ])
     expect(picked).toMatchObject({
@@ -70,5 +73,30 @@ describe('pickOwnerSetupSettings', () => {
     })
     expect(picked.carrierConfigs[0]).toEqual({ ...first, providerNumber: 'ON-123456' })
     expect(picked.carrierConfigs.slice(1)).toEqual(rest)
+  })
+})
+
+describe('pickOwnerSetupSettings staffed hours and designated individual', () => {
+  it('carries the staffed hours and the designated individual the owner chose', () => {
+    const staffedHours = defaultStaffedHours()
+    staffedHours.mon = { open: true, start: '07:00', end: '19:00' }
+    const picked = pickOwnerSetupSettings({
+      ...defaultPracticeSettings(),
+      staffedHours,
+      designatedIndividualUserId: 'user-1',
+    })
+    expect(picked.staffedHours).toEqual(staffedHours)
+    expect(picked.designatedIndividualUserId).toBe('user-1')
+  })
+
+  it('sends an empty string to clear the designated individual, which survives JSON', () => {
+    const picked = pickOwnerSetupSettings({ ...defaultPracticeSettings(), designatedIndividualUserId: '' })
+    expect(JSON.parse(JSON.stringify(picked)).designatedIndividualUserId).toBe('')
+  })
+
+  it('leaves both out of the request when the practice never set them', () => {
+    const body = JSON.parse(JSON.stringify(pickOwnerSetupSettings(defaultPracticeSettings())))
+    expect(body).not.toHaveProperty('staffedHours')
+    expect(body).not.toHaveProperty('designatedIndividualUserId')
   })
 })

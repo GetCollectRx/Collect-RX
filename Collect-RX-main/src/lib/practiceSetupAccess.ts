@@ -3,8 +3,9 @@ import type { PracticeSettings } from '../types/practiceSettings'
 
 /**
  * Who may edit the settings a practice needs before a Hold Sentinel call can
- * reach its staff and a carrier will accept the call: the call window, the
- * escalation phone, the voice agent switch, and the provider number per carrier.
+ * reach its staff and a carrier will accept the call: the call window, who takes
+ * the call and the staffed hours, the voice agent switch, and the provider number
+ * per carrier.
  *
  * The practice owner is the account created at signup, so it has to be able to
  * set these itself. Every other setting stays read-only for the owner role;
@@ -18,7 +19,13 @@ export function canEditPracticeSetup(role: AuthRole | null, isReadOnly: boolean)
 /** The only settings the owner-level "Save setup" button may send. */
 export type OwnerSetupSettings = Pick<
   PracticeSettings,
-  'callWindowStart' | 'callWindowEnd' | 'escalationPhoneNumber' | 'voiceAgentEnabled' | 'carrierConfigs'
+  | 'callWindowStart'
+  | 'callWindowEnd'
+  | 'escalationPhoneNumber'
+  | 'staffedHours'
+  | 'designatedIndividualUserId'
+  | 'voiceAgentEnabled'
+  | 'carrierConfigs'
 >
 
 /**
@@ -33,6 +40,8 @@ export function pickOwnerSetupSettings(settings: PracticeSettings): OwnerSetupSe
     callWindowStart: settings.callWindowStart,
     callWindowEnd: settings.callWindowEnd,
     escalationPhoneNumber: settings.escalationPhoneNumber,
+    staffedHours: settings.staffedHours,
+    designatedIndividualUserId: settings.designatedIndividualUserId,
     voiceAgentEnabled: settings.voiceAgentEnabled,
     carrierConfigs: settings.carrierConfigs,
   }
