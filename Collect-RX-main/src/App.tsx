@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
@@ -60,7 +60,7 @@ import { StartupScreen } from './components/StartupScreen'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 const ProductUsageAnalytics = lazy(() => import('./pages/ProductUsageAnalytics'))
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
-import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
+import { consumeLoginRedirect, pathRequiresAuth, resolvePostAuthTarget, storeLoginRedirect } from './lib/pathRequiresAuth'
 import { isCommandCenterSurface } from './lib/appSurface'
 const MarketingSite = lazy(() => import('./website/MarketingSite'))
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
@@ -87,12 +87,6 @@ function RouteFallback({ fullScreen = false }: { fullScreen?: boolean }) {
   )
 }
 
-/** Paths that should redirect to the signed-in home route (not render AppShell content). */
-function isPostAuthEntryPath(pathname: string): boolean {
-  const path = pathname.replace(/\/+$/, '') || '/'
-  return path === '/' || path === '/login'
-}
-
 function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
   return groupAdmin ? '/group-dashboard' : HOME_ROUTE[userRole]
 }
@@ -113,6 +107,29 @@ function PublicDemoRoute() {
     return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
   }
   return <PilotDemo />
+}
+
+/**
+ * The sign-in page on the desktop surface sits outside AuthGate, so once a
+ * session is ready it must hand the person on itself: to the page they were
+ * trying to reach, or else the signed-in home.
+ */
+function LoginRoute() {
+  const { authState, loading, userRole, role, sessionUser } = usePractice()
+  const navigate = useNavigate()
+  const handled = useRef(false)
+  const home =
+    !loading && authState === 'ready' && userRole
+      ? signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)
+      : null
+
+  useEffect(() => {
+    if (!home || handled.current) return
+    handled.current = true
+    navigate(resolvePostAuthTarget('/login', consumeLoginRedirect(), home) ?? home, { replace: true })
+  }, [home, navigate])
+
+  return home ? null : <LoginPage />
 }
 
 function AppHomeFallback() {
@@ -599,14 +616,10 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
-    const redirect = consumeLoginRedirect()
-    if (redirect) {
-      navigate(redirect, { replace: true })
-      return
-    }
-    if (isPostAuthEntryPath(location.pathname)) {
-      navigate(signedInHomeRoute(groupAdmin, userRole), { replace: true })
-    }
+    // Always consume the saved path so a stale one cannot linger, but only apply it
+    // when the person is on an entry page, never over a page they opened on purpose.
+    const target = resolvePostAuthTarget(location.pathname, consumeLoginRedirect(), signedInHomeRoute(groupAdmin, userRole))
+    if (target) navigate(target, { replace: true })
   }, [loading, authState, userRole, groupAdmin, location.pathname, navigate])
 
   useEffect(() => {
@@ -658,7 +671,7 @@ function App() {
             <Suspense fallback={<RouteFallback fullScreen />}>
             {isCommandCenterSurface ? (
               <Routes>
-                <Route path="/login" element={<LoginPage />} />
+                <Route path="/login" element={<LoginRoute />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
