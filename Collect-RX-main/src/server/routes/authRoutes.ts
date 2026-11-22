@@ -1110,7 +1110,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       // delivery failure (bad credentials, SendGrid outage) must not report
       // total failure, since the invite is still valid and usable via its link.
       try {
-        await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token, baseUrl: appBaseUrlFromRequest(req) });
+        const delivered = await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token, baseUrl: appBaseUrlFromRequest(req) });
+        if (!delivered) {
+          // No mail provider configured: nothing was sent, so hand the inviter the link.
+          return res.json({ invited: true, emailSent: false, token: invite.token });
+        }
         return res.json({ invited: true, emailSent: true });
       } catch (emailErr) {
         console.error('invite email send failed (token still created):', emailErr);
