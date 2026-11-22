@@ -48,6 +48,11 @@ jobs:
       - name: Install dependencies (workspace)
         run: npm ci
 
+      # The lockfile only carries the Linux and Intel-Mac Tailwind native builds, so a clean
+      # install here has no binding for this platform and `vite build` cannot load Tailwind.
+      - name: Add the Tailwind native binding for Windows
+        run: npm install --no-save --no-package-lock --ignore-scripts @tailwindcss/oxide-win32-x64-msvc@4.3.0
+
       - name: Build the desktop UI bundle
         working-directory: Collect-RX-main
         env:
@@ -114,6 +119,10 @@ jobs:
 
       - name: Install dependencies (workspace)
         run: npm ci
+
+      # See the Windows job: the lockfile has no Tailwind native build for Apple silicon.
+      - name: Add the Tailwind native binding for Apple silicon
+        run: npm install --no-save --no-package-lock --ignore-scripts @tailwindcss/oxide-darwin-arm64@4.3.0
 
       - name: Build the desktop UI bundle
         working-directory: Collect-RX-main
