@@ -23,134 +23,168 @@ export type NavIconName =
   | 'admin'
   | 'download'
 
+/**
+ * The CollectRx icon family. Drawn on a 24px grid with a 1.6 stroke, and each
+ * icon carries exactly one brand-green accent (a dot, a bar or a stroke) so the
+ * set reads as ours instead of a stock pack. The outline follows currentColor,
+ * the accent is always brand green.
+ */
+const ACCENT = 'var(--crx-green)'
+
 const PATHS: Record<NavIconName, ReactNode> = {
   dashboard: (
     <>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <rect x="3" y="3" width="8" height="10" rx="2" />
+      <rect x="13" y="3" width="8" height="5" rx="2" />
+      <rect x="13" y="11" width="8" height="10" rx="2" />
+      <rect x="3" y="16" width="8" height="5" rx="2" />
+      <circle cx="7" cy="8" r="1.6" fill={ACCENT} stroke="none" />
     </>
   ),
   workqueue: (
     <>
-      <path d="M4 6h16M4 12h10M4 18h14" />
-      <circle cx="18" cy="12" r="2" fill="currentColor" stroke="none" />
+      <path d="M10 6h10M10 12h10M10 18h6" />
+      <circle cx="5" cy="6" r="1.6" fill={ACCENT} stroke="none" />
+      <circle cx="5" cy="12" r="1.4" />
+      <circle cx="5" cy="18" r="1.4" />
     </>
   ),
   insurance: (
     <>
-      <path d="M12 3l8 4v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4z" />
-      <path d="M9 12l2 2 4-4" />
+      <path d="M7 3h7l4 4v14H7z" />
+      <path d="M14 3v4h4" />
+      <path d="M10 12h5" />
+      <path d="M10.5 16.5l1.6 1.6 3-3.2" stroke={ACCENT} />
     </>
   ),
   analytics: (
     <>
-      <path d="M4 19V5M10 19V9M16 19v-6M22 19H2" />
+      <path d="M3 21h18" />
+      <rect x="5" y="13" width="3.5" height="8" rx="1" />
+      <rect x="10.25" y="8" width="3.5" height="13" rx="1" />
+      <rect x="15.5" y="4" width="3.5" height="17" rx="1" fill={ACCENT} stroke="none" />
     </>
   ),
   carriers: (
     <>
-      <path d="M3 21h18M5 21V7l7-4 7 4v14" />
-      <path d="M9 11h2M13 11h2M9 15h2M13 15h2" />
+      <path d="M3 21h18" />
+      <path d="M5 21V9l7-5 7 5v12" />
+      <path d="M10 21v-5h4v5" />
+      <circle cx="12" cy="11" r="1.6" fill={ACCENT} stroke="none" />
     </>
   ),
   escalations: (
     <>
-      <path d="M12 9v4M12 17h.01" />
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <path d="M12 20V5" />
+      <path d="M6 11l6-6 6 6" />
+      <circle cx="12" cy="20" r="1.6" fill={ACCENT} stroke="none" />
     </>
   ),
   settings: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" fill={ACCENT} stroke="none" />
+      <circle cx="9" cy="17" r="2" />
     </>
   ),
   console: (
     <>
-      <rect x="2" y="4" width="20" height="14" rx="2" />
-      <path d="M8 20h8M9 8h6M9 12h4" />
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M9 21h6M12 17v4" />
+      <path d="M7 11l2-3 2 5 2-4 2 2h2" stroke={ACCENT} />
     </>
   ),
   history: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
+      <path d="M4 12a8 8 0 1 0 2.6-5.9" />
+      <path d="M4 4v4h4" />
+      <path d="M12 8v4l3 2" stroke={ACCENT} />
     </>
   ),
   portfolio: (
     <>
-      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+      <path d="M12 3l9 5-9 5-9-5z" />
+      <path d="M3 13l9 5 9-5" />
+      <circle cx="12" cy="8" r="1.4" fill={ACCENT} stroke="none" />
     </>
   ),
   health: (
     <>
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      <path d="M3 12h4l2-6 4 12 2-6h2" />
+      <circle cx="20" cy="12" r="1.6" fill={ACCENT} stroke="none" />
     </>
   ),
   users: (
     <>
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+      <path d="M16.5 5.3a3 3 0 0 1 0 5.4M18 14.8c1.8.7 3 2.3 3 4.2" stroke={ACCENT} />
     </>
   ),
   breakglass: (
     <>
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0110 0v4" />
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      <circle cx="12" cy="16" r="1.5" fill={ACCENT} stroke="none" />
     </>
   ),
   guide: (
     <>
-      <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      <path d="M12 6c-2-1.5-5-2-8-1.5V18c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V4.5C17 4 14 4.5 12 6z" />
+      <path d="M12 6v13.5" stroke={ACCENT} />
     </>
   ),
   balances: (
     <>
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M14.8 9.4c-.3-1-1.3-1.6-2.8-1.6-1.6 0-2.7.7-2.7 1.9 0 2.7 5.6 1.2 5.6 3.9 0 1.2-1.1 2-2.9 2-1.6 0-2.6-.7-2.9-1.8" stroke={ACCENT} />
     </>
   ),
   patientar: (
     <>
-      <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
+      <circle cx="10" cy="8" r="3.2" />
+      <path d="M4 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+      <circle cx="19" cy="17" r="2.2" fill={ACCENT} stroke="none" />
     </>
   ),
   estimate: (
     <>
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <path d="M14 2v6h6M8 13h8M8 17h5" />
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6" />
+      <circle cx="9" cy="13" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="13" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="13" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="17" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="17" r="1.1" fill={ACCENT} stroke="none" />
     </>
   ),
   outbox: (
     <>
-      <path d="M22 12H2l10-7 10 7z" />
-      <path d="M2 12v7a2 2 0 002 2h16a2 2 0 002-2v-7" />
+      <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+      <path d="M3 13v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6" />
+      <path d="M12 11V4M9 7l3-3 3 3" stroke={ACCENT} />
     </>
   ),
   cdcp: (
     <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 3l8 3v6c0 4.5-3.2 7.5-8 9-4.8-1.5-8-4.5-8-9V6z" />
+      <path d="M12 9v6M9 12h6" stroke={ACCENT} />
     </>
   ),
   admin: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+      <circle cx="6" cy="12" r="2.2" />
+      <circle cx="18" cy="6" r="2.2" />
+      <circle cx="18" cy="18" r="2.2" />
+      <path d="M8 11l8-4M8 13l8 4" />
+      <circle cx="12" cy="12" r="1.4" fill={ACCENT} stroke="none" />
     </>
   ),
   download: (
     <>
-      <path d="M12 3v12" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M5 21h14" />
+      <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+      <path d="M12 4v10M8 10l4 4 4-4" stroke={ACCENT} />
     </>
   ),
 }
@@ -163,7 +197,7 @@ type Props = {
 export function NavIcon({ name, active }: Props) {
   return (
     <span className={`crx-nav-icon ${active ? 'is-active' : ''}`} aria-hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
         {PATHS[name]}
       </svg>
     </span>

@@ -310,47 +310,42 @@
 }
 
 .crx-app .crx-nav-item.active {
-  background: var(--crx-green-md);
-  color: var(--crx-green-text);
+  background: transparent;
+  color: var(--crx-t1);
   font-weight: 600;
 }
 
 .crx-app .crx-nav-item.active::before {
   content: '';
   position: absolute;
-  left: 0;
+  right: 0.5rem;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 55%;
-  border-radius: 0 3px 3px 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--crx-green);
 }
 
 .crx-app .crx-nav-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: var(--crx-bg3);
-  border: 1px solid var(--crx-bdr);
   color: var(--crx-t3);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .crx-app .crx-nav-icon svg {
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
 }
 
 .crx-app .crx-nav-item.active .crx-nav-icon,
 .crx-app .crx-nav-icon.is-active {
-  background: var(--crx-green);
-  border-color: transparent;
-  color: #f8fffb;
+  color: var(--crx-green-text);
 }
 
 .crx-app .crx-nav-label {
@@ -2001,25 +1996,6 @@
 }
 .crx-app .practice-health-link:hover {
   transform: translateX(3px);
-}
-
-/* ── Sidebar: icon lift on hover, active indicator grows in ── */
-.crx-app .crx-nav-icon {
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.22s var(--crx-ease);
-}
-.crx-app .crx-nav-item:hover .crx-nav-icon {
-  transform: translateY(-1px) scale(1.05);
-}
-@keyframes crx-indicator-grow {
-  from { height: 0; opacity: 0; }
-  to   { height: 55%; opacity: 1; }
-}
-.crx-app .crx-nav-item.active::before {
-  animation: crx-indicator-grow 0.32s var(--crx-ease) both;
 }
 
 /* ── Buttons: tactile press everywhere, no layout shift ── */
