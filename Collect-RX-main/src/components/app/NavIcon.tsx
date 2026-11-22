@@ -23,134 +23,153 @@ export type NavIconName =
   | 'admin'
   | 'download'
 
+/**
+ * The CollectRx icon family. Drawn on a 24px grid with a 1.5 stroke, square line
+ * ends, mitred corners and a 1px corner radius, so the set reads technical and
+ * flat rather than rounded and playful. Each icon carries one thin brand-green
+ * line as its accent; the outline follows currentColor.
+ */
+const ACCENT = 'var(--crx-green)'
+
 const PATHS: Record<NavIconName, ReactNode> = {
   dashboard: (
     <>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="3.5" width="7" height="9" rx="1" />
+      <rect x="13.5" y="3.5" width="7" height="5" rx="1" />
+      <rect x="13.5" y="11.5" width="7" height="9" rx="1" />
+      <rect x="3.5" y="15.5" width="7" height="5" rx="1" />
+      <path d="M6 8h2" stroke={ACCENT} />
     </>
   ),
   workqueue: (
     <>
-      <path d="M4 6h16M4 12h10M4 18h14" />
-      <circle cx="18" cy="12" r="2" fill="currentColor" stroke="none" />
+      <path d="M4.5 12h2M4.5 17.5h2M10 12h9.5M10 17.5h6" />
+      <path d="M4.5 6.5h2M10 6.5h9.5" stroke={ACCENT} />
     </>
   ),
   insurance: (
     <>
-      <path d="M12 3l8 4v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4z" />
-      <path d="M9 12l2 2 4-4" />
+      <path d="M6.5 3.5h8l3 3v14h-11z" />
+      <path d="M14.5 3.5v3h3" />
+      <path d="M9.5 14l2 2 3.5-4" stroke={ACCENT} />
     </>
   ),
   analytics: (
     <>
-      <path d="M4 19V5M10 19V9M16 19v-6M22 19H2" />
+      <path d="M3.5 20.5h17" />
+      <path d="M6.5 20V14M12 20V9" />
+      <path d="M17.5 20V4" stroke={ACCENT} />
     </>
   ),
   carriers: (
     <>
-      <path d="M3 21h18M5 21V7l7-4 7 4v14" />
-      <path d="M9 11h2M13 11h2M9 15h2M13 15h2" />
+      <path d="M3.5 20.5h17M5.5 20.5V9l6.5-4.5L18.5 9v11.5" />
+      <path d="M10 20.5v-5h4v5" stroke={ACCENT} />
     </>
   ),
   escalations: (
     <>
-      <path d="M12 9v4M12 17h.01" />
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <path d="M6.5 10.5L12 5l5.5 5.5" />
+      <path d="M12 20.5V5.5" stroke={ACCENT} />
     </>
   ),
   settings: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+      <path d="M3.5 7.5h10M17.5 7.5h3M3.5 16.5h3M10.5 16.5h10" />
+      <path d="M15.5 5v5M8.5 14v5" stroke={ACCENT} />
     </>
   ),
   console: (
     <>
-      <rect x="2" y="4" width="20" height="14" rx="2" />
-      <path d="M8 20h8M9 8h6M9 12h4" />
+      <rect x="3.5" y="4.5" width="17" height="12" rx="1" />
+      <path d="M9 20.5h6M12 16.5v4" />
+      <path d="M7 11h2l1.5-3 3 6 1.5-3h2" stroke={ACCENT} />
     </>
   ),
   history: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5" />
+      <path d="M4.5 4v4h4" />
+      <path d="M12 7.5V12l3 2" stroke={ACCENT} />
     </>
   ),
   portfolio: (
     <>
-      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+      <path d="M12 3.5L20.5 8 12 12.5 3.5 8z" />
+      <path d="M3.5 12.5L12 17l8.5-4.5" />
+      <path d="M3.5 16.5L12 21l8.5-4.5" stroke={ACCENT} />
     </>
   ),
   health: (
     <>
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+      <path d="M3.5 12h4M16 12h4.5" />
+      <path d="M7.5 12l2-6 4 12 2.5-6" stroke={ACCENT} />
     </>
   ),
   users: (
     <>
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 20.5c0-3.3 2.4-5.5 5.5-5.5s5.5 2.2 5.5 5.5" />
+      <path d="M16 5a3 3 0 0 1 0 6M18 15c1.8.7 2.5 2.3 2.5 5.5" stroke={ACCENT} />
     </>
   ),
   breakglass: (
     <>
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0110 0v4" />
+      <rect x="5.5" y="11.5" width="13" height="9" rx="1" />
+      <path d="M8.5 11.5V8a3.5 3.5 0 0 1 7 0v3.5" />
+      <path d="M12 15v2.5" stroke={ACCENT} />
     </>
   ),
   guide: (
     <>
-      <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      <path d="M12 6c-2-1.5-5-2-8-1.5v13.5c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V4.5C17 4 14 4.5 12 6z" />
+      <path d="M12 6v13.5" stroke={ACCENT} />
     </>
   ),
   balances: (
     <>
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M14.5 9.5H10a1.5 1.5 0 0 0 0 3h4a1.5 1.5 0 0 1 0 3H9.5M12 7.5v2M12 15.5v1.5" stroke={ACCENT} />
     </>
   ),
   patientar: (
     <>
-      <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
+      <circle cx="10" cy="8" r="3.2" />
+      <path d="M4 20.5c0-3.3 2.4-5.5 6-5.5s6 2.2 6 5.5" />
+      <path d="M16.5 17.5h4M18.5 15.5v4" stroke={ACCENT} />
     </>
   ),
   estimate: (
     <>
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <path d="M14 2v6h6M8 13h8M8 17h5" />
+      <rect x="5.5" y="3.5" width="13" height="17" rx="1" />
+      <path d="M9 7.5h6" />
+      <path d="M9 12h6M9 16h3.5" stroke={ACCENT} />
     </>
   ),
   outbox: (
     <>
-      <path d="M22 12H2l10-7 10 7z" />
-      <path d="M2 12v7a2 2 0 002 2h16a2 2 0 002-2v-7" />
+      <path d="M3.5 13h5l1.5 2.5h4l1.5-2.5h5M3.5 13v7.5h17V13" />
+      <path d="M12 11V4M9 7l3-3 3 3" stroke={ACCENT} />
     </>
   ),
   cdcp: (
     <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 3.5l8 3v5.5c0 4.5-3.2 7.5-8 9-4.8-1.5-8-4.5-8-9V6.5z" />
+      <path d="M12 9v6M9 12h6" stroke={ACCENT} />
     </>
   ),
   admin: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="18" cy="6" r="2" />
+      <circle cx="18" cy="18" r="2" />
+      <path d="M8 11l8-4M8 13l8 4" stroke={ACCENT} />
     </>
   ),
   download: (
     <>
-      <path d="M12 3v12" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M5 21h14" />
+      <path d="M4.5 15v5.5h15V15" />
+      <path d="M12 4v11M8 11l4 4 4-4" stroke={ACCENT} />
     </>
   ),
 }
@@ -163,7 +182,7 @@ type Props = {
 export function NavIcon({ name, active }: Props) {
   return (
     <span className={`crx-nav-icon ${active ? 'is-active' : ''}`} aria-hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter">
         {PATHS[name]}
       </svg>
     </span>

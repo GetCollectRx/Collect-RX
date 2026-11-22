@@ -13,13 +13,6 @@ try {
 contextBridge.exposeInMainWorld('collectrx', {
   /** API base for /api in the renderer (COLLECTRX_API_ORIGIN or api-origin.txt). */
   apiOrigin,
-  getSyncStatus    : () => ipcRenderer.invoke('get-sync-status'),
-  onSyncStatusChange: (cb) => {
-    const fn = (_e, data) => cb(data);
-    ipcRenderer.on('sync-status-changed', fn);
-    return () => ipcRenderer.removeListener('sync-status-changed', fn);
-  },
-  triggerManualSync: () => ipcRenderer.invoke('trigger-manual-sync'),
   getAppVersion    : () => ipcRenderer.invoke('get-app-version'),
   onUpdateAvailable: (cb) => {
     const fn = (_e, data) => cb(data);

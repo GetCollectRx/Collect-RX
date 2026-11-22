@@ -109,7 +109,7 @@ Return JSON only:
 {
   "summary": "2-3 sentence CRM summary",
   "painPoints": ["string"],
-  "pmsUsed": "AbelDent|Dentrix|unknown or null",
+  "pmsUsed": "Dentrix|Open Dental|unknown or null",
   "interestLevel": "high" | "medium" | "low",
   "followUpEmail": "plain-text follow-up email body"
 }`;

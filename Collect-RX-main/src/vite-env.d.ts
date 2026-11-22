@@ -4,9 +4,6 @@ declare global {
   interface Window {
     collectrx?: {
       apiOrigin?: string
-      getSyncStatus: () => Promise<unknown>
-      onSyncStatusChange: (cb: (data: unknown) => void) => () => void
-      triggerManualSync: () => Promise<unknown>
       getAppVersion: () => Promise<unknown>
       onUpdateAvailable?: (cb: (data: unknown) => void) => () => void
       onUpdateDownloaded?: (cb: (data: unknown) => void) => () => void

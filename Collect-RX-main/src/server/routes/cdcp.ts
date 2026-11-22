@@ -1,7 +1,7 @@
 /**
  * Phase 5: CDCP Reconsideration API Routes
  *
- * POST   /api/cdcp/denied-claims           — Ingest denied CDCP claims from Abeldent sync
+ * POST   /api/cdcp/denied-claims           — Ingest denied CDCP claims from a PMS sync
  * POST   /api/cdcp/reconsiderations        — Create a reconsideration record
  * GET    /api/cdcp/reconsiderations        — List reconsiderations for a practice
  * GET    /api/cdcp/reconsiderations/:id    — Get reconsideration detail
@@ -33,7 +33,7 @@ export function createCdcpRouter(prisma: PrismaClient): Router {
   useOwnerPracticeApiAuthOnly(router);
 
   // ── POST /api/cdcp/denied-claims ────────────────────────────────────────────
-  // Called by Abeldent sync when Transaction 11 denials are detected
+  // Called by a PMS sync when Transaction 11 denials are detected
   router.post('/denied-claims', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const { claims } = req.body as { claims: CdcpDeniedClaim[] };

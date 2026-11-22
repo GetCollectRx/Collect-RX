@@ -1,15 +1,7 @@
-# Legacy desktop entry (deprecated)
+# Desktop packaging resources
 
-**Do not use this folder as the Electron main process.**
-
-The active desktop app lives under `electron-shell/`:
-
-| Active | Legacy (this folder) |
-|--------|----------------------|
-| `electron-shell/main.js` | `desktop/main.js` |
-| `electron-shell/preload.js` | `desktop/preload.js` |
-| `child_process.spawn` for sync | `utilityProcess.fork` |
-
-`desktop/services/abeldent-sync.js` and `desktop/config/` are still used by the packaged app.
+The desktop app lives in `electron-shell/`. This folder only holds
+`config/agent-config.example.json`, which the installer copies to
+`%ProgramData%\CollectRx\agent-config.json` on first install.
 
 Run the desktop app: `npm run dev:electron` from `Collect-RX-main/`.

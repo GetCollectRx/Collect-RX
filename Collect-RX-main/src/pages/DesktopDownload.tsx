@@ -4,7 +4,6 @@ import { CollectRxLogoMark } from '../components/brand/CollectRxLogo'
 import { DesktopConnectorBanner } from '../components/desktop/DesktopConnectorBanner'
 import { Card, CardHeader, DataState } from '../components/ui'
 import { usePublicPortalTheme } from '../website/usePublicPortalTheme'
-import { useDesktopConnector } from '../hooks/useDesktopConnector'
 import {
   DESKTOP_RELEASES_PAGE,
   fallbackDesktopReleaseInfo,
@@ -27,7 +26,6 @@ function platformBadge(platform: DesktopPlatform, recommended: DesktopPlatform):
 
 export default function DesktopDownload() {
   usePublicPortalTheme()
-  const desktop = useDesktopConnector()
   const recommended = useMemo(() => getRecommendedPlatform(), [])
   const [release, setRelease] = useState<DesktopReleaseInfo | null>(null)
   const [downloadsConfigured, setDownloadsConfigured] = useState(true)
@@ -108,8 +106,8 @@ export default function DesktopDownload() {
           <div>
             <h1 className="page-title">CollectRx desktop</h1>
             <p className="page-subtitle">
-              Run CollectRx from your taskbar with AbelDent sync on Windows. Same UI as the web app —
-              optimized for front-desk and billing workflows.
+              Run CollectRx from your taskbar on Windows. Same app as the website, with an alert that
+              reaches you even when the window is minimized.
             </p>
           </div>
         </header>
@@ -163,24 +161,19 @@ export default function DesktopDownload() {
           <CardHeader title="What the desktop app does" />
           <ul className="px-4 pb-4 text-sm text-crx-t2 space-y-2 list-disc list-inside">
             <li>Opens your practice dashboard at <code className="text-xs">www.collectrx.ca</code> in a focused window.</li>
-            <li>Runs AbelDent sync in the background (Windows + SQL Server on the practice LAN).</li>
+            <li>Alerts you the moment a carrier rep is on the line, even when the window is minimized.</li>
             <li>Minimizes to the system tray — double-click the tray icon to reopen.</li>
             <li>Auto-updates when you publish a new GitHub release (packaged builds only).</li>
           </ul>
         </Card>
 
         <Card>
-          <CardHeader title="Windows AbelDent setup" subtitle="One-time configuration on the practice PC" />
+          <CardHeader title="Windows setup" subtitle="Works with any practice management system" />
           <ol className="px-4 pb-4 text-sm text-crx-t2 space-y-2 list-decimal list-inside">
-            <li>Install the Windows desktop app and paste your connector token into <code className="text-xs">%ProgramData%\CollectRx\agent-config.json</code>.</li>
-            <li>Run <code className="text-xs">windows-install-mssql.ps1</code> once (ODBC + SQL driver).</li>
-            <li>Confirm sync status in the green banner above, or under Admin → Sync ops.</li>
+            <li>Run the installer and sign in with your CollectRx account.</li>
+            <li>Import claims from any PMS with a CSV export under Import CSV.</li>
+            <li>Leave the app running in the system tray so handoff alerts reach you.</li>
           </ol>
-          <p className="px-4 pb-4 text-xs text-crx-t3">
-            {desktop.isDesktop
-              ? 'You are running the desktop connector on this machine.'
-              : 'Use the browser for day-to-day work; install the desktop app on the PC that can reach AbelDent.'}
-          </p>
         </Card>
       </div>
       </div>

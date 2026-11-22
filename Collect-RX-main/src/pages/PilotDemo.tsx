@@ -22,7 +22,7 @@ const B = {
 
 const PRACTICE = 'CollectRx Demo Practice'
 
-/** PMS-agnostic setup copy — AbelDent, Dentrix, ClearDent, etc. use the same connector/export path. */
+/** PMS-agnostic setup copy — Dentrix, Open Dental, ClearDent, etc. use the same connector/export path. */
 const PMS_CONNECT_LINE = 'your practice management software'
 const PMS_CONNECT_SHORT = 'your PMS'
 

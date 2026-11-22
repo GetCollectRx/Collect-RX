@@ -7,51 +7,38 @@ interface PmsVendorProfile {
   displayName: string;
   importFamily: PmsImportFamily;
   supportsDesktopConnector: boolean;
-  supportsEdiVersionGuard: boolean;
 }
 
 export const PMS_VENDOR_PROFILES: Record<PmsVendorId, PmsVendorProfile> = {
-  abeldent: {
-    displayName: 'AbelDent',
-    importFamily: 'abeldent',
-    supportsDesktopConnector: true,
-    supportsEdiVersionGuard: true,
-  },
   dentrix: {
     displayName: 'Dentrix',
     importFamily: 'dentrix',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
   open_dental: {
     displayName: 'Open Dental',
     importFamily: 'generic',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
   eaglesoft: {
     displayName: 'Eaglesoft',
     importFamily: 'generic',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
   curve: {
     displayName: 'Curve Dental',
     importFamily: 'generic',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
   softdent: {
     displayName: 'Softdent',
     importFamily: 'generic',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
   other: {
     displayName: 'Other / CSV export',
     importFamily: 'generic',
     supportsDesktopConnector: false,
-    supportsEdiVersionGuard: false,
   },
 };
 
@@ -59,8 +46,8 @@ export const PMS_VENDOR_IDS = Object.keys(PMS_VENDOR_PROFILES) as PmsVendorId[];
 
 /** Legacy import slugs and aliases → canonical vendor id. */
 const VENDOR_ALIASES: Record<string, PmsVendorId> = {
-  abeldent: 'abeldent',
-  abel_dent: 'abeldent',
+  abeldent: 'other',
+  abel_dent: 'other',
   dentrix: 'dentrix',
   dentrix_ascend: 'dentrix',
   open_dental: 'open_dental',
@@ -96,7 +83,6 @@ export function listPmsVendorCatalog(): PmsVendorCatalogEntry[] {
       displayName: p.displayName,
       importFamily: p.importFamily,
       supportsDesktopConnector: p.supportsDesktopConnector,
-      supportsEdiVersionGuard: p.supportsEdiVersionGuard,
     };
   });
 }

@@ -2,7 +2,7 @@
 // CollectRx AR Engine — Polymorphic Carrier Adjudication Schema
 //
 // Every carrier reports claim status differently over the phone. Before any
-// sync tool (e.g. the AbelDent connector, `desktop/services/abeldent-sync.cjs`)
+// sync tool (e.g. a PMS connector)
 // writes an adjudication result back to a practice's ledger, that result must
 // be normalized into one locked, validated shape. This module owns that
 // shape and its per-carrier normalizers.

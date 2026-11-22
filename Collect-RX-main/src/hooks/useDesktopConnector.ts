@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type DesktopSyncStatus = 'starting' | 'healthy' | 'error' | 'offline' | string
-
-export interface DesktopSyncState {
-  status: DesktopSyncStatus
-  message: string
-}
-
 export interface DesktopConnectorState {
   isDesktop: boolean
   appVersion: string | null
-  sync: DesktopSyncState | null
   updateAvailable: string | null
   updateDownloaded: string | null
 }
@@ -18,7 +10,6 @@ export interface DesktopConnectorState {
 const INITIAL: DesktopConnectorState = {
   isDesktop: false,
   appVersion: null,
-  sync: null,
   updateAvailable: null,
   updateDownloaded: null,
 }
@@ -28,7 +19,6 @@ function readDesktopBridge(): Window['collectrx'] {
 }
 
 export function useDesktopConnector(): DesktopConnectorState & {
-  triggerManualSync: () => Promise<void>
   restartToUpdate: () => Promise<void>
 } {
   const [state, setState] = useState<DesktopConnectorState>(INITIAL)
@@ -44,29 +34,6 @@ export function useDesktopConnector(): DesktopConnectorState & {
       if (!cancelled && typeof v === 'string') {
         setState((s) => ({ ...s, appVersion: v }))
       }
-    })
-
-    void crx.getSyncStatus?.().then((raw: unknown) => {
-      if (cancelled || !raw || typeof raw !== 'object') return
-      const data = raw as { status?: string; message?: string }
-      setState((s) => ({
-        ...s,
-        sync: {
-          status: data.status ?? 'starting',
-          message: data.message ?? '',
-        },
-      }))
-    })
-
-    const offSync = crx.onSyncStatusChange?.((data: unknown) => {
-      const payload = data as { status?: string; message?: string }
-      setState((s) => ({
-        ...s,
-        sync: {
-          status: payload.status ?? 'starting',
-          message: payload.message ?? '',
-        },
-      }))
     })
 
     const offUpdate = crx.onUpdateAvailable?.((data: unknown) => {
@@ -85,19 +52,14 @@ export function useDesktopConnector(): DesktopConnectorState & {
 
     return () => {
       cancelled = true
-      offSync?.()
       offUpdate?.()
       offDownloaded?.()
     }
-  }, [])
-
-  const triggerManualSync = useCallback(async () => {
-    await readDesktopBridge()?.triggerManualSync?.()
   }, [])
 
   const restartToUpdate = useCallback(async () => {
     await readDesktopBridge()?.restartToUpdate?.()
   }, [])
 
-  return { ...state, triggerManualSync, restartToUpdate }
+  return { ...state, restartToUpdate }
 }

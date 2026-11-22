@@ -88,13 +88,13 @@ npm run db:migrate:collectrx        # deploy
 npm run db:migrate:dev:collectrx    # dev
 npm run db:seed:collectrx
 
-# Package the Electron desktop app (AbelDent-connected practices only)
+# Package the Electron desktop app (the Windows front-desk app)
 npm run build:electron:win
 ```
 
 CI triggers on version tags: `git tag v1.0.0 && git push origin v1.0.0`
 
-For direct/unnamespaced commands (`npm run dev`, `npm test`, `npm run lint`, `npm run abeldent:discover`, etc.), run them from inside `Collect-RX-main/` — see [`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md).
+For direct/unnamespaced commands (`npm run dev`, `npm test`, `npm run lint`, etc.), run them from inside `Collect-RX-main/` — see [`Collect-RX-main/CLAUDE.md`](Collect-RX-main/CLAUDE.md).
 
 ---
 
@@ -158,25 +158,19 @@ reconciliation.ts      — compare estimate vs. actual, flag variances >$50
 
 **TELUS AdjudiCare** is a clearinghouse, not a single insurer. Before routing any IVR call to TELUS, identify the underlying TPA from the group number prefix via `identifyTelusPlan()`. Carrier-configs.json documents a per-carrier minimum claim wait (day 21 for TELUS, day 32 for all other carriers), but `validateDispatch()` (`Collect-RX-main/src/carriers/adapter.ts`) does not currently enforce those per-carrier numbers — every carrier, TELUS included, is gated by one flat 30-day floor. See [`docs/operations/HUMAN-DECISIONS-PENDING.md`](docs/operations/HUMAN-DECISIONS-PENDING.md) item 1 for the options on whether to start enforcing the documented per-carrier minimums.
 
-### Abeldent Connector (Phase 4)
+### PMS-agnostic by design
 
-AbelDent is one supported PMS connector. It is optional. New practices onboard via CSV (see CSV Import below). The AbelDent connector is only active when `ABELDENT_SCHEMA_MAP` is set. The server starts and runs fully without it.
-
-When AbelDent access is available (run from `Collect-RX-main/`):
-1. `scripts/discover-schema.cjs` — introspects SQL Server → `schema-discovery.json` (list of tables/columns).
-2. `schema-map.example.json` — copy to `schema-map.json`, align names with discovery output.
-3. `scripts/sync-query-builder.cjs` — `--validate` checks the map against discovery; `--emit-queries` writes JSON with the exact SQL strings.
-4. `desktop/services/abeldent-sync.cjs` — set `ABELDENT_SCHEMA_MAP` to your `schema-map.json`; sync POSTs to the Fly.io API.
+CollectRx is not built around any one practice management system. Every PMS onboards the same way: export claims to CSV and import (see below). There is no PMS-specific sync service; a practice-side bridge can push to the generic connector API if one is ever needed. Do not add vendor-specific code paths.
 
 ### CSV Import (Primary Onboarding Path)
 
-For practices without AbelDent (the majority of new onboarding), CSV is the primary data path. The full pipeline is built:
+CSV is the data path for every practice, whatever their PMS. The full pipeline is built:
 
 - `src/server/csv/parseSimple.ts` — parses and validates CSV with column alias mapping
 - `src/server/pms/pmsImportPipeline.ts` — parse → validate → Prisma upsert → sync to work queue
 - `src/server/pms/pmsRegistry.ts` — `other` (generic CSV) is a valid vendor with `importFamily: 'generic'`, `supportsDesktopConnector: false`
 
-A practice can be fully onboarded via CSV with no desktop app required. The Electron app is only needed for AbelDent-connected practices.
+A practice can be fully onboarded via CSV with no desktop app required. The Electron app is the Windows front-desk app: a thin shell around the web UI with a system tray icon and a handoff alert that reaches staff when the window is minimized.
 
 ---
 
@@ -207,7 +201,7 @@ Key eligibility tables: `eligibility_snapshots`, `eligibility_estimates`, `estim
 
 ## Windows build & deployment
 
-The Electron app is packaged as a signed NSIS `.exe` installer for AbelDent-connected practices. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
+The Electron app is packaged as a signed NSIS `.exe` installer for the Windows front-desk app. CI builds it on `windows-latest` (required for NSIS + code signing). Code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD` secrets. Releases are drafted on GitHub; `electron-updater` delivers future versions automatically on next launch.
 
 Never ship an unsigned build to a pilot practice.
 
@@ -218,4 +212,3 @@ Never ship an unsigned build to a pilot practice.
 1. Add an entry to `Collect-RX-main/src/services/eligibility/rules/carrier-configs.json` following the existing structure
 2. Add the carrier ID to the `Carrier` enum in `Collect-RX-main/src/services/eligibility/types.ts`
 3. Add test cases to `tests/eligibility.test.ts` covering the new carrier's deductible, annual max, and coverage tiers
-4. Update `CARRIER_NAME_MAP` in `Collect-RX-main/scripts/sync-query-builder.cjs` if the carrier name appears in Abeldent data

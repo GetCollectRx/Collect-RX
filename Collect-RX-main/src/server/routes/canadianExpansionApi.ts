@@ -256,7 +256,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
     }
   );
 
-  /** MOD-04 — log PMS write-back intent (Abeldent UPDATE executed on-premise; this is cloud audit + coordination). */
+  /** MOD-04 — log PMS write-back intent (the UPDATE is executed by the practice's own bridge; this is cloud audit + coordination). */
   r.post('/canadian/pms/writeback', blockAuditorWrites, async (req: Request, res: Response) => {
     try {
       const pid = practiceId(req);
@@ -266,7 +266,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
           practiceId: pid,
           source: input.source,
           claimRef: input.claimRef,
-          abeldentPatientId: input.abeldentPatientId ?? null,
+          pmsPatientId: input.pmsPatientId ?? null,
           payload: input.payload as object,
         },
       });
@@ -283,7 +283,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
         id: row.id,
         status: 'pending',
         message:
-          'Write-back logged. Desktop connector polls /api/canadian/pms/writeback-pending and applies AbelDent UPDATE via schema-map.',
+          'Write-back logged. The practice PMS bridge polls /api/canadian/pms/writeback-pending and applies the update.',
       });
     } catch (e) {
       return handleError('pms writeback', e, res);
@@ -302,7 +302,7 @@ export function createCanadianExpansionRouter(prisma: PrismaClient): Router {
           id: true,
           source: true,
           claimRef: true,
-          abeldentPatientId: true,
+          pmsPatientId: true,
           payload: true,
           processedAt: true,
           processError: true,

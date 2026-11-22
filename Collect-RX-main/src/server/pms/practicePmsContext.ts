@@ -17,7 +17,7 @@ export interface ResolvedPmsImport {
 
 /**
  * Resolve which PMS vendor and import mapper to use for an ingest request.
- * Explicit slug wins; else practice settings; else latest import run; else AbelDent (legacy default).
+ * Explicit slug wins; else practice settings; else latest import run; else generic CSV.
  */
 export async function resolvePmsImport(
   prisma: PrismaClient,
@@ -51,9 +51,7 @@ export async function getPracticePmsContext(
     inferredFromLastImport = !settings.pmsVendor && !!lastRun;
   }
 
-  const ingestMode: PmsIngestMode =
-    settings.pmsIngestMode ??
-    (vendorId === 'abeldent' ? 'desktop_connector' : 'csv');
+  const ingestMode: PmsIngestMode = settings.pmsIngestMode ?? 'csv';
 
   return {
     vendorId,

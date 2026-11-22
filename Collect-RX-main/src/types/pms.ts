@@ -1,6 +1,5 @@
 /** Practice management system vendor — stored on practice settings and import runs. */
 export type PmsVendorId =
-  | 'abeldent'
   | 'dentrix'
   | 'open_dental'
   | 'eaglesoft'
@@ -12,7 +11,7 @@ export type PmsVendorId =
  * Column-mapping family for CSV/JSON import only.
  * Phone, queue, and recovery routing never branch on this — see `PHONE_DECISION_PROFILE`.
  */
-export type PmsImportFamily = 'abeldent' | 'dentrix' | 'generic';
+export type PmsImportFamily = 'dentrix' | 'generic';
 
 /** All carrier call / recovery decisions use this profile regardless of PMS vendor. */
 export const PHONE_DECISION_PROFILE = 'carrier_recovery_v1' as const;
@@ -34,5 +33,4 @@ export interface PmsVendorCatalogEntry {
   displayName: string;
   importFamily: PmsImportFamily;
   supportsDesktopConnector: boolean;
-  supportsEdiVersionGuard: boolean;
 }

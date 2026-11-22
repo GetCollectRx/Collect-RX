@@ -9,14 +9,14 @@ import { normalizePmsClaimRow } from '../src/server/pms/parseExportRows.js';
 
 describe('pmsRegistry', () => {
   it('normalizes vendor aliases', () => {
-    expect(normalizePmsVendorId('AbelDent')).toBe('abeldent');
+    expect(normalizePmsVendorId('abel_dent')).toBe('other');
     expect(normalizePmsVendorId('open dental')).toBe('open_dental');
     expect(normalizePmsVendorId('csv')).toBe('other');
     expect(normalizePmsVendorId('unknown_pms')).toBeNull();
   });
 
   it('maps vendors to import families', () => {
-    expect(getPmsImportFamily('abeldent')).toBe('abeldent');
+    expect(getPmsImportFamily('other')).toBe('generic');
     expect(getPmsImportFamily('dentrix')).toBe('dentrix');
     expect(getPmsImportFamily('open_dental')).toBe('generic');
     expect(getPmsImportFamily('curve')).toBe('generic');

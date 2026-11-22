@@ -85,7 +85,7 @@ export const COMMON_ALIASES: AliasMap = {
 };
 
 export const INDUSTRY_CSV_ALIASES: Record<IndustryType, AliasMap> = {
-  // Software: Tracker, AbelMed / AbelDent (Canadian dental PMS). Existing dental
+  // Software: Tracker (Canadian dental PMS). Existing dental
   // imports still run through parseSimpleCsv; these entries serve the new parser.
   DENTAL: {
     primaryReferenceId: ['Patient ID', 'Patient Chart #', 'Chart #', 'Chart Number', 'PatNum', 'Account #', 'Account Number', 'No de dossier'],
@@ -179,7 +179,6 @@ export const SOFTWARE_PROFILES: ReadonlyArray<{
   market: 'CA' | 'US' | 'BOTH';
 }> = [
   { id: 'tracker', label: 'Tracker', industry: 'DENTAL', market: 'CA' },
-  { id: 'abelmed', label: 'AbelMed / AbelDent', industry: 'DENTAL', market: 'CA' },
   { id: 'mitchell', label: 'Mitchell', industry: 'AUTO_COLLISION', market: 'BOTH' },
   { id: 'audatex', label: 'Audatex', industry: 'AUTO_COLLISION', market: 'BOTH' },
   { id: 'ccc-one', label: 'CCC ONE', industry: 'AUTO_COLLISION', market: 'BOTH' },

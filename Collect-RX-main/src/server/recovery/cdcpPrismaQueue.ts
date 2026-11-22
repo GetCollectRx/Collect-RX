@@ -118,7 +118,7 @@ export async function listCdcpQueueFromPrisma(
   };
 }
 
-/** Ingest AbelDent T11 denials into the unified Prisma CDCP case store. */
+/** Ingest T11 denials into the unified Prisma CDCP case store. */
 export async function ingestCdcpDeniedClaimsToPrisma(
   prisma: PrismaClient,
   practiceId: string,

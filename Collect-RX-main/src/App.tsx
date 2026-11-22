@@ -208,7 +208,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
   {
     label: 'Account',
     items: [
-      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'balances' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
       { to: '/admin/integrations', exact: false, label: 'Integrations', icon: 'admin' },
       { to: '/admin/staff', exact: true, label: 'Staff', icon: 'users' },
@@ -262,14 +262,14 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
   {
     label: 'Account',
     items: [
-      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+      { to: '/billing', exact: true, label: 'Plan & billing', icon: 'balances' },
       { to: '/settings', exact: true, label: 'Settings', icon: 'settings' },
     ],
   },
 ]
 
 const BILLING_COORDINATOR_NAV: NavItem[] = [
-  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'settings' },
+  { to: '/billing', exact: true, label: 'Plan & billing', icon: 'balances' },
   { to: '/insurance', exact: true, label: 'Claims', icon: 'insurance' },
   { to: '/reports/aging', exact: false, label: 'Aging report', icon: 'analytics' },
   { to: '/escalations', exact: true, label: 'Escalations', icon: 'escalations' },

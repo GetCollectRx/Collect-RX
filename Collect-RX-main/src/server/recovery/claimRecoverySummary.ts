@@ -18,7 +18,7 @@ const ROUTE_DESCRIPTIONS: Record<RecoveryRoute, string> = {
   CALL_CARRIER:
     'CollectRx will re-call the carrier when the scheduled time arrives and dispatch rules allow.',
   WAIT_SYNC:
-    'Carrier reported payment. The loop closes when AbelDent sync shows the outstanding balance drop — not from call status alone.',
+    'Carrier reported payment. The loop closes when the next PMS import shows the outstanding balance drop — not from call status alone.',
   OPEN_CDCP:
     'This is a CDCP denial path. Gather evidence and submit reconsideration — generic carrier calls are paused.',
   PRACTICE_GATE:

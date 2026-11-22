@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useDesktopConnector } from '../hooks/useDesktopConnector'
 import { Link } from 'react-router-dom'
 import { usePracticePageGate } from '../hooks/usePracticePageGate'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
@@ -41,7 +40,6 @@ interface ConnectorAgent {
 
 export default function SyncOpsDashboard() {
   const { practiceId, canFetch, pageBusy, pageError } = usePracticePageGate()
-  const desktop = useDesktopConnector()
   const [runs, setRuns] = useState<ImportRun[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -154,10 +152,9 @@ export default function SyncOpsDashboard() {
     catalog.length > 0
       ? catalog
       : [
-          { id: 'dentrix', displayName: 'Dentrix', importFamily: 'dentrix' as const, supportsDesktopConnector: false, supportsEdiVersionGuard: false },
-          { id: 'abeldent', displayName: 'AbelDent', importFamily: 'abeldent' as const, supportsDesktopConnector: true, supportsEdiVersionGuard: true },
-          { id: 'open_dental', displayName: 'Open Dental', importFamily: 'generic' as const, supportsDesktopConnector: false, supportsEdiVersionGuard: false },
-          { id: 'other', displayName: 'Other / CSV', importFamily: 'generic' as const, supportsDesktopConnector: false, supportsEdiVersionGuard: false },
+          { id: 'dentrix', displayName: 'Dentrix', importFamily: 'dentrix' as const, supportsDesktopConnector: false },
+          { id: 'open_dental', displayName: 'Open Dental', importFamily: 'generic' as const, supportsDesktopConnector: false },
+          { id: 'other', displayName: 'Other / CSV', importFamily: 'generic' as const, supportsDesktopConnector: false },
         ]
 
   return (
@@ -174,33 +171,12 @@ export default function SyncOpsDashboard() {
           </div>
         </header>
 
-        {desktop.isDesktop && (
+        {pmsContext?.ingestMode === 'desktop_connector' && (
           <Card>
-            <CardHeader title="AbelDent desktop connector" subtitle="Running on this PC" />
-            <div className="px-4 pb-4 text-sm flex flex-wrap items-center gap-3 justify-between">
-              <p className="text-crx-t2">
-                Sync status: <strong>{desktop.sync?.status ?? 'starting'}</strong>
-                {desktop.sync?.message ? ` — ${desktop.sync.message}` : ''}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => void desktop.triggerManualSync()}>
-                  Sync now
-                </Button>
-                <Link to="/download" className="text-sm underline self-center">Desktop downloads</Link>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {!desktop.isDesktop && (pmsContext?.vendorId === 'abeldent' || pmsContext?.ingestMode === 'desktop_connector') && (
-          <Card>
-            <CardHeader title="AbelDent desktop connector" subtitle="Install on the practice PC that can reach SQL Server" />
+            <CardHeader title="PMS connector" subtitle="For a practice-side bridge that pushes claims to CollectRx" />
             <div className="px-4 pb-4 space-y-3 text-sm text-crx-t2">
               <p>
-                For live AbelDent sync, install the{' '}
-                <Link to="/download" className="underline text-crx-600">CollectRx desktop app</Link>{' '}
-                on your Windows front-desk machine. Mint a connector token below and set{' '}
-                <code className="text-xs">COLLECTRX_API_TOKEN</code> on that PC (or paste during install).
+                Mint a connector token below and set <code className="text-xs">COLLECTRX_API_TOKEN</code> on the bridge that pushes your PMS export to CollectRx.
               </p>
               <div className="flex flex-wrap gap-2 items-center">
                 <Button variant="secondary" size="sm" disabled={minting} onClick={() => void mintConnector()}>
