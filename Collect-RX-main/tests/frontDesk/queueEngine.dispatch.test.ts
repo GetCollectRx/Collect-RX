@@ -37,12 +37,18 @@ vi.mock('../../src/carriers/adapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/vapi/client.js', () => ({
-  initiateCall: (...args: unknown[]) => initiateCallMock(...args),
-  endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
-  getHumanAssistedSquadId: () => 'squad-hold-sentinel',
-  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
-}));
+// resolvePracticeCallerId stays real so these tests exercise the actual
+// authorization rule instead of a copy of it.
+vi.mock('../../src/vapi/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/vapi/client.js')>();
+  return {
+    resolvePracticeCallerId: actual.resolvePracticeCallerId,
+    initiateCall: (...args: unknown[]) => initiateCallMock(...args),
+    endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
+    getHumanAssistedSquadId: () => 'squad-hold-sentinel',
+    VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
+  };
+});
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
   refreshDeskQueueBroadcast: vi.fn(),
@@ -169,6 +175,8 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         npi: null,
         taxId: null,
         practiceAddress: null,
+        vapiPhoneNumberId: null as string | null,
+        callerIdAuthorizedAt: null as Date | null,
       })),
     },
     practiceDeskState: {
@@ -362,6 +370,44 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it("dials from the practice's own number once its caller ID is authorized", async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: new Date('2026-11-01T00:00:00.000Z'),
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ vapiPhoneNumberId: 'practice-phone' });
+  });
+
+  it('keeps the shared number when the practice number was registered but never authorized', async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: null,
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0].vapiPhoneNumberId).toBeUndefined();
   });
 
   it('defers a head claim whose PHI token expired and dispatches the next eligible claim', async () => {

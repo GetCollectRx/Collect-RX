@@ -13,7 +13,7 @@
 import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { vapiClient, VapiAmbiguousOutcomeError } from '../vapi/client';
+import { vapiClient, VapiAmbiguousOutcomeError, resolvePracticeCallerId } from '../vapi/client';
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
@@ -782,7 +782,14 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const [practice, practiceSettings] = await Promise.all([
       prisma.practice.findUnique({
         where: { id: practiceId },
-        select: { name: true, billingPhone: true, npi: true, taxId: true },
+        select: {
+          name: true,
+          billingPhone: true,
+          npi: true,
+          taxId: true,
+          vapiPhoneNumberId: true,
+          callerIdAuthorizedAt: true,
+        },
       }),
       getPracticeSettings(prisma, practiceId),
     ]);
@@ -878,6 +885,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         claimId: claim.id,
         carrierId: claim.carrierId,
         practiceId,
+        vapiPhoneNumberId: practice ? resolvePracticeCallerId(practice) : undefined,
         patientToken: claim.patientToken,
         // ── PHI — from piiVault.detokenize() above; ephemeral, never stored ──────
         patientName:        phiResult.phi.patientName,

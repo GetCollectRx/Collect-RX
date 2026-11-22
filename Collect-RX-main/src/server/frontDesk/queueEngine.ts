@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, resolvePracticeCallerId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
@@ -785,7 +785,15 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const practice = await prisma.practice.findUnique({
       where: { id: practiceId },
-      select: { name: true, billingPhone: true, npi: true, taxId: true, practiceAddress: true },
+      select: {
+        name: true,
+        billingPhone: true,
+        npi: true,
+        taxId: true,
+        practiceAddress: true,
+        vapiPhoneNumberId: true,
+        callerIdAuthorizedAt: true,
+      },
     });
     const practiceSettings = await getPracticeSettings(prisma, practiceId);
     // The plan, not only the practice's toggle, decides whether the AI may
@@ -965,6 +973,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       treatmentCodes:         next.claim.treatmentCodes ?? undefined,
       // ── Practice identity ─────────────────────────────────────────────────────
       practiceId,
+      vapiPhoneNumberId:      practice ? resolvePracticeCallerId(practice) : undefined,
       practiceName:           practice?.name ?? '',
       practiceNpi:            practice?.npi ?? undefined,
       practiceTaxId:          practice?.taxId ?? undefined,
