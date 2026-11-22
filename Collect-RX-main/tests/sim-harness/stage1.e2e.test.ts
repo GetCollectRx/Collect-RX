@@ -410,8 +410,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     log.expect('3 Dispatch', '7', 'Call attempt starts in the live dialing state', attempt?.liveState === 'dialing' && attempt.isHumanAssisted, `liveState=${attempt?.liveState} activeAgent=${attempt?.activeAgent} isHumanAssisted=${attempt?.isHumanAssisted}`);
     log.record('3 Dispatch', '7', 'AR engine state machine (Claim_Queued ...) in the live path', 'FINDING',
       'src/services/arEngine/stateMachine.ts and reconciler.ts are imported by nothing outside src/services/arEngine/. The live path tracks CallAttempt.liveState instead. Brief Step 3/4 state-machine assertions test unwired code.');
-    log.record('3 Dispatch', '6', 'No dial with zero ready staff', 'FAIL',
-      'The practice has no staff presence or availability state, and the dial still went out. runDeskQueueTick has no staff-capacity gate (no availability check in src/server/frontDesk/queueEngine.ts); missed handoffs are handled after pickup by the staff_unavailable script.');
+    log.record('3 Dispatch', '6', 'Dispatch with zero ready staff (accepted behaviour)', 'FINDING',
+      'Accepted under ADR 0003 (decision B): dispatch has no staff-availability gate, so the dial proceeds with no staff present. A rep who answers is handed off, or given a reference number when the transfer cannot connect (staff_unavailable). Each handoff result is recorded as an audit outcome (frontdesk.handoff.outcome). Revisit with the transfer-miss data.');
     if (attempt) createdAttemptIds.push(attempt.id);
   }, 60_000);
 
