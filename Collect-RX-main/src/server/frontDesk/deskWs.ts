@@ -43,6 +43,14 @@ export function attachDeskWebSocket(server: Server): WebSocketServer {
       return;
     }
 
+    // A malformed frame makes ws emit 'error' and close the socket itself. With
+    // no listener, Node rethrows it as an uncaught exception, which takes the
+    // whole API process down for every practice. Attached first, before the
+    // token check and the awaited designated-user check, so no window is left.
+    ws.on('error', (err: Error) => {
+      console.warn('[deskWs] socket error, connection dropped:', err.message);
+    });
+
     const token =
       parseCookie(req.headers.cookie, COOKIE_NAME) ??
       (typeof req.headers['sec-websocket-protocol'] === 'string'
