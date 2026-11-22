@@ -354,7 +354,7 @@ export default function PracticeSettings() {
               </label>
               {!autonomousInPlan && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Every call uses Hold Sentinel. Autonomous calling, where CollectRx speaks with the rep, is not available on any plan yet.
+                  Every call uses Hold Sentinel. Autonomous calling, where CollectRx speaks with the rep, is included in the Scale plan.
                 </p>
               )}
               {(!autonomousInPlan || settings.humanAssistedMode !== false) && !settings.escalationPhoneNumber && (

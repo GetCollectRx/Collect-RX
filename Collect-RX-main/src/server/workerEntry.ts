@@ -2,6 +2,7 @@
  * P8-02 — BullMQ worker: insurance ops tick out of the HTTP process.
  */
 import 'dotenv/config';
+import './sandbox/installSandboxGuard.js';
 import { applyPostgresTlsToProcessEnv, assertPostgresTlsInProduction } from './databaseTls.js';
 import { assertDataResidencyAtStartup } from './dataResidency.js';
 import { initSentry } from './observability/sentryNode.js';
