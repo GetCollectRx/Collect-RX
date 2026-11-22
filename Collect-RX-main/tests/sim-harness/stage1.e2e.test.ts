@@ -491,6 +491,15 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         `result="${handoff?.result ?? ''}" transfer=${transfer?.path ?? 'none'}`);
       const notice = await plain.practiceNotification.findFirst({ where: { practiceId, claimId, type: 'LIVE_CALL_NEEDS_STAFF' } });
       log.expect(step, '17', 'Staff alerted on pickup', Boolean(notice), notice ? `notification "${notice.subject}"` : 'no LIVE_CALL_NEEDS_STAFF notification');
+      const handoffAudit = await plain.auditLog.findFirst({
+        where: { practiceId, action: 'frontdesk.handoff.outcome', subjectId: vapiCallId },
+        select: { details: true },
+      });
+      const recordedOutcome = (handoffAudit?.details as { outcome?: unknown } | null)?.outcome;
+      log.expect(step, '9,17', 'Handoff outcome recorded for the transfer', recordedOutcome === 'transfer_initiated',
+        `audit outcome=${String(recordedOutcome ?? 'none')}; recorded as a transfer result only, staff answering is not observable`);
+      log.record(step, '17', 'Staff answer after a connected transfer', 'UNVERIFIED',
+        'Not observable from the server: no event fires when staff pick up the transferred call. Measured only by the transfer outcome row (ADR 0003 open item).');
 
       const r3 = await postWebhook(fake.envelopes.logOutcome);
       const humanLog = await plain.humanAssistedCallLog.findUnique({ where: { vapiCallId } });

@@ -44,6 +44,7 @@ import {
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
 import type { PatientPHI } from '../pii-vault.js';
+import { recordHandoffOutcome, type HandoffOutcome } from '../server/vapi/handoffOutcome.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
@@ -259,6 +260,7 @@ async function handleStaffHandoffRequest(
   const practiceId = claim?.practiceId ?? metadataPracticeId;
   if (!vapiCallId || !practiceId) {
     console.error('[vapi-webhook] request_staff_handoff missing vapiCallId or practiceId');
+    await noteHandoffOutcome(practiceId, vapiCallId, 'missing_context');
     return 'HANDOFF FAILED — missing call or practice context. Stay silent and keep listening.';
   }
   let missedHandoffResult = 'HANDOFF FAILED — no callback number on file. Stay silent and keep listening.';
@@ -284,10 +286,12 @@ async function handleStaffHandoffRequest(
       console.error(
         `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
       );
+      await noteHandoffOutcome(practiceId, vapiCallId, 'no_escalation_number');
       return missedHandoffResult;
     }
 
     await transferVapiCall(vapiCallId, escalationPhone);
+    await noteHandoffOutcome(practiceId, vapiCallId, 'transfer_initiated');
 
     const amt = Number(claim?.outstandingAmount);
     const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
@@ -317,7 +321,27 @@ async function handleStaffHandoffRequest(
     return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
   } catch (err) {
     console.error('[vapi-webhook] request_staff_handoff failed:', err);
+    await noteHandoffOutcome(practiceId, vapiCallId, 'handoff_error');
     return missedHandoffResult;
+  }
+}
+
+/**
+ * Best-effort: a failed audit write must not change what the agent says on the
+ * call, so the handoff result is returned whatever happens here.
+ */
+async function noteHandoffOutcome(
+  practiceId: string | undefined,
+  vapiCallId: string | undefined,
+  outcome: HandoffOutcome,
+): Promise<void> {
+  if (!practiceId) return;
+  try {
+    await runWithRlsBypass(() =>
+      recordHandoffOutcome(prisma, { practiceId, vapiCallId: vapiCallId ?? 'unknown', outcome }),
+    );
+  } catch (err) {
+    console.error('[vapi-webhook] handoff outcome not recorded:', err);
   }
 }
 
