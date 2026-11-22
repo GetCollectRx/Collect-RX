@@ -31,15 +31,15 @@ The four "No" rows are tracked under R-100 of the PRD v2 build (wire or delete).
 ### Emergency Implementation (Wednesday)
 
 **Files**:
-- `src/server/audit/immutableAuditLog.ts` — Core immutable logging with SHA-256 chaining
-- `src/server/middleware/auditPhiAccess.ts` — Middleware to capture all PHI access
-- `tests/security/immutableAuditLog.test.ts` — Verification tests
+- `src/server/audit/immutableAuditLog.ts` - Core immutable logging with SHA-256 chaining
+- `src/server/middleware/auditPhiAccess.ts` - Middleware to capture all PHI access
+- `tests/security/immutableAuditLog.test.ts` - Verification tests
 
 **What it does**:
-1. **Chain verification** — Each audit entry's hash includes the previous entry's hash (blockchain-like). Tampering with any entry breaks the entire chain.
-2. **Immutable storage** — Audit entries are written to the database with append-only semantics.
-3. **Automatic logging** — All PHI access (patients, claims, recordings) is automatically logged.
-4. **Critical alerting** — If audit log write fails, a security alert is generated immediately.
+1. **Chain verification** - Each audit entry's hash includes the previous entry's hash (blockchain-like). Tampering with any entry breaks the entire chain.
+2. **Immutable storage** - Audit entries are written to the database with append-only semantics.
+3. **Automatic logging** - All PHI access (patients, claims, recordings) is automatically logged.
+4. **Critical alerting** - If audit log write fails, a security alert is generated immediately.
 
 **How to use**:
 ```typescript
@@ -91,14 +91,14 @@ npm run audit:verify-chain
 ### Emergency Implementation (Wednesday)
 
 **Files**:
-- `src/server/logging/phiRedactor.ts` — PII detection and redaction utilities
-- `tests/security/phiRedaction.test.ts` — Redaction tests
+- `src/server/logging/phiRedactor.ts` - PII detection and redaction utilities
+- `tests/security/phiRedaction.test.ts` - Redaction tests
 
 **What it does**:
-1. **Automatic redaction** — All common PII patterns (SSN, PHN, phone, email, DOB) are automatically detected and replaced with placeholders
-2. **Field-name redaction** — Known PHI field names (patientName, subscriberName, etc.) are redacted entirely
-3. **Recursive redaction** — Nested objects and arrays are recursively scanned and redacted
-4. **PII detection** — Can detect if an object contains PII before logging
+1. **Automatic redaction** - All common PII patterns (SSN, PHN, phone, email, DOB) are automatically detected and replaced with placeholders
+2. **Field-name redaction** - Known PHI field names (patientName, subscriberName, etc.) are redacted entirely
+3. **Recursive redaction** - Nested objects and arrays are recursively scanned and redacted
+4. **PII detection** - Can detect if an object contains PII before logging
 
 **Redaction patterns**:
 | Pattern | Original | Redacted |
@@ -128,7 +128,7 @@ const safeData = redactObject({
 
 // Detect PII before logging
 if (containsPII(errorData)) {
-  logger.warn('Error data contains PII — redacting', {
+  logger.warn('Error data contains PII - redacting', {
     piiTypes: detectPIITypes(errorData),
     data: redactObject(errorData),
   })
@@ -162,16 +162,16 @@ grep -r 'john.doe@' logs/
 ### Emergency Implementation (Wednesday)
 
 **Files**:
-- `src/server/vapi/vapiSecurityControls.ts` — Vapi security configuration and encryption
-- `tests/security/vapiSecurity.test.ts` — Security controls tests
+- `src/server/vapi/vapiSecurityControls.ts` - Vapi security configuration and encryption
+- `tests/security/vapiSecurity.test.ts` - Security controls tests
 
 **What it does**:
-1. **Webhook encryption** — All Vapi webhooks can be encrypted in transit using AES-256-GCM
-2. **Recording access logging** — Every access to a call recording is logged for audit
-3. **Security modes** — Three security modes to choose from:
-   - **DISABLED** — All AI calls disabled, manual review only
-   - **ENCRYPTED_TRANSIT** — Calls allowed but webhooks encrypted in database
-   - **FULL_SECURITY** — Post-launch with encryption at rest
+1. **Webhook encryption** - All Vapi webhooks can be encrypted in transit using AES-256-GCM
+2. **Recording access logging** - Every access to a call recording is logged for audit
+3. **Security modes** - Three security modes to choose from:
+   - **DISABLED** - All AI calls disabled, manual review only
+   - **ENCRYPTED_TRANSIT** - Calls allowed but webhooks encrypted in database
+   - **FULL_SECURITY** - Post-launch with encryption at rest
 
 ### Configuration
 
@@ -324,24 +324,24 @@ Before Wednesday pilot launch:
 
 ## Related Files
 
-- `src/server/audit/auditLog.ts` — Original audit logging (extended by immutable version)
-- `src/server/observability/logger.ts` — Core logger (already has PHI redaction)
-- `src/server/vapi/vapiWebhook.ts` — Vapi webhook handler
-- `tests/security/` — All security-related tests
-- `docs/compliance/PHI-VAPI-BOUNDARY.md` — PHI handling policy
-- `docs/compliance/crtc-disclosure-decision.md` — CRTC compliance rules
+- `src/server/audit/auditLog.ts` - Original audit logging (extended by immutable version)
+- `src/server/observability/logger.ts` - Core logger (already has PHI redaction)
+- `src/server/vapi/vapiWebhook.ts` - Vapi webhook handler
+- `tests/security/` - All security-related tests
+- `docs/compliance/PHI-VAPI-BOUNDARY.md` - PHI handling policy
+- `docs/compliance/crtc-disclosure-decision.md` - CRTC compliance rules
 
 ---
 
 ## References
 
 **Security Standards**:
-- PHIPA — Ontario Personal Health Information Protection Act
-- PIPEDA — Canadian Personal Information Protection and Electronic Documents Act
-- CRTC — Canadian Radio-television and Telecommunications Commission
+- PHIPA - Ontario Personal Health Information Protection Act
+- PIPEDA - Canadian Personal Information Protection and Electronic Documents Act
+- CRTC - Canadian Radio-television and Telecommunications Commission
 
 **Implementation References**:
-- OWASP Top 10 — A02: Cryptographic Failures
+- OWASP Top 10 - A02: Cryptographic Failures
 - CWE-532: Insertion of Sensitive Information into Log File
 - CWE-321: Use of Hard-coded Cryptographic Key
 
