@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Start here: product brief and decisions
+
+Before doing anything, read [`docs/PRODUCT-BRIEF.md`](docs/PRODUCT-BRIEF.md) (what the product is for, the Hold Sentinel wedge, the data policy) and [`docs/DECISIONS-REGISTER.md`](docs/DECISIONS-REGISTER.md) (what Khalid has decided, and the defaults that stand unless he vetoes them).
+
+1. Do not re-ask anything the register marks DECIDED or DEFAULT.
+2. For a reversible choice, recommend one answer, say why, and proceed unless Khalid vetoes. Ask only about spending money, legal exposure, irreversible changes, or things only he can do.
+3. Never take an all-or-nothing position on data. Use the four tiers in the brief: learn from carrier behavior, never keep patient information.
+4. Say "I do not know" plainly, mark anything not run as UNVERIFIED, and prove things at the level claimed. Simulation is not a real carrier.
+5. Record any new decision in the register in the same change.
+
 ## Mandatory completion checkpoint (every change, any size, any surface)
 
 This applies to every code change, including one line, in Claude Code, Cowork, claude.ai chat, or any other agent. Code is not done, and must not be reported as done, until each gate has passed or is explicitly marked UNVERIFIED with the reason.
