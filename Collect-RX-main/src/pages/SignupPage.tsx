@@ -4,6 +4,7 @@ import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 import { apiFetch } from '../lib/apiFetch'
 import { HOME_ROUTE } from '../types/userRole'
 import { usePractice } from '../context/PracticeContext'
+import { setDesktopSessionToken } from '../lib/desktopAuth'
 
 interface AgreementDefinition {
   kind: string
@@ -70,11 +71,12 @@ export default function SignupPage() {
             : {}),
         }),
       })
-      const data = await res.json() as { error?: string; role?: string }
+      const data = await res.json() as { error?: string; role?: string; sessionToken?: string }
       if (!res.ok) {
         setError(data.error ?? 'Registration failed')
         return
       }
+      setDesktopSessionToken(data.sessionToken)
       await refreshSession()
       navigate(data.role === 'group_admin' ? '/group-dashboard' : HOME_ROUTE.practice_owner, { replace: true })
     } catch {
