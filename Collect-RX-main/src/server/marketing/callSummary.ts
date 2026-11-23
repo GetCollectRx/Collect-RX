@@ -4,6 +4,7 @@ import { runGeminiJson } from './geminiClient.js';
 import { sendHotLeadAlert } from './hotLeadAlerts.js';
 import { logProspectActivity } from './prospectActivity.js';
 import { sendProspectEmail } from './prospectEmail.js';
+import { vapiBaseUrl } from '../../vapi/baseUrl.js';
 
 interface CallAnalysis {
   summary: string;
@@ -77,7 +78,7 @@ export async function processProspectCallEnded(
 
 async function fetchVapiTranscript(vapiCallId: string): Promise<string> {
   try {
-    const res = await fetch(`https://api.vapi.ai/call/${vapiCallId}`, {
+    const res = await fetch(`${vapiBaseUrl()}/call/${vapiCallId}`, {
       headers: { Authorization: `Bearer ${process.env.VAPI_API_KEY}` },
     });
     if (!res.ok) return '';

@@ -37,6 +37,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import axios from 'axios';
 import logger from '../server/observability/logger.js';
+import { vapiBaseUrl } from '../vapi/baseUrl.js';
 
 const WS_PATH = '/ws/hold-park-audio';
 
@@ -122,7 +123,7 @@ async function triggerHoldParkResume(callSid: string): Promise<void> {
   resumeLegExpectedUntil = Date.now() + 15000; // 15s to actually land on the webhook
 
   await axios.post(
-    'https://api.vapi.ai/call/phone',
+    `${vapiBaseUrl()}/call/phone`,
     {
       assistant: {
         name: 'HoldParkAutoResume',

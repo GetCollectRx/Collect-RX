@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { accessDeniedGuidance, isAccessDeniedMessage } from '../../lib/accessDenied';
 import { Card } from './Card';
 import { LoadingSpinner } from './LoadingSpinner';
 
@@ -27,6 +29,18 @@ export function DataState({
 }: DataStateProps) {
   if (loading) {
     return <LoadingSpinner fullPage label="Loading…" />;
+  }
+  if (error && isAccessDeniedMessage(error)) {
+    return (
+      <div className="page-enter p-6 flex-1 flex items-center justify-center">
+        <Card className="text-center max-w-md w-full">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">You do not have access to this page</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{accessDeniedGuidance(error)}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{error}</p>
+          <Link to="/" className="inline-block mt-4 text-sm font-medium underline">Back to your home page</Link>
+        </Card>
+      </div>
+    );
   }
   if (error) {
     return (

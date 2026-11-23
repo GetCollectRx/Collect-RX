@@ -10,7 +10,7 @@ import { CSV_LIMITS } from './csvValidator';
  *
  * SECURITY: CSV injection prevention (=, +, -, @, %) and size/row limits enforced.
  */
-const HEADER_ALIASES: Record<string, string> = {
+export const HEADER_ALIASES: Record<string, string> = {
   // Patient identity
   first_name: 'patient_first_name',
   fname: 'patient_first_name',
@@ -67,8 +67,23 @@ function canonicalFieldName(normalized: string): string {
 }
 
 /**
+ * The first row's column names after the same normalization and alias mapping parseSimpleCsv applies,
+ * duplicates kept. Lets a caller see two columns collapsing onto one name, which a row object hides.
+ */
+export function readCsvHeaders(text: string): string[] {
+  const [headerRecord] = parseCsvRecords(text);
+  if (!headerRecord) return [];
+  return headerRecord.map((h) =>
+    canonicalFieldName(h.trim().toLowerCase().replace(/\s+/g, '_').replace(/\u201D/g, '')),
+  );
+}
+
+/**
  * Computes SHA-256 hash of CSV text for integrity verification
  */
+/** Optional sign, optional currency symbol, digits with thousands separators and decimals. No letters, so no formula can hide in it. */
+const PLAIN_SIGNED_AMOUNT = /^[-+]\s*\$?\s*\d[\d,]*(?:\.\d+)?$/;
+
 export function computeCsvHash(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
@@ -119,8 +134,10 @@ export function parseSimpleCsv(text: string): Array<Record<string, string>> {
       let v = cols[j] ?? '';
       v = v.replace(/^\u201D|\u201D$/g, '').trim();
 
-      // Apply CSV injection prevention: escape formula characters
-      if (/^[=+\-@%]/.test(v)) {
+      // Apply CSV injection prevention: escape formula characters. A plain signed
+      // amount such as a credit of -45.00 is data, not a formula, and escaping it
+      // would turn a valid refund row into an unreadable number.
+      if (/^[=+\-@%]/.test(v) && !PLAIN_SIGNED_AMOUNT.test(v)) {
         v = '\'' + v;
       }
 

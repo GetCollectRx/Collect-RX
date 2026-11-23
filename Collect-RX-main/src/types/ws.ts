@@ -36,4 +36,9 @@ export type WsEvent =
       type: 'carrier.blocked';
       data: { block: DeskCarrierBlock; affectedQueueCount: number };
     }
-  | { type: 'carrier.unblocked'; data: { carrierId: CarrierId } };
+  | { type: 'carrier.unblocked'; data: { carrierId: CarrierId } }
+  | {
+      /** A live rep answered but nobody could take the call, so the agent asked for a reference number. */
+      type: 'handoff.missed';
+      data: { claimRef: string; carrierId: string | null; reason: 'no_staff_available' | 'staff_busy' | 'transfer_failed'; at: string };
+    };

@@ -186,6 +186,8 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
         callerIdAuthorizedAt: null as Date | null,
       })),
     },
+    // Dispatch needs a ready person in human-assisted mode; these tests are about dispatch mechanics.
+    staffPresence: { count: vi.fn(async () => 1) },
     practiceDeskState: {
       findUnique: vi.fn(async () => null),
       upsert: vi.fn(async () => ({})),
@@ -382,7 +384,7 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
   it("dials from the practice's own number once its caller ID is authorized", async () => {
     const prisma = tickPrisma([queueEntry('1')]);
-    prisma.practice.findUnique.mockResolvedValueOnce({
+    prisma.practice.findUnique.mockResolvedValue({
       name: 'CollectRx Demo Practice',
       timezone: 'America/New_York',
       billingPhone: '416-555-0100',
@@ -402,7 +404,7 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
   it('keeps the shared number when the practice number was registered but never authorized', async () => {
     const prisma = tickPrisma([queueEntry('1')]);
-    prisma.practice.findUnique.mockResolvedValueOnce({
+    prisma.practice.findUnique.mockResolvedValue({
       name: 'CollectRx Demo Practice',
       timezone: 'America/New_York',
       billingPhone: '416-555-0100',
@@ -873,7 +875,7 @@ describe('runDeskQueueTick staffed hours', () => {
     practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
     validateDispatchMock.mockResolvedValue({ allowed: true });
     const prisma = tickPrisma([queueEntry('1')]);
-    prisma.practice.findUnique.mockResolvedValueOnce({
+    prisma.practice.findUnique.mockResolvedValue({
       name: 'CollectRx Demo Practice',
       timezone: 'America/Vancouver',
       billingPhone: '416-555-0100',

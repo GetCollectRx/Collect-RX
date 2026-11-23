@@ -6,7 +6,9 @@ import {
   queryPracticeConflictsSession,
 } from '../middleware/requirePracticeSession';
 import { useOwnerPracticeApi } from '../middleware/ownerPracticeApi.js';
-import { parseSimpleCsv } from '../csv/parseSimple';
+import { parseSimpleCsv, readCsvHeaders } from '../csv/parseSimple';
+import { agingReportTemplateHeader, checkAgingReport, describeAgingReportSpec } from '../csv/agingReportSpec.js';
+import { sendPracticeNotification } from '../services/practiceNotificationService.js';
 import { runPmsImportPipeline, type ExportScope } from '../pms/pmsImportPipeline.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 import { resolvePmsImport } from '../pms/practicePmsContext.js';
@@ -82,6 +84,31 @@ router.get('/runs/:id', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/aging-report-spec', (_req: Request, res: Response) => {
+  res.json({ success: true, data: { fields: describeAgingReportSpec(), templateHeader: agingReportTemplateHeader() } });
+});
+
+/** Dry run: tell staff whether a file would be accepted, without importing anything. */
+router.post('/import-check', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
+  try {
+    if (!req.file?.buffer) return res.status(400).json({ success: false, error: 'Choose a CSV file to check.' });
+    const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
+    if (!uploadCheck.ok) return res.status(uploadCheck.status).json({ success: false, error: uploadCheck.error });
+    const text = req.file.buffer.toString('utf8');
+    let rows: Record<string, string>[];
+    try {
+      rows = parseSimpleCsv(text);
+    } catch (parseErr) {
+      return res.status(400).json({ success: false, error: `CSV parsing failed: ${(parseErr as Error).message}` });
+    }
+    const check = checkAgingReport(readCsvHeaders(text), rows);
+    return res.json({ success: true, data: { accepted: check.ok, rowCount: check.rowCount, problems: check.problems } });
+  } catch (err) {
+    logger.error('[POST /admin/sync/import-check]', { error: err });
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddleware(upload.single('file')), async (req: Request, res: Response) => {
   try {
     const practiceId = practiceIdFromSession(req);
@@ -96,6 +123,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
     let rows: Record<string, unknown>[] = [];
     let sourceBalanceTotal: number | undefined;
     let exportScope: ExportScope = 'partial';
+    let fileText: string | null = null;
 
     if (req.file?.buffer) {
       const uploadCheck = validateCsvUploadFile(req.file, { maxBytes: 100 * 1024 * 1024 });
@@ -105,6 +133,7 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       const multipartScope = (req.body as { exportScope?: unknown } | undefined)?.exportScope;
       if (multipartScope === 'full' || multipartScope === 'partial') exportScope = multipartScope;
       const text = req.file.buffer.toString('utf8');
+      fileText = text;
       try {
         rows = parseSimpleCsv(text) as Record<string, unknown>[];
       } catch (parseErr) {
@@ -128,6 +157,28 @@ router.post('/import/:pmsVendor', blockAuditorWrites, preserveRlsAcrossMiddlewar
       }
       sourceBalanceTotal = bodyParsed.data.sourceBalanceTotal;
       exportScope = bodyParsed.data.exportScope ?? 'partial';
+    }
+
+    // A file upload must carry the columns the importer needs. Refuse it whole, with a reason per problem,
+    // before anything is imported. Row-level problems are still held back per claim by the pipeline.
+    if (fileText !== null) {
+      const check = checkAgingReport(readCsvHeaders(fileText), rows as Record<string, string>[]);
+      if (!check.ok) {
+        void sendPracticeNotification(prisma, {
+          practiceId,
+          type: 'PMS_IMPORT_FAILED',
+          subject: 'Aging report not accepted',
+          message: `${check.problems.length} problem(s) with the uploaded aging report, so nothing was imported: ${check.problems.map((p) => p.message).join(' ')}`,
+          severity: 'warning',
+        }).catch((notifyErr: unknown) => logger.error('[pms import] rejection notification failed', { error: notifyErr }));
+        return res.status(422).json({
+          success: false,
+          code: 'AGING_REPORT_REJECTED',
+          error: 'This file was not accepted. Nothing was imported.',
+          problems: check.problems,
+          spec: describeAgingReportSpec(),
+        });
+      }
     }
 
     const resolved =

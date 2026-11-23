@@ -46,6 +46,7 @@ import { canMakeCall } from '../../src/server/plans/planBridge.js';
 import { OutboundInterceptor, type InterceptedRequest } from './outboundInterceptor.js';
 import { buildFakeCall, REP_SCRIPTS, type ScenarioId } from './fakeCarrier.js';
 import { RunLog } from './runLog.js';
+import { acquireSimLock, releaseSimLock } from './simLock.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CARRIERS_DIR = path.resolve(here, '../../carriers');
@@ -237,6 +238,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
   const dispatched: Array<{ scenario: ScenarioId; claimId: string; vapiCallId: string; carrierId: string; attemptId: string }> = [];
 
   beforeAll(async () => {
+    await acquireSimLock();
     interceptor.install();
     log.note('Stage 1 is offline: no audio, no Vapi, no carrier. Pickup timing, hold detection and scribe-after-transfer cannot be measured here (gaps 2 and 11).');
     log.note('Section 5 thresholds, Stage A and Option B are UNVERIFIED until the PRD is supplied (decision D9).');
@@ -266,7 +268,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         billingPhone: bundle.practice.billingPhone,
         faxNumber: bundle.practice.faxNumber,
         practiceAddress: bundle.practice.practiceAddress,
-        npi: bundle.practice.registrationNumber,
+        // Digits only: the generator's registration number has letters, which dispatch refuses for a phone menu.
+        npi: '9900001',
         settings: JSON.parse(JSON.stringify({
           ...defaultPracticeSettings(),
           escalationPhoneNumber: ESCALATION_PHONE,
@@ -294,6 +297,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
           displayName: 'Synthetic front_desk',
         },
       });
+      // Human-assisted dispatch needs someone marked available to take a rep.
+      await plain.staffPresence.create({ data: { practiceId, userId: frontDesk.id, status: 'AVAILABLE' } });
     }
     log.note('Dispatch gates observed before any dial: voiceAgentEnabled (default false, VOICE_AGENT_DISABLED) and, per carrier, a Billing Agent Authorization Letter flag plus a provider number (CARRIER_NOT_AUTHORIZED). The synthetic practice sets all three in settings, as onboarding would.');
     log.record('Setup', '6', 'Gap 7 addendum: practice settings carry minimumClaimAgeDays (21 TELUS, 32 others)', 'FINDING', 'defaultCarrierConfigs() in practiceSettingsService.ts sets minimumClaimAgeDays, but validateDispatch (src/carriers/adapter.ts) never reads it; the flat 30-day floor is what gates. That is a fifth age number.');
@@ -310,6 +315,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     console.warn(`[sim-harness] run ${RUN_ID} verdict ${log.verdict()} report ${reportPath}`);
     interceptor.uninstall();
     await plain.$disconnect().catch(() => undefined);
+    releaseSimLock();
     for (const [k, v] of savedEnv) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -410,8 +416,15 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     log.expect('3 Dispatch', '7', 'Call attempt starts in the live dialing state', attempt?.liveState === 'dialing' && attempt.isHumanAssisted, `liveState=${attempt?.liveState} activeAgent=${attempt?.activeAgent} isHumanAssisted=${attempt?.isHumanAssisted}`);
     log.record('3 Dispatch', '7', 'AR engine state machine (Claim_Queued ...) in the live path', 'FINDING',
       'src/services/arEngine/stateMachine.ts and reconciler.ts are imported by nothing outside src/services/arEngine/. The live path tracks CallAttempt.liveState instead. Brief Step 3/4 state-machine assertions test unwired code.');
-    log.record('3 Dispatch', '6', 'No dial with zero ready staff', 'FAIL',
-      'The practice has no staff presence or availability state, and the dial still went out. runDeskQueueTick has no staff-capacity gate (no availability check in src/server/frontDesk/queueEngine.ts); missed handoffs are handled after pickup by the staff_unavailable script.');
+    // Mark everyone off, tick with claims still waiting, and confirm nothing is dialled. Then restore.
+    const waiting = await plain.callQueue.count({ where: { practiceId, status: 'PENDING' } });
+    await plain.staffPresence.updateMany({ where: { practiceId }, data: { status: 'OFF' } });
+    const dialsBeforeOff = interceptor.dials().length;
+    await runDeskQueueTick(prisma);
+    const dialledWhileOff = interceptor.dials().length - dialsBeforeOff;
+    await plain.staffPresence.updateMany({ where: { practiceId }, data: { status: 'AVAILABLE' } });
+    log.expect('3 Dispatch', '6', 'No dial with zero ready staff', waiting > 0 && dialledWhileOff === 0,
+      `claims waiting=${waiting}; dials with nobody marked available=${dialledWhileOff} (staff_presence gate in validateDispatch, code NO_STAFF_AVAILABLE)`);
     if (attempt) createdAttemptIds.push(attempt.id);
   }, 60_000);
 

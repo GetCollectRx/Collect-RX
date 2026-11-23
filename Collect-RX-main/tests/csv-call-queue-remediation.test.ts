@@ -130,28 +130,113 @@ describe('CSV-to-call queue remediation', () => {
     }));
   });
 
-  it('rejects a mixed invalid file before starting a write transaction', async () => {
-    const prisma = {
-      pmsImportRun: {
-        create: vi.fn().mockResolvedValue({ id: 'run-2' }),
-        update: vi.fn().mockResolvedValue({}),
-      },
-      $transaction: vi.fn(),
-    };
+  it('quarantines a bad claim, imports the rest in one transaction, and says why', async () => {
+    const prisma = transactionalPrisma();
+    const bad = { ...validRow, claim_number: 'CLM-INVALID', amount_outstanding: 'not-money' };
 
     const result = await runPmsImportPipeline(prisma as never, {
       practiceId: 'practice-1',
       pmsSource: 'other',
-      rows: [validRow, { ...validRow, claim_number: 'CLM-INVALID', amount_outstanding: 'not-money' }],
+      rows: [validRow, bad],
     });
 
+    expect(result.status).toBe('success_with_quarantine');
+    expect(result.imported).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.quarantined).toEqual([expect.objectContaining({ claimNumber: 'CLM-INVALID', dataRow: 2 })]);
+    expect(result.quarantined[0]?.error).toMatch(/not a valid number/u);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(importClaims).toHaveBeenCalledWith(expect.anything(), [validRow], 'practice-1', 'generic');
+  });
+
+  it('holds back every row of a claim when one of its rows is bad, so totals never come from half a claim', async () => {
+    const prisma = transactionalPrisma();
+    const lineA = { ...validRow, claim_number: 'CLM-LINES' };
+    const lineB = { ...validRow, claim_number: 'CLM-LINES', amount_outstanding: 'abc' };
+
+    const result = await runPmsImportPipeline(prisma as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, lineA, lineB],
+    });
+
+    expect(result.quarantined.map((q) => q.dataRow)).toEqual([2, 3]);
+    expect(result.quarantined[0]?.error).toMatch(/whole claim was held back/u);
+    expect(importClaims).toHaveBeenCalledWith(expect.anything(), [validRow], 'practice-1', 'generic');
+  });
+
+  it('ignores fully blank trailing rows without calling them errors', async () => {
+    const blank = { claim_number: '', patient_first_name: '', carrier_name: ' ', amount_outstanding: '' };
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, blank, blank, blank],
+    });
+    expect(result.status).toBe('success');
+    expect(result.blankRowsIgnored).toBe(3);
+    expect(result.quarantined).toEqual([]);
+  });
+
+  it('quarantines unsupported carriers, blank carriers, missing claim numbers and a totals row, and imports the good rows', async () => {
+    const rows = [
+      validRow,
+      { ...validRow, claim_number: 'CLM-ODD', carrier_name: 'Desjardins Dental Plan' },
+      { ...validRow, claim_number: 'CLM-BLANK', carrier_name: '' },
+      { ...validRow, claim_number: '' },
+      { claim_number: 'TOTAL', patient_first_name: '', patient_last_name: '', carrier_name: '', amount_billed: '48210.00', amount_outstanding: '19234.50' },
+    ];
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, { practiceId: 'practice-1', pmsSource: 'other', rows });
+    expect(result.status).toBe('success_with_quarantine');
+    expect(result.quarantined.map((q) => q.dataRow)).toEqual([2, 3, 4, 5]);
+    expect(importClaims).toHaveBeenCalledWith(expect.anything(), [validRow], 'practice-1', 'generic');
+  });
+
+  it('rejects the whole file only when nothing in it can import', async () => {
+    const prisma = transactionalPrisma();
+    const result = await runPmsImportPipeline(prisma as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [{ ...validRow, carrier_name: 'Desjardins Dental Plan' }],
+    });
     expect(result.status).toBe('validation_failed');
     expect(result.imported).toBe(0);
-    expect(result.failed).toBe(1);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(importClaims).not.toHaveBeenCalled();
-    expect(syncWorkItems).not.toHaveBeenCalled();
-    expect(syncCallQueue).not.toHaveBeenCalled();
+  });
+
+  it('does not close claims missing from a full export when rows were held back, because they would look absent', async () => {
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, { ...validRow, claim_number: 'CLM-BAD', amount_outstanding: 'x' }],
+      exportScope: 'full',
+    });
+    expect(closeMissing).not.toHaveBeenCalled();
+    expect(result.claimsClosedAsMissing).toBe(0);
+    expect(result.missingClaimsWarning).toMatch(/held back/u);
+  });
+
+  it('reconciles a declared record count that includes blank and held rows', async () => {
+    const blank = { claim_number: '', carrier_name: '', amount_outstanding: '' };
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, { ...validRow, claim_number: 'CLM-BAD', amount_outstanding: 'x' }, blank, blank],
+      sourceRecordCount: 4,
+    });
+    expect(result.validationPassed).toBe(true);
+    expect(result.blankRowsIgnored).toBe(2);
+  });
+
+  it('reconciles declared record counts after rows are held back', async () => {
+    const result = await runPmsImportPipeline(transactionalPrisma() as never, {
+      practiceId: 'practice-1',
+      pmsSource: 'other',
+      rows: [validRow, { ...validRow, claim_number: 'CLM-BAD', amount_outstanding: 'x' }],
+      sourceRecordCount: 2,
+    });
+    expect(result.status).toBe('success_with_quarantine');
+    expect(result.validationPassed).toBe(true);
   });
 
   it('creates only missing eligible queue rows and never resets an existing row', async () => {

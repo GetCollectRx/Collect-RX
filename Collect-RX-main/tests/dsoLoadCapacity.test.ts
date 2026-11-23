@@ -82,7 +82,7 @@ process.env.VAPI_CONCURRENCY_RESERVE = '0';
 
 const { prisma } = await import('../src/server/index.js');
 const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
-const { createPracticeForTests } = await import('./factories/practice.js');
+const { createPracticeForTests, createUserForTests } = await import('./factories/practice.js');
 const { defaultPracticeSettings, updatePracticeSettings } = await import(
   '../src/server/services/practiceSettingsService.js'
 );
@@ -120,6 +120,9 @@ interface FleetPractice {
 
 async function seedDispatchablePractice(carrierId: CarrierId): Promise<FleetPractice> {
   const practice = await createPracticeForTests(prisma);
+  // Human-assisted dispatch needs someone marked available.
+  const staff = await createUserForTests(prisma, practice.id, 'front_desk');
+  await prisma.staffPresence.create({ data: { practiceId: practice.id, userId: staff.id, status: 'AVAILABLE' } });
 
   const settings = defaultPracticeSettings();
   settings.voiceAgentEnabled = true;
@@ -170,6 +173,8 @@ async function cleanupFleet(fleet: FleetPractice[]): Promise<void> {
   const practiceIds = fleet.map((p) => p.id);
   if (practiceIds.length === 0) return;
   await prisma.callAttempt.deleteMany({ where: { claim: { practiceId: { in: practiceIds } } } });
+  await prisma.staffPresence.deleteMany({ where: { practiceId: { in: practiceIds } } });
+  await prisma.user.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.callQueue.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.insuranceClaim.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.practiceDeskState.deleteMany({ where: { practiceId: { in: practiceIds } } });
