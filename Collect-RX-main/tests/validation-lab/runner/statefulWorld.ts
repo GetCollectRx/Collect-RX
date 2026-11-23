@@ -9,7 +9,9 @@
  * Level S: the real pipeline and routes, a stubbed Vapi, no network.
  */
 import { createHmac, randomUUID } from 'node:crypto';
+import http from 'node:http';
 import express from 'express';
+import { WebSocket } from 'ws';
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import { prisma } from '../../../src/lib/prisma.js';
@@ -20,7 +22,8 @@ import { runDeskQueueTick } from '../../../src/server/frontDesk/queueEngine.js';
 import vapiWebhookRouter from '../../../src/webhooks/vapi.js';
 import insuranceRouter from '../../../src/routes/insurance.js';
 import { authenticate } from '../../../src/server/middleware/authenticate.js';
-import { signUserToken } from '../../../src/server/authToken.js';
+import { COOKIE_NAME, signUserToken } from '../../../src/server/authToken.js';
+import { attachDeskWebSocket } from '../../../src/server/frontDesk/deskWs.js';
 import { defaultPracticeSettings } from '../../../src/server/services/practiceSettingsService.js';
 import type { OutboundInterceptor, InterceptedRequest } from '../../sim-harness/outboundInterceptor.js';
 import { officeRow, toOfficeCsv, type OfficeRow, type RowOptions } from '../../sim-harness/officeFixtures.js';
@@ -55,6 +58,23 @@ export interface OfficeOptions {
   voiceAgentEnabled?: boolean;
 }
 
+export interface LiveCall {
+  office: Office;
+  claimId: string;
+  attemptId: string;
+  vapiCallId: string;
+  initiatedAt: Date;
+  meta: Record<string, unknown>;
+}
+
+export interface EndOptions {
+  reason?: string;
+  seconds?: number;
+  transcript?: string;
+  analysis?: Record<string, unknown>;
+  metadata?: 'full' | 'none';
+}
+
 export interface TickResult {
   dials: InterceptedRequest[];
   claimIds: string[];
@@ -70,6 +90,7 @@ export class StatefulWorld {
   readonly plain = new PrismaClient();
   readonly practiceIds: string[] = [];
   private readonly phiValues: string[] = [];
+  lastRows: OfficeRow[] = [];
   private readonly issuedTokens: string[] = [];
   private readonly saved = new Map<string, string | undefined>();
   private readonly webhookApp = express();
@@ -156,6 +177,7 @@ export class StatefulWorld {
   /** Imports synthetic rows through the real PMS pipeline and returns the new claim ids in row order. */
   async importRows(practiceId: string, specs: Array<{ tag: string; opts?: RowOptions }>): Promise<string[]> {
     const rows: OfficeRow[] = specs.map((s) => officeRow(s.tag, s.opts ?? {}));
+    this.lastRows = rows;
     for (const r of rows) {
       for (const v of [`${r.patient_first_name} ${r.patient_last_name}`, r.subscriber_id, r.group_policy_number]) {
         if (v.trim().length >= 6) this.phiValues.push(v);
@@ -204,6 +226,92 @@ export class StatefulWorld {
     const signature = `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}`;
     const res = await request(this.webhookApp).post('/api/webhooks/vapi').set('Content-Type', 'application/json').set('x-vapi-signature', signature).send(raw);
     return { status: res.status };
+  }
+
+  /** Dials the office's one queued claim through the real tick and returns the live call, or null when no call was placed. */
+  async dial(office: Office): Promise<LiveCall | null> {
+    const t = await this.tickFor(office.id);
+    const req = t.dials[0];
+    if (!req) return null;
+    const claimId = claimIdOf(req);
+    const attempt = await this.plain.callAttempt.findFirst({ where: { claimId }, orderBy: { initiatedAt: 'desc' }, select: { id: true, vapiCallId: true, initiatedAt: true } });
+    if (!attempt) return null;
+    const body = req.body as { assistantOverrides?: { metadata?: unknown } } | null;
+    const meta = body?.assistantOverrides?.metadata;
+    return { office, claimId, attemptId: attempt.id, vapiCallId: attempt.vapiCallId, initiatedAt: attempt.initiatedAt, meta: typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {} };
+  }
+
+  envelope(call: LiveCall, opts: EndOptions = {}): Record<string, unknown> {
+    const reason = opts.reason ?? 'customer-ended-call';
+    const seconds = opts.seconds ?? 600;
+    const metadata = opts.metadata === 'none' ? {} : call.meta;
+    return {
+      message: {
+        type: 'end-of-call-report',
+        startedAt: call.initiatedAt.toISOString(),
+        endedAt: new Date(call.initiatedAt.getTime() + seconds * 1000).toISOString(),
+        endedReason: reason,
+        call: { id: call.vapiCallId, startedAt: call.initiatedAt.toISOString(), assistantOverrides: { metadata } },
+        artifact: opts.transcript ? { transcript: opts.transcript } : {},
+        analysis: { summary: `Simulated ${reason}`, ...(opts.analysis ?? {}) },
+      },
+    };
+  }
+
+  /** Closes a call the way Vapi would: a status update, then the end-of-call report. */
+  async endCall(call: LiveCall, opts: EndOptions = {}): Promise<{ status: number }> {
+    await this.postWebhook({ message: { type: 'status-update', status: 'in-progress', call: { id: call.vapiCallId, startedAt: call.initiatedAt.toISOString(), assistantOverrides: { metadata: call.meta } } } });
+    return this.postWebhook(this.envelope(call, opts));
+  }
+
+  nextSimCallId(): string {
+    return `sim-call-${String(this.interceptor.dials().length + 1).padStart(3, '0')}`;
+  }
+
+  /** Registers synthetic identifiers that appear only in memory, so teardown can prove none was stored. */
+  trackRows(rows: OfficeRow[]): void {
+    for (const r of rows) {
+      for (const v of [`${r.patient_first_name} ${r.patient_last_name}`, r.patient_first_name, r.patient_last_name, r.subscriber_id, r.group_policy_number]) {
+        if (v.trim().length >= 6) this.phiValues.push(v);
+      }
+    }
+  }
+
+  phiList(): string[] {
+    return [...this.phiValues];
+  }
+
+  recordingDeletes(): InterceptedRequest[] {
+    return this.interceptor.requests.filter((r) => r.disposition === 'recording_delete_stub');
+  }
+
+  controlRequests(): InterceptedRequest[] {
+    return this.interceptor.requests.filter((r) => r.disposition === 'vapi_control_stub');
+  }
+
+  /** Opens a real desk socket for the office, collects event types for a window, and returns them. */
+  async collectDeskEvents(office: Office, during: () => Promise<void>, windowMs = 1500): Promise<string[]> {
+    const server = http.createServer();
+    attachDeskWebSocket(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const types: string[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/desk`, { headers: { Cookie: `${COOKIE_NAME}=${office.token}` } });
+    ws.on('message', (data: Buffer) => {
+      const parsed = JSON.parse(data.toString()) as { type?: unknown };
+      if (typeof parsed.type === 'string') types.push(parsed.type);
+    });
+    await new Promise<void>((resolve) => {
+      ws.on('open', () => resolve());
+      ws.on('error', () => resolve());
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await during();
+    await new Promise((resolve) => setTimeout(resolve, windowMs));
+    ws.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    return types;
   }
 
   private async sweep(values: string[]): Promise<number> {

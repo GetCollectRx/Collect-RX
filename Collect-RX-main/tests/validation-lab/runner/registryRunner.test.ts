@@ -23,6 +23,7 @@ import { RunLog, type CheckStatus } from '../../sim-harness/runLog.js';
 import { buildDispatchBindings, setupDispatchWorld, teardownDispatchWorld, type DispatchWorld } from './dispatchBindings.js';
 import { buildPostCallBindings, SYNTHETIC_TRANSCRIPT_PHRASES } from './postCallBindings.js';
 import { buildStatefulBindings } from './statefulBindings.js';
+import { buildWebhookBindings, claimStatusPhrasesForLeakCheck } from './webhookBindings.js';
 import { StatefulWorld } from './statefulWorld.js';
 import type { Binding, Level } from './types.js';
 
@@ -97,7 +98,7 @@ describe('validation-lab registry runner', () => {
     log = new RunLog(`registry-${new Date().toISOString().replace(/[:.]/gu, '-')}`);
     world = await setupDispatchWorld(prisma);
     stateful = new StatefulWorld(interceptor);
-    const statefulBindings = buildStatefulBindings(stateful);
+    const statefulBindings = { ...buildStatefulBindings(stateful), ...buildWebhookBindings(stateful) };
     statefulIds = new Set(Object.keys(statefulBindings));
     bindings = { ...buildDispatchBindings(world), ...buildPostCallBindings(), ...statefulBindings };
   }, 120_000);
@@ -190,7 +191,9 @@ describe('validation-lab registry runner', () => {
 
   it('integrity: no transcript text at rest, nothing left the process', () => {
     const artifacts = [path.join(log.dir, 'REPORT.md'), path.join(log.dir, 'run-log.jsonl'), path.join(log.dir, 'rows.json')].map((p) => readFileSync(p, 'utf8')).join('\n');
-    const leaked = SYNTHETIC_TRANSCRIPT_PHRASES.filter((phrase) => artifacts.includes(phrase));
+    const watched = [...SYNTHETIC_TRANSCRIPT_PHRASES, ...claimStatusPhrasesForLeakCheck(), ...(stateful?.phiList() ?? [])];
+    expect(watched.length).toBeGreaterThan(10);
+    const leaked = watched.filter((value) => artifacts.includes(value));
     expect(leaked).toEqual([]);
     expect(interceptor.blocked().length).toBe(0);
     expect(interceptor.blockedNodeRequests).toEqual([]);

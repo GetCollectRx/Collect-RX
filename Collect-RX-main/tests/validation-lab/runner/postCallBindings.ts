@@ -50,6 +50,11 @@ function gated(p: VapiWebhookPayload): { outcome: string; claimStatus: string; b
   return { outcome: processed.outcome, claimStatus: g.gatedClaimStatus, blockDetected: processed.carrierBlockDetected, reference: processed.referenceNumber ? 'present' : 'none' };
 }
 
+/** The claim status the production outcome code predicts for a transcript, with no structured payload. */
+export function predictClaimStatus(transcript: string): string {
+  return gated(call(transcript)).claimStatus;
+}
+
 const fmt = (g: ReturnType<typeof gated>): string => `outcome=${g.outcome} claimStatus=${g.claimStatus} block=${g.blockDetected} reference=${g.reference}`;
 
 function blockCase(text: string, proves: string): Binding {
@@ -67,7 +72,10 @@ export function buildPostCallBindings(): Record<string, Binding> {
     },
     P002: async () => {
       const g = gated(call(T.paidWithRef));
-      return verdict(g.claimStatus === 'RESOLVED', 'U', fmt(g), 'A paid outcome with a reference of at least 4 characters stays RESOLVED. Whether a spoken reference is enough evidence for the word paid is a product-brief question this does not answer.');
+      const ok = g.claimStatus === 'RESOLVED';
+      return ok
+        ? finding('U', fmt(g), 'The product matches the registry: a paid outcome with a reference of at least 4 characters stays RESOLVED. But the registry expectation conflicts with the product brief, which says a claim is only called paid with evidence beyond a spoken reference number. The financial gate accepts a spoken reference as that evidence.')
+        : fail('U', fmt(g), 'A paid outcome with a reference number should stay RESOLVED under the registry.');
     },
     P003: async () => {
       const g = gated(call(T.conflictText, { analysis: { collectrx: { schemaVersion: 1, callOutcome: 'RESOLVED', claimStatus: 'RESOLVED' } } }));
