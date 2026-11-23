@@ -31,6 +31,9 @@ Status values: DECIDED (Khalid said so), DEFAULT (Claude recommended it and it s
 | D-06 | Claims_Scribe's first message is cleared, so it cannot speak to a rep. | It must be silent. |
 | D-07 | Pricing, margin math and competitor material stay out of the public repository. They live in the private project knowledge. | The repository is public. |
 | D-08 | Sessions follow the working rules in docs/PRODUCT-BRIEF.md: recommend and proceed on reversible choices. | Ends the repeated questions. |
+| D-09 | The scenario runner (Collect-RX-main/tests/validation-lab/runner) reports every registry scenario on every run, with UNVERIFIED as the default and the evidence level shown. A scenario is never reported above the level it ran at. | Stops the 248 scenarios from being counted as covered when most were never run. |
+| D-10 | Product results from the scenario runner (FAIL, FINDING) are reported in its REPORT.md and do not fail the vitest run, the same convention as the Stage 1 harness. Harness integrity does fail it. | A known product defect should not block unrelated pull requests, and the report still shows it. |
+| D-11 | New Hold Sentinel scenarios (staff handoff, missed handoff, presence, staff hours, NPI, metering) live in a separate file, not in the generated registry. | The registry is generated from SCENARIO-MASTER.csv and checked by hash and count. |
 
 ## Human actions (only Khalid can do these)
 
@@ -47,6 +50,6 @@ Status values: DECIDED (Khalid said so), DEFAULT (Claude recommended it and it s
 | Item | Notes |
 |---|---|
 | Whether sending redacted text to the extraction vendor is acceptable | Counsel question. Default is to keep lessons derived in memory with hard stripping. |
-| Carrier block scope: one practice and its siblings, or every practice | Gap 12 in the pre-call gate |
+| Carrier block scope: one practice and its siblings, or every practice | Gap 12 in the pre-call gate. Scenario D004 observes that a second practice on the same carrier is still allowed to dial. |
 | Which plan includes autonomous, and the autonomous prices | Waits for measured cost per call |
 | Whether $399 or $799 is the current Hold Sentinel figure in ADR 0003 | ADR 0004 and the Oct 28 PRD say $399 |
