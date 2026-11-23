@@ -1,7 +1,8 @@
-# ADR 0005: Calling mode is an explicit onboarding choice; autonomous calling is available
+# ADR 0007: Calling mode is an explicit onboarding choice; autonomous calling is available
 
 **Status:** Proposed (founder direction given 2026-11-23; recorded here for the founder's review before any code changes)
 **Date:** 2026-11-23
+**Numbering note:** the Oct 28 PRD refers to a graduation decision as "ADR 0005" and the architecture bake-off as "ADR 0006". Neither is in this repository yet, so this ADR takes 0007 to avoid a clash.
 **Supersedes in part:** ADR 0003 (decision item 3 and the open items "Default mode for new practices" and "Criteria for moving a practice or carrier from V1 to autonomous"), and ADR 0004 (stage 3, and the enforcement bullets that force Hold Sentinel when a plan has no autonomous calling).
 
 ## Context
