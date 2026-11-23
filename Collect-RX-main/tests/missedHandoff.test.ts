@@ -14,6 +14,7 @@ const { prismaMock, getSettings, transfer, notify } = vi.hoisted(() => ({
     practice: { findUnique: vi.fn() },
     insuranceClaim: { findUnique: vi.fn() },
     humanAssistedCallLog: { create: vi.fn() },
+    callAttempt: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   },
   getSettings: vi.fn(),
   transfer: vi.fn(),

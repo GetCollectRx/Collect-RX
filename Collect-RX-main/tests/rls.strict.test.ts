@@ -9,7 +9,7 @@ const setupUrl =
   'postgresql://prisma:prisma@127.0.0.1:5432/prisma?schema=public';
 
 /** Restricted app role under test — must respect FORCE RLS policies. */
-const strictUrl = process.env.DATABASE_URL ?? setupUrl;
+const strictUrl = process.env.RLS_APP_DATABASE_URL ?? process.env.DATABASE_URL ?? setupUrl;
 
 const adminPrisma = new PrismaClientCtor({ datasources: { db: { url: setupUrl } } });
 const strictPrisma = new PrismaClientCtor({ datasources: { db: { url: strictUrl } } });

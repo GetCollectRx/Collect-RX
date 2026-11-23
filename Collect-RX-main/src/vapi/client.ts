@@ -593,7 +593,7 @@ export async function endVapiCall(vapiCallId: string): Promise<void> {
   await vapiRequest<unknown>('POST', `/call/${vapiCallId}/end`);
 }
 
-/** Warm transfer to front desk phone (human takeover). */
+/** Transfers the call to the front desk phone. Sent without a transfer plan, so Vapi treats it as blind and the Vapi call ends. */
 export async function transferVapiCall(vapiCallId: string, toPhoneNumber: string): Promise<void> {
   await vapiRequest<unknown>('POST', `/call/${vapiCallId}/transfer`, {
     destination: { type: 'number', number: toPhoneNumber },

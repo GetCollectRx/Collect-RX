@@ -66,3 +66,11 @@ describe('redactTranscript', () => {
     expect(redacted).toContain('[REDACTED]');
   });
 });
+
+describe('redactTranscript persisted formats (B-19)', () => {
+  it('redacts dashed phones and written dates, keeps dollars', () => {
+    const out = redactTranscript('Call 613-501-8951, born March 5, 1980, paid $1,250.00.', null);
+    expect(out).not.toMatch(/613|8951|1980/);
+    expect(out).toContain('$1,250.00');
+  });
+});

@@ -1117,6 +1117,12 @@ model CallAttempt {
   /// the CarrierLesson learning pipeline, which is scoped to the fully-autonomous
   /// squad only — see HumanAssistedCallLog for V1's own, separate learning path.
   isHumanAssisted      Boolean      @default(false) @map("is_human_assisted")
+  /// Set when request_staff_handoff asked Vapi to transfer the call. It does not
+  /// prove staff answered: on Twilio a busy line ends the call and voicemail counts
+  /// as answered. A transfer ends the Vapi call, so the end-of-call report only
+  /// describes the IVR and hold stages; the outcome handler uses this to avoid
+  /// inferring a claim outcome from a conversation it never heard.
+  staffHandoffAt       DateTime?    @map("staff_handoff_at")
   /// Durable outbound intent that existed before the external Vapi request.
   dispatchIntentId     String?      @unique @map("dispatch_intent_id")
 

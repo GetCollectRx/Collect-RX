@@ -17,6 +17,7 @@ import { CARRIER_PHONE_MAP } from '../vapi/client';
 import { identifyTelusPlan } from '../services/eligibility/engine';
 import carrierRulesJson from '../services/eligibility/rules/carrier-configs.json';
 import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '../billing/tiers.js';
+import { evaluateStaffAvailability } from '../server/frontDesk/staffAvailability.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -401,6 +402,20 @@ export async function checkCarrierAuthorizationGate(
  * Subscription/usage capacity (canMakeCall()) is enforced by the caller
  * (queueEngine.ts) before this function runs, not here.
  */
+/**
+ * Age used by the dispatch gates. Counts from the submission date so the 30-day
+ * floor and 90-day ceiling move with the calendar. The import-time snapshot is
+ * only a fallback when no submission date exists.
+ */
+export function claimAgeDays(
+  claim: { submittedAt: Date | null; daysOutstanding: number },
+  now: Date = new Date(),
+): number {
+  if (!claim.submittedAt) return claim.daysOutstanding;
+  const ms = now.getTime() - claim.submittedAt.getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}
+
 export async function validateDispatch(
   prisma: PrismaClient,
   params: {
@@ -455,9 +470,24 @@ export async function validateDispatch(
   if (daysOutstanding < 30) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
+  // B-25: opt-in per-carrier minimum wait (21 TELUS, 32 others). Off by default
+  // so the flat 30-day floor stays the rule until the founder decides.
+  if (process.env.ENFORCE_CARRIER_MIN_WAIT === 'true') {
+    const minWait = CARRIER_CONFIGS[carrierId]?.minWaitDays;
+    if (typeof minWait === 'number' && daysOutstanding < minWait) {
+      return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min ${minWait} days for this carrier)` };
+    }
+  }
 
   // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
+    // B-18: a practice can opt human-assisted calls out of the 90-day ceiling,
+    // since staff, not the AI, talk to the rep on those calls. Off by default.
+    const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+    const s = await getPracticeSettings(prisma, practiceId);
+    if (s.humanAssistedMode !== false && s.humanAssistedAllowsOldClaims === true) {
+      // fall through to the remaining checks
+    } else
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
@@ -477,7 +507,26 @@ export async function validateDispatch(
     return { allowed: false, code: 'OUTSIDE_CALL_WINDOW', reason: `Calls only permitted 08:00–17:00 Eastern (current Eastern hour: ${easternHour})` };
   }
 
+  // 8. Staff availability (human-assisted mode only). A rep who picks up after
+  // the hold needs staff to take the call; dialing while staff are away wastes
+  // hold minutes and risks the rep hanging up. Unconfigured practices pass.
+  const staffGuard = await checkStaffAvailabilityGate(prisma, practiceId, callTime);
+  if (!staffGuard.allowed) return staffGuard;
+
   return { allowed: true };
+}
+
+export async function checkStaffAvailabilityGate(
+  prisma: PrismaClient,
+  practiceId: string,
+  at: Date,
+): Promise<DispatchGuard> {
+  const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+  const settings = await getPracticeSettings(prisma, practiceId);
+  if (settings.humanAssistedMode === false) return { allowed: true };
+  const result = evaluateStaffAvailability(settings.staffAvailability, at, settings.staffTimeZone || 'America/Toronto');
+  if (result.available) return { allowed: true };
+  return { allowed: false, code: 'STAFF_UNAVAILABLE', reason: result.reason ?? 'Staff are not available' };
 }
 
 // ---------------------------------------------------------------------------

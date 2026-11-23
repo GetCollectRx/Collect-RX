@@ -24,6 +24,7 @@ import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPaylo
 import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
+import { redactNarrativePhi } from '../services/guardrails/transcriptRedaction.js';
 import {
   MISSED_HANDOFF_SCENARIO,
   buildMissedHandoffScript,
@@ -33,6 +34,7 @@ import {
 } from '../server/vapi/missedHandoff.js';
 import { processVapiDeskWebhook } from '../server/frontDesk/vapiDeskEvents.js';
 import { logger } from '../server/observability/logger.js';
+import { emitHandoffEvent } from '../server/frontDesk/handoffEvents.js';
 import {
   claimVapiWebhookForProcessing,
   hashWebhookBody,
@@ -128,11 +130,14 @@ function validateSignature(rawBody: Buffer, signature: string): boolean {
 
 /**
  * V1 human-assisted handoff: called by Hold_Sentinel the instant a live human
- * (not IVR, not hold music) picks up. Warm-transfers the call to the
- * practice's escalation phone — Vapi keeps the call alive so Claims_Scribe
- * keeps listening — and fires a dashboard notification with the claim
+ * (not IVR, not hold music) picks up. Transfers the call to the practice's
+ * escalation phone and fires a dashboard notification with the claim
  * context, since staff otherwise have no way to know which claim an
  * incoming transfer is about.
+ *
+ * The transfer carries no transfer plan, which Vapi treats as blind, and it
+ * ends the Vapi call, so Claims_Scribe does not keep listening afterwards.
+ * See docs/design/staff-conference-handoff.md.
  */
 function coerceString(v: unknown): string | undefined {
   if (v === null || v === undefined || v === '') return undefined;
@@ -151,6 +156,10 @@ function coerceBoolean(v: unknown): boolean | undefined {
     if (v.toLowerCase() === 'false') return false;
   }
   return undefined;
+}
+
+function scrubOptionalNarrative(v: string | undefined): string | undefined {
+  return v === undefined ? undefined : redactNarrativePhi(v);
 }
 
 /**
@@ -207,11 +216,27 @@ async function handleLogCallOutcome(
           eobSentDate: coerceString(args.eobSentDate),
           appealRights: coerceString(args.appealRights),
           automationSuspicionFlag: coerceBoolean(args.automationSuspicionFlag) ?? false,
-          callSummary,
-          unresolvedFields: coerceString(args.unresolvedFields),
+          // Only the two narrative fields are pattern-scrubbed: the structured
+          // fields legitimately hold dates and 10-digit reference or fax numbers
+          // that the PHI patterns would destroy.
+          callSummary: redactNarrativePhi(callSummary),
+          unresolvedFields: scrubOptionalNarrative(coerceString(args.unresolvedFields)),
         },
       }),
     );
+    try {
+      const created = await runWithRlsBypass(() =>
+        prisma.humanAssistedCallLog.findUnique({ where: { vapiCallId } }),
+      );
+      if (created) {
+        await runWithRlsBypass(async () => {
+          const { reconcileLateHandoffLog } = await import('../outcome/lateLogReconciliation.js');
+          await reconcileLateHandoffLog(prisma, created);
+        });
+      }
+    } catch (reconErr) {
+      logger.error('[vapi-webhook] late log reconciliation failed (non-fatal)', { error: reconErr });
+    }
     if (scenario === MISSED_HANDOFF_SCENARIO) {
       const { subject, message } = missedHandoffMessage({
         claimLabel: claim && 'claimNumber' in claim && typeof claim.claimNumber === 'string' ? claim.claimNumber : 'unknown',
@@ -287,6 +312,22 @@ async function handleStaffHandoffRequest(
     }
 
     await transferVapiCall(vapiCallId, escalationPhone);
+    emitHandoffEvent('handoff_attempted', { vapiCallId });
+
+    // Recorded as soon as the transfer is accepted. The end-of-call report that
+    // follows only covers IVR and hold, so the outcome handler needs to know
+    // staff took the call. A failed write must not undo a transfer already
+    // under way.
+    try {
+      await runWithRlsBypass(() =>
+        prisma.callAttempt.updateMany({
+          where: { vapiCallId },
+          data: { staffHandoffAt: new Date() },
+        }),
+      );
+    } catch (markErr) {
+      console.error('[vapi-webhook] request_staff_handoff: could not record staffHandoffAt:', markErr);
+    }
 
     const amt = Number(claim?.outstandingAmount);
     const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
