@@ -5,8 +5,8 @@ Owner: Khalid. Written by a Claude Code session. Governing rules: docs/PRODUCT-B
 ## Conclusions first
 
 - **Registry:** 248 scenarios exist. Before this change no code read them, apart from the 45 `telephony_controlled` ones that the Carrier Twin checks by id. The five `harness` values (`carrier_conversation`, `transcript_outcome`, `scenario_vitest`, `supervised_pilot`, `telephony_controlled`) had no runner.
-- **A runner now exists** (`Collect-RX-main/tests/validation-lab/runner/`). It reports all 248 as PASS, FAIL, FINDING or UNVERIFIED on every run, and it runs 39 of them through real production code.
-- **First run:** PASS 33, FAIL 2, FINDING 4, UNVERIFIED 209. Every run row is evidence level **U** (real production function, real PostgreSQL for dispatch, synthetic data, no network). None is a Stage 1 pipeline run, a mock Vapi run or a real carrier call.
+- **A runner now exists** (`Collect-RX-main/tests/validation-lab/runner/`). It reports all 248 as PASS, FAIL, FINDING or UNVERIFIED on every run, and it runs 44 of them through real production code.
+- **Current run:** PASS 37, FAIL 2, FINDING 4, UNVERIFIED 205 (the 205 include D016, which ran and cannot be observed). Rows are level **U** (real production function, synthetic data) or **S** (real queue tick, routes and PHI vault, stubbed Vapi, synthetic data, no network). None is a mock Vapi server run, a browser walk, an owned-number run or a real carrier call. Stable over three consecutive runs.
 - **Product defects the run found** (FAIL):
   - D017: Canada Life is configured `portalFirstDispatch: true`, but nothing in the code reads that flag. The voice call is allowed.
   - P008: a denial with a code in the text is classified DENIED, but the call outcome has no field for the code, so it is never extracted.
@@ -15,8 +15,10 @@ Owner: Khalid. Written by a Claude Code session. Governing rules: docs/PRODUCT-B
   - D012: dispatch uses one flat 30 day floor. A 25 day TELUS claim is refused although carrier-configs.json says day 21. This is the pending decision HUMAN-DECISIONS-PENDING item 1.
   - P014: a partial payment spoken with any reference number becomes an approved-awaiting-payment claim, so the shortfall is not sent to a human. The Claims_Agent prompt says a short payment is pending reconciliation.
   - P023: "waiting period not met" is detected only in that literal wording. "Has not been met" is not.
+  - D014 (side observation): the manual trigger route needs the practice owner role. A front desk session gets 403 before any gate runs, so staff at the desk cannot start a call themselves.
+  - D019 (side observation, not scored): calling `runDeskQueueTick` twice at once inside one process dialled the same claim twice in one run and once in another. Production is protected by the scheduler's in-process latch and the database lease across replicas, and nothing else calls the tick today, so this is a latent hazard for any future caller, not a live defect.
 - **The biggest gap is in the registry itself.** The registry has no scenario for the V1 staff handoff, the missed handoff, staff presence and capacity, staff hours, the NPI rule, Claims_Scribe, or metering. Its 22 "handoff" scenarios are autonomous agent-to-agent handoffs, not the Hold Sentinel handoff to practice staff. Unit tests exist for several of these (listed below) but have no scenario ids.
-- **Blocked:** 55 scenarios need a live call (45 IVR, 10 ops). The pre-call gate has not been met. 130 need a harness that does not exist yet: the text conversation harness. I looked for it on main and in the 30 open pull requests (by title) and did not find it, so it is not consumed here.
+- **Blocked:** 55 scenarios need a live call (45 IVR, 10 ops). The pre-call gate has not been met. 130 need a text conversation harness that does not exist. Khalid confirmed there is no other workstream building it, so it is ours to build, and his rule is that nothing is paid for until all 248 are done. A harness that plays the rep with a model costs money, so the 130 stay at level D or U (prompt contract checks, scripted replay through deterministic code) until he lifts that rule.
 
 ## 1. Inventory (verified against the files)
 
@@ -38,8 +40,8 @@ Owner: Khalid. Written by a Claude Code session. Governing rules: docs/PRODUCT-B
 
 | Class | Count | Meaning | Where |
 |---|---|---|---|
-| RAN_OFFLINE | 39 | Bound to real code and run today, level U | dispatch 16, post_call 21, handoff 2 |
-| RUNS_OFFLINE_NOT_YET_BOUND | 24 | Can run offline, not wired in batch 1 | D014 D016 D019 D020 E004 E008, and post_call E001 E002 E003 E006 E007 P011 P012 P013 P015 to P018 P025 to P030 |
+| RAN_OFFLINE | 44 | Bound to real code and run today, level U or S | dispatch 21, post_call 21, handoff 2 |
+| RUNS_OFFLINE_NOT_YET_BOUND | 19 | Can run offline, not wired yet | D020, and post_call E001 E002 E003 E006 E007 P011 P012 P013 P015 to P018 P025 to P030 |
 | NEEDS_HARNESS | 130 | Needs the text conversation harness (agent prompt against a simulated rep) | conversation 105, handoff 20, ivr 5 |
 | NEEDS_LIVE_CALL | 55 | Needs a live dial or a person | ivr 45 (twin models them, product needs the squad), ops 10 |
 
@@ -51,32 +53,32 @@ Legend for "Run today": U unit test, S Stage 1 or office-day simulation, T twin 
 
 | Behaviour | Registry scenarios | Run today | Not run, and gap |
 |---|---|---|---|
-| Dial rules: age, attempts, window, holidays, authorization, plan limits | D001 to D013, D018, E004, E008 | R: 16 of 22. S: office-day B (age), C (window, holidays, western office), E (retries), K (gates). U: `workflowDispatchSafetyRules.test.ts`, `callCalendar.test.ts`. | D014 manual trigger, D016 TPA variables, D019 tick concurrency, D020, E004 quota, E008 expired token. Unbound but runnable. |
+| Dial rules: age, attempts, window, holidays, authorization, plan limits | D001 to D013, D018, E004, E008 | R: 21 of 22 (16 at U, 5 at S: D014, D019, E004, E008 and D016). S: office-day B (age), C (window, holidays, western office), E (retries), K (gates). U: `workflowDispatchSafetyRules.test.ts`, `callCalendar.test.ts`. | D020 plan capacity soft limit is unbound. D016 ran but cannot be observed: no TELUS TPA has a verified phone, so no TELUS call is ever dispatched. |
 | Practice NPI and staff hours, staff presence | none | U: `staffedHours.test.ts`. S: office-day C and K. | **No registry scenario.** Add ids (batch 4). |
 | Menu navigation | IVR-DR, IVR-CB, IVR-AI, IVR-FR, IVR-DC, S004, S005, S006, S019, S021 | T only (twin conformance). | Product against the twin needs a live squad dial: blocked. |
 | Hold detection | IVR-HO x6, IVR-HP x6 | T only. Stage 1 FAIL: live state sequence and hold seconds are not recorded. | Detector accuracy is not closable offline (pre-call gate gap 13). |
 | Rep pickup | IVR-HP | T only. | Same as above. |
 | Handoff to staff | none (the registry "handoff" layer is autonomous agents) | U: `missedHandoff.test.ts` (mocked database), `handoffAlert.test.ts`, `handoffNotify.test.ts`. S: Stage 1 takeover check (UNVERIFIED), office-day G. | **No registry scenario.** Pre-call gate gaps 2 and 3 (edge cases, one transfer number) have no test. |
 | Missed handoff | none | U: `missedHandoff.test.ts`, `missedHandoffAlert.test.ts`. | **No registry scenario.** Gap 1 (what happens to the claim afterwards) is untraced. |
-| Outcome recording | P001 to P030, E001 to E010, T003 | R: 21 of 39 (classification, gate, structured path). S: Stage 1 steps 4 to 7. | 18 stateful ones need the webhook route (idempotency, PHI scrub, audit, outbox, KPIs). |
+| Outcome recording | P001 to P030, E001 to E010, T003 | R: 21 of 39 (classification, gate, structured path). S: Stage 1 steps 4 to 7. | 18 stateful ones need the webhook route (idempotency, PHI scrub, audit, outbox, KPIs). Plus E001 to E003, E006, E007. |
 | Disclosure within 10 seconds | S016, S023, H005 (conversation layer) | U: `crtcDisclosure.test.ts`. T: the twin scores it. | Needs the conversation harness or a live call. No registry scenario measures time to disclosure on the product. |
 | Carrier block | D004, D005, P005, P006, P019, P020, T003 | R: D004, D005, P005, P006, P019, P020, T003. S: office-day F, Stage 1 (live refusal FAIL, requirement R-012). U: `carrierBlock*.test.ts`. | Block scope (register: open). Live in-call detection does not trigger today. |
 | Metering | X008 only | S: Stage 1 and office-day D, H (minutes, idempotency). Stage 1 FAIL: staff minutes saved and hold minutes avoided. | **No registry scenario** for metering. |
 | Learning and playbooks (Claims_Scribe) | none | S: Stage 1 step 8. Stage 1 FAIL: identifier filter lets a name through (R-015). | **No registry scenario.** |
 
-## 4. First batch: results (run 23 November, level U)
+## 4. Results so far (run 23 November, levels U and S)
 
 Source: `Collect-RX-main/tests/validation-lab/runner/`. The full table with observed codes is in `docs/simulation/SCENARIO-RUN-2026-11-23.md`.
 
 | Layer | Scenarios | PASS | FAIL | FINDING | UNVERIFIED |
 |---|---|---|---|---|---|
-| dispatch | 22 | 13 | 1 | 2 | 6 |
+| dispatch | 22 | 17 | 1 | 2 | 2 |
 | post_call | 39 | 18 | 1 | 2 | 18 |
 | handoff | 22 | 2 | 0 | 0 | 20 |
 | ivr | 50 | 0 | 0 | 0 | 50 |
 | conversation | 105 | 0 | 0 | 0 | 105 |
 | ops | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **248** | **33** | **2** | **4** | **209** |
+| **Total** | **248** | **37** | **2** | **4** | **205** |
 
 Honest limits of the 33 PASS results:
 
@@ -96,7 +98,7 @@ Honest limits of the 33 PASS results:
 
 | # | Batch | Why this order | Size |
 |---|---|---|---|
-| 2 | Bind the six runnable dispatch scenarios (D014, D016, D019, D020, E004, E008) at Stage 1 level, through the queue tick and the insurance trigger route | Closes the dispatch layer. D019 (no dual dispatch) is a safety claim that is currently UNVERIFIED. | M |
+| 2 | **Done except D020.** D014, D016, D019, E004 and E008 are bound at level S through the queue tick, the manual trigger route and the PHI vault. | Closes the dispatch layer. | S left |
 | 3 | New Hold Sentinel scenario file for the behaviours the registry lacks: staff handoff, missed handoff, handoff edge cases, one transfer number, gate precedence, staff hours, NPI, disclosure timing, metering. Kept outside the generated registry so its hash and count stay valid. Maps to pre-call gate gaps 1 to 4. | This is the wedge. It has the most unit coverage and the least scenario coverage. | M |
 | 4 | Bind the 18 stateful post_call scenarios through the signed webhook route (idempotency, PHI scrub, audit, outbox, KPIs, recovery transition) | Reuses Stage 1 fixtures. P012 and P016 are PHI controls. | M |
 | 5 | Resolve the product results: D017 (portal-first flag), P008 (denial code), P014 and P023 (wording), D004 and D012 (decisions) | Turns FAIL and FINDING into PASS or a recorded decision. | S each |

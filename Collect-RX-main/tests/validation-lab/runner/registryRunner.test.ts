@@ -22,6 +22,8 @@ import { OutboundInterceptor } from '../../sim-harness/outboundInterceptor.js';
 import { RunLog, type CheckStatus } from '../../sim-harness/runLog.js';
 import { buildDispatchBindings, setupDispatchWorld, teardownDispatchWorld, type DispatchWorld } from './dispatchBindings.js';
 import { buildPostCallBindings, SYNTHETIC_TRANSCRIPT_PHRASES } from './postCallBindings.js';
+import { buildStatefulBindings } from './statefulBindings.js';
+import { StatefulWorld } from './statefulWorld.js';
 import type { Binding, Level } from './types.js';
 
 try {
@@ -81,6 +83,9 @@ function unboundReason(s: RegistryScenario): { executability: Executability; not
 
 describe('validation-lab registry runner', () => {
   let world: DispatchWorld | null = null;
+  let stateful: StatefulWorld | null = null;
+  let statefulConnected = false;
+  let statefulIds = new Set<string>();
   const interceptor = new OutboundInterceptor();
   const rows: Row[] = [];
   let log: RunLog;
@@ -91,25 +96,30 @@ describe('validation-lab registry runner', () => {
     interceptor.install();
     log = new RunLog(`registry-${new Date().toISOString().replace(/[:.]/gu, '-')}`);
     world = await setupDispatchWorld(prisma);
-    bindings = { ...buildDispatchBindings(world), ...buildPostCallBindings() };
+    stateful = new StatefulWorld(interceptor);
+    const statefulBindings = buildStatefulBindings(stateful);
+    statefulIds = new Set(Object.keys(statefulBindings));
+    bindings = { ...buildDispatchBindings(world), ...buildPostCallBindings(), ...statefulBindings };
   }, 120_000);
 
   afterAll(async () => {
     interceptor.uninstall();
     let residual = 0;
     if (world) residual = await teardownDispatchWorld(world);
+    if (stateful && statefulConnected) residual += await stateful.teardown();
     await prisma.$disconnect().catch(() => undefined);
     releaseSimLock();
     if (residual !== 0) throw new Error(`registryRunner teardown left ${residual} synthetic practice rows behind`);
   }, 60_000);
 
   it('runs every bound scenario and reports every registry scenario', async () => {
-    for (const s of registry) {
+    const order = new Map(registry.map((s, i) => [s.id, i]));
+    const runOne = async (s: RegistryScenario): Promise<void> => {
       const binding = bindings[s.id];
       if (!binding) {
         const r = unboundReason(s);
         rows.push({ id: s.id, layer: s.layer, tier: s.tier, harness: s.harness, name: s.name, status: 'UNVERIFIED', level: '-', executability: r.executability, observed: 'not run', note: r.note });
-        continue;
+        return;
       }
       try {
         const res = await binding();
@@ -118,7 +128,15 @@ describe('validation-lab registry runner', () => {
         const kind = err instanceof Error ? err.constructor.name : 'unknown';
         rows.push({ id: s.id, layer: s.layer, tier: s.tier, harness: s.harness, name: s.name, status: 'FAIL', level: 'U', executability: 'RAN_OFFLINE', observed: `binding threw ${kind}`, note: 'The binding itself errored, so the scenario did not complete. Treat as a harness or product fault until diagnosed.' });
       }
+    };
+    // Stateless bindings first: the stateful world forces the call window open for the tick.
+    for (const s of registry.filter((x) => !statefulIds.has(x.id))) await runOne(s);
+    if (stateful) {
+      await stateful.connect();
+      statefulConnected = true;
+      for (const s of registry.filter((x) => statefulIds.has(x.id))) await runOne(s);
     }
+    rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     for (const r of rows) log.record(r.layer, r.level, `${r.id} ${r.name}`, r.status, `${r.observed}. ${r.note}`);
 
     const counts = (st: CheckStatus): number => rows.filter((r) => r.status === st).length;
@@ -133,7 +151,7 @@ describe('validation-lab registry runner', () => {
       '',
       `Scenarios reported: ${rows.length} of ${registry.length}. PASS ${counts('PASS')}, FAIL ${counts('FAIL')}, FINDING ${counts('FINDING')}, UNVERIFIED ${counts('UNVERIFIED')}.`,
       '',
-      'Evidence level of every run row is U (real production function, real PostgreSQL where noted, synthetic data, no network). Nothing here is a Stage 1 pipeline run, a mock Vapi run or a real carrier call.',
+      'Evidence level is shown per row. U is a real production function with synthetic data. S is the real pipeline or route with a stubbed Vapi. Nothing here is a mock Vapi server run, a browser walk, an owned-number run or a real carrier call, and no request left the process.',
       '',
       '## By layer',
       '',
@@ -166,7 +184,7 @@ describe('validation-lab registry runner', () => {
     const unknown = Object.keys(bindings).filter((id) => !ids.has(id));
     expect(unknown).toEqual([]);
     expect(registry.every((s) => s.preconditions.syntheticOnly === true)).toBe(true);
-    expect(rows.filter((r) => r.executability === 'RAN_OFFLINE').every((r) => r.level === 'U' || r.level === 'S' || r.level === 'D')).toBe(true);
+    expect(rows.filter((r) => r.executability === 'RAN_OFFLINE').every((r) => r.level === 'U' || r.level === 'S')).toBe(true);
     expect(rows.filter((r) => r.executability !== 'RAN_OFFLINE').every((r) => r.status === 'UNVERIFIED')).toBe(true);
   });
 
@@ -174,7 +192,7 @@ describe('validation-lab registry runner', () => {
     const artifacts = [path.join(log.dir, 'REPORT.md'), path.join(log.dir, 'run-log.jsonl'), path.join(log.dir, 'rows.json')].map((p) => readFileSync(p, 'utf8')).join('\n');
     const leaked = SYNTHETIC_TRANSCRIPT_PHRASES.filter((phrase) => artifacts.includes(phrase));
     expect(leaked).toEqual([]);
-    expect(interceptor.requests.length).toBe(0);
+    expect(interceptor.blocked().length).toBe(0);
     expect(interceptor.blockedNodeRequests).toEqual([]);
   });
 });

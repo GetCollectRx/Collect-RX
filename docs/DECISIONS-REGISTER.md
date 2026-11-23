@@ -18,6 +18,7 @@ Status values: DECIDED (Khalid said so), DEFAULT (Claude recommended it and it s
 | 2026-11-23 | The learning component is intentional: Claims_Scribe removes patient information and learns carrier behavior and staff behavior. | Session |
 | 2026-11-23 | The repository is public so that sessions can push code. | Session |
 | 2026-11-23 | Stop building until the path forward is set. | Session |
+| 2026-11-23 | Nothing is paid for until all 248 validation-lab scenarios are done. No model-backed test harness spend before then. | Session |
 
 ## Defaults in force (Claude recommended; veto to change)
 
