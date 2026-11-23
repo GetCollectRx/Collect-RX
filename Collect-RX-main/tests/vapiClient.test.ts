@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VapiCallParams } from '../src/vapi/client.js';
-import { CARRIER_PHONE_MAP, initiateCall, initiatePreVisitCall, VapiAmbiguousOutcomeError } from '../src/vapi/client.js';
+import {
+  CARRIER_PHONE_MAP,
+  initiateCall,
+  initiatePreVisitCall,
+  resolvePracticeCallerId,
+  VapiAmbiguousOutcomeError,
+} from '../src/vapi/client.js';
 
 // Distinctive sentinels so a "PHI must not appear here" assertion can only pass
 // because the value is genuinely absent, never because the fixture omitted it.
@@ -201,5 +207,102 @@ describe('initiatePreVisitCall', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.squadId).toBe('squad-recovery');
+  });
+
+  it('dials the Hold Sentinel squad for a human-assisted practice, even for CDCP calls', async () => {
+    process.env.VAPI_PREVISIT_SQUAD_ID = 'squad-previsit';
+    process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID = 'squad-hold-sentinel';
+    try {
+      await initiatePreVisitCall({ ...PRE_VISIT_BASE, cdcpContext: true, humanAssisted: true });
+    } finally {
+      delete process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID;
+    }
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.squadId).toBe('squad-hold-sentinel');
+    expect(body.customer.number).toBe('+18888888110');
+  });
+});
+
+describe('resolvePracticeCallerId', () => {
+  const authorizedAt = new Date('2026-11-01T00:00:00.000Z');
+
+  it('returns undefined when the practice has no number', () => {
+    expect(resolvePracticeCallerId({ vapiPhoneNumberId: null, callerIdAuthorizedAt: authorizedAt })).toBeUndefined();
+  });
+
+  it('returns undefined when the number was never authorized', () => {
+    expect(resolvePracticeCallerId({ vapiPhoneNumberId: 'practice-phone', callerIdAuthorizedAt: null })).toBeUndefined();
+  });
+
+  it('returns undefined when authorized but no number is on file', () => {
+    expect(resolvePracticeCallerId({ vapiPhoneNumberId: null, callerIdAuthorizedAt: authorizedAt })).toBeUndefined();
+    expect(resolvePracticeCallerId({ callerIdAuthorizedAt: authorizedAt })).toBeUndefined();
+  });
+
+  it('returns the number only when both fields are present', () => {
+    expect(resolvePracticeCallerId({ vapiPhoneNumberId: 'practice-phone', callerIdAuthorizedAt: authorizedAt })).toBe(
+      'practice-phone',
+    );
+  });
+});
+
+describe('initiateCall: practice-authorized caller ID', () => {
+  beforeEach(() => {
+    process.env.VAPI_API_KEY = 'test-key';
+    process.env.VAPI_SQUAD_ID = 'squad-1';
+    process.env.VAPI_PHONE_NUMBER_ID = 'shared-phone';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ vapiCallId: 'call-1', status: 'queued', createdAt: '2026-06-15T00:00:00.000Z' }),
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.VAPI_API_KEY;
+    delete process.env.VAPI_SQUAD_ID;
+    delete process.env.VAPI_PHONE_NUMBER_ID;
+  });
+
+  function sentBody(): { phoneNumberId: string; assistantOverrides: { metadata: unknown } } {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return JSON.parse(init.body as string) as { phoneNumberId: string; assistantOverrides: { metadata: unknown } };
+  }
+
+  it('dials from the shared CollectRx number when no practice number is passed', async () => {
+    await initiateCall(BASE_PARAMS);
+    expect(sentBody().phoneNumberId).toBe('shared-phone');
+  });
+
+  it('dials from the practice number when the caller resolved one', async () => {
+    const callerId = resolvePracticeCallerId({
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: new Date('2026-11-01T00:00:00.000Z'),
+    });
+    await initiateCall({ ...BASE_PARAMS, vapiPhoneNumberId: callerId });
+    expect(sentBody().phoneNumberId).toBe('practice-phone');
+  });
+
+  it('falls back to the shared number when a registered number was never authorized', async () => {
+    const callerId = resolvePracticeCallerId({ vapiPhoneNumberId: 'practice-phone', callerIdAuthorizedAt: null });
+    await initiateCall({ ...BASE_PARAMS, vapiPhoneNumberId: callerId });
+    expect(sentBody().phoneNumberId).toBe('shared-phone');
+  });
+
+  it('treats a blank practice number as absent instead of dialing from nothing', async () => {
+    await initiateCall({ ...BASE_PARAMS, vapiPhoneNumberId: '   ' });
+    expect(sentBody().phoneNumberId).toBe('shared-phone');
+  });
+
+  it('keeps the practice number out of call metadata', async () => {
+    await initiateCall({ ...BASE_PARAMS, vapiPhoneNumberId: 'practice-phone' });
+    expect(JSON.stringify(sentBody().assistantOverrides.metadata)).not.toContain('practice-phone');
   });
 });

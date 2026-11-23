@@ -1,14 +1,16 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { CookieBanner } from './components/CookieBanner'
 const LegalTerms = lazy(() => import('./pages/LegalTerms'))
 const LegalPrivacy = lazy(() => import('./pages/LegalPrivacy'))
+const LegalCallListening = lazy(() => import('./pages/LegalCallListening'))
 const ProductOnePager = lazy(() => import('./pages/ProductOnePager'))
 const Changelog = lazy(() => import('./pages/Changelog'))
 const PilotDemo = lazy(() => import('./pages/PilotDemo'))
 import { PracticeProvider, usePractice } from './context/PracticeContext'
 import { isPracticeGroupAdmin } from './lib/personaRole'
 import { SessionHealthBanner } from './components/SessionHealthBanner'
+import { HandoffAlertBanner } from './components/HandoffAlertBanner'
 import { PlanUsageBanner } from './components/PlanUsageBanner'
 import { DesktopConnectorBanner } from './components/desktop/DesktopConnectorBanner'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
@@ -31,6 +33,7 @@ const ArCommandCenter       = lazy(() => import('./pages/ArCommandCenter'))
 const InsuranceClaims       = lazy(() => import('./pages/InsuranceClaims'))
 const InsuranceClaimDetail  = lazy(() => import('./pages/InsuranceClaimDetail'))
 const PreTreatmentEstimate  = lazy(() => import('./pages/PreTreatmentEstimate'))
+const PreVisitBlueprintPage = lazy(() => import('./pages/PreVisitBlueprintPage'))
 const WorkQueue             = lazy(() => import('./pages/WorkQueue'))
 const SyncOpsDashboard      = lazy(() => import('./pages/SyncOpsDashboard'))
 const DesktopDownload       = lazy(() => import('./pages/DesktopDownload'))
@@ -58,7 +61,7 @@ import { StartupScreen } from './components/StartupScreen'
 import { AnalyticsSessionBridge } from './productAnalytics/AnalyticsSessionBridge'
 const ProductUsageAnalytics = lazy(() => import('./pages/ProductUsageAnalytics'))
 import { CollectRxLogoMark } from './components/brand/CollectRxLogo'
-import { consumeLoginRedirect, pathRequiresAuth, storeLoginRedirect } from './lib/pathRequiresAuth'
+import { consumeLoginRedirect, pathRequiresAuth, resolvePostAuthTarget, storeLoginRedirect } from './lib/pathRequiresAuth'
 import { isCommandCenterSurface } from './lib/appSurface'
 const MarketingSite = lazy(() => import('./website/MarketingSite'))
 import { usePublicPortalTheme } from './website/usePublicPortalTheme'
@@ -85,12 +88,6 @@ function RouteFallback({ fullScreen = false }: { fullScreen?: boolean }) {
   )
 }
 
-/** Paths that should redirect to the signed-in home route (not render AppShell content). */
-function isPostAuthEntryPath(pathname: string): boolean {
-  const path = pathname.replace(/\/+$/, '') || '/'
-  return path === '/' || path === '/login'
-}
-
 function signedInHomeRoute(groupAdmin: boolean, userRole: UserRole): string {
   return groupAdmin ? '/group-dashboard' : HOME_ROUTE[userRole]
 }
@@ -111,6 +108,29 @@ function PublicDemoRoute() {
     return <Navigate to={signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)} replace />
   }
   return <PilotDemo />
+}
+
+/**
+ * The sign-in page on the desktop surface sits outside AuthGate, so once a
+ * session is ready it must hand the person on itself: to the page they were
+ * trying to reach, or else the signed-in home.
+ */
+function LoginRoute() {
+  const { authState, loading, userRole, role, sessionUser } = usePractice()
+  const navigate = useNavigate()
+  const handled = useRef(false)
+  const home =
+    !loading && authState === 'ready' && userRole
+      ? signedInHomeRoute(isPracticeGroupAdmin(role, sessionUser), userRole)
+      : null
+
+  useEffect(() => {
+    if (!home || handled.current) return
+    handled.current = true
+    navigate(resolvePostAuthTarget('/login', consumeLoginRedirect(), home) ?? home, { replace: true })
+  }, [home, navigate])
+
+  return home ? null : <LoginPage />
 }
 
 function AppHomeFallback() {
@@ -184,6 +204,7 @@ const PRACTICE_OWNER_SECTIONS: NavSection[] = [
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
       { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
       { to: '/canadian-2026', exact: true, label: 'CDCP 2026', icon: 'cdcp' },
     ],
   },
@@ -240,6 +261,7 @@ const OFFICE_MANAGER_SECTIONS: NavSection[] = [
     items: [
       { to: '/pre-visit', exact: true, label: 'Pre-visit', icon: 'cdcp' },
       { to: '/pre-treatment-estimate', exact: true, label: 'Pre-treatment estimate', icon: 'estimate' },
+      { to: '/pre-visit-blueprint', exact: true, label: 'Pre-visit blueprint', icon: 'estimate' },
     ],
   },
   {
@@ -488,6 +510,7 @@ function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   return (
     <div className="crx-app flex min-h-screen">
+      <HandoffAlertBanner />
       <CommandPalette />
       <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="crx-app-main">
@@ -539,6 +562,7 @@ function AppShell() {
           <Route path="/cdcp"          element={<Navigate to="/pre-visit?tab=kpis" replace />} />
           <Route path="/pre-visit" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitCommandCenter /></ProtectedRoute>} />
           <Route path="/pre-treatment-estimate" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreTreatmentEstimate /></ProtectedRoute>} />
+          <Route path="/pre-visit-blueprint" element={<ProtectedRoute allowedRoles={['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><PreVisitBlueprintPage /></ProtectedRoute>} />
           <Route path="/canadian-2026" element={<ProtectedRoute allowedRoles={['practice_owner', 'office_manager', 'billing_coordinator', 'billing_ops_manager', 'platform_admin']}><CanadianExpansion /></ProtectedRoute>} />
           <Route path="/group-dashboard" element={<GroupAdminRoute><GroupDashboard /></GroupAdminRoute>} />
           <Route path="/group/pms-import" element={<GroupAdminRoute><GroupPmsImportPage /></GroupAdminRoute>} />
@@ -599,14 +623,10 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading || authState !== 'ready' || !userRole) return
-    const redirect = consumeLoginRedirect()
-    if (redirect) {
-      navigate(redirect, { replace: true })
-      return
-    }
-    if (isPostAuthEntryPath(location.pathname)) {
-      navigate(signedInHomeRoute(groupAdmin, userRole), { replace: true })
-    }
+    // Always consume the saved path so a stale one cannot linger, but only apply it
+    // when the person is on an entry page, never over a page they opened on purpose.
+    const target = resolvePostAuthTarget(location.pathname, consumeLoginRedirect(), signedInHomeRoute(groupAdmin, userRole))
+    if (target) navigate(target, { replace: true })
   }, [loading, authState, userRole, groupAdmin, location.pathname, navigate])
 
   useEffect(() => {
@@ -658,9 +678,12 @@ function App() {
             <Suspense fallback={<RouteFallback fullScreen />}>
             {isCommandCenterSurface ? (
               <Routes>
-                <Route path="/login" element={<LoginPage />} />
+                <Route path="/login" element={<LoginRoute />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/signup" element={<SignupPage />} />
+                <Route path="/legal/terms" element={<LegalTerms />} />
+                <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/legal/call-listening" element={<LegalCallListening />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="*" element={<AuthGate />} />
@@ -670,6 +693,7 @@ function App() {
                 <Route path="/" element={<MarketingSite />} />
                 <Route path="/legal/terms" element={<LegalTerms />} />
                 <Route path="/legal/privacy" element={<LegalPrivacy />} />
+                <Route path="/legal/call-listening" element={<LegalCallListening />} />
                 <Route path="/product" element={<ProductOnePager />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />

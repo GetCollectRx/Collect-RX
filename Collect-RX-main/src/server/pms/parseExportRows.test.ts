@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseSimpleCsv } from '../csv/parseSimple';
 import { normalizePmsClaimRow } from './parseExportRows';
 
 describe('normalizePmsClaimRow — denialReasonCode column mapping', () => {
@@ -32,6 +33,21 @@ describe('normalizePmsClaimRow — denialReasonCode column mapping', () => {
     expect(
       normalizePmsClaimRow({ id: 'C', denial_reason_code: 'DOC12' }, 'generic').denialReasonCode,
     ).toBe('DOC12');
+  });
+});
+
+describe('normalizePmsClaimRow — treatingDentistProviderNumber column mapping', () => {
+  it('reads the provider number when the export includes one', () => {
+    expect(
+      normalizePmsClaimRow(
+        { id: 'CLM-010', 'CDA Provider Number': '123456789' },
+        'generic',
+      ).treatingDentistProviderNumber,
+    ).toBe('123456789');
+  });
+
+  it('is null when the export has no dentist column — most practices predate this field', () => {
+    expect(normalizePmsClaimRow({ id: 'CLM-011' }, 'generic').treatingDentistProviderNumber).toBeNull();
   });
 });
 
@@ -75,5 +91,29 @@ describe('normalizePmsClaimRow — non-numeric amount cells', () => {
     );
     expect(row.billedAmount).toBe(1250.5);
     expect(row.outstandingAmount).toBe(900);
+  });
+});
+
+describe('normalizePmsClaimRow — date of birth headers after parseSimpleCsv', () => {
+  // parseSimpleCsv lowercases headers and joins words with underscores, so a
+  // "Date of Birth" column reaches the normalizer as `date_of_birth`.
+  it('reads patient and subscriber DOB from a real "Date of Birth" CSV header', () => {
+    const [raw] = parseSimpleCsv(
+      'Claim ID,Date of Birth,Subscriber Date of Birth\nCLM-020,1950-03-14,1948-11-02',
+    );
+    const row = normalizePmsClaimRow(raw ?? {}, 'generic');
+    expect(row.patientDob).toBe('1950-03-14');
+    expect(row.subscriberDateOfBirth).toBe('1948-11-02');
+  });
+
+  it('still reads the other DOB spellings', () => {
+    expect(normalizePmsClaimRow({ id: 'A', DOB: '1960-01-02' }, 'generic').patientDob).toBe('1960-01-02');
+    expect(normalizePmsClaimRow({ id: 'B', patient_dob: '1961-02-03' }, 'generic').patientDob).toBe(
+      '1961-02-03',
+    );
+  });
+
+  it('is null when the export has no DOB column', () => {
+    expect(normalizePmsClaimRow({ id: 'C' }, 'generic').patientDob).toBeNull();
   });
 });

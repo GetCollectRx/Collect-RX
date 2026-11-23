@@ -13,22 +13,17 @@ export type PracticeJwtPayload = UserAuthPayload;
 /** @deprecated Use `UserAuthPayload` — kept for importers that referenced the old name. */
 export type PracticeAuthPayload = UserAuthPayload;
 
+// No default in any environment: a misconfigured NODE_ENV must never fall back to a
+// secret that is public in the repository.
 function signingSecret(): string {
-  if (process.env.NODE_ENV === 'production') {
-    const s = process.env.JWT_SECRET;
-    if (!s) throw new Error('JWT_SECRET is required in production');
-    return s;
-  }
-  return process.env.JWT_SECRET || 'dev-collectrx-jwt-not-for-production';
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error('JWT_SECRET is required');
+  return s;
 }
 
-/** Call once at process startup in production. */
+/** Call once at process startup. */
 export function assertJwtConfigAtStartup(): void {
-  if (process.env.NODE_ENV === 'production') {
-    if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET is required in production');
-    }
-  }
+  signingSecret();
 }
 
 function crossSiteAuthCookie(): boolean {
@@ -64,9 +59,15 @@ function phiAccessForRole(role: PracticeRole): boolean {
   }
 }
 
-/** TTL for each role. Accountants get a 90-day token; everyone else gets 8 hours. */
+/**
+ * Session TTLs are deliberately short for organization-wide and financial
+ * roles. MFA is still a production launch gate; long-lived bearer sessions
+ * must not be used as a substitute for it.
+ */
 function tokenTtlForRole(role: PracticeRole): string {
-  return role === 'accountant' ? '90d' : '8h';
+  if (role === 'group_admin' || role === 'accountant') return '1h';
+  if (role === 'practice_owner' || role === 'office_manager') return '4h';
+  return '8h';
 }
 
 // ─── Sign ────────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ export function signPlatformDevToken(): string {
     userId: 'platform-dev',
     practiceId: null,
   };
-  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '8h' });
+  return jwt.sign(payload, signingSecret(), { algorithm: JWT_ALGORITHM, expiresIn: '1h' });
 }
 
 // ─── Verify ──────────────────────────────────────────────────────────────────

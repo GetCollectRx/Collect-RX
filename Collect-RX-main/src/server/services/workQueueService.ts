@@ -11,6 +11,58 @@ export interface QueueRankingWeights {
   carrierRiskWeight: number;
 }
 
+/**
+ * Create the carrier-call work implied by a successful CSV import.
+ *
+ * This deliberately mirrors the current dispatch age boundary without trying
+ * to decide the unresolved product question about what happens after hold.
+ * Claims with a blocking recovery action, a terminal/non-pending status, or an
+ * age outside the automated follow-up window remain visible as work items but
+ * are not placed in the autonomous call queue.
+ *
+ * Existing queue rows are left untouched. In particular, a re-import must not
+ * reset attempts, revive a terminal queue row, or move a scheduled recall.
+ */
+export async function syncEligibleCallQueueForPractice(
+  prisma: PrismaClient,
+  practiceId: string,
+): Promise<{ created: number }> {
+  const eligibleClaims = await prisma.insuranceClaim.findMany({
+    where: {
+      practiceId,
+      deletedAt: null,
+      status: 'PENDING',
+      outstandingAmount: { gt: 0 },
+      daysOutstanding: { gte: 30, lte: 90 },
+      queueEntry: null,
+      recoveryActions: {
+        none: { status: 'BLOCKING', clearedAt: null },
+      },
+    },
+    select: { id: true, priority: true },
+  });
+
+  let created = 0;
+  for (const claim of eligibleClaims) {
+    // claimId is unique. createMany(skipDuplicates) makes concurrent imports
+    // and repeated imports idempotent without modifying existing queue state.
+    const result = await prisma.callQueue.createMany({
+      data: [{
+        practiceId,
+        claimId: claim.id,
+        scheduledFor: new Date(),
+        priority: claim.priority,
+        attempts: 0,
+        status: 'PENDING',
+      }],
+      skipDuplicates: true,
+    });
+    created += result.count;
+  }
+
+  return { created };
+}
+
 const DEFAULT_WEIGHTS: QueueRankingWeights = {
   dollarsWeight: 0.5,
   daysWeight: 0.35,

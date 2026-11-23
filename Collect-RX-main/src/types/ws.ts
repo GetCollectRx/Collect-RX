@@ -8,7 +8,19 @@ import type {
   ActiveAgent,
 } from './frontDesk.js';
 
+/** A carrier rep answered and the call is transferring to staff right now. */
+export interface DeskHandoffRequest {
+  callId: string;
+  claimNumber: string | null;
+  carrierId: string | null;
+  outstandingAmount: number | null;
+  /** Display name of the practice's designated individual, when one is set. */
+  designatedName: string | null;
+  requestedAt: string;
+}
+
 export type WsEvent =
+  | { type: 'handoff.requested'; data: DeskHandoffRequest }
   | { type: 'call.started'; data: { call: DeskActiveCall } }
   | {
       type: 'call.state_changed';

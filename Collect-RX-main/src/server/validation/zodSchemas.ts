@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AGREEMENT_KINDS } from '../agreements/agreementRegistry.js';
 
 const PRACTICE_ROLES = [
   'practice_owner',
@@ -48,11 +49,22 @@ export const changePasswordBodySchema = z.object({
   newPassword: z.string().min(8, 'new password must be at least 8 characters').max(256),
 });
 
+export const acceptedAgreementsSchema = z
+  .array(
+    z.object({
+      kind: z.enum(AGREEMENT_KINDS),
+      version: z.string().trim().min(1).max(64),
+    }),
+  )
+  .max(AGREEMENT_KINDS.length * 2);
+
 export const registerBodySchema = z.object({
   practiceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().min(1).max(120),
   email: z.string().email().toLowerCase(),
   password: z.string().min(8, 'password must be at least 8 characters').max(256),
+  /** Versions of the agreements the user ticked; the server compares them to the current set. */
+  acceptedAgreements: acceptedAgreementsSchema,
   /** Self-serve DSO signup: when set, an Organization is created alongside additionalPractices. */
   organizationName: z.string().trim().min(1).max(200).optional(),
   additionalPractices: z
@@ -185,6 +197,7 @@ export const pmsImportBodySchema = z
     pmsVendor: z.string().trim().optional(),
     /** @deprecated Use pmsVendor */
     pmsSource: z.string().trim().optional(),
+    exportScope: z.enum(['full', 'partial']).optional(),
   })
   .passthrough();
 

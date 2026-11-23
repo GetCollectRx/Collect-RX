@@ -1,6 +1,6 @@
-# CRTC Compliance Decision — AI Disclosure Architecture
+# Automated-call disclosure safety decision
 
-**Status:** Resolved — CLAUDE.md governs  
+**Status:** Conservative product control; legal applicability remains jurisdiction/workflow-specific
 **Date:** 2026-06-23  
 **Supersedes:** Any Validation Playbook language instructing human-sounding AI behavior  
 **Referenced by:** CLAUDE.md Section 8
@@ -9,20 +9,20 @@
 
 ## Decision
 
-CollectRx operates under CRTC Unsolicited Telecommunications Rules (UTR) Part IV Rule 4 (ADAD — non-solicitation). This is a B2B call from a dental practice to an insurance carrier's provider/claims business line. It is not telemarketing, is not subject to the National DNCL, and is not subject to CASL (voice).
+CollectRx calls insurance-carrier provider lines for claims-status follow-up. The CRTC's automated-calling and identification rules may apply depending on the technology and workflow; AI/synthetic-voice treatment is also the subject of an active CRTC proceeding. CollectRx therefore uses a conservative disclosure without claiming that every call has received a definitive legal classification.
 
-**ADAD Rule 4 requires, within the first 10 seconds of a live representative answering:**
+The product requires the opening human-facing disclosure to:
 - Identify the automated nature of the call
 - State the name of the practice on whose behalf the call is made
 - Provide a callback number
 
-**CLAUDE.md governs on all operational and compliance decisions.** Any prior document — including any version of a Validation Playbook, early-stage agent prompts, or training materials — that instructs an AI agent to sound human, obscure its automated nature, or evade identification is invalid for use in Canada and must not be deployed.
+The rules' ten-second provision addresses disconnection after the called party hangs up; it is not used here as proof of a universal disclosure deadline. Any prior instruction to sound human, obscure automation, or evade identification remains invalid and must not be deployed.
 
 ---
 
 ## Canonical Disclosure Script
 
-The following script is the approved CRTC-compliant disclosure. It is implemented in `vapi-squad-config.json` as `Claims_Agent.firstMessage` and fires the moment a human representative answers (after IVR navigation is complete).
+The following script is the mandatory CollectRx safety disclosure. It is implemented in `vapi-squad-config.json` as `Claims_Agent.firstMessage` and is intended to fire at the start of a human interaction (after IVR navigation is complete). It is not represented as a legal certification; applicability and consent obligations can vary by workflow and jurisdiction.
 
 ```
 "Thank you for taking my call. I am an automated calling system on behalf of 
@@ -31,7 +31,7 @@ This call may be recorded for quality purposes. I am following up on a claim
 that was submitted [N] days ago."
 ```
 
-**Sequencing rationale:** Purpose is stated before the AI label to reduce hang-ups, per CLAUDE.md Section 7 guidance. The ADAD identification still occurs within the first sentence of the live-rep interaction.
+**Sequencing requirement:** automation, practice identity, claims-status purpose, callback information, and recording/transcription notice must be delivered at the start of the live-representative interaction.
 
 ---
 
@@ -40,9 +40,9 @@ that was submitted [N] days ago."
 | Agent | Disclosure Behavior | Status |
 |---|---|---|
 | IVR_Navigator | No disclosure during IVR navigation — talking to a machine | Correct |
-| Claims_Agent | Discloses automated nature + practice name + callback in `firstMessage` | Compliant |
-| Escalation_Closer | Inherits call context; does not re-disclose (rep already knows) | Acceptable |
-| Resolution_Closer | Inherits call context; does not re-disclose (rep already knows) | Acceptable |
+| Claims_Agent | Discloses automated nature + practice name + purpose + callback in `firstMessage` | Required product control |
+| Escalation_Closer | Inherits call context; does not re-disclose (rep already knows) | Requires transcript evidence of initial disclosure |
+| Resolution_Closer | Inherits call context; does not re-disclose (rep already knows) | Requires transcript evidence of initial disclosure |
 
 **IVR_Navigator `firstMessage` uses `{{disclosure_message}}` variable.** This must resolve to an empty string or a silent/ambient wait state during IVR navigation — it must never trigger a verbal disclosure to an IVR machine. Verify the `initiateCall()` function in `src/vapi/client.ts` sets this to an empty string before Kill Test 1.
 
@@ -54,8 +54,8 @@ The following categories of language are invalid for any Canadian deployment reg
 
 | Category | Status |
 |---|---|
-| Instructions to sound human or avoid sounding automated | INVALID — violates CRTC UTR Part IV Rule 4 |
-| Instructions to not identify as AI if asked | INVALID — violates CRTC UTR Part IV Rule 4 |
+| Instructions to sound human or avoid sounding automated | INVALID — violates CollectRx disclosure policy and creates regulatory risk |
+| Instructions to not identify as AI if asked | INVALID — violates CollectRx disclosure policy and creates regulatory risk |
 | US carrier phone numbers or IVR scripts | INVALID — not applicable to Canadian operations |
 | Flat $500/month pricing references | INVALID — superseded by docs/pricing/pricing-model-v1.md |
 | Resolution rate threshold other than CLAUDE.md current value | INVALID — CLAUDE.md governs |

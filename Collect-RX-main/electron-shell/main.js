@@ -15,9 +15,12 @@ const {
   nativeImage,
   ipcMain,
   shell,
+  Notification,
 } = require('electron');
+const { createHandoffNudge } = require('./handoffNudge.cjs');
 const path  = require('path');
 const fs    = require('fs');
+const zlib  = require('zlib');
 const { spawn } = require('child_process');
 const { loadAgentConfig, applyAgentConfigToEnv } = require('./loadAgentConfig.cjs');
 const { startDesktopServer } = require('./desktopServer.cjs');
@@ -234,13 +237,88 @@ app.isQuitting  = false;
 const OFFLINE_PAGE = path.join(__dirname, 'offline.html');
 
 // ── Tray icons ───────────────────────────────────────────────────────────────
+// nativeImage only decodes PNG/JPEG — createFromDataURL silently returns an
+// empty image for image/svg+xml, which made the tray icon invisible. Rasterize
+// the dot to a real PNG buffer instead of relying on an SVG decode.
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const typeBuf = Buffer.from(type, 'ascii');
+  const lenBuf = Buffer.alloc(4);
+  lenBuf.writeUInt32BE(data.length, 0);
+  const crcBuf = Buffer.alloc(4);
+  crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
+}
+
+function encodePng(width, height, rgbaPixels) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 8;  // bit depth
+  ihdrData[9] = 6;  // color type: RGBA
+  ihdrData[10] = 0; // compression method
+  ihdrData[11] = 0; // filter method
+  ihdrData[12] = 0; // interlace method
+  const ihdr = pngChunk('IHDR', ihdrData);
+
+  const stride = width * 4;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (stride + 1)] = 0; // filter type: none
+    rgbaPixels.copy(raw, y * (stride + 1) + 1, y * stride, y * stride + stride);
+  }
+  const idat = pngChunk('IDAT', zlib.deflateSync(raw));
+  const iend = pngChunk('IEND', Buffer.alloc(0));
+  return Buffer.concat([signature, ihdr, idat, iend]);
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace('#', '');
+  return [
+    parseInt(clean.substring(0, 2), 16),
+    parseInt(clean.substring(2, 4), 16),
+    parseInt(clean.substring(4, 6), 16),
+  ];
+}
+
+function renderDotPng(hex, size = 20) {
+  const [r, g, b] = hexToRgb(hex);
+  const radius = size * 0.4;
+  const center = size / 2;
+  const pixels = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x + 0.5 - center;
+      const dy = y + 0.5 - center;
+      const inside = (dx * dx + dy * dy) <= radius * radius;
+      const idx = (y * size + x) * 4;
+      pixels[idx]     = r;
+      pixels[idx + 1] = g;
+      pixels[idx + 2] = b;
+      pixels[idx + 3] = inside ? 255 : 0;
+    }
+  }
+  return encodePng(size, size, pixels);
+}
+
 function makeDotIcon(hex) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-    <circle cx="10" cy="10" r="8" fill="${hex}"/>
-  </svg>`;
-  return nativeImage.createFromDataURL(
-    'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64')
-  );
+  return nativeImage.createFromBuffer(renderDotPng(hex), { width: 20, height: 20 });
 }
 
 const ICONS = {
@@ -411,6 +489,21 @@ ipcMain.handle('get-sync-status',    () => ({ status: syncStatus, message: syncL
 ipcMain.handle('trigger-manual-sync',() => { triggerManualSync(); return true; });
 ipcMain.handle('get-app-version',    () => app.getVersion());
 ipcMain.handle('retry-dashboard-load', () => { loadDashboardUrl(); return true; });
+// Only the app's own window may raise or clear the handoff alert.
+const handoffNudge = createHandoffNudge({ Notification, getWindow: () => mainWindow });
+function isFromMainWindow(event) {
+  return Boolean(mainWindow) && event.sender === mainWindow.webContents;
+}
+ipcMain.handle('crx-handoff-alert-show', (event) => {
+  if (!isFromMainWindow(event)) return false;
+  handoffNudge.show();
+  return true;
+});
+ipcMain.handle('crx-handoff-alert-clear', (event) => {
+  if (!isFromMainWindow(event)) return false;
+  handoffNudge.clear();
+  return true;
+});
 ipcMain.handle('restart-to-update',  () => {
   if (!isDev) {
     const { autoUpdater } = require('electron-updater');

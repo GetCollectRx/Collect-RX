@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { TIERS } from '../billing/tiers'
-import { MARKETING_TIER_FEATURES } from '../website/pricingContent'
+import { MARKETING_TIER_FEATURES, PAID_TIER_ORDER } from '../website/pricingContent'
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ const CARRIERS = [
 ]
 
 const WORKFLOW = [
-  { n: '01', title: 'Claims sync from your PMS',         detail: 'Import claims via CSV from any practice management system, or connect the AbelDent desktop sync for automatic hourly updates if that’s your PMS. Claims under 30 days old are held. Anything 31 days and older enters the queue automatically.' },
+  { n: '01', title: 'Import claims by CSV',               detail: 'Export outstanding insurance claims from your practice management system and upload the CSV. No software installation or PMS access is required. Eligible 30–90 day claims enter the follow-up queue; staff-action claims remain in the work queue.' },
   { n: '02', title: 'Priority engine scores each claim',  detail: 'Every eligible claim is scored daily across four dimensions: days outstanding, dollar amount, carrier-specific appeal deadlines, and call history. Highest-priority claims are called first.' },
   { n: '03', title: 'Agent squad calls Mon-Fri 8am-5pm',  detail: 'Four specialized AI agents work as a team. The Phone Navigator handles the IVR, the Claims Specialist speaks with the rep, and the Resolution Agent records the structured outcome. Max 3 attempts per claim.' },
   { n: '04', title: 'Outcomes extracted, dashboard live', detail: 'After every call, structured data is extracted: payment amount, EFT date, reference number, denial code, or required next action. Your dashboard updates in real time. Escalations are flagged immediately.' },
@@ -219,7 +219,7 @@ export default function ProductOnePager() {
       <Section id="how-it-works" bg={G.cream}>
         <Label text="End-to-end workflow" />
         <H2>Four steps. Zero calls from your staff.</H2>
-        <Lead>From your PMS to resolved claims, CollectRx handles the entire AR follow-up cycle automatically — CSV import for any practice management system, or a native hourly sync for AbelDent-connected practices.</Lead>
+        <Lead>Upload a CSV export from your practice management system. CollectRx schedules eligible carrier-status follow-up and returns documented outcomes for staff review; it does not negotiate, settle, or direct payment action.</Lead>
 
         <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {WORKFLOW.map((step, i) => (
@@ -393,8 +393,8 @@ export default function ProductOnePager() {
       {/* PRIVACY */}
       <Section bg={G.white}>
         <Label text="Privacy and compliance" />
-        <H2>PHIPA and PIPEDA compliant by design.</H2>
-        <Lead>Patient identifiers never leave your server. The AI agents operate entirely on anonymous tokens. Real data is re-attached server-side after every call.</Lead>
+        <H2>Privacy controls designed for a controlled Canadian pilot.</H2>
+        <Lead>CollectRx uses tenant isolation, access controls, tokenization, encryption, and audit evidence. These engineering controls do not constitute legal advice or a guarantee of compliance; deployment configuration and operator evidence still matter.</Lead>
 
         <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 14 }}>
           {[
@@ -421,7 +421,7 @@ export default function ProductOnePager() {
         <Lead>Minutes-based tiers. No setup fees for pilot partners.</Lead>
 
         <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          {(['core', 'growth', 'scale'] as const).map((id) => {
+          {PAID_TIER_ORDER.map((id) => {
             const plan = TIERS[id]
             const highlight = id === 'growth'
             return (
@@ -466,7 +466,7 @@ export default function ProductOnePager() {
             Start with one afternoon of setup.<br />Calls begin the next business day.
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, lineHeight: 1.7, marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
-            Connect your PMS via CSV import or the desktop connector. CollectRx starts calling your aged AR the next business morning. Zero cost during the pilot. Results visible within 30 days.
+            Upload a reviewed CSV export—no install or PMS access required. Pilot activation, call timing, and monitoring are confirmed with the practice before any carrier follow-up begins.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/demo" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: G.greenDk, padding: '13px 28px', borderRadius: 10, fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>

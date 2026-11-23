@@ -146,3 +146,15 @@ Paste the "How to Run This Agent" prompt from the relevant file into a new Cowor
 2. Add to the roster and weekly run order in this README.
 3. Map it into the information flow diagram.
 4. If it monitors call behavior, add test cases to the voice-agent-trainer test library.
+
+---
+
+## Outreach Pipeline (separate from the 29 above)
+
+[`agents/outreach/`](outreach/) is a distinct, human-gated multi-agent pipeline for building
+and vetting a client-acquisition outreach batch before any email leaves the building. It reuses
+`client-acquisition.md`, `market-intelligence.md`, `competitive-intelligence.md`,
+`hallucination-detector.md`'s pattern, and `compliance-checker.md`'s CASL flag as inputs — it
+does not replace them, and it is not part of the 29-agent count above (same relationship the
+`.claude/agents/` orchestration subagents have to this roster). See `agents/outreach/README.md`
+for the roster and the pre-send verification gate.

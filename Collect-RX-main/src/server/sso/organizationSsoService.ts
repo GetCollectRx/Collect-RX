@@ -17,6 +17,7 @@ import type { PrismaClient } from '@prisma/client';
 import { SAML, generateServiceProviderMetadata, type Profile } from '@node-saml/node-saml';
 import { decryptPhiAtRest, encryptPhiAtRest } from '../crypto/phiAtRest.js';
 import { readServerUrl } from '../envAliases.js';
+import { runWithRlsBypass } from '../db/rlsContext.js';
 
 export interface OrganizationSsoConnection {
   organizationId: string;
@@ -103,22 +104,29 @@ export async function saveOrganizationSsoConfig(
   });
 }
 
+// These two lookups run during the SSO login/callback flow, before any
+// session (and therefore before any app.practice_id) exists — bypass is
+// correct here, the same way authRoutes.ts's pre-auth routes need it.
 export async function getOrganizationSsoConnectionBySlug(
   prisma: PrismaClient,
   orgSlug: string,
 ): Promise<OrganizationSsoConnection | null> {
-  const record = await prisma.organizationSsoConfig.findUnique({ where: { orgSlug } });
-  if (!record) return null;
-  return decryptConnection(record);
+  return runWithRlsBypass(async () => {
+    const record = await prisma.organizationSsoConfig.findUnique({ where: { orgSlug } });
+    if (!record) return null;
+    return decryptConnection(record);
+  });
 }
 
 export async function getOrganizationSsoConnectionByOrgId(
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<OrganizationSsoConnection | null> {
-  const record = await prisma.organizationSsoConfig.findUnique({ where: { organizationId } });
-  if (!record) return null;
-  return decryptConnection(record);
+  return runWithRlsBypass(async () => {
+    const record = await prisma.organizationSsoConfig.findUnique({ where: { organizationId } });
+    if (!record) return null;
+    return decryptConnection(record);
+  });
 }
 
 function decryptConnection(record: {
@@ -160,11 +168,13 @@ export async function findEnforcingSsoOrgForEmail(
 ): Promise<{ orgSlug: string } | null> {
   const domain = email.split('@')[1]?.toLowerCase().trim();
   if (!domain) return null;
-  const config = await prisma.organizationSsoConfig.findFirst({
-    where: { ssoEnforced: true, enforcedDomains: { has: domain } },
-    select: { orgSlug: true },
+  return runWithRlsBypass(async () => {
+    const config = await prisma.organizationSsoConfig.findFirst({
+      where: { ssoEnforced: true, enforcedDomains: { has: domain } },
+      select: { orgSlug: true },
+    });
+    return config ? { orgSlug: config.orgSlug } : null;
   });
-  return config ? { orgSlug: config.orgSlug } : null;
 }
 
 /** Best-effort email extraction from a validated SAML profile — IdPs vary in whether NameID is email-formatted. */

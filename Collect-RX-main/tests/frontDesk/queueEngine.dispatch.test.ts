@@ -1,17 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
+import { defaultStaffedHours } from '../../src/lib/staffedHours.js';
 
 const validateDispatchMock = vi.fn();
+const checkCarrierBlockMock = vi.fn();
+const checkDispatchPauseMock = vi.fn();
 const initiateCallMock = vi.fn();
+const endVapiCallMock = vi.fn();
 const detokenizeMock = vi.fn();
+const practiceSettingsMock = vi.fn();
 const probeClaimStatusMock = vi.fn();
 const canMakeCallMock = vi.fn();
 const completenessMock = vi.fn();
 const raiseGateMock = vi.fn();
 const transitionClaimRecoveryMock = vi.fn();
 
+vi.mock('../../src/server/pauseControls/dispatchPause.js', () => ({
+  checkDispatchPause: (...args: unknown[]) => checkDispatchPauseMock(...args),
+}));
+
 vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
+  checkCarrierBlock: (...args: unknown[]) => checkCarrierBlockMock(...args),
   isWithinCallWindow: () => true,
   CARRIER_CONFIGS: {
     sun_life: {
@@ -29,11 +39,18 @@ vi.mock('../../src/carriers/adapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/vapi/client.js', () => ({
-  initiateCall: (...args: unknown[]) => initiateCallMock(...args),
-  endVapiCall: vi.fn(),
-  VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
-}));
+// resolvePracticeCallerId stays real so these tests exercise the actual
+// authorization rule instead of a copy of it.
+vi.mock('../../src/vapi/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/vapi/client.js')>();
+  return {
+    resolvePracticeCallerId: actual.resolvePracticeCallerId,
+    initiateCall: (...args: unknown[]) => initiateCallMock(...args),
+    endVapiCall: (...args: unknown[]) => endVapiCallMock(...args),
+    getHumanAssistedSquadId: () => 'squad-hold-sentinel',
+    VapiAmbiguousOutcomeError: class VapiAmbiguousOutcomeError extends Error {},
+  };
+});
 
 vi.mock('../../src/server/frontDesk/deskQueueBroadcast.js', () => ({
   refreshDeskQueueBroadcast: vi.fn(),
@@ -51,14 +68,22 @@ vi.mock('../../src/server/plans/planBridge.js', () => ({
   canMakeCall: (...args: unknown[]) => canMakeCallMock(...args),
 }));
 
+vi.mock('../../src/server/plans/practiceEntitlements.js', () => ({
+  planTierForPractice: vi.fn(async () => 'core'),
+}));
+
 vi.mock('../../src/server/services/practiceSettingsService.js', () => ({
-  getPracticeSettings: vi.fn(async () => ({
+  getPracticeSettings: (...args: unknown[]) => practiceSettingsMock(...args),
+}));
+
+function defaultTestSettings(): Record<string, unknown> {
+  return {
     voiceAgentEnabled: true,
     billingPhone: '416-555-0100',
     escalationPhoneNumber: '416-555-0101',
     carrierConfigs: [],
-  })),
-}));
+  };
+}
 
 vi.mock('../../src/pii-vault.js', () => ({
   piiVault: { detokenize: (...args: unknown[]) => detokenizeMock(...args) },
@@ -79,6 +104,10 @@ vi.mock('../../src/server/recovery/transitionClaimRecovery.js', () => ({
 
 vi.mock('../../src/server/learning/carrierLessons.js', () => ({
   getApprovedNavigationNotes: vi.fn(async () => ''),
+}));
+
+vi.mock('../../src/server/learning/submissionChannelMemory.js', () => ({
+  getKnownSubmissionChannel: vi.fn(async () => ''),
 }));
 
 vi.mock('../../src/server/discovery/carrierDiscoveryService.js', () => ({
@@ -148,10 +177,13 @@ function tickPrisma(candidates: QueueEntryFixture[]) {
       findMany: vi.fn(async () => [{ id: 'p1' }]),
       findUnique: vi.fn(async () => ({
         name: 'CollectRx Demo Practice',
+        timezone: 'America/New_York',
         billingPhone: '416-555-0100',
         npi: null,
         taxId: null,
         practiceAddress: null,
+        vapiPhoneNumberId: null as string | null,
+        callerIdAuthorizedAt: null as Date | null,
       })),
     },
     practiceDeskState: {
@@ -217,7 +249,14 @@ function phiSuccess() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  practiceSettingsMock.mockResolvedValue(defaultTestSettings());
   canMakeCallMock.mockResolvedValue({ allowed: true });
+  // Pre-dial re-check added alongside the upfront validateDispatch mock above —
+  // defaults to allowed so tests that don't care about CARRIER_BLOCK aren't
+  // incidentally blocked by it; tests that do care override this directly.
+  checkCarrierBlockMock.mockResolvedValue({ allowed: true });
+  // Operator pause re-check immediately before the dial; defaults to not paused.
+  checkDispatchPauseMock.mockResolvedValue({ allowed: true });
   probeClaimStatusMock.mockResolvedValue(null);
   detokenizeMock.mockReturnValue(phiSuccess());
   initiateCallMock.mockResolvedValue({ vapiCallId: 'vapi-1' });
@@ -249,7 +288,8 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
       data: { status: 'BLOCKED' },
     });
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
-    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+    // No plan includes autonomous calling, so every claim call uses Hold Sentinel.
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2', squadId: 'squad-hold-sentinel' });
   });
 
   it('escalates a max-attempts head claim and dispatches the next eligible claim', async () => {
@@ -340,6 +380,46 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
   });
 
+  it("dials from the practice's own number once its caller ID is authorized", async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      timezone: 'America/New_York',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: new Date('2026-11-01T00:00:00.000Z'),
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ vapiPhoneNumberId: 'practice-phone' });
+  });
+
+  it('keeps the shared number when the practice number was registered but never authorized', async () => {
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      timezone: 'America/New_York',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: 'practice-phone',
+      callerIdAuthorizedAt: null,
+    });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0].vapiPhoneNumberId).toBeUndefined();
+  });
+
   it('defers a head claim whose PHI token expired and dispatches the next eligible claim', async () => {
     const expired = queueEntry('1');
     const eligible = queueEntry('2');
@@ -405,11 +485,16 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
     );
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
-    // Fleet-wide congestion is a short, jittered wait (3–5 min) — not the same
+    // Fleet-wide congestion is a short, jittered wait — not the same
     // multi-hour class of defer as a staff-action or claim-age gate, and not
     // an exact round number either (see the dispatch-failure jitter test).
-    expect(deferredInMs).toBeGreaterThan(2.5 * 60 * 1000);
-    expect(deferredInMs).toBeLessThan(5.5 * 60 * 1000);
+    // Matches DEFER_CARRIER_CONCURRENCY_BASE_MS (2min) + up to
+    // DEFER_CARRIER_CONCURRENCY_JITTER_MS (1min) in queueEngine.ts, i.e. a
+    // true range of [2min, 3min) — the bounds below add ~10s of slack on
+    // each side for real wall-clock time elapsed between the code computing
+    // `scheduledFor` and this assertion's own `Date.now()` call.
+    expect(deferredInMs).toBeGreaterThan(110 * 1000);
+    expect(deferredInMs).toBeLessThan(185 * 1000);
     // A carrier ceiling is fleet-wide, not practice-wide — the whole practice
     // tick must not stop, unlike a practice-wide rejection.
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
@@ -458,6 +543,53 @@ describe('runDeskQueueTick head-of-queue settlement', () => {
 
     expect(validateDispatchMock).toHaveBeenCalledTimes(1);
     expect(prisma.callQueue.update).not.toHaveBeenCalled();
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the whole practice without dialing when the system is paused at validation time', async () => {
+    const prisma = tickPrisma([queueEntry('1'), queueEntry('2')]);
+    validateDispatchMock.mockResolvedValueOnce({ allowed: false, code: 'PAUSED_SYSTEM', reason: 'paused' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the practice when pause state is unreadable (fail closed)', async () => {
+    const prisma = tickPrisma([queueEntry('1'), queueEntry('2')]);
+    validateDispatchMock.mockResolvedValueOnce({ allowed: false, code: 'PAUSE_STATE_UNAVAILABLE', reason: 'unreadable' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(validateDispatchMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('defers a carrier-paused head claim and dispatches the next carrier in the same tick', async () => {
+    const paused = queueEntry('1');
+    const eligible = queueEntry('2', { carrierId: 'manulife' });
+    const prisma = tickPrisma([paused, eligible]);
+    validateDispatchMock
+      .mockResolvedValueOnce({ allowed: false, code: 'PAUSED_CARRIER', reason: 'carrier paused' })
+      .mockResolvedValueOnce({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(prisma.callQueue.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'q-1' } }));
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+    expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-2' });
+  });
+
+  it('does not dial when a pause lands between validation and the dial (late re-check)', async () => {
+    const entry = queueEntry('1');
+    const prisma = tickPrisma([entry]);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    checkDispatchPauseMock.mockResolvedValue({ allowed: false, code: 'PAUSED_PRACTICE', reason: 'paused' });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(checkDispatchPauseMock).toHaveBeenCalled();
     expect(initiateCallMock).not.toHaveBeenCalled();
   });
 
@@ -560,6 +692,47 @@ describe('runDeskQueueTick resilience', () => {
     });
   });
 
+  it('closes an over-ceiling attempt immediately when ending its Vapi call fails, instead of leaving it open for the stale watchdog', async () => {
+    const eligible = queueEntry('1');
+    const prisma = tickPrisma([eligible]);
+    // runDeskQueueTick issues three callAttempt.findMany calls per tick with
+    // one practice: (1) the fleet-wide carrier-concurrency snapshot at the top
+    // of the tick, (2) the stale-attempt watchdog, (3) the over-ceiling
+    // terminator below, in that order. No stale attempts; one over-ceiling
+    // attempt whose age is past the absolute duration ceiling but well under
+    // STALE_ATTEMPT_MS, so only the over-ceiling terminator should touch it.
+    prisma.callAttempt.findMany
+      .mockResolvedValueOnce([]) // fleet-wide carrier snapshot
+      .mockResolvedValueOnce([]) // stale-attempt watchdog
+      .mockResolvedValueOnce([
+        {
+          id: 'attempt-ceiling',
+          claimId: 'claim-ceiling',
+          vapiCallId: 'vapi-ceiling',
+          initiatedAt: new Date(Date.now() - 50 * 60 * 1000),
+        },
+      ]);
+    endVapiCallMock.mockRejectedValueOnce(new Error('Vapi: call not found (404)'));
+
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(endVapiCallMock).toHaveBeenCalledWith('vapi-ceiling');
+    expect(prisma.callAttempt.update).toHaveBeenCalledWith({
+      where: { id: 'attempt-ceiling' },
+      data: expect.objectContaining({ liveState: 'ceiling_terminated_no_webhook' }),
+    });
+    expect(prisma.callQueue.updateMany).toHaveBeenCalledWith({
+      where: { claimId: 'claim-ceiling', status: 'IN_PROGRESS' },
+      data: expect.objectContaining({ status: 'PENDING' }),
+    });
+    expect(prisma.insuranceClaim.updateMany).toHaveBeenCalledWith({
+      where: { id: 'claim-ceiling', status: 'CALLING' },
+      data: { status: 'IN_QUEUE' },
+    });
+  });
+
   it('still respects a fresh open call attempt (one call per practice)', async () => {
     const eligible = queueEntry('1');
     const prisma = tickPrisma([eligible]);
@@ -584,6 +757,13 @@ describe('runDeskQueueTick resilience', () => {
       .mockRejectedValueOnce(new Error('Vapi 500'))
       .mockResolvedValueOnce({ vapiCallId: 'vapi-2' });
 
+    // Captured before the tick, not after: scheduledFor is computed inside
+    // runDeskQueueTick from a timestamp at or after this one, so any real
+    // wall-clock time the tick itself takes only widens this margin. Measuring
+    // from a post-tick Date.now() instead systematically undercounts by
+    // however long the tick took to run, which flakes at the exact 15-minute
+    // boundary on a slower CI runner.
+    const beforeTick = Date.now();
     await runDeskQueueTick(prisma as unknown as PrismaClient);
 
     const deferCall = prisma.callQueue.update.mock.calls.find(
@@ -593,7 +773,7 @@ describe('runDeskQueueTick resilience', () => {
     if (!deferCall) throw new Error('expected queue entry q-1 to be deferred');
     // Jittered, not a fixed 15 minutes — every claim that failed around the
     // same transient outage must not all re-dial on the same exact clock.
-    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - Date.now();
+    const deferredInMs = (deferCall[0].data.scheduledFor as Date).getTime() - beforeTick;
     expect(deferredInMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
     expect(deferredInMs).toBeLessThan(20 * 60 * 1000);
     expect(initiateCallMock).toHaveBeenCalledTimes(2);
@@ -640,5 +820,72 @@ describe('runDeskQueueTick resilience', () => {
 
     expect(initiateCallMock).toHaveBeenCalledTimes(1);
     expect(initiateCallMock.mock.calls[0][0]).toMatchObject({ claimId: 'claim-1' });
+  });
+});
+
+
+describe('runDeskQueueTick staffed hours', () => {
+  const mondayTenEastern = new Date('2026-11-23T10:00:00-05:00');
+  const saturdayNoonEastern = new Date('2026-11-28T12:00:00-05:00');
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function freezeClock(at: Date) {
+    // Only Date is faked so the tick's own timers and promises still run.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+  }
+
+  it('does not dial a Hold Sentinel call when the practice is outside its staffed hours', async () => {
+    freezeClock(saturdayNoonEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).not.toHaveBeenCalled();
+  });
+
+  it('dials during staffed hours', async () => {
+    freezeClock(mondayTenEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('dials as before when the practice never set staffed hours', async () => {
+    freezeClock(saturdayNoonEastern);
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+
+    await runDeskQueueTick(tickPrisma([queueEntry('1')]) as unknown as PrismaClient);
+
+    expect(initiateCallMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("judges staffed hours in the practice's own timezone", async () => {
+    // 10:00 Eastern is 07:00 in Vancouver, before a 09:00 start.
+    freezeClock(mondayTenEastern);
+    practiceSettingsMock.mockResolvedValue({ ...defaultTestSettings(), staffedHours: defaultStaffedHours() });
+    validateDispatchMock.mockResolvedValue({ allowed: true });
+    const prisma = tickPrisma([queueEntry('1')]);
+    prisma.practice.findUnique.mockResolvedValueOnce({
+      name: 'CollectRx Demo Practice',
+      timezone: 'America/Vancouver',
+      billingPhone: '416-555-0100',
+      npi: null,
+      taxId: null,
+      practiceAddress: null,
+      vapiPhoneNumberId: null,
+      callerIdAuthorizedAt: null,
+    });
+
+    await runDeskQueueTick(prisma as unknown as PrismaClient);
+
+    expect(initiateCallMock).not.toHaveBeenCalled();
   });
 });

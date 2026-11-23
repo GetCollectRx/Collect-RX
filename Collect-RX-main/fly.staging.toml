@@ -7,7 +7,7 @@ primary_region = 'yyz'
 [build]
 
 [deploy]
-release_command = 'npx prisma migrate deploy'
+release_command = 'node scripts/release-migrate.mjs'
 
 [processes]
 app = 'npm run start'
@@ -26,7 +26,19 @@ interval = '30s'
 timeout = '10s'
 grace_period = '60s'
 method = 'GET'
-path = '/api/health'
+path = '/api/health/ready'
+
+[[services]]
+internal_port = 3000
+protocol = 'tcp'
+processes = ['worker']
+
+  [[services.http_checks]]
+  interval = '30s'
+  timeout = '10s'
+  grace_period = '60s'
+  method = 'GET'
+  path = '/api/health/ready'
 
 [[vm]]
 processes = ['app']

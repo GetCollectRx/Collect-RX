@@ -13,7 +13,7 @@ import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import type { ActiveAgent, LiveCallState } from '../../types/frontDesk.js';
 import { recordCallUsage } from '../plans/planBridge.js';
 import { maybeSendPlanUsageAlertEmails } from '../plans/planUsageAlertService.js';
-import { processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
+import { deletePostCallAudio, processRecoveryCallEnded, scrubTranscriptPhi } from '../vapi/vapiWebhook.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { appendAuditLog } from '../audit/auditLog.js';
 import { checkAndTriggerEscalation } from './sentimentEscalationService.js';
@@ -226,6 +226,7 @@ async function processCallEndedDesk(
         where: { id: existing.id },
         data: {
           completedAt: new Date(),
+          durationSeconds: processed.durationSeconds,
           outcome: 'BLOCK_DETECTED',
           outcomeDetail: processed.outcomeDetail ?? 'Carrier block detected at call end',
           carrierBlockDetected: true,
@@ -241,14 +242,23 @@ async function processCallEndedDesk(
       reason: processed.outcomeDetail,
       hangVapi: false,
     });
-    return;
+    // A blocked call skips claim recovery, but not zero-retention audio
+    // deletion, the disclosure audit entry or usage metering below.
+    if (existing?.id) {
+      await deletePostCallAudio(prisma, {
+        attemptId: existing.id,
+        practiceId: claim.practiceId,
+        vapiCallId,
+        recordingUrl: payload.recordingUrl ?? null,
+      });
+    }
+  } else {
+    await processRecoveryCallEnded(payload, prisma, ctx?.rawBody ?? payload);
   }
-
-  await processRecoveryCallEnded(payload, prisma, ctx?.rawBody ?? payload);
 
   const attemptAfter = await prisma.callAttempt.findUnique({
     where: { vapiCallId },
-    select: { id: true, outcome: true },
+    select: { id: true, outcome: true, outcomeDetail: true },
   });
 
   // H-5a: CRTC ADAD — always write a resolution log entry, even when there is
@@ -287,12 +297,17 @@ async function processCallEndedDesk(
     }
   }
 
+  // Prefer the outcome actually persisted by processRecoveryCallEnded() over
+  // the locally-recomputed `processed` above: for a V1 human-assisted call,
+  // that persisted value reflects HumanAssistedCallLog ground truth, while
+  // `processed` here is only ever the payload-based (transcript-regex) guess
+  // — the two can genuinely disagree for human-assisted calls.
   broadcastDesk(claim.practiceId, {
     type: 'call.ended',
     data: {
       callId: attemptAfter?.id ?? existing?.id ?? vapiCallId,
-      outcome: processed.outcome,
-      notes: processed.outcomeDetail,
+      outcome: attemptAfter?.outcome ?? processed.outcome,
+      notes: attemptAfter?.outcomeDetail ?? processed.outcomeDetail,
     },
   });
 

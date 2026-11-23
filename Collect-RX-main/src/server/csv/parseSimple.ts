@@ -91,36 +91,33 @@ export function parseSimpleCsv(text: string): Array<Record<string, string>> {
     );
   }
 
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  if (lines.length < 2) return [];
+  const records = parseCsvRecords(text);
+  const [headerRecord, ...dataRecords] = records;
+  if (!headerRecord || dataRecords.length === 0) return [];
 
   // Validate row count
-  if (lines.length - 1 > CSV_LIMITS.MAX_ROWS) {
+  if (dataRecords.length > CSV_LIMITS.MAX_ROWS) {
     throw new Error(
       `CSV exceeds ${CSV_LIMITS.MAX_ROWS} rows limit (` +
-      `${lines.length - 1} rows provided)`
+      `${dataRecords.length} rows provided)`
     );
   }
 
-  const header = splitCsvLine(lines[0]!).map((h) => {
+  const header = headerRecord.map((h) => {
     const normalized = h
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_')
-      .replace(/”/g, '');
+      .replace(/\u201D/g, '');
     return canonicalFieldName(normalized);
   });
 
   const out: Array<Record<string, string>> = [];
-  for (let r = 1; r < lines.length; r++) {
-    const cols = splitCsvLine(lines[r]!);
+  for (const cols of dataRecords) {
     const row: Record<string, string> = {};
     header.forEach((h, j) => {
       let v = cols[j] ?? '';
-      v = v.replace(/^”|”$/g, '').trim();
+      v = v.replace(/^\u201D|\u201D$/g, '').trim();
 
       // Apply CSV injection prevention: escape formula characters
       if (/^[=+\-@%]/.test(v)) {
@@ -134,21 +131,64 @@ export function parseSimpleCsv(text: string): Array<Record<string, string>> {
   return out;
 }
 
-function splitCsvLine(line: string): string[] {
-  const parts: string[] = [];
+/**
+ * RFC 4180 style record splitter. A quoted field may contain commas, doubled
+ * quotes and line breaks, so records cannot be found by splitting on newlines
+ * first: an export with a multi-line address or note field would otherwise
+ * shear one record into several and shift every column after it.
+ *
+ * An unterminated quote throws instead of letting the rest of the file become
+ * one field. The message deliberately carries no cell content (PHI).
+ */
+function parseCsvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
   let field = '';
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]!;
-    if (c === '"') {
-      inQ = !inQ;
-    } else if (c === ',' && !inQ) {
-      parts.push(field);
+  let inQuotes = false;
+  let quoted = false;
+
+  const endRecord = (): void => {
+    record.push(field);
+    // A line that is empty or only whitespace, with no quotes, is not a record.
+    const blank = record.length === 1 && !quoted && field.trim() === '';
+    if (!blank) records.push(record);
+    record = [];
+    field = '';
+    quoted = false;
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charAt(i);
+    if (inQuotes) {
+      if (c === '"') {
+        if (text.charAt(i + 1) === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+      quoted = true;
+    } else if (c === ',') {
+      record.push(field);
       field = '';
+    } else if (c === '\r') {
+      if (text.charAt(i + 1) === '\n') i++;
+      endRecord();
+    } else if (c === '\n') {
+      endRecord();
     } else {
       field += c;
     }
   }
-  parts.push(field);
-  return parts;
+
+  if (inQuotes) {
+    throw new Error('CSV has an unterminated quoted field');
+  }
+  if (field !== '' || record.length > 0 || quoted) endRecord();
+  return records;
 }

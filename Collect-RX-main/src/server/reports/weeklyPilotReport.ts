@@ -11,6 +11,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../observability/logger.js';
+import { runWithPracticeRls } from '../db/rlsContext.js';
 
 export interface WeeklyPracticeMetrics {
   practiceId: string;
@@ -139,12 +140,16 @@ export function weeklyPilotReportEnabled(): boolean {
 }
 
 async function findPracticeOwnerEmail(prisma: PrismaClient, practiceId: string): Promise<string | null> {
-  const owner = await prisma.user.findFirst({
-    where: { practiceId, role: 'practice_owner', isActive: true },
-    select: { email: true },
-    orderBy: { createdAt: 'asc' },
+  // This is a scheduled job, not a request — no ambient RLS context exists,
+  // so scope it explicitly to the one practice this report run is for.
+  return runWithPracticeRls(practiceId, async () => {
+    const owner = await prisma.user.findFirst({
+      where: { practiceId, role: 'practice_owner', isActive: true },
+      select: { email: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return owner?.email ?? null;
   });
-  return owner?.email ?? null;
 }
 
 export interface WeeklyReportRunResult {

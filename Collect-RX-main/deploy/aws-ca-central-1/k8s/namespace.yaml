@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: collectrx
+  labels:
+    app.kubernetes.io/part-of: collectrx
+    data-residency: ca-central-1

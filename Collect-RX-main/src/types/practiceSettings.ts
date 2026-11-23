@@ -1,5 +1,6 @@
 import type { CarrierId } from '@prisma/client';
 import type { PmsIngestMode, PmsVendorId } from './pms.js';
+import type { StaffedHours } from '../lib/staffedHours.js';
 
 export interface CarrierConfig {
   carrierId: CarrierId;
@@ -55,6 +56,17 @@ export interface PracticeSettings {
    */
   escalationPhoneNumber: string;
   /**
+   * When someone is at the desk to take a transferred call, in the practice's
+   * own timezone. Unset means it was never configured, and dispatch is then
+   * limited only by the engine call window. See src/lib/staffedHours.ts.
+   */
+  staffedHours?: StaffedHours;
+  /**
+   * The user, whatever their title, who gets the screen alert and the
+   * transferred call. Their direct number is escalationPhoneNumber.
+   */
+  designatedIndividualUserId?: string;
+  /**
    * Billing/claims contact number read aloud in the CRTC disclosure at call start
    * ("you can reach us at...") and given to carriers as a callback number.
    * Distinct from escalationPhoneNumber (staff takeover).
@@ -62,6 +74,14 @@ export interface PracticeSettings {
    */
   billingPhone?: string;
   telusTpaMappings: Record<string, string>;
+  /**
+   * V1 human-assisted mode: practice staff make the call and speak with the
+   * rep directly (IVR_Navigator -> Hold_Sentinel -> Claims_Scribe squad).
+   * CollectRx's AI only navigates the IVR, holds the line, and silently
+   * listens/logs — it never speaks to a carrier rep. Distinct from the
+   * fully-autonomous squad and its CarrierLesson learning pipeline.
+   */
+  humanAssistedMode?: boolean;
   /**
    * Data retention, tenant-configurable per practice — defaults chosen to
    * cover a reopened claim, an insurer clawback, or a billing dispute without

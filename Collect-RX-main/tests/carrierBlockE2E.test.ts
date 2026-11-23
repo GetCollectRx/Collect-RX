@@ -48,11 +48,25 @@ vi.mock('../src/vapi/client.js', async (importOriginal) => {
   };
 });
 
-// Only the call-window gate is bypassed (test-time determinism) — everything
-// else in the guard chain, including checkCarrierBlock, runs for real.
+// checkCarrierBlockMock defaults to the real implementation (set below, once
+// the real module loads) for every test except the one that overrides it with
+// mockImplementationOnce — this only intercepts CROSS-module callers of the
+// named export (e.g. insurance.ts's own pre-dial re-check), not same-module
+// internal calls (validateDispatch's internal call to checkCarrierBlock still
+// runs the real, unmocked function — same ESM limitation documented below for
+// isWithinCallWindow). That's exactly the property the race test needs: the
+// upfront validateDispatch() check must see real (not-yet-blocked) state,
+// while the later, separately-imported checkCarrierBlock call is the one
+// interceptable point to inject a block that lands mid-request.
+const checkCarrierBlockMock = vi.fn();
+
+// Only the call-window gate is unconditionally bypassed (test-time
+// determinism) — everything else in the guard chain, including
+// checkCarrierBlock, runs for real by default.
 vi.mock('../src/carriers/adapter.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/carriers/adapter.js')>();
-  return { ...actual, isWithinCallWindow: () => true };
+  checkCarrierBlockMock.mockImplementation(actual.checkCarrierBlock);
+  return { ...actual, isWithinCallWindow: () => true, checkCarrierBlock: checkCarrierBlockMock };
 });
 
 const { app, prisma } = await import('../src/server/index.js');
@@ -361,4 +375,101 @@ describe.skipIf(!dbReady)('CARRIER_BLOCK — manual "call now" HTTP route (POST 
     const attempts = await prisma.callAttempt.findMany({ where: { claimId } });
     expect(attempts).toHaveLength(0);
   }, 30_000);
+
+  // Proves the fix for the TOCTOU gap: the route's only CARRIER_BLOCK check used
+  // to run once, up front, with several awaited DB round-trips (reservation
+  // transaction, practice/settings lookup, PHI detokenization) between that check
+  // and the live Vapi dial. A block firing anywhere in that window — e.g. a
+  // concurrent manual trigger or webhook hitting the same carrier — used to sail
+  // through undetected. This test doesn't wait for a real race; it deterministically
+  // lands a CarrierBlockEvent inside the window by hooking the practice lookup that
+  // already sits between the reservation and the dial, which is exactly as good a
+  // proof as a real race for a check that either exists in the code or doesn't.
+  describe('mid-dispatch block (not active at request start, fires during it)', () => {
+    let racePractice: Awaited<ReturnType<typeof createPracticeWithOwnerForTests>>;
+    let raceClaimId: string;
+
+    function raceAuthCookie(): string {
+      return `${COOKIE_NAME}=${signUserToken({
+        userId: racePractice.user.id,
+        practiceId: racePractice.practice.id,
+        role: 'practice_owner',
+      })}`;
+    }
+
+    beforeAll(async () => {
+      if (!dbReady) return;
+      racePractice = await createPracticeWithOwnerForTests(prisma);
+      const settings = defaultPracticeSettings();
+      settings.voiceAgentEnabled = true;
+      settings.carrierConfigs = settings.carrierConfigs.map((c) =>
+        c.carrierId === BLOCKED_CARRIER
+          ? { ...c, authorizationSubmitted: true, providerNumber: `PN-RACE-${racePractice.practice.id.slice(0, 8)}` }
+          : c,
+      );
+      await updatePracticeSettings(prisma, racePractice.practice.id, settings);
+      const claim = await makeClaim(racePractice.practice.id, { claimNumber: 'CLM-HTTP-RACE' });
+      raceClaimId = claim.id;
+    }, 30_000);
+
+    afterAll(async () => {
+      if (!dbReady) return;
+      await prisma.carrierBlockEvent.deleteMany({ where: { practiceId: racePractice.practice.id } });
+      await prisma.callAttempt.deleteMany({ where: { claim: { practiceId: racePractice.practice.id } } });
+      await prisma.callQueue.deleteMany({ where: { practiceId: racePractice.practice.id } });
+      await prisma.insuranceClaim.deleteMany({ where: { practiceId: racePractice.practice.id } });
+      await cleanupPracticeWithUsers(prisma, racePractice.practice.id);
+    });
+
+    it('a CARRIER_BLOCK that fires after the reservation but before the dial is still caught', async () => {
+      initiateCallMock.mockClear();
+
+      // isWithinCallWindow's own module-scoped export is mocked to always
+      // return true (top of file) for cross-module callers only — but
+      // validateDispatch() calls it from the SAME module (adapter.ts), which
+      // resolves to the real, unmocked implementation, so the real Mon-Fri
+      // 8am-5pm Eastern gate still applies to insurance.ts's upfront check.
+      // Faking global Date breaks Prisma's own interactive-transaction
+      // timeout tracking (reserveDispatchSlot uses a real 15s transaction
+      // timeout internally, measured against real elapsed time regardless of
+      // what Date reports) — so use the escape hatch isWithinCallWindow()
+      // already ships for exactly this, rather than touching the clock.
+      process.env.COLLECTRX_FORCE_CALL_WINDOW = '1';
+
+      // checkCarrierBlockMock intercepts only insurance.ts's own, separately
+      // imported call to checkCarrierBlock (the new pre-dial re-check) — not
+      // validateDispatch()'s internal same-module call (the upfront check),
+      // which still runs for real and correctly sees "not blocked yet". This
+      // creates the actual race precisely: real block state is absent for the
+      // upfront check, then present by the time the late check runs.
+      checkCarrierBlockMock.mockImplementationOnce(async (...args: Parameters<typeof import('../src/carriers/adapter.js').checkCarrierBlock>) => {
+        await applyCarrierBlock(prisma, {
+          practiceId: racePractice.practice.id,
+          carrierId: BLOCKED_CARRIER,
+          vapiCallId: 'vapi-http-race',
+          reason: 'IVR detected automation on a concurrent call',
+          hangVapi: false,
+        });
+        const { checkCarrierBlock: realCheckCarrierBlock } =
+          await vi.importActual<typeof import('../src/carriers/adapter.js')>('../src/carriers/adapter.js');
+        return realCheckCarrierBlock(...args);
+      });
+
+      const res = await request(app)
+        .post(`/api/insurance/queue/trigger/${raceClaimId}`)
+        .set('Cookie', raceAuthCookie());
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('CARRIER_BLOCK');
+      expect(initiateCallMock).not.toHaveBeenCalled();
+
+      const claimAfter = await prisma.insuranceClaim.findUnique({ where: { id: raceClaimId } });
+      expect(claimAfter?.status).not.toBe('CALLING');
+
+      const attempts = await prisma.callAttempt.findMany({ where: { claimId: raceClaimId } });
+      expect(attempts).toHaveLength(0);
+
+      delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
+    }, 30_000);
+  });
 });

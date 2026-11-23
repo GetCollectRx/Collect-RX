@@ -6,9 +6,12 @@ import {
   TableContainer, Table, Thead, Tbody, Tr, Th, Td,
 } from '../components/ui'
 import { resolveIsReadOnly, resolveUserRole } from '../components/ProtectedRoute'
+import { canEditPracticeSetup, pickOwnerSetupSettings } from '../lib/practiceSetupAccess'
+import { WhoTakesTheCallCard, type StaffOption } from '../components/WhoTakesTheCallCard'
 import type { PracticeSettings, CarrierConfig } from '../types/practiceSettings'
 import type { PracticePmsInfo, PmsVendorCatalogEntry, PmsVendorId } from '../types/pms'
 import type { UserRole } from '../types/userRole'
+import { FEATURES } from '../billing/entitlements'
 
 type SettingsResponse = {
   success: boolean
@@ -16,6 +19,7 @@ type SettingsResponse = {
     practice: { id: string; name: string; timezone: string; recoveryMode?: 'CSV_FIRST' | 'PMS_WRITEBACK' } | null
     settings: PracticeSettings
     pms?: PracticePmsInfo
+    planFeatures?: string[]
   }
 }
 
@@ -34,11 +38,16 @@ export default function PracticeSettings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<UserRole | null>(() => resolveUserRole(ctx))
   const [telusKey, setTelusKey] = useState('')
   const [telusValue, setTelusValue] = useState('')
   const [pmsInfo, setPmsInfo] = useState<PracticePmsInfo | null>(null)
   const [pmsCatalog, setPmsCatalog] = useState<PmsVendorCatalogEntry[]>([])
+  const [autonomousInPlan, setAutonomousInPlan] = useState(false)
+  const [practiceTimezone, setPracticeTimezone] = useState('')
+  const [staff, setStaff] = useState<StaffOption[]>([])
+  const [staffLoadFailed, setStaffLoadFailed] = useState(false)
   const [recoveryMode, setRecoveryMode] = useState<'CSV_FIRST' | 'PMS_WRITEBACK'>('CSV_FIRST')
   const [recoveryModeSaving, setRecoveryModeSaving] = useState(false)
   const [recoveryModeError, setRecoveryModeError] = useState<string | null>(null)
@@ -47,6 +56,7 @@ export default function PracticeSettings() {
   const [triageBusy, setTriageBusy] = useState(false)
 
   const isReadOnly = resolveIsReadOnly(ctx, userRole)
+  const canEditSetup = canEditPracticeSetup(ctx.role, isReadOnly)
 
   useEffect(() => {
     const derived = resolveUserRole(ctx)
@@ -64,7 +74,9 @@ export default function PracticeSettings() {
       const res = await apiFetchJson<SettingsResponse>(`/api/practices/${practiceId}/settings`)
       setSettings(res.data.settings)
       setPmsInfo(res.data.pms ?? null)
+      setAutonomousInPlan((res.data.planFeatures ?? []).includes(FEATURES.AUTONOMOUS_CALLS))
       setRecoveryMode(res.data.practice?.recoveryMode ?? 'CSV_FIRST')
+      setPracticeTimezone(res.data.practice?.timezone ?? '')
       const triage = await apiFetchJson<{ success: boolean; data: TriageCredentialStatus }>(
         `/api/practices/${practiceId}/triage-credential`,
       )
@@ -81,16 +93,24 @@ export default function PracticeSettings() {
   }, [load])
 
   useEffect(() => {
+    if (!canEditSetup) return
+    setStaffLoadFailed(false)
+    void apiFetchJson<{ users: StaffOption[] }>('/api/auth/users')
+      .then((d) => setStaff(d.users ?? []))
+      .catch(() => setStaffLoadFailed(true))
+  }, [canEditSetup])
+
+  useEffect(() => {
     void apiFetchJson<{ vendors: PmsVendorCatalogEntry[] }>('/api/pms/catalog')
       .then((d) => setPmsCatalog(d.vendors ?? []))
       .catch(() => setPmsCatalog([]))
   }, [])
 
-  async function save(partial: Partial<PracticeSettings>) {
-    if (!practiceId || isReadOnly) return
+  async function save(partial: Partial<PracticeSettings>, setupOnly = false) {
+    if (!practiceId || (isReadOnly && !(setupOnly && canEditSetup))) return
     setSaving(true)
     setMessage(null)
-    setError(null)
+    setSaveError(null)
     try {
       const res = await apiFetchJson<{ success: boolean; data: PracticeSettings }>(
         `/api/practices/${practiceId}/settings`,
@@ -99,7 +119,9 @@ export default function PracticeSettings() {
       setSettings(res.data)
       setMessage('Settings saved')
     } catch (e) {
-      setError((e as Error).message)
+      // Shown inline: the page-level error state replaces the whole form, which
+      // would throw away what the user just typed over a simple validation error.
+      setSaveError((e as Error).message)
     } finally {
       setSaving(false)
     }
@@ -209,11 +231,26 @@ export default function PracticeSettings() {
                 {saving ? 'Saving…' : 'Save all'}
               </Button>
             )}
+            {isReadOnly && canEditSetup && (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={saving}
+                onClick={() => void save(pickOwnerSetupSettings(settings), true)}
+              >
+                {saving ? 'Saving…' : 'Save setup'}
+              </Button>
+            )}
           </div>
 
           {message && <p className="text-xs text-crx-600 dark:text-crx-400" role="status">{message}</p>}
+          {saveError && <p className="text-xs text-red-600 dark:text-red-400" role="alert">{saveError}</p>}
           {isReadOnly && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Read-only view, changes are disabled.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {canEditSetup
+                ? 'Most settings are read-only for your role. You can set the call window, who takes the call and your staffed hours, the voice agent switch and provider numbers, then press Save setup.'
+                : 'Read-only view, changes are disabled.'}
+            </p>
           )}
 
           <Card>
@@ -322,7 +359,7 @@ export default function PracticeSettings() {
                   <input
                     type="checkbox"
                     checked={settings[key]}
-                    disabled={isReadOnly}
+                    disabled={key === 'voiceAgentEnabled' ? !canEditSetup : isReadOnly}
                     onChange={(e) => setSettings({ ...settings, [key]: e.target.checked })}
                     className="rounded border-gray-300 text-crx-600 focus:ring-crx-500"
                   />
@@ -333,25 +370,60 @@ export default function PracticeSettings() {
           </Card>
 
           <Card>
-            <CardHeader title="Call window" subtitle="Practice-wide calling hours (ET)" />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <CardHeader
+              title="Human-assisted mode (V1)"
+              subtitle="Practice staff speak with the carrier rep directly — CollectRx AI navigates the IVR, holds the line, and silently listens/logs. It never speaks to a rep. Requires an escalation phone below for the warm transfer."
+            />
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={!autonomousInPlan || settings.humanAssistedMode !== false}
+                  disabled={isReadOnly || !autonomousInPlan}
+                  onChange={(e) => setSettings({ ...settings, humanAssistedMode: e.target.checked })}
+                  className="rounded border-gray-300 text-crx-600 focus:ring-crx-500"
+                />
+                Human-assisted mode enabled
+              </label>
+              {!autonomousInPlan && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Every call uses Hold Sentinel. Autonomous calling, where CollectRx speaks with the rep, is not available on any plan yet.
+                </p>
+              )}
+              {(!autonomousInPlan || settings.humanAssistedMode !== false) && !settings.escalationPhoneNumber && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Set an escalation phone below — that's where calls transfer to staff once a rep answers.
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <WhoTakesTheCallCard
+            settings={settings}
+            onChange={setSettings}
+            disabled={!canEditSetup}
+            timeZone={practiceTimezone}
+            staff={staff}
+            staffLoadFailed={staffLoadFailed}
+          />
+
+          <Card>
+            <CardHeader
+              title="Call window"
+              subtitle="The hours CollectRx may dial carriers (Eastern). Your own staffed hours are set in Who takes the call, and when."
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Start"
                 value={settings.callWindowStart}
-                disabled={isReadOnly}
+                disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, callWindowStart: e.target.value })}
               />
               <Input
                 label="End"
                 value={settings.callWindowEnd}
-                disabled={isReadOnly}
+                disabled={!canEditSetup}
                 onChange={(e) => setSettings({ ...settings, callWindowEnd: e.target.value })}
-              />
-              <Input
-                label="Escalation phone (E.164)"
-                value={settings.escalationPhoneNumber}
-                disabled={isReadOnly}
-                onChange={(e) => setSettings({ ...settings, escalationPhoneNumber: e.target.value })}
               />
             </div>
           </Card>
@@ -423,7 +495,7 @@ export default function PracticeSettings() {
                           type="text"
                           className="w-full text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
                           value={c.providerNumber}
-                          disabled={isReadOnly}
+                          disabled={!canEditSetup}
                           maxLength={50}
                           placeholder="e.g. ON-123456"
                           onChange={(e) => updateCarrier(idx, { providerNumber: e.target.value })}

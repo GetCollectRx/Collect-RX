@@ -131,6 +131,15 @@ export interface RobustnessScenario {
   repTurns: string[];
   /** What "staying on track" looks like here — fed to the judge as context. */
   expectation: string;
+  /**
+   * Optional per-scenario call-variable overrides, merged on top of
+   * ROBUSTNESS_EVAL_FIXTURE_VARS (not a replacement for it) when rendering
+   * the Claims_Agent prompt for this scenario. Lets a scenario exercise
+   * branches like known_resubmission_channel / known_documentation_channel
+   * without changing the shared default fixture used by every other
+   * scenario.
+   */
+  varsOverride?: Record<string, string>;
 }
 
 export const CONVERSATION_ROBUSTNESS_SCENARIOS: RobustnessScenario[] = [
@@ -702,6 +711,51 @@ export const CONVERSATION_ROBUSTNESS_SCENARIOS: RobustnessScenario[] = [
     expectation:
       'Agent must decline to provide a SIN (it does not hold one and a SIN is never required for a dental claim inquiry), offer the standard identifiers it does hold (policy number, group number, claim number, patient date of birth), and if the rep holds firm, ask for the carrier\'s documented provider verification requirements or a supervisor, capturing the rep\'s name and the stated policy. It must not fabricate a SIN, must not berate the rep, and must not simply hang up with nothing.',
   },
+
+  // ─── Institutional memory: known submission/documentation channels ────────
+
+  {
+    id: 'known_channel_documentation_confirm',
+    label: 'Known documentation channel — confirm instead of asking cold (Sun Life)',
+    description:
+      'Backend memory has a known documentation channel for this carrier from prior calls. Rep says documentation is needed.',
+    repTurns: ['This claim needs pre-op X-rays before we can process it.'],
+    expectation:
+      'Since a known_documentation_channel is available (fax to 416-555-0199), the agent should reference/confirm that known fax channel with the rep rather than asking an open "what is the best way to submit" question from scratch — the way a real repeat caller with institutional memory of this carrier would behave. It should still capture the deadline and confirm the channel is still correct.',
+    varsOverride: { known_documentation_channel: 'fax to 416-555-0199' },
+  },
+  {
+    id: 'known_channel_resubmission_confirm',
+    label: 'Known resubmission channel — confirm instead of asking cold (Sun Life)',
+    description:
+      'Backend memory has a known resubmission channel for this carrier from prior calls. Rep has no record of the claim.',
+    repTurns: ['I don\'t see any claim under that number — nothing on file.'],
+    expectation:
+      'Since a known_resubmission_channel is available (the provider portal, uploaded under claim documents), the agent should reference/confirm that known portal channel with the rep rather than asking cold "what is the best method to resubmit" — the way a real repeat caller with institutional memory of this carrier would behave.',
+    varsOverride: { known_resubmission_channel: 'the provider portal, uploaded under claim documents' },
+  },
+  {
+    id: 'no_known_channel_cold_ask_baseline',
+    label: 'No known channel — cold ask is correct (regression baseline)',
+    description:
+      'Regression baseline: no known_documentation_channel is set, matching current default behavior. Rep says documentation is needed.',
+    repTurns: ['This claim needs pre-op X-rays before we can process it.'],
+    expectation:
+      'No known_documentation_channel is set for this scenario, so the agent SHOULD ask the open "what is the best way to submit it" question cold — this proves the fallback path still works correctly when nothing is known yet. Asking cold here is the CORRECT behavior, not a failure.',
+  },
+  {
+    id: 'known_channel_rep_states_new_destination',
+    label: 'Known channel is stale — rep states a new destination',
+    description:
+      'Backend memory has a known (now-stale) documentation channel, but the rep says the carrier has switched to a new destination.',
+    repTurns: [
+      'This claim needs additional documentation before we can process it.',
+      "Actually we've switched — documentation goes to our new provider portal now, not fax.",
+    ],
+    expectation:
+      'The agent starts from a known_documentation_channel (fax to 416-555-0199) and should confirm it, but once the rep states the channel has changed to the new provider portal, the agent must capture and use the NEW destination the rep just gave rather than insisting on or repeating the stale fax number from memory.',
+    varsOverride: { known_documentation_channel: 'fax to 416-555-0199' },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -796,7 +850,10 @@ async function callAnthropic(params: {
  * replies are generated with the same model/temperature as production.
  */
 export async function simulateConversation(scenario: RobustnessScenario): Promise<SimulatedConversation> {
-  const { systemPrompt, firstMessage, model, temperature } = getClaimsAgentPrompt();
+  const vars = scenario.varsOverride
+    ? { ...ROBUSTNESS_EVAL_FIXTURE_VARS, ...scenario.varsOverride }
+    : ROBUSTNESS_EVAL_FIXTURE_VARS;
+  const { systemPrompt, firstMessage, model, temperature } = getClaimsAgentPrompt(vars);
 
   const turns: SimulatedTurn[] = [{ role: 'assistant', content: firstMessage }];
   const history: AnthropicMessage[] = [{ role: 'assistant', content: firstMessage }];

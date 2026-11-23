@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory completion checkpoint (every change, any size, any surface)
+
+This applies to every code change, including one line, in Claude Code, Cowork, claude.ai chat, or any other agent. Code is not done, and must not be reported as done, until each gate has passed or is explicitly marked UNVERIFIED with the reason.
+
+1. **Scope:** feature branch only. Never push to `main`, never merge, no force-push or workflow edits without the owner's explicit approval in the current session. Follow the branch flow in `Collect-RX-main/CLAUDE.md` (`feature/*` to `main` through a pull request; there is no `prd` branch, it was decommissioned in PR #64).
+2. **Standards:** the PRD rules in `Collect-RX-main/CLAUDE.md` apply to every change: zero `any` (no aliases, no eslint-disable workarounds), zero lint errors, tests pass, PHI boundary, CARRIER_BLOCK.
+3. **Local gates before any push:** `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:rls`, `npm run check:api`, `npx prisma validate`, plus a secret scan of the diff and of branch history (CI scans history, so a credential in an earlier commit cannot be fixed by a later one). If `scripts/verify-all.sh` exists in your checkout, run `bash scripts/verify-all.sh` instead: it covers all of these, starts its own throwaway PostgreSQL 16, and reports UNVERIFIED rather than passing a gate it could not run.
+4. **No credentials anywhere:** fixtures use placeholder hosts without `user:pass@`. No literal special characters (for example NBSP) in source; use escapes. No braces in `schema.prisma` doc comments (the RLS coverage script mis-parses them).
+5. **API pushes skip `.githooks/pre-push`.** Any agent that pushes through the GitHub API or a connector must run the gates above first, or mark each one UNVERIFIED and say so before pushing.
+6. **After pushing:** read every failed CI job log and state the cause before changing anything. Never assume green. A secret finding in history stops work until the owner picks a remedy.
+7. **Required CI checks:** `ci-gate`, `pr-gate` (the pull request description must carry the last line of `bash scripts/verify-all.sh`) and `Detect exposed secrets`. See [`docs/operations/CI-GATES.md`](docs/operations/CI-GATES.md). `scripts/check-gate-parity.sh` fails CI if the pre-push hook, `verify-all.sh` and the CI `verify` job drift apart, so change them together.
+8. **Done report:** a table of gate, status (pass, fail, UNVERIFIED) and evidence, with uncertainty stated first. Done means all required CI checks are green and nothing is UNVERIFIED without the owner's acknowledgement.
+
 ## Documentation source of truth (read this first)
 
 This repo has more than one doc claiming to describe "current state." When they conflict, this is the order of authority:
@@ -104,7 +117,7 @@ Twilio (telephony — calls to carriers)
 ```
 
 Two subsystems live alongside the core AR flow and aren't captured above:
-- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Core/Growth/Scale tiers via Stripe Billing, overage handling, COGS breaker. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
+- **Billing** (`prisma/schema.prisma`: `BillingTier`, `UsagePeriod`) — trial limits, Hold Sentinel / Recovery (`core`) / Growth / Scale tiers via Stripe Billing, overage handling, COGS breaker. Plans also decide which features a practice can use (`src/billing/entitlements.ts`, [ADR 0004](docs/adr/0004-product-tiers.md)); enforce new features at the server, not only in the UI. Gates call volume the same way CARRIER_BLOCK does — see Critical safety rules below.
 - **Marketing/growth engine** (`Collect-RX-main/src/server/marketing/`) — prospect harvesting, email campaign scheduler, AI outreach calls, reply intelligence, referral engine. Self-serve acquisition, separate from the carrier-calling product itself.
 
 ### Vapi Voice Squad
@@ -118,6 +131,8 @@ Five agents are orchestrated as a squad — they hand off to each other mid-call
 - **Resolution_Closer** — confirms payment, closes the claim
 
 (Corrected 2026-07-30 — this section previously omitted Hold_Sentinel. See `Collect-RX-main/tasks/lessons.md` 2026-07-30 entry.)
+
+**Two calling modes, set per practice.** The squad above is the **autonomous** mode (full AR recovery). **V1, the product sold first, is Hold Sentinel human-assisted mode** (`humanAssistedMode`): IVR_Navigator, then Hold_Sentinel, then Claims_Scribe. When a rep answers, the call transfers to practice staff, who talk to the rep; Claims_Scribe listens and logs outcomes that build per-carrier playbooks. See [ADR 0003](docs/adr/0003-v1-hold-sentinel-wedge.md). New practices start in Hold Sentinel mode (`humanAssistedMode` defaults to `true`); a practice that explicitly turns it off keeps its choice. No SMS goes to the practice on handoff.
 
 The squad receives UUID tokens in metadata — never real patient names, DOBs, or identifiers in metadata. Patient identifiers required for carrier lookup are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens on the backend before the call; PHI is never stored in logs or the database.
 

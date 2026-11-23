@@ -41,7 +41,7 @@ export function billingSkipPracticeIds(): Set<string> {
   );
 }
 
-const PAID_TIER_IDS: BillingTier[] = ['core', 'growth', 'scale'];
+const PAID_TIER_IDS: BillingTier[] = ['sentinel', 'core', 'growth', 'scale'];
 
 /**
  * True for any recognized plan id, regardless of whether it currently has a
@@ -65,7 +65,7 @@ let warnedLegacyPlanConfig = false;
 export function subscriptionPlanCatalog(): SubscriptionPlanSnapshot[] {
   if (process.env.SUBSCRIPTION_PLAN_CONFIG?.trim() && !warnedLegacyPlanConfig) {
     warnedLegacyPlanConfig = true;
-    logger.warn('[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is core/growth/scale from tiers.ts (STRIPE_PRICE_CORE|GROWTH|SCALE).', {});
+    logger.warn('[subscription-plans] SUBSCRIPTION_PLAN_CONFIG is no longer supported — the catalog is sentinel/core/growth/scale from tiers.ts (STRIPE_PRICE_SENTINEL|CORE|GROWTH|SCALE).', {});
   }
   return PAID_TIER_IDS.flatMap((id) => {
     const tier = TIERS[id];
@@ -88,7 +88,7 @@ export function defaultSubscriptionPlan(): SubscriptionPlanSnapshot | null {
     const configuredDefault = catalog.find((plan) => plan.id === defaultId);
     if (configuredDefault) return configuredDefault;
   }
-  return catalog.find((plan) => plan.id === 'core') ?? catalog[0] ?? null;
+  return catalog.find((plan) => plan.id === 'sentinel') ?? catalog[0] ?? null;
 }
 
 export function subscriptionPlanById(planId: string | null | undefined): SubscriptionPlanSnapshot | null {
