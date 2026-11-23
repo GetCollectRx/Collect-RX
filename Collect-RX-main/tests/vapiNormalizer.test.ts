@@ -189,3 +189,40 @@ describe('escalateOverdueRecoveryActions', () => {
     expect(where.status).toEqual({ in: ['OPEN', 'BLOCKING'] });
   });
 });
+
+describe('normalizeVapiWebhook: live transcript messages (docs.vapi.ai/server-url/events)', () => {
+  const call = { id: 'call-live-1', assistantOverrides: { metadata: METADATA } };
+
+  it('consumes a final transcript line from the far party', () => {
+    const out = normalizeVapiWebhook({
+      message: { type: 'transcript', role: 'user', transcriptType: 'final', transcript: 'We do not accept automated calls.', call },
+    });
+    expect(out).toMatchObject({ type: 'transcript', call: { id: 'call-live-1' }, transcript: 'We do not accept automated calls.' });
+    expect(out?.metadata?.practiceId).toBe('practice-1');
+  });
+
+  it('consumes the final-only message type form', () => {
+    const out = normalizeVapiWebhook({
+      message: { type: 'transcript[transcriptType="final"]', role: 'user', transcript: 'Please hold.', call },
+    });
+    expect(out?.type).toBe('transcript');
+  });
+
+  it('ignores partial lines, which repeat as the transcriber refines them', () => {
+    expect(normalizeVapiWebhook({
+      message: { type: 'transcript', role: 'user', transcriptType: 'partial', transcript: 'We do not acc', call },
+    })).toBeNull();
+  });
+
+  it("ignores the assistant's own speech so it can never trip a carrier block", () => {
+    expect(normalizeVapiWebhook({
+      message: { type: 'transcript', role: 'assistant', transcriptType: 'final', transcript: "I'm ending this call.", call },
+    })).toBeNull();
+  });
+
+  it('ignores an empty transcript', () => {
+    expect(normalizeVapiWebhook({
+      message: { type: 'transcript', role: 'user', transcriptType: 'final', transcript: '', call },
+    })).toBeNull();
+  });
+});
