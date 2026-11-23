@@ -45,6 +45,7 @@ import { callerAdminOrganizationId } from '../accessControl/organizationContext.
 import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
+import { sendWelcomeEmail } from '../email/welcomeEmail.js';
 import { appBaseUrlFromRequest } from '../email/appLinks.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
@@ -973,12 +974,27 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         displayName: user.displayName,
       };
       setUserAuthCookie(res, sessionAuth);
+
+      try {
+        await sendWelcomeEmail({
+          toEmail: user.email,
+          displayName: user.displayName,
+          practiceName: practice.name,
+          baseUrl: appBaseUrlFromRequest(req),
+        });
+      } catch (emailErr) {
+        // The account is already created and the owner is already signed in —
+        // a delivery problem (bad provider key, outage) must not fail signup.
+        logger.error('[authRoutes] welcome email send failed (account still created)', { error: emailErr });
+      }
+
       return res.status(201).json({
         user,
         practiceId: practice.id,
         organizationId,
         role: user.role,
         userRole: isOrgSignup ? 'billing_ops_manager' : 'owner',
+        ...(wantsDesktopSession(req) ? { sessionToken: signUserToken(sessionAuth) } : {}),
       });
     } catch (e) {
       logger.error('[authRoutes] register error', { error: e });
@@ -1190,7 +1206,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         displayName: user.displayName,
       };
       setUserAuthCookie(res, sessionAuth);
-      return res.status(201).json({ user, role: user.role });
+      return res.status(201).json({
+        user,
+        role: user.role,
+        ...(wantsDesktopSession(req) ? { sessionToken: signUserToken(sessionAuth) } : {}),
+      });
     } catch (e) {
       logger.error('[authRoutes] accept-invite error', { error: e });
       return res.status(500).json({ error: 'Failed to create account' });

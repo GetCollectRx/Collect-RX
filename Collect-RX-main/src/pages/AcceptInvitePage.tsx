@@ -4,6 +4,7 @@ import { CollectRxLogoPortal } from '../components/brand/CollectRxLogo'
 import { apiFetch, apiFetchJson } from '../lib/apiFetch'
 import { HOME_ROUTE, USER_ROLE_LABELS, type UserRole } from '../types/userRole'
 import { usePractice } from '../context/PracticeContext'
+import { setDesktopSessionToken } from '../lib/desktopAuth'
 
 interface InviteInfo {
   email: string
@@ -40,9 +41,10 @@ export default function AcceptInvitePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, displayName: form.displayName, password: form.password }),
       })
-      const data = await res.json() as { error?: string; role?: string }
+      const data = await res.json() as { error?: string; role?: string; sessionToken?: string }
       if (!res.ok) { setError(data.error ?? 'Failed to create account'); return }
       const role = (data.role ?? invite?.role ?? 'front_desk') as UserRole
+      setDesktopSessionToken(data.sessionToken)
       await refreshSession()
       navigate(HOME_ROUTE[role] ?? '/dashboard', { replace: true })
     } catch {
