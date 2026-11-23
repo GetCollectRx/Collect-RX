@@ -76,7 +76,7 @@ The founder's standing directive of 2026-11-12 (`docs/operations/PRE-CALL-LOGIC-
 
 | Decision | State |
 |---|---|
-| Is carrier approval for autonomous a hard gate, as the Oct 28 PRD says, or advisory? | **Open, and the most important one.** The Oct 28 PRD requires graduation evidence and founder approval per carrier. The founder's 2026-11-23 direction says autonomous is not blocked. Recommended reconciliation: the practice may choose autonomous, and each carrier activates only when it meets the conditions; otherwise that carrier uses Hold Sentinel and the screen says why. |
+| Is carrier approval for autonomous a hard gate, as the Oct 28 PRD says, or advisory? | **DEFAULT (register D-02), stands unless the founder vetoes.** The practice may choose autonomous, and each carrier activates only when it meets the conditions (plan, graduation evidence, founder approval, terms check). Otherwise that carrier uses Hold Sentinel and the screen says why. This satisfies both the Oct 28 PRD and the founder's 2026-11-23 direction that autonomous is not blocked. |
 | Graduation thresholds | Starting figures exist in the Oct 28 PRD: at least 50 staff-handled calls, reference number captured on at least 90 percent, unresolved fields at most 15 percent, rep suspicion of automation at most 2 percent, at least 3 of 5 playbook categories. They are starting figures before any live data. |
 | Autonomous plan placement and prices | Proposed in the Oct 28 PRD (core, growth, scale at 50, 100, 150 calls). Prices not set and waiting on Epic 6. Whether the $399 or the $799 figure is current for Hold Sentinel is also open. |
 | Owner permission to edit setup | Proposed yes in PRD v2's matrix, pending approval. |
