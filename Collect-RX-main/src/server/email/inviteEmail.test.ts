@@ -13,7 +13,7 @@ describe('sendInviteEmail', () => {
   const original = process.env.SENDGRID_API_KEY;
   beforeEach(() => {
     vi.clearAllMocks();
-    send.mockResolvedValue(undefined);
+    send.mockResolvedValue([{ headers: {} }, {}]);
   });
   afterEach(() => {
     if (original === undefined) delete process.env.SENDGRID_API_KEY;

@@ -2,7 +2,8 @@
 // CollectRx — Rate Limiter Middleware
 //
 // Four tiers:
-//   authLimiter     —   5 req / 15 min per IP  (login — brute-force prevention)
+//   loginLimiter    —   5 failed logins / 15 min per account (never keyed by IP)
+//   authLimiter     —   5 req / 15 min per IP  (password-reset request — counts every request)
 //   strictLimiter   —  10 req / 1 min  per IP  (expensive writes)
 //   standardLimiter — 120 req / 1 min per IP (anonymous), 600/min per signed-in user
 //   webhookLimiter  — 300 req / 1 min  per IP  (Vapi can fire bursts)
@@ -13,6 +14,7 @@
 // All tiers return JSON 429 with Retry-After so clients can back off cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { createHash } from 'node:crypto';
 import IORedis from 'ioredis';
 import { RedisStore, type RedisReply } from 'rate-limit-redis';
 import rateLimit, { ipKeyGenerator, type Options, type RateLimitRequestHandler } from 'express-rate-limit';
@@ -119,6 +121,42 @@ export const authLimiter: RateLimitRequestHandler = makeLimiter('auth', {
   skip: () => skipForE2eOrVitest() || process.env.NODE_ENV !== 'production',
   handler: makeHandler(
     'Too many login attempts. Please wait 15 minutes before trying again.',
+  ),
+});
+
+/** Non-reversible fingerprint of the submitted email, so no raw address is used as a key. */
+function loginEmailFingerprint(req: Request): string {
+  const raw = (req.body as { email?: unknown } | undefined)?.email;
+  if (typeof raw !== 'string') return 'none';
+  const email = raw.trim().toLowerCase().slice(0, 254);
+  if (!email) return 'none';
+  return createHash('sha256').update(email).digest('hex').slice(0, 32);
+}
+
+/**
+ * Exported for tests: the bucket a login request is counted in.
+ * Keyed by account (email fingerprint) and login route only. The client IP is
+ * deliberately never read, stored or used here: shared office addresses must
+ * not lock out unrelated accounts, and an IP is personal information we do not
+ * need to hold for this control.
+ */
+export function loginLimiterKey(req: Request): string {
+  return `${req.baseUrl}${req.path}|${loginEmailFingerprint(req)}`;
+}
+
+/**
+ * loginLimiter — 5 FAILED attempts per 15 minutes per account.
+ * Successful logins do not count, and one account's failures never affect any
+ * other account. Same skip rules as authLimiter (tests, e2e, non-production).
+ */
+export const loginLimiter: RateLimitRequestHandler = makeLimiter('login', {
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  keyGenerator: loginLimiterKey,
+  skip: () => skipForE2eOrVitest() || process.env.NODE_ENV !== 'production',
+  handler: makeHandler(
+    'Too many failed login attempts for this account. Please wait 15 minutes before trying again.',
   ),
 });
 

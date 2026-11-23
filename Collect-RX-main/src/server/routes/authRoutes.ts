@@ -24,9 +24,10 @@ import {
 } from '../authToken';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorizeRole';
-import { authLimiter } from '../middleware/rateLimiter';
+import { authLimiter, loginLimiter } from '../middleware/rateLimiter';
 import { getSubscriptionGateState } from '../stripe/billing';
 import { trialEndDate } from '../../billing/tiers.js';
+import { CURRENT_AGREEMENTS, checkAcceptedAgreements } from '../agreements/agreementRegistry.js';
 import {
   formatZodError,
   loginBodySchema,
@@ -44,6 +45,8 @@ import { callerAdminOrganizationId } from '../accessControl/organizationContext.
 import { createOrgPractice } from '../organizations/practiceProvisioning.js';
 import { sendPasswordResetEmail } from '../email/passwordReset.js';
 import { sendInviteEmail } from '../email/inviteEmail.js';
+import { sendWelcomeEmail } from '../email/welcomeEmail.js';
+import { appBaseUrlFromRequest } from '../email/appLinks.js';
 import { runSessionHealthCheck } from '../observability/sessionHealthCheck.js';
 import { logger } from '../observability/logger.js';
 import { runWithRlsContext } from '../db/rlsContext.js';
@@ -316,7 +319,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login — email + password (practice staff or platform roles) */
-  r.post('/login', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = loginBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -363,7 +366,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-dev */
-  r.post('/login/platform-dev', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login/platform-dev', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       if (!platformDevPasswordConfigured()) {
         return res.status(503).json({
@@ -408,7 +411,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
   });
 
   /** POST /api/auth/login/platform-user — legacy alias; main /login accepts platform emails too */
-  r.post('/login/platform-user', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
+  r.post('/login/platform-user', loginLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body as { email?: string; password?: string };
       if (!email?.trim() || !password) {
@@ -824,7 +827,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       const token = await issuePasswordResetToken(prisma, user.id);
 
       // Send email (fire-and-forget; errors are logged but never expose to caller)
-      void sendPasswordResetEmail(user.email, user.displayName, token).catch((e: unknown) => {
+      void sendPasswordResetEmail(user.email, user.displayName, token, appBaseUrlFromRequest(req)).catch((e: unknown) => {
         logger.error('[password-reset] email send failed', { error: e });
       });
 
@@ -876,11 +879,26 @@ export function createAuthRouter(prisma: PrismaClient): Router {
    * user as group_admin/org_admin — the self-serve counterpart to the
    * platform_dev-only POST /api/admin/organizations tool.
    */
+  /** GET /api/auth/agreements — the agreements and versions a new account must accept (public). */
+  r.get('/agreements', (_req: Request, res: Response) => {
+    return res.json({ agreements: CURRENT_AGREEMENTS });
+  });
+
   r.post('/register', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
-      const { practiceName, displayName, email, password, organizationName, additionalPractices } = parsed.data;
+      const { practiceName, displayName, email, password, organizationName, additionalPractices, acceptedAgreements } = parsed.data;
+
+      const agreementCheck = checkAcceptedAgreements(acceptedAgreements);
+      if (!agreementCheck.ok) {
+        return res.status(400).json({
+          error: 'All agreements must be accepted at their current version before signing up',
+          code: 'AGREEMENTS_REQUIRED',
+          missing: agreementCheck.missing,
+          stale: agreementCheck.stale,
+        });
+      }
 
       if (additionalPractices && additionalPractices.length > 0 && !organizationName) {
         return res.status(400).json({ error: 'organizationName is required when adding additional locations' });
@@ -929,6 +947,16 @@ export function createAuthRouter(prisma: PrismaClient): Router {
           select: { id: true, email: true, displayName: true, role: true },
         });
 
+        await tx.agreementAcceptance.createMany({
+          data: agreementCheck.accepted.map((a) => ({
+            practiceId: practice.id,
+            userId: user.id,
+            kind: a.kind,
+            version: a.version,
+            source: 'signup',
+          })),
+        });
+
         if (organization) {
           await tx.organizationMember.create({
             data: { organizationId: organization.id, userId: user.id, role: 'org_admin' },
@@ -946,12 +974,27 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         displayName: user.displayName,
       };
       setUserAuthCookie(res, sessionAuth);
+
+      try {
+        await sendWelcomeEmail({
+          toEmail: user.email,
+          displayName: user.displayName,
+          practiceName: practice.name,
+          baseUrl: appBaseUrlFromRequest(req),
+        });
+      } catch (emailErr) {
+        // The account is already created and the owner is already signed in —
+        // a delivery problem (bad provider key, outage) must not fail signup.
+        logger.error('[authRoutes] welcome email send failed (account still created)', { error: emailErr });
+      }
+
       return res.status(201).json({
         user,
         practiceId: practice.id,
         organizationId,
         role: user.role,
         userRole: isOrgSignup ? 'billing_ops_manager' : 'owner',
+        ...(wantsDesktopSession(req) ? { sessionToken: signUserToken(sessionAuth) } : {}),
       });
     } catch (e) {
       logger.error('[authRoutes] register error', { error: e });
@@ -1083,9 +1126,12 @@ export function createAuthRouter(prisma: PrismaClient): Router {
       // delivery failure (bad credentials, SendGrid outage) must not report
       // total failure, since the invite is still valid and usable via its link.
       try {
-        const sent = await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token });
-        // No email provider configured: say so and hand back the token, as for a delivery failure.
-        return res.json(sent ? { invited: true, emailSent: true } : { invited: true, emailSent: false, token: invite.token });
+        const delivered = await sendInviteEmail({ toEmail: email, practiceName: practice.name, role, token: invite.token, baseUrl: appBaseUrlFromRequest(req) });
+        if (!delivered) {
+          // No mail provider configured: nothing was sent, so hand the inviter the link.
+          return res.json({ invited: true, emailSent: false, token: invite.token });
+        }
+        return res.json({ invited: true, emailSent: true });
       } catch (emailErr) {
         console.error('invite email send failed (token still created):', emailErr);
         return res.json({ invited: true, emailSent: false, token: invite.token });
@@ -1160,7 +1206,11 @@ export function createAuthRouter(prisma: PrismaClient): Router {
         displayName: user.displayName,
       };
       setUserAuthCookie(res, sessionAuth);
-      return res.status(201).json({ user, role: user.role });
+      return res.status(201).json({
+        user,
+        role: user.role,
+        ...(wantsDesktopSession(req) ? { sessionToken: signUserToken(sessionAuth) } : {}),
+      });
     } catch (e) {
       logger.error('[authRoutes] accept-invite error', { error: e });
       return res.status(500).json({ error: 'Failed to create account' });

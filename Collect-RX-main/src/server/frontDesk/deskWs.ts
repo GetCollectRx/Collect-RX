@@ -1,7 +1,9 @@
 import type { IncomingMessage, Server } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyAuthToken, COOKIE_NAME } from '../authToken.js';
-import { getUserRole, authPracticeId } from '../accessControl/types.js';
+import { getUserRole, authPracticeId, type AuthJwtPayload } from '../accessControl/types.js';
+import { prisma } from '../../lib/prisma.js';
+import { canConnectToDesk } from './deskAccess.js';
 import type { WsEvent } from '../../types/ws.js';
 
 type Client = { ws: WebSocket; practiceId: string };
@@ -19,13 +21,6 @@ function parseCookie(header: string | undefined, name: string): string | null {
 }
 
 const WS_PATH = '/ws/desk';
-
-/**
- * Roles that can take a live rep: the same people who can mark themselves available. Tokens carry the brief
- * role, where office manager, billing coordinator and associate dentist all collapse to practice_owner.
- * Accountants (auditor) and group admins stay out.
- */
-const DESK_SOCKET_ROLES: ReadonlySet<string> = new Set(['front_desk', 'office_manager', 'practice_owner']);
 
 export function attachDeskWebSocket(server: Server): WebSocketServer {
   // noServer + a manually path-scoped 'upgrade' listener, not the {server, path}
@@ -48,6 +43,14 @@ export function attachDeskWebSocket(server: Server): WebSocketServer {
       return;
     }
 
+    // A malformed frame makes ws emit 'error' and close the socket itself. With
+    // no listener, Node rethrows it as an uncaught exception, which takes the
+    // whole API process down for every practice. Attached first, before the
+    // token check and the awaited designated-user check, so no window is left.
+    ws.on('error', (err: Error) => {
+      console.warn('[deskWs] socket error, connection dropped:', err.message);
+    });
+
     const token =
       parseCookie(req.headers.cookie, COOKIE_NAME) ??
       (typeof req.headers['sec-websocket-protocol'] === 'string'
@@ -59,32 +62,55 @@ export function attachDeskWebSocket(server: Server): WebSocketServer {
       return;
     }
 
-    let practiceId: string;
+    let auth: AuthJwtPayload;
     try {
-      const auth = verifyAuthToken(token);
-      const role = getUserRole(auth);
-      if (role === null || !DESK_SOCKET_ROLES.has(role)) {
-        ws.close(4403, 'Forbidden');
-        return;
-      }
-      if (!authPracticeId(auth)) {
-        ws.close(4401, 'Unauthorized');
-        return;
-      }
-      practiceId = authPracticeId(auth)!;
+      auth = verifyAuthToken(token);
     } catch {
       ws.close(4401, 'Unauthorized');
       return;
     }
+    const practiceId = authPracticeId(auth);
 
-    const client: Client = { ws, practiceId };
-    clients.add(client);
+    function admit(id: string) {
+      // The designated-user check awaits the database, so shutdown may have
+      // begun, or the client gone, since the connection was accepted.
+      if (!acceptingConnections) {
+        ws.close(1001, 'Server shutting down');
+        return;
+      }
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const client: Client = { ws, practiceId: id };
+      clients.add(client);
 
-    ws.on('close', () => {
-      clients.delete(client);
-    });
+      ws.on('close', () => {
+        clients.delete(client);
+      });
 
-    ws.send(JSON.stringify({ type: 'connected', data: { practiceId } }));
+      ws.send(JSON.stringify({ type: 'connected', data: { practiceId: id } }));
+    }
+
+    if (getUserRole(auth) === 'front_desk') {
+      if (!practiceId) {
+        ws.close(4401, 'Unauthorized');
+        return;
+      }
+      admit(practiceId);
+      return;
+    }
+
+    // Anyone else is admitted only when the practice has designated them to
+    // receive the handoff alert.
+    if (!practiceId) {
+      ws.close(4403, 'Forbidden');
+      return;
+    }
+    canConnectToDesk(prisma, auth).then(
+      (allowed) => {
+        if (allowed) admit(practiceId);
+        else ws.close(4403, 'Forbidden');
+      },
+      () => ws.close(1011, 'Unavailable'),
+    );
   });
 
   return wss;

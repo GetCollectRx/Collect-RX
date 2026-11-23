@@ -20,6 +20,7 @@ import { CARRIER_CONCURRENCY_LIMITS, DEFAULT_CARRIER_CONCURRENCY_LIMIT } from '.
 import { canadianHolidayName, isWithinPracticeStaffHours } from './callCalendar.js';
 import { requiresPracticeNpi } from './lineRequirements.js';
 import type { IndustryType } from '../types/industry-claims.js';
+import { checkDispatchPause } from '../server/pauseControls/dispatchPause.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -441,6 +442,10 @@ export async function validateDispatch(
   // 1. CARRIER_BLOCK — highest priority check
   const blockGuard = await checkCarrierBlock(prisma, practiceId, carrierId);
   if (!blockGuard.allowed) return blockGuard;
+
+  // 1b. Operator pause (system, practice or carrier) — refuses new dials only.
+  const pauseGuard = await checkDispatchPause(prisma, { practiceId, carrierId });
+  if (!pauseGuard.allowed) return pauseGuard;
 
   // 2. Fleet-wide per-carrier concurrency ceiling
   const concurrencyGuard = checkCarrierConcurrency(carrierId, carrierActiveCounts);

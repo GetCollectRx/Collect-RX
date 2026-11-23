@@ -13,7 +13,7 @@
 import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { vapiClient, VapiAmbiguousOutcomeError, getHumanAssistedSquadId } from '../vapi/client';
+import { vapiClient, VapiAmbiguousOutcomeError, getHumanAssistedSquadId, resolvePracticeCallerId } from '../vapi/client';
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
@@ -36,6 +36,7 @@ import logger from '../server/observability/logger.js';
 import { appendAuditLog, appendPhiAccessEvent } from '../server/audit/auditLog.js';
 import { compensateFailedManualDispatch } from '../server/insurance/manualDispatchCompensation.js';
 import { CSV_AR_FEATURES, isCsvArFeatureEnabled } from '../server/featureFlags/csvArFeatures.js';
+import { checkDispatchPause } from '../server/pauseControls/dispatchPause.js';
 import { practiceHasFeature, planTierForPractice } from '../server/plans/practiceEntitlements.js';
 import { FEATURES, featureLockedMessage, effectiveHumanAssisted } from '../billing/entitlements.js';
 import multer from 'multer';
@@ -789,7 +790,14 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     const [practice, practiceSettings] = await Promise.all([
       prisma.practice.findUnique({
         where: { id: practiceId },
-        select: { name: true, billingPhone: true, npi: true, taxId: true },
+        select: {
+          name: true,
+          billingPhone: true,
+          npi: true,
+          taxId: true,
+          vapiPhoneNumberId: true,
+          callerIdAuthorizedAt: true,
+        },
       }),
       getPracticeSettings(prisma, practiceId),
     ]);
@@ -864,7 +872,11 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
     // practices), not just this practice's own row, since that's the one
     // thing the in-transaction recheck above intentionally left out to avoid
     // nesting its own lookup inside reserveDispatchSlot()'s transaction.
-    const lateBlock = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
+    const carrierBlockGuard = await checkCarrierBlock(prisma, practiceId, claim.carrierId);
+    // An operator pause set since the upfront check must stop the dial as well.
+    const lateBlock = carrierBlockGuard.allowed
+      ? await checkDispatchPause(prisma, { practiceId, carrierId: claim.carrierId })
+      : carrierBlockGuard;
     if (!lateBlock.allowed) {
       await prisma.$transaction([
         prisma.insuranceClaim.update({
@@ -888,6 +900,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
         claimId: claim.id,
         carrierId: claim.carrierId,
         practiceId,
+        vapiPhoneNumberId: practice ? resolvePracticeCallerId(practice) : undefined,
         patientToken: claim.patientToken,
         // ── PHI — from piiVault.detokenize() above; ephemeral, never stored ──────
         patientName:        phiResult.phi.patientName,

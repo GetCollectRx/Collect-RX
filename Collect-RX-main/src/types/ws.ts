@@ -8,7 +8,19 @@ import type {
   ActiveAgent,
 } from './frontDesk.js';
 
+/** A carrier rep answered and the call is transferring to staff right now. */
+export interface DeskHandoffRequest {
+  callId: string;
+  claimNumber: string | null;
+  carrierId: string | null;
+  outstandingAmount: number | null;
+  /** Display name of the practice's designated individual, when one is set. */
+  designatedName: string | null;
+  requestedAt: string;
+}
+
 export type WsEvent =
+  | { type: 'handoff.requested'; data: DeskHandoffRequest }
   | { type: 'call.started'; data: { call: DeskActiveCall } }
   | {
       type: 'call.state_changed';
@@ -25,11 +37,6 @@ export type WsEvent =
       data: { block: DeskCarrierBlock; affectedQueueCount: number };
     }
   | { type: 'carrier.unblocked'; data: { carrierId: CarrierId } }
-  | {
-      /** A live rep answered and the call is being handed to the practice's staff line now. No patient detail. */
-      type: 'handoff.requested';
-      data: { claimRef: string; carrierId: string | null; amountText: string; at: string };
-    }
   | {
       /** A live rep answered but nobody could take the call, so the agent asked for a reference number. */
       type: 'handoff.missed';

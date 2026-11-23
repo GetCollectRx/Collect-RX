@@ -1,9 +1,14 @@
 /**
- * Who may open the desk socket. The rep-on-the-line alert reaches the roles that can mark themselves available.
+ * Who may open the desk socket. Front desk users always may. Anyone else only when the practice has designated
+ * them, so the rep-on-the-line alert follows the person the practice chose and not a job title.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
 import { WebSocket } from 'ws';
+const { getSettings } = vi.hoisted(() => ({ getSettings: vi.fn() }));
+vi.mock('../src/server/services/practiceSettingsService.js', () => ({ getPracticeSettings: getSettings }));
+vi.mock('../src/server/db/rlsContext.js', () => ({ runWithRlsBypass: <T>(fn: () => T) => fn() }));
+
 import { attachDeskWebSocket } from '../src/server/frontDesk/deskWs.js';
 import { COOKIE_NAME, signUserToken } from '../src/server/authToken.js';
 
@@ -30,16 +35,35 @@ function outcome(port: number, role: 'front_desk' | 'practice_owner' | 'office_m
 }
 
 describe('desk socket roles', () => {
-  it('admits the roles that can take a live rep and refuses accountants and group admins', async () => {
+  it('always admits front desk, and refuses everyone else who is not designated', async () => {
+    getSettings.mockResolvedValue({ designatedIndividualUserId: null });
     const { server, port } = await start();
     try {
-      // The token carries a brief role: office manager, billing coordinator and associate dentist all collapse to practice_owner.
-      for (const role of ['front_desk', 'practice_owner', 'office_manager', 'billing_coordinator'] as const) {
-        expect(await outcome(port, role)).toEqual({ firstMessage: 'connected', closeCode: null });
-      }
-      for (const role of ['accountant', 'group_admin'] as const) {
+      expect(await outcome(port, 'front_desk')).toEqual({ firstMessage: 'connected', closeCode: null });
+      for (const role of ['practice_owner', 'office_manager', 'billing_coordinator', 'accountant', 'group_admin'] as const) {
         expect(await outcome(port, role)).toEqual({ firstMessage: null, closeCode: 4403 });
       }
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('admits the person the practice designated, whatever their role', async () => {
+    getSettings.mockResolvedValue({ designatedIndividualUserId: 'u-1' });
+    const { server, port } = await start();
+    try {
+      expect(await outcome(port, 'office_manager')).toEqual({ firstMessage: 'connected', closeCode: null });
+      expect(await outcome(port, 'practice_owner')).toEqual({ firstMessage: 'connected', closeCode: null });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('refuses someone who is not the designated person', async () => {
+    getSettings.mockResolvedValue({ designatedIndividualUserId: 'someone-else' });
+    const { server, port } = await start();
+    try {
+      expect(await outcome(port, 'office_manager')).toEqual({ firstMessage: null, closeCode: 4403 });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

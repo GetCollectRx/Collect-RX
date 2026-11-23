@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePractice } from '../context/PracticeContext'
-import { describeHandoffAlert, type HandoffAlert, type HandoffEvent } from '../lib/handoffAlert'
+import { describeMissedHandoff, type MissedHandoffAlert, type MissedHandoffEvent } from '../lib/missedHandoffAlert'
 import { getDesktopSessionToken } from '../lib/desktopAuth'
 import { resolveWsUrl } from '../lib/resolveWsUrl'
 import type { WsEvent } from '../types/ws'
@@ -28,12 +28,13 @@ function beep(): void {
 }
 
 /**
- * App-wide banner for the moment that matters most: a live carrier rep just answered. It does not depend on
- * which page is open, so staff see it wherever they are. The phone ringing is still the real signal.
+ * App-wide banner for a live carrier rep who answered when nobody could take the call. The agent has asked the
+ * rep for a reference number and the claim is retried, so staff need to know to follow up. The successful
+ * handoff has its own alert (HandoffAlertBanner). It does not depend on which page is open.
  */
 export function RepOnLineAlert() {
   const { practiceId, userRole } = usePractice()
-  const [alert, setAlert] = useState<HandoffAlert | null>(null)
+  const [alert, setAlert] = useState<MissedHandoffAlert | null>(null)
   const backoff = useRef(500)
   const originalTitle = useRef<string | null>(null)
   const allowed = Boolean(practiceId) && ALERT_ROLES.has(String(userRole))
@@ -55,8 +56,8 @@ export function RepOnLineAlert() {
         } catch {
           return
         }
-        if (msg.type === 'handoff.requested' || msg.type === 'handoff.missed') {
-          setAlert(describeHandoffAlert(msg as HandoffEvent))
+        if (msg.type === 'handoff.missed') {
+          setAlert(describeMissedHandoff(msg as MissedHandoffEvent))
           beep()
         }
       }
@@ -80,7 +81,7 @@ export function RepOnLineAlert() {
     if (!alert) return
     const timer = setTimeout(() => setAlert(null), alert.autoDismissMs)
     originalTitle.current ??= document.title
-    document.title = alert.kind === 'requested' ? 'Rep on the line | CollectRx' : 'Missed rep | CollectRx'
+    document.title = 'Missed rep | CollectRx'
     return () => {
       clearTimeout(timer)
       if (originalTitle.current !== null) document.title = originalTitle.current
@@ -89,16 +90,11 @@ export function RepOnLineAlert() {
   }, [alert])
 
   if (!alert) return null
-  const urgent = alert.kind === 'requested'
   return (
     <div
       role="alert"
       aria-live="assertive"
-      className={`mx-4 mt-3 rounded-lg border p-3 ${
-        urgent
-          ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-100'
-          : 'border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-100'
-      }`}
+      className="mx-4 mt-3 rounded-lg border border-amber-400 bg-amber-50 p-3 text-amber-900 dark:bg-amber-900/20 dark:text-amber-100"
     >
       <div className="flex items-start justify-between gap-3">
         <div>

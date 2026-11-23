@@ -22,6 +22,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
+import { broadcastDesk } from '../server/frontDesk/deskWs.js';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import {
@@ -47,7 +48,6 @@ import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claims
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
 import { canTakeRep, inFlightHumanAssistedCalls, readyStaffCount } from '../server/frontDesk/staffPresence.js';
-import { broadcastDesk } from '../server/frontDesk/deskWs.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
 import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
 import { processHoldAndTransitions } from './holdTransitionProcessor.js';
@@ -245,6 +245,15 @@ async function handleLogCallOutcome(
   }
 }
 
+
+async function designatedIndividualName(practiceId: string, userId: string | undefined): Promise<string | null> {
+  if (!userId) return null;
+  const user = await runWithRlsBypass(() =>
+    prisma.user.findFirst({ where: { id: userId, practiceId }, select: { displayName: true } }),
+  );
+  return user?.displayName ?? null;
+}
+
 async function handleStaffHandoffRequest(
   vapiCallId: string | undefined,
   claimId: string | undefined,
@@ -338,10 +347,25 @@ async function handleStaffHandoffRequest(
       console.error('[vapi-webhook] request_staff_handoff notification failed:', notifyErr);
     }
 
-    broadcastDesk(practiceId, {
-      type: 'handoff.requested',
-      data: { claimRef: claimLabel, carrierId: claim?.carrierId ?? null, amountText: amountText.trim(), at: new Date().toISOString() },
-    });
+    // Screen alert for the desk. The transfer is already under way and the
+    // ringing line is the primary signal, so a failure here must not change the
+    // handoff result or make the agent speak.
+    try {
+      const designatedName = await designatedIndividualName(practiceId, settings.designatedIndividualUserId);
+      broadcastDesk(practiceId, {
+        type: 'handoff.requested',
+        data: {
+          callId: vapiCallId,
+          claimNumber: claim?.claimNumber ?? null,
+          carrierId: claim?.carrierId ?? null,
+          outstandingAmount: Number.isFinite(amt) && amt > 0 ? amt : null,
+          designatedName,
+          requestedAt: new Date().toISOString(),
+        },
+      });
+    } catch (alertErr) {
+      console.error('[vapi-webhook] request_staff_handoff screen alert failed:', alertErr);
+    }
 
     // No SMS to the practice (founder decision): the ringing staff line is
     // the real-time signal, and the dashboard notification carries the context.

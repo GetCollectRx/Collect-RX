@@ -1,24 +1,75 @@
-import { describe, expect, it } from 'vitest';
-import { describeHandoffAlert } from './handoffAlert';
+import { describe, expect, it } from 'vitest'
+import {
+  carrierDisplayName,
+  describeHandoffAlert,
+  handoffAlertReducer,
+  type HandoffAlert,
+} from './handoffAlert'
 
-describe('handoff alert text', () => {
-  it('tells staff to pick up, with carrier and claim, and no patient detail', () => {
-    const a = describeHandoffAlert({ type: 'handoff.requested', data: { claimRef: 'CLM-42', carrierId: 'sun_life', amountText: 'for $300.00', at: '2026-11-12T15:00:00Z' } });
-    expect(a.kind).toBe('requested');
-    expect(a.title).toMatch(/pick up the phone/iu);
-    expect(a.detail).toContain('Sun Life');
-    expect(a.detail).toContain('CLM-42');
-    expect(a.detail).toContain('$300.00');
-  });
+function alert(overrides: Partial<HandoffAlert> = {}): HandoffAlert {
+  return {
+    callId: 'call-1',
+    claimNumber: 'CLM-42',
+    carrierId: 'sun_life',
+    outstandingAmount: 300,
+    designatedName: 'Dana Reyes',
+    requestedAt: '2026-11-23T15:00:00.000Z',
+    ...overrides,
+  }
+}
 
-  it('explains why a call was missed and keeps that banner longer', () => {
-    const none = describeHandoffAlert({ type: 'handoff.missed', data: { claimRef: 'CLM-7', carrierId: 'manulife', reason: 'no_staff_available', at: 'x' } });
-    const busy = describeHandoffAlert({ type: 'handoff.missed', data: { claimRef: 'CLM-7', carrierId: 'manulife', reason: 'staff_busy', at: 'x' } });
-    const failed = describeHandoffAlert({ type: 'handoff.missed', data: { claimRef: 'CLM-7', carrierId: null, reason: 'transfer_failed', at: 'x' } });
-    expect(none.detail).toMatch(/marked available/iu);
-    expect(busy.detail).toMatch(/already on a call/iu);
-    expect(failed.detail).toMatch(/did not connect/iu);
-    expect(failed.detail).toContain('a carrier');
-    expect(none.autoDismissMs).toBeGreaterThan(describeHandoffAlert({ type: 'handoff.requested', data: { claimRef: 'c', carrierId: null, amountText: '', at: 'x' } }).autoDismissMs);
-  });
-});
+describe('handoffAlertReducer', () => {
+  it('shows an alert when a rep answers', () => {
+    expect(handoffAlertReducer(null, { type: 'requested', alert: alert() })).toEqual(alert())
+  })
+
+  it('clears the alert when staff acknowledge it', () => {
+    expect(handoffAlertReducer(alert(), { type: 'acknowledged' })).toBeNull()
+  })
+
+  it('replaces an unacknowledged alert with the newer one', () => {
+    const newer = alert({ callId: 'call-2', requestedAt: '2026-11-23T15:05:00.000Z' })
+    expect(handoffAlertReducer(alert(), { type: 'requested', alert: newer })).toEqual(newer)
+  })
+
+  it('drops an alert that timed out', () => {
+    expect(handoffAlertReducer(alert(), { type: 'expired', requestedAt: alert().requestedAt })).toBeNull()
+  })
+
+  it('does not let an old timeout dismiss a newer alert', () => {
+    const newer = alert({ requestedAt: '2026-11-23T15:05:00.000Z' })
+    expect(handoffAlertReducer(newer, { type: 'expired', requestedAt: alert().requestedAt })).toEqual(newer)
+  })
+
+  it('ignores a timeout when there is no alert', () => {
+    expect(handoffAlertReducer(null, { type: 'expired', requestedAt: alert().requestedAt })).toBeNull()
+  })
+})
+
+describe('describeHandoffAlert', () => {
+  it('names the carrier, the claim and the amount, and tells the designated person to pick up', () => {
+    expect(describeHandoffAlert(alert())).toEqual({
+      headline: 'Sun Life rep is on the line',
+      instruction: 'Pick up your phone now, Dana Reyes. The call is transferring to you.',
+      meta: 'Claim CLM-42 · $300.00',
+    })
+  })
+
+  it('still reads clearly when nothing is known beyond the call', () => {
+    expect(
+      describeHandoffAlert(alert({ carrierId: null, claimNumber: null, outstandingAmount: null, designatedName: null })),
+    ).toEqual({
+      headline: 'A carrier rep is on the line',
+      instruction: 'Pick up the phone now. The call is transferring to the office.',
+      meta: '',
+    })
+  })
+})
+
+describe('carrierDisplayName', () => {
+  it('turns carrier ids into readable names', () => {
+    expect(carrierDisplayName('green_shield')).toBe('Green Shield')
+    expect(carrierDisplayName('telus_adjudicare')).toBe('Telus Adjudicare')
+    expect(carrierDisplayName(null)).toBeNull()
+  })
+})

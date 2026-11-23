@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
+import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
+import { isWithinStaffedHours } from '../../lib/staffedHours.js'
 import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
-import { initiateCall, endVapiCall, getHumanAssistedSquadId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
+import { initiateCall, endVapiCall, getHumanAssistedSquadId, resolvePracticeCallerId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
 import { broadcastDesk } from './deskWs.js';
@@ -192,6 +194,8 @@ const DEFER_AMBIGUOUS_DISPATCH_MS = 60 * 60 * 1000;
 
 // Fleet-wide carrier concurrency limiting — when a carrier's active call
 // count hits its per-carrier ceiling, defer new attempts for the carrier.
+const DEFER_CARRIER_PAUSE_BASE_MS = 2 * 60 * 1000; // resume within minutes of the pause lifting
+const DEFER_CARRIER_PAUSE_JITTER_MS = 30 * 1000;
 const DEFER_CARRIER_CONCURRENCY_BASE_MS = 2 * 60 * 1000; // 2 minutes base
 const DEFER_CARRIER_CONCURRENCY_JITTER_MS = 1 * 60 * 1000; // 1 minute random jitter
 
@@ -445,6 +449,9 @@ async function settleBlockedCandidate(
     case 'NO_STAFF_AVAILABLE':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
+    case 'PAUSED_SYSTEM':
+    case 'PAUSED_PRACTICE':
+    case 'PAUSE_STATE_UNAVAILABLE':
       // Practice-wide (or global) condition — no candidate can dispatch this tick.
       return 'stop';
     case 'CLAIM_TOO_YOUNG':
@@ -465,6 +472,18 @@ async function settleBlockedCandidate(
         DEFER_STAFF_ACTION_MS,
         'MISSING_PRACTICE_IDENTIFIERS',
         guardReason ?? 'Add the practice NPI in practice settings so carrier phone menus can be answered.',
+      );
+      return 'skip';
+    case 'PAUSED_CARRIER':
+      // Only this carrier is paused; other candidates in the batch may still
+      // dial. A short deferral lets the entry resume within minutes of the
+      // operator lifting the pause.
+      await deferQueueEntry(
+        prisma,
+        entry.id,
+        withJitter(DEFER_CARRIER_PAUSE_BASE_MS, DEFER_CARRIER_PAUSE_JITTER_MS),
+        'PAUSED_CARRIER',
+        guardReason ?? 'Calling to this carrier is paused; retries automatically once the pause is lifted.',
       );
       return 'skip';
     case 'CARRIER_CONCURRENCY_LIMIT':
@@ -732,15 +751,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
     // Practice facts the dispatch guard needs, read once per tick: the NPI that
     // phone menus ask for, and the zone and mode that decide whether staff are
     // there to take a transfer.
+    const guardSettings = dispatchable.length === 0 ? null : await getPracticeSettings(prisma, practiceId);
     const guardContext =
-      dispatchable.length === 0
+      guardSettings === null
         ? null
         : {
             practice: await prisma.practice.findUnique({ where: { id: practiceId }, select: { npi: true, timezone: true } }),
-            humanAssisted: effectiveHumanAssisted(
-              await planTierForPractice(prisma, practiceId),
-              (await getPracticeSettings(prisma, practiceId)).humanAssistedMode,
-            ),
+            humanAssisted: effectiveHumanAssisted(await planTierForPractice(prisma, practiceId), guardSettings.humanAssistedMode),
+            // A practice that set its own staffed hours is judged against them further down, so the
+            // default weekday 08:00-17:00 rule in the guard must not override its schedule.
+            hasOwnStaffedHours: Boolean(guardSettings.staffedHours),
           };
     // Read presence once per tick, and only for human-assisted practices. Calls dialed earlier in this same
     // tick are counted through the in-flight number refreshed inside the loop below.
@@ -759,7 +779,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       carrierActiveCounts,
       practiceNpi: guardContext?.practice?.npi ?? null,
       industryType: next.claim.industryType,
-      practiceTimezone: guardContext?.practice?.timezone,
+      practiceTimezone: guardContext?.hasOwnStaffedHours ? undefined : guardContext?.practice?.timezone,
       staffAvailabilityRequired: guardContext?.humanAssisted ?? false,
       readyStaff,
       humanAssistedInFlight: readyStaff === undefined ? undefined : await inFlightHumanAssistedCalls(prisma, practiceId),
@@ -804,7 +824,16 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
 
     const practice = await prisma.practice.findUnique({
       where: { id: practiceId },
-      select: { name: true, billingPhone: true, npi: true, taxId: true, practiceAddress: true },
+      select: {
+        name: true,
+        timezone: true,
+        billingPhone: true,
+        npi: true,
+        taxId: true,
+        practiceAddress: true,
+        vapiPhoneNumberId: true,
+        callerIdAuthorizedAt: true,
+      },
     });
     const practiceSettings = await getPracticeSettings(prisma, practiceId);
     // The plan, not only the practice's toggle, decides whether the AI may
@@ -814,6 +843,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       await planTierForPractice(prisma, practiceId),
       practiceSettings.humanAssistedMode,
     );
+    // A Hold Sentinel call hands the live rep to staff, so it must not start
+    // when nobody is at the desk to take it. This only ever holds calls back:
+    // the carrier block, pause and call-window checks have already run, and a
+    // practice that never set staffed hours is limited by the call window alone.
+    if (
+      humanAssisted &&
+      practiceSettings.staffedHours &&
+      !isWithinStaffedHours(practiceSettings.staffedHours, practice?.timezone ?? '')
+    ) {
+      logger.info('[deskQueueEngine] outside staffed hours — not dialing for this practice', { practiceId });
+      return;
+    }
     const practiceCarrierConfig = practiceSettings.carrierConfigs.find(
       (c) => c.carrierId === next.claim.carrierId,
     );
@@ -984,6 +1025,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       treatmentCodes:         next.claim.treatmentCodes ?? undefined,
       // ── Practice identity ─────────────────────────────────────────────────────
       practiceId,
+      vapiPhoneNumberId:      practice ? resolvePracticeCallerId(practice) : undefined,
       practiceName:           practice?.name ?? '',
       practiceNpi:            practice?.npi ?? undefined,
       practiceTaxId:          practice?.taxId ?? undefined,
@@ -1016,6 +1058,18 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
         reason: lateGuard.reason,
       });
       const disposition = await settleBlockedCandidate(prisma, next, lateGuard.code, lateGuard.reason);
+      if (disposition === 'stop') return;
+      continue;
+    }
+
+    // A pause set while this claim was being prepared must stop the dial too.
+    const latePause = await checkDispatchPause(prisma, { practiceId, carrierId: next.claim.carrierId });
+    if (!latePause.allowed) {
+      logger.warn('[deskQueueEngine] dispatch paused mid-dispatch — settling queue entry', {
+        claimId: next.claimId,
+        code: latePause.code,
+      });
+      const disposition = await settleBlockedCandidate(prisma, next, latePause.code, latePause.reason);
       if (disposition === 'stop') return;
       continue;
     }
