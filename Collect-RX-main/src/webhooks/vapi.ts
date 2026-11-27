@@ -22,6 +22,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { webhookGuardScanMetadata, webhookGuardScanPayload, persistFromVapiPayload, enqueueForAudit } from '../services/guardrails/index.js';
 import { transferVapiCall, type VapiWebhookPayload } from '../vapi/client';
+import { broadcastDesk } from '../server/frontDesk/deskWs.js';
 import { sendPracticeNotification } from '../server/services/practiceNotificationService.js';
 import { getPracticeSettings } from '../server/services/practiceSettingsService.js';
 import {
@@ -46,6 +47,7 @@ import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js'
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
+import { canTakeRep, inFlightHumanAssistedCalls, readyStaffCount } from '../server/frontDesk/staffPresence.js';
 import { resolveOutcomeFromWebhookPayload } from '../outcome/webhookOutcomeResolver.js';
 import { recordIvrFailureRelearningObservation } from '../server/discovery/carrierDiscoveryService.js';
 import { processHoldAndTransitions } from './holdTransitionProcessor.js';
@@ -243,6 +245,15 @@ async function handleLogCallOutcome(
   }
 }
 
+
+async function designatedIndividualName(practiceId: string, userId: string | undefined): Promise<string | null> {
+  if (!userId) return null;
+  const user = await runWithRlsBypass(() =>
+    prisma.user.findFirst({ where: { id: userId, practiceId }, select: { displayName: true } }),
+  );
+  return user?.displayName ?? null;
+}
+
 async function handleStaffHandoffRequest(
   vapiCallId: string | undefined,
   claimId: string | undefined,
@@ -286,6 +297,32 @@ async function handleStaffHandoffRequest(
       return missedHandoffResult;
     }
 
+    // PRD missed-call path: a rep answered but nobody is marked available (or every ready person is
+    // already on a call). Do not ring a phone nobody is watching. Give the reference-number script instead.
+    const [ready, inFlight] = await runWithRlsBypass(async () => [
+      await readyStaffCount(prisma, practiceId),
+      await inFlightHumanAssistedCalls(prisma, practiceId),
+    ]);
+    if (!canTakeRep(ready, inFlight)) {
+      void appendAuditLog(prisma, {
+        practiceId,
+        action: 'frontdesk.handoff.missed',
+        subjectType: 'Call',
+        subjectId: vapiCallId,
+        details: { reason: ready === 0 ? 'missed: no staff available' : 'missed: staff busy', readyStaff: ready, callsInFlight: inFlight },
+      });
+      broadcastDesk(practiceId, {
+        type: 'handoff.missed',
+        data: {
+          claimRef: claim?.claimNumber ?? 'unknown',
+          carrierId: claim?.carrierId ?? null,
+          reason: ready === 0 ? 'no_staff_available' : 'staff_busy',
+          at: new Date().toISOString(),
+        },
+      });
+      return missedHandoffResult;
+    }
+
     await transferVapiCall(vapiCallId, escalationPhone);
 
     const amt = Number(claim?.outstandingAmount);
@@ -310,12 +347,36 @@ async function handleStaffHandoffRequest(
       console.error('[vapi-webhook] request_staff_handoff notification failed:', notifyErr);
     }
 
+    // Screen alert for the desk. The transfer is already under way and the
+    // ringing line is the primary signal, so a failure here must not change the
+    // handoff result or make the agent speak.
+    try {
+      const designatedName = await designatedIndividualName(practiceId, settings.designatedIndividualUserId);
+      broadcastDesk(practiceId, {
+        type: 'handoff.requested',
+        data: {
+          callId: vapiCallId,
+          claimNumber: claim?.claimNumber ?? null,
+          carrierId: claim?.carrierId ?? null,
+          outstandingAmount: Number.isFinite(amt) && amt > 0 ? amt : null,
+          designatedName,
+          requestedAt: new Date().toISOString(),
+        },
+      });
+    } catch (alertErr) {
+      console.error('[vapi-webhook] request_staff_handoff screen alert failed:', alertErr);
+    }
+
     // No SMS to the practice (founder decision): the ringing staff line is
     // the real-time signal, and the dashboard notification carries the context.
 
     return 'HANDOFF INITIATED — staff have been notified and the call is transferring to them now. Stop talking; do not engage further.';
   } catch (err) {
     console.error('[vapi-webhook] request_staff_handoff failed:', err);
+    broadcastDesk(practiceId, {
+      type: 'handoff.missed',
+      data: { claimRef: claim?.claimNumber ?? 'unknown', carrierId: claim?.carrierId ?? null, reason: 'transfer_failed', at: new Date().toISOString() },
+    });
     return missedHandoffResult;
   }
 }

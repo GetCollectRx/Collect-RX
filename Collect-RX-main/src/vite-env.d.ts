@@ -12,6 +12,8 @@ declare global {
       onUpdateDownloaded?: (cb: (data: unknown) => void) => () => void
       restartToUpdate?: () => Promise<unknown>
       retryDashboardLoad?: () => Promise<unknown>
+      showHandoffAlert?: () => Promise<unknown>
+      clearHandoffAlert?: () => Promise<unknown>
     }
   }
 }

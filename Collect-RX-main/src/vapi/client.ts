@@ -35,6 +35,7 @@
 import { CarrierId } from '@prisma/client';
 import { CALL_TIMEOUTS, CARRIER_TIMEOUTS } from '../billing/tiers.js';
 import { vapiCircuitBreaker } from './circuitBreaker.js';
+import { vapiBaseUrl } from './baseUrl.js';
 
 /**
  * Hard call-length ceiling sent to Vapi (assistantOverrides.maxDurationSeconds
@@ -54,6 +55,12 @@ export interface VapiCallParams {
   claimId: string;
   carrierId: CarrierId;
   practiceId: string;
+  /**
+   * The practice's own Vapi number, so carriers see the practice as the caller.
+   * Pass only the result of resolvePracticeCallerId; when omitted the shared
+   * VAPI_PHONE_NUMBER_ID is used.
+   */
+  vapiPhoneNumberId?: string;
   /**
    * UUID from PIIVault — primary key linking this Vapi call to CollectRx DB.
    * Passed in Vapi metadata only. Never used as a PHI carrier.
@@ -228,7 +235,7 @@ export const CDCP_CONTACT_CENTRE_PHONE = '+18888888110';
 
 // Overridable so test harnesses can point dispatch at a local mock instead of
 // live Vapi. Production deployments leave this unset.
-const VAPI_BASE_URL = (process.env.VAPI_BASE_URL || 'https://api.vapi.ai').replace(/\/$/, '');
+const VAPI_BASE_URL = vapiBaseUrl();
 
 function getApiKey(): string {
   const key = process.env.VAPI_API_KEY;
@@ -251,10 +258,26 @@ export function getHumanAssistedSquadId(): string {
   return process.env.VAPI_HUMAN_ASSISTED_SQUAD_ID?.trim() || 'bbe41279-5301-4b5d-aa43-d7b23eaab5e7';
 }
 
-function getPhoneNumberId(): string {
-  const id = process.env.VAPI_PHONE_NUMBER_ID;
+function getPhoneNumberId(overrideId?: string): string {
+  const id = overrideId?.trim() || process.env.VAPI_PHONE_NUMBER_ID;
   if (!id) throw new Error('[VapiClient] VAPI_PHONE_NUMBER_ID environment variable is not set');
   return id;
+}
+
+/**
+ * The only sanctioned way to read a practice's own caller ID. A number that was
+ * registered but never authorized must not be dialed from, so both fields have
+ * to be present; otherwise the caller gets undefined and falls back to the
+ * shared number.
+ */
+export function resolvePracticeCallerId(practice: {
+  vapiPhoneNumberId?: string | null;
+  callerIdAuthorizedAt?: Date | null;
+}): string | undefined {
+  if (practice.callerIdAuthorizedAt && practice.vapiPhoneNumberId) {
+    return practice.vapiPhoneNumberId;
+  }
+  return undefined;
 }
 
 // A hung connection here would hang the queue-engine tick promise forever —
@@ -349,6 +372,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
     claimId,
     carrierId,
     practiceId,
+    vapiPhoneNumberId,
     patientToken,
     // PHI — resolved from piiVault.detokenize() by caller
     patientName,
@@ -404,7 +428,7 @@ export async function initiateCall(params: VapiCallParams): Promise<VapiCallResu
 
   const payload = {
     squadId: squadId || getSquadId(),
-    phoneNumberId: getPhoneNumberId(),
+    phoneNumberId: getPhoneNumberId(vapiPhoneNumberId),
     customer: {
       number: carrierPhone,
     },

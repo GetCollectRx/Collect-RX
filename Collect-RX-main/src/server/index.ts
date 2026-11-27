@@ -78,6 +78,8 @@ import { prisma } from '../lib/prisma';
 import { piiVault as claimsPiiVault } from '../pii-vault';
 import { assertJwtConfigAtStartup } from './authToken';
 import { assertPasswordResetEmailConfigAtStartup } from './email/passwordReset.js';
+import { checkEmailProvider } from './email/mailer.js';
+import { buildSpaIndexHtml } from './spaShell.js';
 import { assertPostgresTlsInProduction } from './databaseTls';
 import { assertDataResidencyAtStartup } from './dataResidency';
 import { assertRlsRoleSafeInProduction } from './db/rlsRoleGuard.js';
@@ -86,7 +88,7 @@ import {
   assertPhiEncryptionAtRestConfigured,
 } from './crypto/phiEncryptionKey.js';
 import { assertEmrSyncWebhookUrlConfiguredAtBoot } from './emrWebhookUrl.js';
-import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken } from './healthMetricsExposure.js';
+import { buildPublicHealthMetricsBody, hasValidHealthMetricsToken, isOpenEnvironment } from './healthMetricsExposure.js';
 import { getEventLoopHealth } from './observability/eventLoopHealth.js';
 import { startOpsMonitor } from './observability/opsMonitor.js';
 import { runStartupScanOnBoot } from './observability/runStartupScan.js';
@@ -259,6 +261,21 @@ try {
   logger.error('[server] FATAL', { error: e });
   process.exit(1);
 }
+
+// A dead or revoked email key does not stop the app, but it silently breaks
+// password resets and invites. Ask the provider once at boot and say so loudly.
+void checkEmailProvider().then((r) => {
+  if (r.ok) {
+    logger.info('[email] provider check passed', { provider: r.provider, detail: r.detail });
+  } else if (process.env.NODE_ENV === 'production') {
+    logger.error('[email] provider check FAILED: password reset and invite emails will not be delivered', {
+      provider: r.provider,
+      detail: r.detail,
+    });
+  } else {
+    logger.warn('[email] provider check skipped or failed (non-production)', { provider: r.provider, detail: r.detail });
+  }
+});
 
 assertPostgresTlsInProduction();
 assertDataResidencyAtStartup();
@@ -488,7 +505,7 @@ app.get('/api/health/live', healthLimiter, (_req: Request, res: Response) => {
 // detail — in production it is unreachable at all without a valid
 // HEALTH_METRICS_TOKEN bearer, even if the token itself was never configured.
 app.get('/api/diagnostics', healthLimiter, async (req: Request, res: Response) => {
-  if (process.env.NODE_ENV === 'production' && !hasValidHealthMetricsToken(req)) {
+  if (!isOpenEnvironment() && !hasValidHealthMetricsToken(req)) {
     res.status(401).json({ success: false, error: 'Unauthorized' });
     return;
   }
@@ -598,23 +615,14 @@ if (process.env.NODE_ENV === 'production') {
 
 let cachedSpaIndexHtml: string | null = null;
 
-function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/** SPA shell HTML with optional `<meta name="crx-public-api-origin">` for split static/API deployments. */
+/**
+ * SPA shell HTML. Express serves this shell itself, so `/api` is same-origin and the
+ * auth cookie stays first-party. The API-origin meta is only injected for a split
+ * static/API deployment, and only when SPA_INJECT_API_ORIGIN=true (see spaShell.ts).
+ */
 function getSpaIndexHtml(): string {
   if (cachedSpaIndexHtml !== null) return cachedSpaIndexHtml;
-  const raw = fs.readFileSync(indexHtmlPath, 'utf8');
-  const api = (process.env.PUBLIC_API_BASE_URL || '').trim().replace(/\/$/, '');
-  if (api) {
-    const meta = `<meta name="crx-public-api-origin" content="${escapeHtmlAttr(api)}" />`;
-    cachedSpaIndexHtml = /name="crx-public-api-origin"/i.test(raw)
-      ? raw.replace(/<meta\s+name="crx-public-api-origin"[^>]*>/i, meta)
-      : raw.replace('</head>', `${meta}\n</head>`);
-  } else {
-    cachedSpaIndexHtml = raw;
-  }
+  cachedSpaIndexHtml = buildSpaIndexHtml(fs.readFileSync(indexHtmlPath, 'utf8'), process.env);
   return cachedSpaIndexHtml;
 }
 

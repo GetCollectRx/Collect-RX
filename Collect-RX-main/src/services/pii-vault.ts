@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { randomUUID } from 'crypto';
+import { vapiBaseUrl } from '../vapi/baseUrl.js';
 
 // ---------------------------------------------------------------------------
 // Data residency constants
@@ -257,7 +258,7 @@ export async function handlePostCallAudioDeletion(
     const vapiKey = process.env.VAPI_API_KEY;
     if (!vapiKey) throw new Error('VAPI_API_KEY not set');
 
-    const vapiRes = await fetch(`https://api.vapi.ai/call/${vapiCallId}/recording`, {
+    const vapiRes = await fetch(`${vapiBaseUrl()}/call/${vapiCallId}/recording`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${vapiKey}`,

@@ -1,6 +1,3 @@
-import {
-  COLLECTRX_PROD_API_ORIGIN,
-} from './collectrxOrigins'
 import { isDesktopClient } from './desktopAuth'
 
 /** Packaged Electron serves UI from 127.0.0.1 and proxies /api locally. */
@@ -15,7 +12,7 @@ function useBundledDesktopApiProxy(): boolean {
  * Precedence: Electron `collectrx.apiOrigin` (COLLECTRX_API_ORIGIN), unless it is loopback while the
  *   page is remote HTTPS (then ignored) →
  * `<meta name="crx-public-api-origin">` (PUBLIC_API_BASE_URL / VITE_API_ORIGIN) →
- * `VITE_API_ORIGIN` (build-time) → **CollectRx public-site fallback** (see below) → same-origin `/api/...`.
+ * `VITE_API_ORIGIN` (build-time) → same-origin `/api/...`.
  *
  * **Dev on localhost:** If `VITE_API_ORIGIN` points at a remote host, the browser still loads the app
  * from `http://localhost:5173`. Auth cookies are `SameSite=Lax` on the API host, so they are **not**
@@ -26,9 +23,9 @@ function useBundledDesktopApiProxy(): boolean {
  * `fetch` → `SameSite=Lax` cookies not sent → 401 and logout. Non-http(s) pages (`file://`, custom
  * protocols) keep absolute resolution from Electron / meta / `VITE_API_ORIGIN`.
  *
- * Public marketing host (www.collectrx.ca) often serves only static HTML; `/api` there is not JSON.
- * When no origin is configured, production builds on collectrx.ca default to the Fly app
- * (override with VITE_API_ORIGIN or meta if your API lives elsewhere).
+ * There is deliberately no hostname-based fallback. www.collectrx.ca is served by the same Express
+ * app as the API, and redirecting its `/api` calls to collect-rx.fly.dev made the SameSite=Lax auth
+ * cookie cross-site, so every session call returned 401 and sign-in looped back to the login page.
  */
 
 /** Use Vite `/api` proxy in dev so httpOnly cookies stay same-site (see module comment). */
@@ -77,20 +74,12 @@ function effectiveElectronApiOrigin(): string {
 
 const viteOrigin = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, '') ?? ''
 
-/** When the SPA is on collectrx.ca but Express is on another host, avoid same-origin /api → HTML. */
-function inferredCollectRxApiOrigin(): string {
-  if (typeof window === 'undefined' || import.meta.env.DEV) return ''
-  const host = window.location.hostname.replace(/^www\./i, '')
-  if (host !== 'collectrx.ca') return ''
-  return COLLECTRX_PROD_API_ORIGIN
-}
-
 export function resolveApiUrl(path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`
   if (useBundledDesktopApiProxy()) return p
   if (useLocalViteApiProxy()) return p
   const origin =
-    effectiveElectronApiOrigin() || metaApiOrigin() || viteOrigin || inferredCollectRxApiOrigin()
+    effectiveElectronApiOrigin() || metaApiOrigin() || viteOrigin
   if (!origin) return p
   return `${origin}${p}`
 }

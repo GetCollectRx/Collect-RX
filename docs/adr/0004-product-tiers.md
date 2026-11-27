@@ -1,6 +1,6 @@
 # ADR 0004: Product tiers unlock features by plan
 
-**Status:** Accepted (founder decision)
+**Status:** Accepted (founder decision). Stage 3 and the forced Hold Sentinel enforcement are superseded by ADR 0005.
 **Date:** 2026-10-06
 
 ## Context

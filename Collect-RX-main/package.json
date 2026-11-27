@@ -63,6 +63,8 @@
     "startup-scan": "node scripts/startup-scan.mjs",
     "test:smoke-map": "vitest run tests/smoke/breakage-map.smoke.test.ts",
     "e2e": "playwright test",
+    "self-test": "bash self-test/run.sh",
+    "self-test:typecheck": "tsc -p self-test/tsconfig.json",
     "e2e:ci": "playwright test",
     "e2e:print-id": "tsx scripts/print-e2e-practice-id.ts",
     "db:generate": "prisma generate",

@@ -105,11 +105,23 @@ function proxyWebSocket(apiOrigin, req, socket, head) {
           .join('\r\n') +
         '\r\n\r\n',
     );
-    if (proxyHead && proxyHead.length) proxySocket.write(proxyHead);
+    // Bytes the API sent right behind its handshake reply (its first frame, for
+    // example "connected") belong to the client. They were once written back to
+    // the API, which read its own unmasked server frame as client input and
+    // died with "MASK must be set".
+    if (proxyHead && proxyHead.length) socket.write(proxyHead);
+    // Likewise, anything the client sent right behind its upgrade request
+    // belongs to the API.
+    if (head && head.length) proxySocket.write(head);
     proxySocket.pipe(socket);
     socket.pipe(proxySocket);
+    proxySocket.on('error', () => socket.destroy());
+    socket.on('error', () => proxySocket.destroy());
   });
 
+  // The API answered with a normal HTTP response (for example a rejection)
+  // instead of switching protocols; there is no WebSocket to forward.
+  proxyReq.on('response', () => socket.destroy());
   proxyReq.on('error', () => socket.destroy());
   proxyReq.end();
 }

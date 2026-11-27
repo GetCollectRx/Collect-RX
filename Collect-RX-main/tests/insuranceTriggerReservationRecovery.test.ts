@@ -28,6 +28,9 @@ vi.mock('../src/lib/prisma.js', () => ({
     callQueue: {
       updateMany: callQueueUpdateMany,
     },
+    practice: {
+      findUnique: vi.fn().mockResolvedValue({ npi: '9900001' }),
+    },
     $transaction: transactionMock,
   },
 }));

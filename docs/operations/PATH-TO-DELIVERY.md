@@ -117,6 +117,29 @@ Execute on staging, then prod:
 
 ---
 
+## Pilot wave 1 (supervised pilot build, engineering)
+
+Source: [COLLECTRX-PILOT-PRD.md](../pilot/COLLECTRX-PILOT-PRD.md) and [CLIENT-DAY-ONE-JOURNEY.md](../pilot/CLIENT-DAY-ONE-JOURNEY.md). One practice, one carrier, hosted app plus manual CSV upload, Hold Sentinel Step 1 only.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| B3 / R1 agreements record | **Built, in draft PR** | Signup is blocked until all three agreements are accepted at their current version. One append-only row per user, agreement and version (`agreement_acceptances`, tenant RLS, update rejected by trigger). Registry: `src/server/agreements/agreementRegistry.ts`. |
+| R6 pause controls and feature-flag route fix (G3) | Not started | |
+| R7 / F1 support email and in-app link | Not started | Needs support address and stated response time from the owner. |
+| R10 site fixes | Not started | Needs growth copy in `docs/pilot/growth/`. |
+| C2, C6, E2, F2, F5 | Not started | |
+| R3 handoff alert, R4 outcome entry | Blocked | Waiting on the alert channel decision below. |
+| R5 test call | Not started | |
+| R8 $399 plan | Blocked | Waiting on owner approval. No Stripe price is created until then. |
+
+### Open owner decisions
+
+- **Agreement wording.** Only the Terms of use has published text, and its page says counsel review is pending. The privacy and data agreement and the call-listening consent are recorded under version `draft-1`. Final text must be approved and the version bumped before any real practice signs up. The call-listening page (`/legal/call-listening`) is a draft that only describes current behaviour.
+- **Existing and invited users.** The record is written at signup only. Users added through invites, and accounts that already exist, have no acceptance row. Decide whether the pilot needs acceptance on invite and a re-accept prompt.
+- **Handoff alert channel (R3).** ADR 0003 says no SMS goes to the practice. Options: (1) in-app alert on the desk WebSocket with a sound and an accept button, no new channel, only works while a staff member has the app open; (2) in-app alert plus email, reaches staff away from the screen with a delay of seconds to minutes, email is already a configured channel; (3) in-app alert plus SMS to a staff number, fastest reach, requires amending ADR 0003 and adds PHI-adjacent messaging to review. Recommendation to discuss: option 2 for the pilot.
+
+---
+
 ## Production declaration
 
 Ready when **C–G** checkboxes that apply to your launch bar are complete, and no patient/client payment surfaces remain in app or runbooks.

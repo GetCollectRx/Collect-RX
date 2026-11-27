@@ -82,7 +82,7 @@ process.env.VAPI_CONCURRENCY_RESERVE = '0';
 
 const { prisma } = await import('../src/server/index.js');
 const { runDeskQueueTick } = await import('../src/server/frontDesk/queueEngine.js');
-const { createPracticeForTests } = await import('./factories/practice.js');
+const { createPracticeForTests, createUserForTests } = await import('./factories/practice.js');
 const { defaultPracticeSettings, updatePracticeSettings } = await import(
   '../src/server/services/practiceSettingsService.js'
 );
@@ -120,6 +120,9 @@ interface FleetPractice {
 
 async function seedDispatchablePractice(carrierId: CarrierId): Promise<FleetPractice> {
   const practice = await createPracticeForTests(prisma);
+  // Human-assisted dispatch needs someone marked available.
+  const staff = await createUserForTests(prisma, practice.id, 'front_desk');
+  await prisma.staffPresence.create({ data: { practiceId: practice.id, userId: staff.id, status: 'AVAILABLE' } });
 
   const settings = defaultPracticeSettings();
   settings.voiceAgentEnabled = true;
@@ -170,6 +173,8 @@ async function cleanupFleet(fleet: FleetPractice[]): Promise<void> {
   const practiceIds = fleet.map((p) => p.id);
   if (practiceIds.length === 0) return;
   await prisma.callAttempt.deleteMany({ where: { claim: { practiceId: { in: practiceIds } } } });
+  await prisma.staffPresence.deleteMany({ where: { practiceId: { in: practiceIds } } });
+  await prisma.user.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.callQueue.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.insuranceClaim.deleteMany({ where: { practiceId: { in: practiceIds } } });
   await prisma.practiceDeskState.deleteMany({ where: { practiceId: { in: practiceIds } } });
@@ -324,11 +329,24 @@ describe.skipIf(!dbReady)('DSO load capacity: real dispatch pipeline at N=20', (
     // tick after the first should be a same-instance renewal plus an M-7
     // no-op, exactly like sustained real operation over several minutes.
     const TICKS = 10;
-    for (let i = 0; i < TICKS; i++) {
-      await expect(runDeskQueueTick(prisma)).resolves.not.toThrow();
+    // The assertion is on each tick's claim outcome, not on the global lease row:
+    // queue_engine_lease is a shared singleton, and any other test process on the
+    // same database may delete it mid-run. A missing row is re-inserted by the next
+    // claim, so renewal succeeding shows up as the absence of the rejection warning.
+    // Reading the row here would also compare a database-clock lockedUntil against
+    // this file's pinned Date.now(), which made the old check vacuously true.
+    const warnSpy = vi.spyOn(logger, 'warn');
+    try {
+      for (let i = 0; i < TICKS; i++) {
+        await expect(runDeskQueueTick(prisma)).resolves.not.toThrow();
+      }
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('another replica holds the dispatch lease'),
+        expect.anything(),
+      );
+    } finally {
+      warnSpy.mockRestore();
     }
-    const lease = await prisma.queueEngineLease.findUnique({ where: { id: 'global' } });
-    expect(lease?.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
     // 60s was tight enough to time out under a full sequential `vitest run`
     // (235 files, ~440s total) even though 10 real ticks complete in ~50s in
     // isolation — this is host/DB load sensitivity, not a per-tick latency

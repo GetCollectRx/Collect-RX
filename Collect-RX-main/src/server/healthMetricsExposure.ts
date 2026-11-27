@@ -19,6 +19,16 @@ export function bearerToken(req: Request): string {
 }
 
 /**
+ * True only when NODE_ENV is explicitly "test" or "development". An unset or unknown NODE_ENV is treated as
+ * production, so a deployment that forgot to set it is still protected (the repo's Dockerfile and fly.toml
+ * files do not set NODE_ENV themselves).
+ */
+export function isOpenEnvironment(): boolean {
+  const env = process.env.NODE_ENV;
+  return env === 'test' || env === 'development';
+}
+
+/**
  * Shared by /api/health/metrics (redacts one field without this) and
  * /api/diagnostics (P1.2 — requires this always in production, since it
  * exposes more operational detail than the metrics endpoint).
@@ -35,7 +45,7 @@ export function hasValidHealthMetricsToken(req: Request): boolean {
  */
 export function buildPublicHealthMetricsBody(req: Request): { success: true; metrics: ReturnType<typeof getMetrics> } {
   const metrics = getMetrics();
-  if (process.env.NODE_ENV !== 'production') {
+  if (isOpenEnvironment()) {
     return { success: true, metrics };
   }
   if (hasValidHealthMetricsToken(req)) {

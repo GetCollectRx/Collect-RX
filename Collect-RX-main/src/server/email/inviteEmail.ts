@@ -1,16 +1,9 @@
 import { logger } from '../observability/logger.js';
+import { resolveAppBaseUrl } from './appLinks.js';
+import { isEmailConfigured, resolveFrom, sendMail } from './mailer.js';
 import { FOUNDER_SIGNATURE_TEXT, FOUNDER_SIGNATURE_HTML } from './founderSignature.js';
 
-async function getSendGrid() {
-  if (!process.env.SENDGRID_API_KEY) return null;
-  const sg = (await import('@sendgrid/mail')).default;
-  sg.setApiKey(process.env.SENDGRID_API_KEY);
-  return sg;
-}
 
-function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL || 'https://app.collectrx.ca').replace(/\/$/, '');
-}
 
 const ROLE_LABELS: Record<string, string> = {
   practice_owner: 'Practice Owner',
@@ -21,30 +14,31 @@ const ROLE_LABELS: Record<string, string> = {
   accountant: 'Accountant',
 };
 
+/**
+ * Resolves true only when the invite email was handed to a mail provider.
+ * Resolves false when no provider is configured, so callers can tell the
+ * inviter the email did not go out and give them the link instead of claiming
+ * success. A provider failure still throws.
+ */
 export async function sendInviteEmail(opts: {
   toEmail: string;
   practiceName: string;
   role: string;
   token: string;
-}): Promise<void> {
-  const acceptUrl = `${appBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
+  baseUrl?: string;
+}): Promise<boolean> {
+  const acceptUrl = `${opts.baseUrl ?? resolveAppBaseUrl()}/accept-invite?token=${encodeURIComponent(opts.token)}`;
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
-  const sg = await getSendGrid();
 
-  if (!sg) {
-    logger.info('[invite] SENDGRID_API_KEY not set — skipping email', {
-      to: opts.toEmail,
-      acceptUrl,
-    });
-    return;
+  if (!isEmailConfigured()) {
+    // The accept link carries a live invite token, so it is deliberately not logged.
+    logger.info('[invite] no email provider key set — skipping email', { to: opts.toEmail });
+    return false;
   }
 
-  const from = {
-    email: process.env.SENDGRID_FROM_EMAIL || 'ops@collectrx.ca',
-    name: process.env.SENDGRID_FROM_NAME || 'CollectRx',
-  };
+  const from = resolveFrom('ops@collectrx.ca');
 
-  await sg.send({
+  await sendMail({
     to: opts.toEmail,
     from,
     subject: `You've been invited to CollectRx — ${opts.practiceName}`,
@@ -70,4 +64,5 @@ export async function sendInviteEmail(opts: {
       </div>
     `,
   });
+  return true;
 }

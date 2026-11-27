@@ -2,6 +2,7 @@ import type { CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter.js';
 import type { CarrierConfig, PracticeSettings } from '../../types/practiceSettings.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
+import { isStaffedHours, validateStaffedHours } from '../../lib/staffedHours.js';
 
 const DEFAULT_CARRIER_IDS = Object.keys(CARRIER_CONFIGS) as CarrierId[];
 
@@ -95,6 +96,10 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.escalationPhoneNumber === 'string'
       ? { escalationPhoneNumber: o.escalationPhoneNumber }
       : {}),
+    ...(isStaffedHours(o.staffedHours) ? { staffedHours: o.staffedHours } : {}),
+    ...(typeof o.designatedIndividualUserId === 'string' && o.designatedIndividualUserId
+      ? { designatedIndividualUserId: o.designatedIndividualUserId }
+      : {}),
     ...(typeof o.billingPhone === 'string' ? { billingPhone: o.billingPhone } : {}),
     ...(o.telusTpaMappings && typeof o.telusTpaMappings === 'object'
       ? { telusTpaMappings: o.telusTpaMappings as Record<string, string> }
@@ -186,6 +191,13 @@ export function validatePracticeSettingsUpdate(
       return 'billingPhone must be valid E.164 (+1...)';
     }
   }
+  if (body.staffedHours !== undefined) {
+    const staffedErr = validateStaffedHours(body.staffedHours);
+    if (staffedErr) return staffedErr;
+  }
+  if (body.designatedIndividualUserId !== undefined && typeof body.designatedIndividualUserId !== 'string') {
+    return 'designatedIndividualUserId must be a user id';
+  }
   if (body.pmsVendor !== undefined) {
     if (!normalizePmsVendorId(body.pmsVendor)) {
       return 'pmsVendor is not a supported practice management system';
@@ -242,6 +254,15 @@ export async function updatePracticeSettings(
 ): Promise<PracticeSettings> {
   const err = validatePracticeSettingsUpdate(patch);
   if (err) throw new Error(err);
+  if (patch.designatedIndividualUserId) {
+    // A designated individual from another practice, or a deactivated user, would
+    // send this practice's alerts and transferred calls to the wrong person.
+    const designated = await prisma.user.findFirst({
+      where: { id: patch.designatedIndividualUserId, practiceId, isActive: true },
+      select: { id: true },
+    });
+    if (!designated) throw new Error('designatedIndividualUserId must be an active user of this practice');
+  }
   const current = await getPracticeSettings(prisma, practiceId);
   const merged: PracticeSettings = { ...current, ...patch };
   await prisma.practice.update({

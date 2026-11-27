@@ -1,5 +1,6 @@
 import type { CarrierId } from '@prisma/client';
 import type { PmsIngestMode, PmsVendorId } from './pms.js';
+import type { StaffedHours } from '../lib/staffedHours.js';
 
 export interface CarrierConfig {
   carrierId: CarrierId;
@@ -54,6 +55,17 @@ export interface PracticeSettings {
    * NOT used for carrier callbacks or CRTC disclosure. See billingPhone for that.
    */
   escalationPhoneNumber: string;
+  /**
+   * When someone is at the desk to take a transferred call, in the practice's
+   * own timezone. Unset means it was never configured, and dispatch is then
+   * limited only by the engine call window. See src/lib/staffedHours.ts.
+   */
+  staffedHours?: StaffedHours;
+  /**
+   * The user, whatever their title, who gets the screen alert and the
+   * transferred call. Their direct number is escalationPhoneNumber.
+   */
+  designatedIndividualUserId?: string;
   /**
    * Billing/claims contact number read aloud in the CRTC disclosure at call start
    * ("you can reach us at...") and given to carriers as a callback number.

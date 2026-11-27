@@ -167,6 +167,13 @@ describe('GET /api/diagnostics', () => {
     expect(res.body.success).toBe(false)
   })
 
+  it('treats an unset NODE_ENV as production and rejects a request with no token', async () => {
+    vi.stubEnv('NODE_ENV', '')
+    vi.stubEnv('HEALTH_METRICS_TOKEN', 'diag-secret')
+    const res = await request(app).get('/api/diagnostics')
+    expect(res.status).toBe(401)
+  })
+
   it('rejects requests in production when HEALTH_METRICS_TOKEN itself was never configured (fails closed)', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('HEALTH_METRICS_TOKEN', '')

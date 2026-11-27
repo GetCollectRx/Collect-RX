@@ -13,6 +13,7 @@ import { isPlatformDev, authUserId } from '../accessControl/types.js';
 import { requireCanEditPracticeAdmin, requirePracticeOwner } from '../middleware/requirePracticeOwner.js';
 import { reviewLesson } from '../learning/carrierLessons.js';
 import { logger } from '../observability/logger.js';
+import { practiceNpiProblem } from '../../carriers/adapter.js';
 
 const router = Router();
 router.use(authenticate);
@@ -189,7 +190,11 @@ router.put('/practice-identity', requireCanEditPracticeAdmin, async (req: Reques
     }
 
     if (body.npi !== undefined) {
-      patch.npi = body.npi.trim() || null;
+      const v = body.npi.trim();
+      // Carrier phone menus take digits only, so an NPI that dispatch will refuse is refused here, where it can be fixed.
+      const npiProblem = v ? practiceNpiProblem(v) : null;
+      if (npiProblem) return res.status(400).json({ error: npiProblem });
+      patch.npi = v || null;
     }
 
     if (body.taxId !== undefined) {
