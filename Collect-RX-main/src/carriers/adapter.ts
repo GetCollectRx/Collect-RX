@@ -21,6 +21,7 @@ import { canadianHolidayName, isWithinPracticeStaffHours } from './callCalendar.
 import { requiresPracticeNpi } from './lineRequirements.js';
 import type { IndustryType } from '../types/industry-claims.js';
 import { checkDispatchPause } from '../server/pauseControls/dispatchPause.js';
+import { evaluateStaffAvailability } from '../server/frontDesk/staffAvailability.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,14 +209,9 @@ export function tpaSupportsTransaction23(cdanetCarrierId: string): boolean {
 /**
  * Check whether calls to a carrier are currently blocked for a practice.
  *
- * Returns `{ allowed: false }` if any active (resumed_at IS NULL) block exists
- * — either on this practice directly, or on a sibling practice under the same
- * Organization (DSO / multi-location group). CarrierBlockEvent is keyed only
- * on (practiceId, carrierId), so without the sibling check, one location
- * tripping automation detection would leave every other location in the same
- * group blind and still dialing the same carrier on the same voice model —
- * exactly the correlated risk a multi-location customer introduces that a
- * single-practice pilot never surfaces.
+ * Returns `{ allowed: false }` if an active (resumed_at IS NULL) block exists for
+ * this practice and carrier. The block is practice level only: another practice,
+ * including a sibling location in the same organization, is not affected.
  *
  * Must be checked before every Vapi call dispatch — no exceptions.
  */
@@ -240,51 +236,6 @@ export async function checkCarrierBlock(
       reason: `CARRIER_BLOCK active for ${carrierId} since ${activeBlock.blockedAt.toISOString()}. ` +
               `Resume via POST /api/carriers/${carrierId}/unblock after investigation.`,
     };
-  }
-
-  // This practice's own organization membership is readable under its own
-  // RLS scope (it is that practice's own row) — no bypass needed here.
-  const orgMemberships = await prisma.organizationPractice.findMany({
-    where: { practiceId },
-    select: { organizationId: true },
-  });
-
-  if (orgMemberships.length > 0) {
-    const organizationIds = orgMemberships.map((m) => m.organizationId);
-    // A sibling practice's CarrierBlockEvent row belongs to a DIFFERENT
-    // practiceId — reading it while scoped to this practice's own RLS
-    // context would return zero rows under enforced RLS, not "no block
-    // found" but a wrongly-scoped negative. Bypass only this specific
-    // cross-practice read; every other query in this function stays scoped.
-    const { runWithRlsBypass } = await import('../server/db/rlsContext.js');
-    const siblingBlock = await runWithRlsBypass(async () => {
-      const siblingMemberships = await prisma.organizationPractice.findMany({
-        where: { organizationId: { in: organizationIds }, practiceId: { not: practiceId } },
-        select: { practiceId: true },
-      });
-      const siblingPracticeIds = [...new Set(siblingMemberships.map((m) => m.practiceId))];
-      if (siblingPracticeIds.length === 0) return null;
-
-      return prisma.carrierBlockEvent.findFirst({
-        where: {
-          carrierId,
-          resumedAt: null,
-          practiceId: { in: siblingPracticeIds },
-        },
-        orderBy: { blockedAt: 'desc' },
-      });
-    });
-
-    if (siblingBlock) {
-      return {
-        allowed: false,
-        code: 'CARRIER_BLOCK',
-        reason:
-          `Another location in your organization tripped CARRIER_BLOCK for ${carrierId} ` +
-          `on ${siblingBlock.blockedAt.toISOString()} — pausing this location's ${carrierId} ` +
-          'calls as an organization-wide precaution until an authorized staff member reviews it.',
-      };
-    }
   }
 
   return { allowed: true };
@@ -494,9 +445,24 @@ export async function validateDispatch(
   if (daysOutstanding < 30) {
     return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min 30 days required)` };
   }
+  // B-25: opt-in per-carrier minimum wait (21 TELUS, 32 others). Off by default
+  // so the flat 30-day floor stays the rule until the founder decides.
+  if (process.env.ENFORCE_CARRIER_MIN_WAIT === 'true') {
+    const minWait = CARRIER_CONFIGS[carrierId]?.minWaitDays;
+    if (typeof minWait === 'number' && daysOutstanding < minWait) {
+      return { allowed: false, code: 'CLAIM_TOO_YOUNG', reason: `Claim only ${daysOutstanding} days outstanding (min ${minWait} days for this carrier)` };
+    }
+  }
 
   // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
+    // B-18: a practice can opt human-assisted calls out of the 90-day ceiling,
+    // since staff, not the AI, talk to the rep on those calls. Off by default.
+    const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+    const s = await getPracticeSettings(prisma, practiceId);
+    if (s.humanAssistedMode !== false && s.humanAssistedAllowsOldClaims === true) {
+      // fall through to the remaining checks
+    } else
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 
@@ -550,7 +516,28 @@ export async function validateDispatch(
     };
   }
 
+  // 11. Practice-configured availability windows, lead and tail minutes, and a manual
+  // busy pause. Layered on top of the calendar and live presence gates above, never
+  // instead of them. Unconfigured practices pass.
+  if (staffAvailabilityRequired) {
+    const configured = await checkStaffAvailabilityGate(prisma, practiceId, callTime);
+    if (!configured.allowed) return configured;
+  }
+
   return { allowed: true };
+}
+
+export async function checkStaffAvailabilityGate(
+  prisma: PrismaClient,
+  practiceId: string,
+  at: Date,
+): Promise<DispatchGuard> {
+  const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
+  const settings = await getPracticeSettings(prisma, practiceId);
+  if (settings.humanAssistedMode === false) return { allowed: true };
+  const result = evaluateStaffAvailability(settings.staffAvailability, at, settings.staffTimeZone || 'America/Toronto');
+  if (result.available) return { allowed: true };
+  return { allowed: false, code: 'STAFF_UNAVAILABLE', reason: result.reason ?? 'Staff are not available' };
 }
 
 // ---------------------------------------------------------------------------

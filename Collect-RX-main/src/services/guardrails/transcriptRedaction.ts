@@ -67,7 +67,34 @@ export function redactPhiPatterns(text: string): string {
   return out;
 }
 
+const MONTH =
+  '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+
+// Extra shapes seen in free-written narrative (call summaries): separated or
+// spaced phone numbers and dates written with a month name.
+const NARRATIVE_PHI_PATTERNS: RegExp[] = [
+  /(?<!\d)\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/g,
+  new RegExp(`\\b${MONTH}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`, 'gi'),
+  new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}\\.?,?\\s+\\d{4}\\b`, 'gi'),
+];
+
+/**
+ * Stricter pass for short free-text narrative written by a model (call
+ * summaries), where the writer can phrase a phone number or birth date many
+ * ways. Over-redacting a reference number inside narrative is acceptable; the
+ * structured referenceNumber field is stored separately and is not touched.
+ */
+export function redactNarrativePhi(text: string): string {
+  let out = redactPhiPatterns(text);
+  for (const pattern of NARRATIVE_PHI_PATTERNS) {
+    out = out.replace(pattern, REDACTED);
+  }
+  return out;
+}
+
 export function redactTranscript(text: string, phi: PatientPHI | null): string {
   const knownRedacted = phi ? redactKnownPhi(text, phi) : text;
-  return redactPhiPatterns(knownRedacted);
+  // B-19: persisted transcripts use the wider narrative patterns (dashed or
+  // spaced phone numbers, written-out dates), not only the strict base set.
+  return redactNarrativePhi(knownRedacted);
 }

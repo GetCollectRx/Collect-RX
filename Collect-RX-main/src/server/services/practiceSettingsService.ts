@@ -1,6 +1,7 @@
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS } from '../../carriers/adapter.js';
-import type { CarrierConfig, PracticeSettings } from '../../types/practiceSettings.js';
+import type { CarrierConfig, PracticeSettings, StaffAvailability } from '../../types/practiceSettings.js';
+import { hhmmToMinutes } from '../frontDesk/staffAvailability.js';
 import { normalizePmsVendorId } from '../pms/pmsRegistry.js';
 import { isStaffedHours, validateStaffedHours } from '../../lib/staffedHours.js';
 
@@ -107,6 +108,19 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.humanAssistedMode === 'boolean'
       ? { humanAssistedMode: o.humanAssistedMode }
       : {}),
+    ...(typeof o.humanAssistedAllowsOldClaims === 'boolean'
+      ? { humanAssistedAllowsOldClaims: o.humanAssistedAllowsOldClaims }
+      : {}),
+    ...(Array.isArray(o.escalationFallbackNumbers)
+      ? { escalationFallbackNumbers: o.escalationFallbackNumbers.filter((n): n is string => typeof n === 'string').slice(0, 3) }
+      : {}),
+    ...(typeof o.staffTimeZone === 'string' ? { staffTimeZone: o.staffTimeZone } : {}),
+    ...(typeof o.listenerConsentAcknowledged === 'boolean'
+      ? { listenerConsentAcknowledged: o.listenerConsentAcknowledged }
+      : {}),
+    ...(o.staffAvailability && typeof o.staffAvailability === 'object'
+      ? { staffAvailability: o.staffAvailability as StaffAvailability }
+      : {}),
     ...(Array.isArray(o.carrierConfigs)
       ? {
           carrierConfigs: o.carrierConfigs
@@ -184,6 +198,49 @@ export function validatePracticeSettingsUpdate(
   if (body.escalationPhoneNumber && body.escalationPhoneNumber.trim()) {
     if (!E164.test(body.escalationPhoneNumber.trim())) {
       return 'escalationPhoneNumber must be valid E.164 (+1...)';
+    }
+  }
+  if (body.listenerConsentAcknowledged !== undefined && typeof body.listenerConsentAcknowledged !== 'boolean') {
+    return 'listenerConsentAcknowledged must be a boolean';
+  }
+  if (body.humanAssistedAllowsOldClaims !== undefined && typeof body.humanAssistedAllowsOldClaims !== 'boolean') {
+    return 'humanAssistedAllowsOldClaims must be a boolean';
+  }
+  if (body.escalationFallbackNumbers !== undefined) {
+    const f = body.escalationFallbackNumbers as unknown;
+    if (!Array.isArray(f) || f.length > 3 || !f.every((n) => typeof n === 'string' && /^\+[1-9]\d{7,14}$/.test(n))) {
+      return 'escalationFallbackNumbers must be up to 3 E.164 numbers';
+    }
+  }
+  if (body.staffTimeZone !== undefined) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: String(body.staffTimeZone) });
+    } catch {
+      return 'staffTimeZone must be a valid IANA time zone';
+    }
+  }
+  if (body.staffAvailability !== undefined) {
+    const sa = body.staffAvailability as StaffAvailability;
+    if (!sa || typeof sa !== 'object' || !Array.isArray(sa.windows)) {
+      return 'staffAvailability.windows must be an array';
+    }
+    if (sa.windows.length > 14) return 'staffAvailability allows at most 14 windows';
+    const lead = sa.leadMinutes ?? 15;
+    const tail = sa.tailMinutes ?? 30;
+    if (!Number.isInteger(lead) || lead < 0 || lead > 60) return 'staffAvailability.leadMinutes must be 0 to 60';
+    if (!Number.isInteger(tail) || tail < 0 || tail > 120) return 'staffAvailability.tailMinutes must be 0 to 120';
+    if (sa.pausedUntil != null && (typeof sa.pausedUntil !== 'string' || Number.isNaN(Date.parse(sa.pausedUntil)))) {
+      return 'staffAvailability.pausedUntil must be an ISO date string or null';
+    }
+    for (const w of sa.windows) {
+      if (!Array.isArray(w.days) || w.days.length === 0 || !w.days.every((d) => Number.isInteger(d) && d >= 1 && d <= 5)) {
+        return 'staffAvailability window days must be integers 1 (Mon) to 5 (Fri)';
+      }
+      if (!HHMM.test(w.start) || !HHMM.test(w.end)) return 'staffAvailability window times must be HH:MM';
+      if (w.start >= w.end) return 'staffAvailability window start must be before end';
+      if (hhmmToMinutes(w.end) - tail <= hhmmToMinutes(w.start) - lead) {
+        return 'staffAvailability window is too short for the lead and tail minutes';
+      }
     }
   }
   if (body.billingPhone && body.billingPhone.trim()) {

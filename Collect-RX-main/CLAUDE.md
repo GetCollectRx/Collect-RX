@@ -223,7 +223,7 @@ Abeldent Local Plus is dental practice management software running on SQL Server
 PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata** — UUID tokens only there. Identifiers carriers require to locate a claim are injected as **ephemeral Vapi call variables** at dispatch time only (Option B — decision record in `docs/compliance/PHI-VAPI-BOUNDARY.md`): detokenized server-side in `initiateCall()`, never written to any DB table or log, recording disabled, and deleted from Vapi after the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
-If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
+If a carrier detects automation, **all calls from the practice that tripped the block to that carrier are suspended immediately**, not just the current call. The block is practice level only: other practices, including sibling locations in the same organization, are not affected. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
 
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time

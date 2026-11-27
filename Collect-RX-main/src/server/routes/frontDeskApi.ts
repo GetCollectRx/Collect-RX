@@ -280,6 +280,28 @@ router.get('/:practiceId/history', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/:practiceId/attempts/:attemptId/outcome', blockAuditorWrites, async (req: Request, res: Response) => {
+  try {
+    const practiceId = assertPracticeParam(req, res);
+    if (!practiceId) return;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const { submitStaffCallOutcome } = await import('../frontDesk/staffCallOutcome.js');
+    const result = await submitStaffCallOutcome(prisma, {
+      practiceId,
+      callAttemptId: String(req.params.attemptId),
+      scenario: typeof b.scenario === 'string' ? b.scenario : '',
+      repName: typeof b.repName === 'string' ? b.repName : undefined,
+      referenceNumber: typeof b.referenceNumber === 'string' ? b.referenceNumber : undefined,
+      summary: typeof b.summary === 'string' ? b.summary : '',
+    });
+    if (!result.ok) return res.status(result.status).json({ success: false, error: result.error });
+    void appendAuditLog(prisma, { practiceId, action: 'frontdesk.call.staff_outcome', req });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: apiErrorMessageForResponse(err) });
+  }
+});
+
 router.post('/:practiceId/queue/pause', blockAuditorWrites, async (req: Request, res: Response) => {
   try {
     const practiceId = assertPracticeParam(req, res);

@@ -10,9 +10,7 @@ import { SCENARIOS } from './mockRep.js';
  * written rule. They are asserted as findings, not hidden: the suite fails if
  * a listed finding stops reproducing (remove the entry) or a new one appears.
  */
-const KNOWN_FINDINGS: Readonly<Record<string, string>> = {
-  S12: 'checkCarrierBlock also pauses sibling locations in the same organization. Owner rule: blocks are practice level only.',
-};
+const KNOWN_FINDINGS: Readonly<Record<string, string>> = {};
 
 const report: string[] = [];
 afterAll(() => {

@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
     exclude: ['tests/carrier-whitelist-validation.test.ts'],
     passWithNoTests: false,
+    globalSetup: ['tests/support/dbGuard.ts'],
     reporters: isCi ? ['default', 'junit'] : ['default'],
     outputFile: isCi ? { junit: 'test-results/junit.xml' } : undefined,
     // Integration tests set STRIPE_* per describe; default avoids accidental undefined in imports.

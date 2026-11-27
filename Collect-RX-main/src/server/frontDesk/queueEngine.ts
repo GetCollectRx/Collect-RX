@@ -444,9 +444,13 @@ async function settleBlockedCandidate(
         }),
       ]);
       return 'skip';
+    // Practice-wide conditions: staff cannot take a rep, or the subscription or
+    // voice agent is off. Stop the tick without deferring the entry, burning an
+    // attempt, or escalating the claim.
     case 'OUTSIDE_CALL_WINDOW':
     case 'OUTSIDE_STAFF_HOURS':
     case 'NO_STAFF_AVAILABLE':
+    case 'STAFF_UNAVAILABLE':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
     case 'PAUSED_SYSTEM':

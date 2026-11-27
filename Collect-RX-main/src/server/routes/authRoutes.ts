@@ -1,3 +1,4 @@
+import { pilotSignupsClosed, PILOT_SIGNUPS_CLOSED_MESSAGE } from './pilotSignupGate.js';
 import { timingSafeEqual } from 'node:crypto';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
@@ -886,6 +887,7 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
   r.post('/register', authLimiter, withRlsBypass, async (req: Request, res: Response) => {
     try {
+      if (pilotSignupsClosed()) return res.status(403).json({ error: PILOT_SIGNUPS_CLOSED_MESSAGE });
       const parsed = registerBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: formatZodError(parsed.error) });
       const { practiceName, displayName, email, password, organizationName, additionalPractices, acceptedAgreements } = parsed.data;

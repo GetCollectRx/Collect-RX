@@ -73,6 +73,9 @@ const SCENARIO_MAP: Record<string, ScenarioMapping> = {
   UNCLEAR: { outcome: 'ESCALATED', claimStatus: 'ESCALATED' },
 };
 
+/** Scenario names the resolver understands (used by the Vapi config sync check). */
+export const KNOWN_SCRIBE_SCENARIOS: readonly string[] = Object.keys(SCENARIO_MAP);
+
 /** Claims_Scribe is told to use the literal string "unknown" as a placeholder. */
 function cleanOptional(v: string | null | undefined): string | null {
   const t = v?.trim();
@@ -85,6 +88,36 @@ export interface HumanAssistedResolution {
   /** Fed to `resolveGatedClaimStatus` as `structuredClaimStatus` — wins over any
    *  text-inferred status and counts as corroboration for the financial gate. */
   structuredClaimStatus: ClaimStatus;
+}
+
+/**
+ * Outcome for a call that staff took over when no call log exists. The Vapi
+ * call ended at the transfer, so its transcript covers only IVR navigation and
+ * hold; classifying that text would invent an outcome for a conversation the
+ * platform never heard. Lands on the same ESCALATED result as an UNCLEAR log so
+ * a human reviews the claim. Block detection is kept from the payload because
+ * CARRIER_BLOCK must never be silenced.
+ */
+/** Marker text on attempts closed without a log; the late-log reconciler looks for it. */
+export const NO_LOG_OUTCOME_DETAIL =
+  'Handed to practice staff; no call log was received, so the outcome needs staff review.';
+
+export function resolveStaffHandoffWithoutLog(
+  payloadOutcome: ProcessedOutcome,
+  callMeta: { transcriptUrl: string | null; durationSeconds: number | null },
+): HumanAssistedResolution {
+  return {
+    processed: {
+      outcome: SCENARIO_MAP.UNCLEAR.outcome,
+      outcomeDetail: NO_LOG_OUTCOME_DETAIL,
+      repName: null,
+      referenceNumber: null,
+      transcriptUrl: callMeta.transcriptUrl,
+      durationSeconds: callMeta.durationSeconds,
+      carrierBlockDetected: payloadOutcome.carrierBlockDetected,
+    },
+    structuredClaimStatus: 'ESCALATED',
+  };
 }
 
 /**
