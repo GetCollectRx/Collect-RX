@@ -1,4 +1,4 @@
-# Agent charter — Claude ↔ ChatGPT, CollectRx
+# Agent charter: Claude and peer Claude, CollectRx
 
 **Why this exists:** two AI coding agents have been working on two different local
 checkouts of the same GitHub repository (`GetCollectRx/Collect-RX`) without a shared
@@ -45,7 +45,7 @@ attaches evidence.
    idempotency gap on unmapped prices — all directly in the concurrency/tenant-isolation
    territory this audit just built deep context on.
 
-**ChatGPT owns (proposed — ok to renegotiate):**
+**The peer Claude (second Anthropic account) owns (proposed, ok to renegotiate; formerly assigned to ChatGPT, which is no longer in use):**
 1. **PAD reconciliation sweep functions** (`padService.ts` — `reconcilePendingAuthorizations`,
    `reconcilePendingPadTransactions`) — currently "Wired, not Verified": real code, real
    webhook, zero test coverage against a real DB. Self-contained, doesn't touch
@@ -87,7 +87,7 @@ clause specific to this project — it's how both agents are supposed to operate
 
 ## 6. Conflict resolution
 
-If Claude and ChatGPT produce contradictory claims about the same thing (a gate status,
+If the two Claude agents produce contradictory claims about the same thing (a gate status,
 a test result, whether something is deployed), neither wins by default. Log both in the
 handoff file as `disputed` with each side's evidence, and it's the owner's call — the
 same rule the owner's own vision-PDF governance already established for open
