@@ -46,6 +46,8 @@ import {
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
+import type { PatientPHI } from '../pii-vault.js';
+import { recordHandoffOutcome, type HandoffOutcome } from '../server/vapi/handoffOutcome.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
@@ -294,6 +296,7 @@ async function handleStaffHandoffRequest(
   const practiceId = claim?.practiceId ?? metadataPracticeId;
   if (!vapiCallId || !practiceId) {
     console.error('[vapi-webhook] request_staff_handoff missing vapiCallId or practiceId');
+    await noteHandoffOutcome(practiceId, vapiCallId, 'missing_context');
     return 'HANDOFF FAILED — missing call or practice context. Stay silent and keep listening.';
   }
   let missedHandoffResult = 'HANDOFF FAILED — no callback number on file. Stay silent and keep listening.';
@@ -319,6 +322,7 @@ async function handleStaffHandoffRequest(
       console.error(
         `[vapi-webhook] request_staff_handoff: no escalationPhoneNumber configured for practice ${practiceId}`,
       );
+      await noteHandoffOutcome(practiceId, vapiCallId, 'no_escalation_number');
       return missedHandoffResult;
     }
 
@@ -365,6 +369,7 @@ async function handleStaffHandoffRequest(
     } catch (markErr) {
       console.error('[vapi-webhook] request_staff_handoff: could not record staffHandoffAt:', markErr);
     }
+    await noteHandoffOutcome(practiceId, vapiCallId, 'transfer_initiated');
 
     const amt = Number(claim?.outstandingAmount);
     const amountText = Number.isFinite(amt) && amt > 0 ? ` for $${amt.toFixed(2)}` : '';
@@ -418,7 +423,27 @@ async function handleStaffHandoffRequest(
       type: 'handoff.missed',
       data: { claimRef: claim?.claimNumber ?? 'unknown', carrierId: claim?.carrierId ?? null, reason: 'transfer_failed', at: new Date().toISOString() },
     });
+    await noteHandoffOutcome(practiceId, vapiCallId, 'handoff_error');
     return missedHandoffResult;
+  }
+}
+
+/**
+ * Best-effort: a failed audit write must not change what the agent says on the
+ * call, so the handoff result is returned whatever happens here.
+ */
+async function noteHandoffOutcome(
+  practiceId: string | undefined,
+  vapiCallId: string | undefined,
+  outcome: HandoffOutcome,
+): Promise<void> {
+  if (!practiceId) return;
+  try {
+    await runWithRlsBypass(() =>
+      recordHandoffOutcome(prisma, { practiceId, vapiCallId: vapiCallId ?? 'unknown', outcome }),
+    );
+  } catch (err) {
+    console.error('[vapi-webhook] handoff outcome not recorded:', err);
   }
 }
 
@@ -634,6 +659,10 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(503).json({ error: 'Webhook processing in progress' });
   }
 
+  // Taken from the transcript persist step, before desk processing revokes the
+  // claim's PHI token on a terminal outcome. The lesson filter needs them later.
+  let lessonFilterPhi: PatientPHI | null = null;
+
   try {
     await runWithRlsBypass(async () => {
       const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
@@ -648,6 +677,7 @@ router.post('/', async (req: Request, res: Response) => {
           if (!transcriptResult.persisted) {
             logger.warn('[guardrails] Failed to persist transcript', { error: transcriptResult.error });
           }
+          lessonFilterPhi = transcriptResult.identifiers ?? null;
         }
         await processVapiDeskWebhook(prisma, payload, { rawBody });
       }
@@ -730,7 +760,7 @@ router.post('/', async (req: Request, res: Response) => {
         if (shouldProposeLessons(payload) && !callAttempt.isHumanAssisted) {
           try {
             const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
-            const stored = await extractLessonsFromCall(prisma, callAttempt.id);
+            const stored = await extractLessonsFromCall(prisma, callAttempt.id, lessonFilterPhi);
             if (stored > 0) {
               logger.warn('[vapi-webhook] learning loop proposed carrier lessons', { stored });
             }

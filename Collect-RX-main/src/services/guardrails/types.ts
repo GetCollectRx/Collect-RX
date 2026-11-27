@@ -1,3 +1,5 @@
+import type { PatientPHI } from '../../pii-vault.js';
+
 export interface GuardrailRule {
   id: string;
   tier: 'hot-path' | 'audit';
@@ -44,6 +46,12 @@ export interface TranscriptPersistResult {
   callAttemptId: string;
   persisted: boolean;
   error?: string;
+  /**
+   * The call's identifiers, resolved while its PHI token was live for redaction.
+   * Lesson extraction needs them after desk processing revokes the token. Null
+   * when the vault could not resolve the claim.
+   */
+  identifiers?: PatientPHI | null;
 }
 
 export interface AuditEnqueueResult {
