@@ -42,6 +42,11 @@ vi.mock('../src/vapi/client.js', () => ({
 
 vi.mock('../src/carriers/adapter.js', () => ({
   validateDispatch: vi.fn().mockResolvedValue({ allowed: true }),
+  // Mirrors claimAgeDays in src/carriers/adapter.ts (submission date first, daysOutstanding fallback).
+  claimAgeDays: (claim: { submittedAt: Date | null; daysOutstanding: number }) =>
+    claim.submittedAt
+      ? Math.max(0, Math.floor((Date.now() - claim.submittedAt.getTime()) / 86_400_000))
+      : claim.daysOutstanding,
   CARRIER_CONFIGS: {
     sun_life: { carrierId: 'sun_life', displayName: 'Sun Life', phone: '+18005550100', ivrHints: [] },
   },

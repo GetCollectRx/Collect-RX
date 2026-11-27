@@ -17,8 +17,18 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { app, prisma } from '../src/server/index.js';
-import { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } from './factories/practice.js';
+
+// 40 in-flight requests against Prisma's default pool (cpus * 2 + 1) times out. Pool
+// sizing is a production decision (see docs/operations/AGENT-HANDOFF.md, P1-01), so this
+// test states its own sizing instead of shipping a default: set it before the app loads.
+if (process.env.DATABASE_URL) {
+  const url = new URL(process.env.DATABASE_URL);
+  if (!url.searchParams.has('connection_limit')) url.searchParams.set('connection_limit', '30');
+  if (!url.searchParams.has('pool_timeout')) url.searchParams.set('pool_timeout', '20');
+  process.env.DATABASE_URL = url.toString();
+}
+const { app, prisma } = await import('../src/server/index.js');
+const { createPracticeWithOwnerForTests, cleanupPracticeWithUsers } = await import('./factories/practice.js');
 
 let dbReady = false;
 try {

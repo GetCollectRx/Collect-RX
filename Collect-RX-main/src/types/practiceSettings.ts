@@ -83,6 +83,22 @@ export interface PracticeSettings {
    */
   humanAssistedMode?: boolean;
   /**
+   * When staff can take a rep who picks up. Unset (or no windows) means no
+   * restriction beyond the general call window. Only applies in human-assisted
+   * mode. Times are Eastern for now.
+   */
+  staffAvailability?: StaffAvailability;
+  /**
+   * The practice has acknowledged that a silent listener stays on staff calls
+   * to log outcomes. No audio is recorded or stored and no PHI is logged.
+   * Wording is pending counsel review; do not enable the listener without it.
+   */
+  listenerConsentAcknowledged?: boolean;
+  /** B-26: IANA zone for staffAvailability windows. Default America/Toronto. */
+  staffTimeZone?: string;
+  /** B-11: up to 3 extra front-desk numbers, tried in order after escalationPhoneNumber (conference handoff only). */
+  escalationFallbackNumbers?: string[];
+  /**
    * Data retention, tenant-configurable per practice — defaults chosen to
    * cover a reopened claim, an insurer clawback, or a billing dispute without
    * carrying PHI-linked data indefinitely. See docs/compliance for the
@@ -98,6 +114,23 @@ export interface PracticeSettings {
     /** Months after PhiAccessEvent.createdAt before the row is purged. */
     phiAccessEventRetentionMonths: number;
   };
+}
+
+export interface StaffAvailabilityWindow {
+  /** 1 = Monday to 5 = Friday. */
+  days: number[];
+  start: string; // HH:MM Eastern
+  end: string; // HH:MM Eastern
+}
+
+export interface StaffAvailability {
+  windows: StaffAvailabilityWindow[];
+  /** ISO time. No new dials until then (the "busy" control). */
+  pausedUntil?: string | null;
+  /** Minutes before a window opens that dialing may start. Default 15. */
+  leadMinutes?: number;
+  /** Minutes before a window closes that dialing stops. Default 30. */
+  tailMinutes?: number;
 }
 
 export interface QueueStats {

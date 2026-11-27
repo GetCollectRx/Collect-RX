@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
     exclude: ['tests/carrier-whitelist-validation.test.ts'],
     passWithNoTests: false,
+    globalSetup: ['tests/support/dbGuard.ts'],
     reporters: isCi ? ['default', 'junit'] : ['default'],
     outputFile: isCi ? { junit: 'test-results/junit.xml' } : undefined,
     // Integration tests set STRIPE_* per describe; default avoids accidental undefined in imports.
@@ -18,6 +19,8 @@ export default defineConfig({
       STRIPE_WEBHOOK_SECRET: 'whsec_test_00000000000000000000000000000000',
       VAPI_WEBHOOK_SECRET: 'test_vapi_secret_12345678',
       JWT_SECRET: 'vitest-placeholder-not-for-production',
+      // Test-only placeholder for email unsubscribe link signing (no real secret).
+      EMAIL_UNSUBSCRIBE_SECRET: 'test-only-unsubscribe-secret',
       VITEST: 'true',
       CONNECTOR_MONITOR_ENABLED: '0',
       DISABLE_SCHEDULER: '1',

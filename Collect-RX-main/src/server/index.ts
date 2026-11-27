@@ -125,6 +125,7 @@ import queueRouter              from '../routes/queue';
 import vapiWebhookRouter      from '../webhooks/vapi';
 import claimsValidatorRouter  from '../webhooks/claimsValidator';
 import holdParkTestRouter     from '../webhooks/holdParkTest';
+import { createConferenceRouter } from './conference/conferenceRoutes.js';
 import { attachHoldParkAudioStream } from '../webhooks/holdParkAudioStream';
 import { createBenefitsApiRouter } from './routes/benefitsApi';
 import dashboardRouter from './routes/dashboardRoutes';
@@ -359,6 +360,15 @@ if (holdParkEngineeringHarnessEnabled) {
     holdParkTestRouter,
   );
 }
+
+// Staff conference handoff (B-01). Routes return 404 unless
+// CONFERENCE_HANDOFF_ENABLED=true and require a valid Twilio signature.
+app.use(
+  '/api/webhooks/conference',
+  webhookLimiter,
+  express.urlencoded({ extended: false }),
+  createConferenceRouter(),
+);
 
 app.post(
   '/api/webhooks/sendgrid',
