@@ -465,16 +465,44 @@ describe.skipIf(!dbReady)('dental office day: gaps a pilot practice would hit', 
 
   it('C. call window: weekends, edge minutes, holidays and western offices', async () => {
     delete process.env.COLLECTRX_FORCE_CALL_WINDOW;
+    // Every slot is built from today's date. The practice, its claims and its queue rows are created at the real
+    // clock, so a slot dated before the real clock leaves the queue row not yet due and nothing dials. That made
+    // the dial-expected slots fail and the no-dial slots pass without testing the rule.
+    const wall = (y: number, m: number, d: number, hh: number, mm: number, tz: string): string => {
+      const target = Date.UTC(y, m - 1, d, hh, mm);
+      let t = target;
+      for (let i = 0; i < 3; i += 1) {
+        const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(t));
+        const get = (k: string): number => Number(parts.find((x) => x.type === k)?.value ?? 0);
+        t += target - Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'));
+      }
+      return new Date(t).toISOString();
+    };
+    const today = new Date();
+    const dayOnly = (offsetDays: number): Date => new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offsetDays));
+    // The first Wednesday at least a week away, so every weekday slot sits in the future of the real clock.
+    let wed = dayOnly(7);
+    while (wed.getUTCDay() !== 3) wed = new Date(wed.getTime() + 86_400_000);
+    const ymd = (d: Date): [number, number, number] => [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+    const at = (d: Date, hh: number, mm: number, tz: string): string => wall(...ymd(d), hh, mm, tz);
+    const nextHoliday = (month: number, day: number): Date => {
+      const thisYear = new Date(Date.UTC(today.getUTCFullYear(), month - 1, day));
+      return thisYear.getTime() > today.getTime() + 86_400_000 ? thisYear : new Date(Date.UTC(today.getUTCFullYear() + 1, month - 1, day));
+    };
+    const sat = new Date(wed.getTime() + 3 * 86_400_000);
+    const sun = new Date(wed.getTime() + 4 * 86_400_000);
+    const christmas = nextHoliday(12, 25);
+    const canadaDay = nextHoliday(7, 1);
     const slots: Array<{ label: string; iso: string; tz: string; expectDial: boolean; note?: string }> = [
-      { label: 'Wednesday 07:59 ET', iso: '2026-11-18T12:59:00Z', tz: 'America/Toronto', expectDial: false },
-      { label: 'Wednesday 08:00 ET', iso: '2026-11-18T13:00:00Z', tz: 'America/Toronto', expectDial: true },
-      { label: 'Wednesday 16:59 ET', iso: '2026-11-18T21:59:00Z', tz: 'America/Toronto', expectDial: true },
-      { label: 'Wednesday 17:00 ET', iso: '2026-11-18T22:00:00Z', tz: 'America/Toronto', expectDial: false },
-      { label: 'Saturday 10:00 ET', iso: '2026-11-14T15:00:00Z', tz: 'America/Toronto', expectDial: false },
-      { label: 'Sunday 10:00 ET', iso: '2026-11-15T15:00:00Z', tz: 'America/Toronto', expectDial: false },
-      { label: 'Christmas Day (Fri) 10:00 ET', iso: '2026-12-25T15:00:00Z', tz: 'America/Toronto', expectDial: false, note: 'statutory holiday: carrier lines closed' },
-      { label: 'Canada Day 2027 (Thu) 10:00 ET', iso: '2027-07-01T14:00:00Z', tz: 'America/Toronto', expectDial: false, note: 'statutory holiday: carrier lines closed' },
-      { label: 'Wednesday 08:00 ET for a Vancouver office (05:00 PT)', iso: '2026-11-18T13:00:00Z', tz: 'America/Vancouver', expectDial: false, note: 'staff must be present to take the transfer; the office is closed' },
+      { label: 'Wednesday 07:59 ET', iso: at(wed, 7, 59, 'America/Toronto'), tz: 'America/Toronto', expectDial: false },
+      { label: 'Wednesday 08:00 ET', iso: at(wed, 8, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: true },
+      { label: 'Wednesday 16:59 ET', iso: at(wed, 16, 59, 'America/Toronto'), tz: 'America/Toronto', expectDial: true },
+      { label: 'Wednesday 17:00 ET', iso: at(wed, 17, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: false },
+      { label: 'Saturday 10:00 ET', iso: at(sat, 10, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: false },
+      { label: 'Sunday 10:00 ET', iso: at(sun, 10, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: false },
+      { label: 'Christmas Day 10:00 ET', iso: at(christmas, 10, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: false, note: 'statutory holiday: carrier lines closed' },
+      { label: 'Canada Day 10:00 ET', iso: at(canadaDay, 10, 0, 'America/Toronto'), tz: 'America/Toronto', expectDial: false, note: 'statutory holiday: carrier lines closed' },
+      { label: 'Wednesday 08:00 ET for a Vancouver office (05:00 PT)', iso: at(wed, 8, 0, 'America/Toronto'), tz: 'America/Vancouver', expectDial: false, note: 'staff must be present to take the transfer; the office is closed' },
     ];
     for (const slot of slots) {
       const office = await makeOffice({ label: `C window ${slot.label}`, timezone: slot.tz });
