@@ -10,7 +10,10 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { VapiWebhookPayload } from '../../vapi/client';
 import { resolveOutcomeFromWebhookPayload, extractStructuredClaimStatus } from '../../outcome/webhookOutcomeResolver';
-import { resolveOutcomeFromHumanAssistedLog } from '../../outcome/humanAssistedOutcomeResolver';
+import {
+  resolveOutcomeFromHumanAssistedLog,
+  resolveStaffHandoffWithoutLog,
+} from '../../outcome/humanAssistedOutcomeResolver';
 import {
   applyRecoveryAfterCall,
   emitRecoveryTerminalEmrEvent,
@@ -32,6 +35,7 @@ import {
 import { appendAuditLog } from '../audit/auditLog.js';
 import { processPreVisitCallEnded } from '../preVisit/preVisitWebhook.js';
 import { logger } from '../observability/logger.js';
+import { emitHandoffEvent, openAutomationSuspicionReview } from '../frontDesk/handoffEvents.js';
 
 // ── PHI SCRUBBER ─────────────────────────────────────────────────────────────
 // Scrub PHI patterns from transcript text before storing in DB.
@@ -266,7 +270,7 @@ async function fireCarrierBlockProtocol(
   practiceId: string,
   carrierId: string,
 ): Promise<void> {
-  logger.error('[CARRIER_BLOCK] Block detected — suspending ALL calls to this carrier immediately', {
+  logger.error('[CARRIER_BLOCK] Block detected — suspending calls from this practice to this carrier immediately', {
     carrierId,
     practiceId,
   });
@@ -387,6 +391,34 @@ async function processCallEnded(
       });
       processed = resolution.processed;
       structuredStatus = resolution.structuredClaimStatus;
+      emitHandoffEvent('handoff_log_received', {
+        practiceId: claim.practiceId, carrierId: claim.carrierId, claimId: claim.id,
+        vapiCallId, callAttemptId: attempt.id,
+      });
+      if (humanLog.automationSuspicionFlag) {
+        await openAutomationSuspicionReview(prisma, {
+          practiceId: claim.practiceId,
+          claimId: claim.id,
+          claimRef: claim.claimNumber,
+          carrierId: claim.carrierId as import('@prisma/client').CarrierId,
+          amountClaimedCents: Math.round(Number(claim.outstandingAmount) * 100),
+          callAttemptId: attempt.id,
+          vapiCallId,
+        });
+      }
+    } else if (attempt.staffHandoffAt && !processed.carrierBlockDetected) {
+      // Staff took the call, so this payload only covers IVR and hold. Do not
+      // infer a claim outcome from it; send the claim to staff review instead.
+      const resolution = resolveStaffHandoffWithoutLog(processed, {
+        transcriptUrl: payload.recordingUrl ?? null,
+        durationSeconds: payload.call.durationSeconds ?? null,
+      });
+      processed = resolution.processed;
+      structuredStatus = resolution.structuredClaimStatus;
+      emitHandoffEvent('handoff_no_log', {
+        practiceId: claim.practiceId, carrierId: claim.carrierId, claimId: claim.id,
+        vapiCallId, callAttemptId: attempt.id,
+      });
     } else {
       console.warn(
         `[vapi-webhook] isHumanAssisted call ${vapiCallId} has no HumanAssistedCallLog — ` +

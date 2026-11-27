@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
 import { isWithinStaffedHours } from '../../lib/staffedHours.js'
-import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone, claimAgeDays } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, resolvePracticeCallerId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
@@ -444,9 +444,13 @@ async function settleBlockedCandidate(
         }),
       ]);
       return 'skip';
+    // Practice-wide conditions: staff cannot take a rep, or the subscription or
+    // voice agent is off. Stop the tick without deferring the entry, burning an
+    // attempt, or escalating the claim.
     case 'OUTSIDE_CALL_WINDOW':
     case 'OUTSIDE_STAFF_HOURS':
     case 'NO_STAFF_AVAILABLE':
+    case 'STAFF_UNAVAILABLE':
     case 'SUBSCRIPTION_CLAIM_LIMIT_REACHED':
     case 'VOICE_AGENT_DISABLED':
     case 'PAUSED_SYSTEM':
@@ -772,7 +776,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceId,
       claimId: next.claimId,
       carrierId: next.claim.carrierId,
-      daysOutstanding: next.claim.daysOutstanding,
+      daysOutstanding: claimAgeDays(next.claim),
       attemptsSoFar,
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
@@ -1019,7 +1023,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       billedAmount:           Number(next.claim.billedAmount),
       outstandingAmount:      Number(next.claim.outstandingAmount),
       amountExpected:         next.claim.expectedAmount ? Number(next.claim.expectedAmount) : undefined,
-      daysOutstanding:        next.claim.daysOutstanding,
+      daysOutstanding:        claimAgeDays(next.claim),
       treatmentDate:          next.claim.servicedAt?.toISOString().split('T')[0],
       claimSubmittedDate:     next.claim.submittedAt?.toISOString().split('T')[0],
       treatmentCodes:         next.claim.treatmentCodes ?? undefined,

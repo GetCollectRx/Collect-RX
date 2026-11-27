@@ -371,13 +371,30 @@ async function proveLimiterEnforces(limiter: RateLimitRequestHandler, max: numbe
   const testApp = express();
   testApp.get('/probe', limiter, (_req, res) => res.status(200).json({ ok: true }));
 
-  const batch = Array.from({ length: max + 1 }, () => request(testApp).get('/probe'));
-  const results = await Promise.all(batch);
-  const statuses = results.map((r) => r.status);
-  const rejected = statuses.filter((s) => s === 429).length;
+  // One shared listener, requests sent in bounded batches. Firing max+1 requests
+  // at once through supertest starts a separate server per request, which exhausts
+  // sockets under full-suite load and surfaces as "socket hang up".
+  const server = testApp.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const port = (server.address() as { port: number }).port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const CONCURRENCY = 20;
 
-  expect(rejected).toBeGreaterThan(0);
-  expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(max);
+  try {
+    const statuses: number[] = [];
+    for (let sent = 0; sent < max + 1; sent += CONCURRENCY) {
+      const size = Math.min(CONCURRENCY, max + 1 - sent);
+      const batch = Array.from({ length: size }, () => request(baseUrl).get('/probe'));
+      const results = await Promise.all(batch);
+      statuses.push(...results.map((r) => r.status));
+    }
+    const rejected = statuses.filter((s) => s === 429).length;
+
+    expect(rejected).toBeGreaterThan(0);
+    expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(max);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
 
 describe('webhookLimiter — 300 requests / min, no skip (always active)', () => {

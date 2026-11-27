@@ -186,7 +186,7 @@ A practice can be fully onboarded via CSV with no desktop app required. The Elec
 PHI (patient names, DOBs, health card numbers) **never crosses to Vapi metadata**. UUID tokens only in metadata. Ephemeral PHI in call `variables` at dispatch time only (see `Collect-RX-main/docs/compliance/PHI-VAPI-BOUNDARY.md`). Detokenization happens server-side before the call. Violating this boundary breaks PHIPA/PIPEDA compliance.
 
 ### CARRIER_BLOCK Protocol
-If a carrier detects automation, **all calls to that carrier are suspended immediately** — not just the current call. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
+If a carrier detects automation, **all calls from the practice that tripped the block to that carrier are suspended immediately**, not just the current call. The block is practice level only: other practices, including sibling locations in the same organization, are not affected. This is the most critical operational safety rule. Any code that touches call scheduling, retry logic, or Vapi webhooks must respect the CARRIER_BLOCK flag in the database before proceeding.
 
 ### Call Rules
 - Calls only Mon–Fri 8am–5pm Eastern time

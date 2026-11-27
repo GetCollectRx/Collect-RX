@@ -1,3 +1,5 @@
+import { buildValueReport } from '../reports/valueReport.js';
+import { dialReadinessItems } from '../frontDesk/dialReadiness.js';
 import { Router, type Request, type Response } from 'express';
 import { Prisma, type ClaimStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
@@ -255,6 +257,26 @@ router.post('/ar-close/run', blockAuditorWrites, async (req: Request, res: Respo
   }
 });
 
+/** Week-one value indicators (B-16). Query: ?days=7 (1 to 90). */
+router.get('/value-report', async (req: Request, res: Response) => {
+  try {
+    const practiceId = practiceIdFromSession(req);
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
+    const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+    const rows = await prisma.callAttempt.findMany({
+      where: { claim: { practiceId }, createdAt: { gte: since } },
+      select: {
+        isHumanAssisted: true, staffHandoffAt: true, durationSeconds: true,
+        outcome: true, outcomeDetail: true, claimId: true,
+      },
+    });
+    return res.json({ days, report: buildValueReport(rows) });
+  } catch (err) {
+    logger.error('[GET /dashboard/value-report]', { error: err });
+    return res.status(500).json({ error: apiErrorMessageForResponse(err) });
+  }
+});
+
 /** Server-driven onboarding checklist for practice setup wizard. */
 router.get('/setup-status', async (req: Request, res: Response) => {
   try {
@@ -318,6 +340,7 @@ router.get('/setup-status', async (req: Request, res: Response) => {
         done: vapiReady,
         href: '/settings',
       },
+      ...dialReadinessItems(settings),
       {
         id: 'first_call',
         title: 'First carrier call placed',

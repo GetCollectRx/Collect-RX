@@ -103,10 +103,38 @@ export async function getTodayMinutes(prisma: PrismaClient, practiceId: string):
 
 /** Pause calling and mark why. Idempotent — does nothing if already paused. */
 async function pauseCalls(prisma: PrismaClient, practiceId: string, reason: string): Promise<void> {
-  await prisma.practice.updateMany({
+  const res = await prisma.practice.updateMany({
     where: { id: practiceId, callsPaused: false },
     data: { callsPaused: true, callsPausedReason: reason, callsPausedAt: new Date() },
   });
+  // B-24: tell the practice why calls stopped, once, when the pause starts.
+  if (res.count > 0) {
+    try {
+      const { sendPracticeNotification } = await import('../services/practiceNotificationService.js');
+      await sendPracticeNotification(prisma, {
+        practiceId,
+        type: 'CALLS_PAUSED',
+        subject: 'Carrier calls are paused',
+        message: callsPausedMessage(reason),
+        severity: 'warning',
+      });
+    } catch (err) {
+      logger.error('[usagePeriod] pause notification failed (non-fatal)', { error: err });
+    }
+  }
+}
+
+export function callsPausedMessage(reason: string): string {
+  switch (reason) {
+    case 'overage_pending':
+      return 'You have used your included call minutes. Confirm overage in Billing to resume calls.';
+    case 'payment_failed':
+      return 'Calls are paused because the last payment failed. Update your payment method to resume.';
+    case 'cogs_breaker':
+      return 'Calls are paused for this billing cycle after usage reached the plan limit. Contact support to review.';
+    default:
+      return 'Calls are paused. Check Billing or contact support to resume.';
+  }
 }
 
 async function triggerSoftStop(prisma: PrismaClient, practice: Practice): Promise<void> {
