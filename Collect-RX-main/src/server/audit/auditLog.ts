@@ -73,6 +73,26 @@ export interface AppendAuditInput {
   required?: boolean;
 }
 
+// In-process queue: audit writes for the same practice run one at a time in memory,
+// so waiting writes do not hold database connections from the pool.
+const practiceAuditQueues = new Map<string, Promise<void>>();
+
+function runAfterPracticeQueue(practiceId: string, work: () => Promise<void>): Promise<void> {
+  const previous = practiceAuditQueues.get(practiceId) ?? Promise.resolve();
+  const run = previous.then(work, work);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  practiceAuditQueues.set(practiceId, settled);
+  void settled.then(() => {
+    if (practiceAuditQueues.get(practiceId) === settled) {
+      practiceAuditQueues.delete(practiceId);
+    }
+  });
+  return run;
+}
+
 async function insertTenantChainedAudit(prisma: PrismaClient, input: AppendAuditInput): Promise<void> {
   const { requestIp, userAgent } = clientRequestMeta(input.req);
   const userId = input.userId ?? userIdFromRequest(input.req) ?? null;
@@ -80,29 +100,31 @@ async function insertTenantChainedAudit(prisma: PrismaClient, input: AppendAudit
   const createdAt = new Date();
   const details = input.details ?? null;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.practiceId}, 0))`;
-    const previous = await tx.auditLog.findFirst({
-      where: { practiceId: input.practiceId, integrityHash: { not: null } },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { integrityHash: true },
-    });
-    const previousHash = previous?.integrityHash ?? null;
-    const integrityHash = computeAuditIntegrityHash({
-      id, createdAt, practiceId: input.practiceId, userId, action: input.action,
-      subjectType: input.subjectType, subjectId: input.subjectId, details,
-      requestIp, userAgent, previousHash,
-    });
-    await tx.auditLog.create({
-      data: {
-        id, createdAt, practiceId: input.practiceId, userId: userId ?? undefined,
-        action: input.action, subjectType: input.subjectType, subjectId: input.subjectId,
-        details: (details ?? undefined) as Prisma.InputJsonValue | undefined,
-        requestIp: requestIp ?? undefined, userAgent: userAgent ?? undefined,
-        previousHash, integrityHash,
-      },
-    });
-  });
+  await runAfterPracticeQueue(input.practiceId, () =>
+    prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.practiceId}, 0))`;
+      const previous = await tx.auditLog.findFirst({
+        where: { practiceId: input.practiceId, integrityHash: { not: null } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { integrityHash: true },
+      });
+      const previousHash = previous?.integrityHash ?? null;
+      const integrityHash = computeAuditIntegrityHash({
+        id, createdAt, practiceId: input.practiceId, userId, action: input.action,
+        subjectType: input.subjectType, subjectId: input.subjectId, details,
+        requestIp, userAgent, previousHash,
+      });
+      await tx.auditLog.create({
+        data: {
+          id, createdAt, practiceId: input.practiceId, userId: userId ?? undefined,
+          action: input.action, subjectType: input.subjectType, subjectId: input.subjectId,
+          details: (details ?? undefined) as Prisma.InputJsonValue | undefined,
+          requestIp: requestIp ?? undefined, userAgent: userAgent ?? undefined,
+          previousHash, integrityHash,
+        },
+      });
+    }),
+  );
 }
 
 export async function appendAuditLog(prisma: PrismaClient, input: AppendAuditInput): Promise<void> {

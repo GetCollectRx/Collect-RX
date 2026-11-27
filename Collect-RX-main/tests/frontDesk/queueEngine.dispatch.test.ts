@@ -23,6 +23,11 @@ vi.mock('../../src/carriers/adapter.js', () => ({
   validateDispatch: (...args: unknown[]) => validateDispatchMock(...args),
   checkCarrierBlock: (...args: unknown[]) => checkCarrierBlockMock(...args),
   isWithinCallWindow: () => true,
+  // Mirrors claimAgeDays in src/carriers/adapter.ts (submission date first, daysOutstanding fallback).
+  claimAgeDays: (claim: { submittedAt: Date | null; daysOutstanding: number }) =>
+    claim.submittedAt
+      ? Math.max(0, Math.floor((Date.now() - claim.submittedAt.getTime()) / 86_400_000))
+      : claim.daysOutstanding,
   CARRIER_CONFIGS: {
     sun_life: {
       carrierId: 'sun_life',
