@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ClaimStatus, PrismaClient } from '@prisma/client';
 import { CARRIER_CONFIGS, isWithinCallWindow, validateDispatch } from '../../src/carriers/adapter';
+import { canadianHolidayName } from '../../src/carriers/callCalendar';
 import { defaultPracticeSettings } from '../../src/server/services/practiceSettingsService';
 import {
   resolveOutcomeFromHumanAssistedLog,
@@ -63,7 +64,7 @@ describe('S3 dispatch gates match an independent oracle', () => {
         const claimStatus = r.chance(0.1) ? 'APPROVED_PENDING_PAYMENT' : 'IN_QUEUE';
         const when = new Date(start + Math.floor(r.next() * span));
         const { weekday, hour } = easternParts(when);
-        const inWindow = weekday >= 1 && weekday <= 5 && hour >= 8 && hour < 17;
+        const inWindow = weekday >= 1 && weekday <= 5 && hour >= 8 && hour < 17 && canadianHolidayName(when) === null;
 
         let expected: string;
         if (blocked) expected = 'CARRIER_BLOCK';
