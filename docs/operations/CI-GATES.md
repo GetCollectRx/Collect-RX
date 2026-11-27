@@ -18,17 +18,21 @@ by one: a job that is renamed or skipped would leave a required name that never 
 A push to a branch cancels the older run on that branch, and `ci-gate` in the cancelled run fails. It fails
 on purpose, because a cancelled run proves nothing, and its log says so. Read the newest run, not the old one.
 
-## Turn on branch protection (a repository admin does this in Settings, Branches)
+## Branch protection (rulesets, Settings, Rules, Rulesets)
 
-Do this after the dependency audit is green on `main`, or every pull request is blocked.
+The repository uses rulesets, not classic branch protection rules. State on 2026-10-26:
 
-1. Add a rule for `main`, and the same for `dev`.
-2. Require a pull request before merging.
-3. Require status checks to pass, with "Require branches to be up to date" on, and select
-   `ci-gate`, `pr-gate` and `Detect exposed secrets`.
-4. Block force pushes. Do not allow bypassing for administrators.
-5. There is no `prd` branch. It was decommissioned in PR #64 and the docs now say `main` is the
-   only shipping branch. Do not recreate it without a new decision.
+- `main-required-checks` requires `verify`, `Detect exposed secrets`, `ci-gate` and `pr-gate`, requires a
+  pull request (0 approvals, so a sole maintainer can merge), and blocks deletion and force pushes.
+  "Require branches to be up to date" is off, because it forces a rebase before every merge.
+- `dev-required-checks` still requires only `verify` and `Detect exposed secrets`. Give it the same
+  rules as `main` if `dev` is used.
+- Both rulesets still let the repository admin role bypass them always, so an admin can push straight
+  to `main`. Change the bypass to "For pull requests only" once a pull request has merged under the new
+  rules, so a misconfiguration cannot lock the owner out.
+
+There is no `prd` branch. It was decommissioned in PR #64 and the docs now say `main` is the
+only shipping branch. Do not recreate it without a new decision.
 
 ## Pasting the gate output
 
