@@ -43,6 +43,7 @@ import {
 } from '../server/vapi/vapiWebhook.js';
 import { validateWebhookMetadata, formatValidationError } from '../server/webhooks/metadata-validator.js';
 import { normalizeVapiWebhook, shouldProposeLessons } from './vapiNormalizer.js';
+import type { PatientPHI } from '../pii-vault.js';
 import { runClaimsValidation, coerceExtractedFacts } from '../server/vapi/claimsValidatorWebhook.js';
 import { runWithRlsBypass } from '../server/db/rlsContext.js';
 import { appendAuditLog } from '../server/audit/auditLog.js';
@@ -532,6 +533,10 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(503).json({ error: 'Webhook processing in progress' });
   }
 
+  // Taken from the transcript persist step, before desk processing revokes the
+  // claim's PHI token on a terminal outcome. The lesson filter needs them later.
+  let lessonFilterPhi: PatientPHI | null = null;
+
   try {
     await runWithRlsBypass(async () => {
       const { tryProcessProspectVapiWebhook } = await import('../server/marketing/vapiSalesCall.js');
@@ -546,6 +551,7 @@ router.post('/', async (req: Request, res: Response) => {
           if (!transcriptResult.persisted) {
             logger.warn('[guardrails] Failed to persist transcript', { error: transcriptResult.error });
           }
+          lessonFilterPhi = transcriptResult.identifiers ?? null;
         }
         await processVapiDeskWebhook(prisma, payload, { rawBody });
       }
@@ -628,7 +634,7 @@ router.post('/', async (req: Request, res: Response) => {
         if (shouldProposeLessons(payload) && !callAttempt.isHumanAssisted) {
           try {
             const { extractLessonsFromCall } = await import('../server/learning/carrierLessons.js');
-            const stored = await extractLessonsFromCall(prisma, callAttempt.id);
+            const stored = await extractLessonsFromCall(prisma, callAttempt.id, lessonFilterPhi);
             if (stored > 0) {
               logger.warn('[vapi-webhook] learning loop proposed carrier lessons', { stored });
             }
