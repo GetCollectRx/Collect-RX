@@ -1,6 +1,6 @@
 # ADR 0003: V1 product is Hold Sentinel; full AR recovery follows
 
-**Status:** Accepted (founder decision; open items below). Partly superseded by ADR 0005: autonomous calling is available and the mode is an explicit onboarding choice.
+**Status:** Accepted (founder decision; open items below). Partly superseded by ADR 0007: autonomous calling is available and the mode is an explicit onboarding choice.
 **Date:** 2026-10-06 (records a decision made earlier, before commit `bdafe2e`, 2026-08-30)
 
 ## Context
