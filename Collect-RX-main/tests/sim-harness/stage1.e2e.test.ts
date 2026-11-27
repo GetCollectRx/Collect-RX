@@ -484,7 +484,7 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         const rt = await postWebhook(fake.envelopes.liveTranscript);
         const blockAfterLive = await plain.carrierBlockEvent.findFirst({ where: { practiceId, carrierId: claim.carrierId, resumedAt: null } });
         log.expect(step, '12,21', 'Live refusal phrase triggers CARRIER_BLOCK', Boolean(blockAfterLive),
-          `HTTP ${rt.status} body=${JSON.stringify(rt.body)}; block=${Boolean(blockAfterLive)}. Native Vapi "transcript" messages are dropped by normalizeVapiWebhook (src/webhooks/vapiNormalizer.ts returns null for unhandled types), so the live phrase detector in vapiDeskEvents.ts never sees them.`);
+          `HTTP ${rt.status} body=${JSON.stringify(rt.body)}; block=${Boolean(blockAfterLive)}. Path: normalizeVapiWebhook (src/webhooks/vapiNormalizer.ts) keeps final carrier-side transcript messages, and the live phrase detector in src/server/frontDesk/vapiDeskEvents.ts applies the block.`);
       }
 
       const transfersBefore = interceptor.transfers().length;
