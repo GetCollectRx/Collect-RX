@@ -14,7 +14,7 @@ import { Router, Request, Response } from 'express';
 import { CarrierId, ClaimStatus, PayerType, QueueStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { vapiClient, VapiAmbiguousOutcomeError, getHumanAssistedSquadId, resolvePracticeCallerId } from '../vapi/client';
-import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS } from '../carriers/adapter';
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, claimAgeDays } from '../carriers/adapter';
 import { getDenialAnalytics } from '../services/insurance-denial-analytics.js';
 import { writeDispatchAudit } from '../services/guardrails/index.js';
 import { strictLimiter } from '../server/middleware/rateLimiter';
@@ -597,7 +597,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
       practiceId,
       claimId,
       carrierId: claim.carrierId,
-      daysOutstanding: claim.daysOutstanding,
+      daysOutstanding: claimAgeDays(claim),
       attemptsSoFar,
       claimStatus: claim.status,
       scheduledFor: new Date(),
@@ -614,7 +614,7 @@ router.post('/queue/trigger/:claimId', strictLimiter, async (req: Request, res: 
 
     if (!guard.allowed) {
       // If > 90 days → auto-escalate
-      if (claim.daysOutstanding > 90) {
+      if (claimAgeDays(claim) > 90) {
         await prisma.insuranceClaim.update({
           where: { id: claimId },
           data: { status: 'ESCALATED' },

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CarrierId, PrismaClient } from '@prisma/client';
 import { checkDispatchPause } from '../pauseControls/dispatchPause.js'
 import { isWithinStaffedHours } from '../../lib/staffedHours.js'
-import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone } from '../../carriers/adapter.js'
+import { validateDispatch, checkCarrierBlock, CARRIER_CONFIGS, isWithinCallWindow, getTelusDialPhone, claimAgeDays } from '../../carriers/adapter.js'
 import { initiateCall, endVapiCall, getHumanAssistedSquadId, resolvePracticeCallerId, VapiAmbiguousOutcomeError, type VapiCallParams } from '../../vapi/client.js';
 import { vapiCircuitBreaker } from '../../vapi/circuitBreaker.js';
 import { refreshDeskQueueBroadcast } from './deskQueueBroadcast.js';
@@ -772,7 +772,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       practiceId,
       claimId: next.claimId,
       carrierId: next.claim.carrierId,
-      daysOutstanding: next.claim.daysOutstanding,
+      daysOutstanding: claimAgeDays(next.claim),
       attemptsSoFar,
       claimStatus: next.claim.status,
       scheduledFor: new Date(),
@@ -1019,7 +1019,7 @@ export async function runDeskQueueTick(prisma: PrismaClient): Promise<void> {
       billedAmount:           Number(next.claim.billedAmount),
       outstandingAmount:      Number(next.claim.outstandingAmount),
       amountExpected:         next.claim.expectedAmount ? Number(next.claim.expectedAmount) : undefined,
-      daysOutstanding:        next.claim.daysOutstanding,
+      daysOutstanding:        claimAgeDays(next.claim),
       treatmentDate:          next.claim.servicedAt?.toISOString().split('T')[0],
       claimSubmittedDate:     next.claim.submittedAt?.toISOString().split('T')[0],
       treatmentCodes:         next.claim.treatmentCodes ?? undefined,

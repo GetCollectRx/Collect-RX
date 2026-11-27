@@ -391,6 +391,20 @@ export async function checkCarrierAuthorizationGate(
 }
 
 /**
+ * Age used by the dispatch gates. Counts from the submission date so the 30-day
+ * floor and 90-day ceiling move with the calendar. The import-time snapshot is
+ * only a fallback when no submission date exists.
+ */
+export function claimAgeDays(
+  claim: { submittedAt: Date | null; daysOutstanding: number },
+  now: Date = new Date(),
+): number {
+  if (!claim.submittedAt) return claim.daysOutstanding;
+  const ms = now.getTime() - claim.submittedAt.getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}
+
+/**
  * Validate all pre-dispatch call rules:
  *   1. CARRIER_BLOCK
  *   2. Claim lifecycle (`APPROVED_PENDING_PAYMENT` → no carrier dial)
