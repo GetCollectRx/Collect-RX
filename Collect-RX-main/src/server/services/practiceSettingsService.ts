@@ -108,9 +108,6 @@ export function parsePracticeSettings(raw: unknown): PracticeSettings {
     ...(typeof o.humanAssistedMode === 'boolean'
       ? { humanAssistedMode: o.humanAssistedMode }
       : {}),
-    ...(typeof o.humanAssistedAllowsOldClaims === 'boolean'
-      ? { humanAssistedAllowsOldClaims: o.humanAssistedAllowsOldClaims }
-      : {}),
     ...(Array.isArray(o.escalationFallbackNumbers)
       ? { escalationFallbackNumbers: o.escalationFallbackNumbers.filter((n): n is string => typeof n === 'string').slice(0, 3) }
       : {}),
@@ -202,9 +199,6 @@ export function validatePracticeSettingsUpdate(
   }
   if (body.listenerConsentAcknowledged !== undefined && typeof body.listenerConsentAcknowledged !== 'boolean') {
     return 'listenerConsentAcknowledged must be a boolean';
-  }
-  if (body.humanAssistedAllowsOldClaims !== undefined && typeof body.humanAssistedAllowsOldClaims !== 'boolean') {
-    return 'humanAssistedAllowsOldClaims must be a boolean';
   }
   if (body.escalationFallbackNumbers !== undefined) {
     const f = body.escalationFallbackNumbers as unknown;

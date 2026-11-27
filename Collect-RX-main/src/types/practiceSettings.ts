@@ -94,8 +94,6 @@ export interface PracticeSettings {
    * Wording is pending counsel review; do not enable the listener without it.
    */
   listenerConsentAcknowledged?: boolean;
-  /** B-18: in human-assisted mode, claims older than 90 days still dial (staff take the call). Default false. */
-  humanAssistedAllowsOldClaims?: boolean;
   /** B-26: IANA zone for staffAvailability windows. Default America/Toronto. */
   staffTimeZone?: string;
   /** B-11: up to 3 extra front-desk numbers, tried in order after escalationPhoneNumber (conference handoff only). */

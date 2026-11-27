@@ -456,13 +456,6 @@ export async function validateDispatch(
 
   // 5. Claims over 90 days — escalate to human, skip AI
   if (daysOutstanding > 90) {
-    // B-18: a practice can opt human-assisted calls out of the 90-day ceiling,
-    // since staff, not the AI, talk to the rep on those calls. Off by default.
-    const { getPracticeSettings } = await import('../server/services/practiceSettingsService.js');
-    const s = await getPracticeSettings(prisma, practiceId);
-    if (s.humanAssistedMode !== false && s.humanAssistedAllowsOldClaims === true) {
-      // fall through to the remaining checks
-    } else
     return { allowed: false, code: 'ESCALATE_OVER_90', reason: `Claim ${daysOutstanding} days outstanding — escalate to human (> 90 days rule)` };
   }
 

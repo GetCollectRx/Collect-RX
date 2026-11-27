@@ -296,7 +296,7 @@ describe('S10 documented pricing arithmetic (ADR 0004)', () => {
   });
 });
 
-describe('opt-in dispatch policies (B-25, B-18)', () => {
+describe('opt-in dispatch policies (B-25)', () => {
   const tue10am = new Date(Date.UTC(2026, 10, 10, 15, 0)); // 10:00 Eastern
   const run = (days: number, carrierId: Parameters<typeof validateDispatch>[1]['carrierId'], settings: object, env?: string) => {
     if (env) process.env.ENFORCE_CARRIER_MIN_WAIT = env; else delete process.env.ENFORCE_CARRIER_MIN_WAIT;
@@ -316,11 +316,9 @@ describe('opt-in dispatch policies (B-25, B-18)', () => {
     expect(on.allowed).toBe(false);
     delete process.env.ENFORCE_CARRIER_MIN_WAIT;
   });
-  it('90-day ceiling holds unless a human-assisted practice opts out', async () => {
+  it('the 90-day ceiling always escalates, whatever the practice settings', async () => {
     const base = await run(120, 'sun_life', {});
     expect(base, JSON.stringify(base)).toMatchObject({ allowed: false, code: 'ESCALATE_OVER_90' });
-    expect((await run(120, 'sun_life', { humanAssistedAllowsOldClaims: true })).allowed).toBe(true);
-    expect(await run(120, 'sun_life', { humanAssistedAllowsOldClaims: true, humanAssistedMode: false }))
-      .toMatchObject({ allowed: false, code: 'ESCALATE_OVER_90' });
   });
+
 });

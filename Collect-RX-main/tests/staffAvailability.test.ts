@@ -65,7 +65,7 @@ describe('checkStaffAvailabilityGate', () => {
   });
 });
 
-describe('B-26 time zone, B-25 and B-18 flags', () => {
+describe('B-26 time zone', () => {
   it('evaluates windows in the practice time zone', () => {
     const w = { windows: [{ days: [2], start: '09:00', end: '12:00' }] };
     // 17:30 UTC Tuesday = 09:30 Vancouver (PST) = 12:30 Toronto (closed).
