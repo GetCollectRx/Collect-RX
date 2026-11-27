@@ -1,6 +1,6 @@
 # Webhook Signature Validation & Security Audit Trail
 
-**Status**: Security Audit Finding #9 — Implemented August 15, 2026
+**Status (checked 2026-11-22)**: The centralized validator named below (`src/server/webhooks/webhookSecurityValidator.ts`) is not loaded by the server entry point (`src/server/index.ts`). A static import scan finds it imported only by `tests/webhookSecurityValidator.test.ts`. The per-service "Active" rows in the table below were not re-verified in this check. Treat them as unverified until each route is traced. The validator is tracked under R-100 (wire or delete).
 
 This document describes the centralized webhook security validation framework and comprehensive audit logging for all incoming webhooks (Vapi, Stripe, SendGrid, GoCardless, Validator).
 
@@ -44,17 +44,17 @@ The main validation utility provides:
    - Prevents double-processing of identical events
 
 5. **Service-Specific Validators**
-   - `validateVapiWebhook()` — Full Vapi validation flow
-   - `validateStripeWebhook()` — Full Stripe validation flow
-   - `validateGoCardlessWebhook()` — Full GoCardless validation flow
+   - `validateVapiWebhook()` - Full Vapi validation flow
+   - `validateStripeWebhook()` - Full Stripe validation flow
+   - `validateGoCardlessWebhook()` - Full GoCardless validation flow
 
 6. **Audit Logging** (`logWebhookAudit()`)
    - Records every validation attempt to `WebhookAuditLog` table
    - Captures: signature validity, timestamp, idempotency state, errors, HTTP status, source IP
 
 7. **Request Inspection**
-   - `extractAuditHeaders()` — Extracts safe headers for audit (excludes auth)
-   - `getSourceIp()` — Resolves client IP respecting proxy headers
+   - `extractAuditHeaders()` - Extracts safe headers for audit (excludes auth)
+   - `getSourceIp()` - Resolves client IP respecting proxy headers
 
 ## Database Schema
 
@@ -84,7 +84,7 @@ CREATE INDEX idx_webhook_audit_logs_signature_valid
 CREATE INDEX idx_webhook_audit_logs_type_created
 ```
 
-**Compliance**: No webhook payloads, signatures, or raw bodies are stored — only audit metadata for compliance and debugging.
+**Compliance**: No webhook payloads, signatures, or raw bodies are stored - only audit metadata for compliance and debugging.
 
 ## Integration Points
 
@@ -279,8 +279,8 @@ export function makeSendgridEventWebhookHandler(prisma: PrismaClient) {
 ### Signature Verification
 
 - **Always use timing-safe comparison** (`crypto.timingSafeEqual()`) to prevent timing attacks
-- **Never log signatures** — only the validation result
-- **Require secrets in production** — server should refuse to start without `VAPI_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`, etc.
+- **Never log signatures** - only the validation result
+- **Require secrets in production** - server should refuse to start without `VAPI_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`, etc.
 
 ### Timestamp Validation
 
@@ -333,9 +333,9 @@ GROUP BY webhook_type;
 ### Alerting
 
 Set up alerts for:
-- **High signature failure rate** (>5% in 1 hour) — possible attack or config issue
-- **Frequent duplicate webhooks** (>10% of traffic) — possible retry loop
-- **Old Stripe webhooks** being rejected — possible client clock skew
+- **High signature failure rate** (>5% in 1 hour) - possible attack or config issue
+- **Frequent duplicate webhooks** (>10% of traffic) - possible retry loop
+- **Old Stripe webhooks** being rejected - possible client clock skew
 
 ## Testing
 
