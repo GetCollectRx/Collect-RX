@@ -410,8 +410,8 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
     log.expect('3 Dispatch', '7', 'Call attempt starts in the live dialing state', attempt?.liveState === 'dialing' && attempt.isHumanAssisted, `liveState=${attempt?.liveState} activeAgent=${attempt?.activeAgent} isHumanAssisted=${attempt?.isHumanAssisted}`);
     log.record('3 Dispatch', '7', 'AR engine state machine (Claim_Queued ...) in the live path', 'FINDING',
       'src/services/arEngine/stateMachine.ts and reconciler.ts are imported by nothing outside src/services/arEngine/. The live path tracks CallAttempt.liveState instead. Brief Step 3/4 state-machine assertions test unwired code.');
-    log.record('3 Dispatch', '6', 'No dial with zero ready staff', 'FAIL',
-      'The practice has no staff presence or availability state, and the dial still went out. runDeskQueueTick has no staff-capacity gate (no availability check in src/server/frontDesk/queueEngine.ts); missed handoffs are handled after pickup by the staff_unavailable script.');
+    log.record('3 Dispatch', '6', 'Dispatch with zero ready staff (accepted behaviour)', 'FINDING',
+      'Accepted under ADR 0003 (decision B): dispatch has no staff-availability gate, so the dial proceeds with no staff present. A rep who answers is handed off, or given a reference number when the transfer cannot connect (staff_unavailable). Each handoff result is recorded as an audit outcome (frontdesk.handoff.outcome). Revisit with the transfer-miss data.');
     if (attempt) createdAttemptIds.push(attempt.id);
   }, 60_000);
 
@@ -491,6 +491,15 @@ describe.skipIf(!dbReady)('simulation harness Stage 1: full product pipeline aga
         `result="${handoff?.result ?? ''}" transfer=${transfer?.path ?? 'none'}`);
       const notice = await plain.practiceNotification.findFirst({ where: { practiceId, claimId, type: 'LIVE_CALL_NEEDS_STAFF' } });
       log.expect(step, '17', 'Staff alerted on pickup', Boolean(notice), notice ? `notification "${notice.subject}"` : 'no LIVE_CALL_NEEDS_STAFF notification');
+      const handoffAudit = await plain.auditLog.findFirst({
+        where: { practiceId, action: 'frontdesk.handoff.outcome', subjectId: vapiCallId },
+        select: { details: true },
+      });
+      const recordedOutcome = (handoffAudit?.details as { outcome?: unknown } | null)?.outcome;
+      log.expect(step, '9,17', 'Handoff outcome recorded for the transfer', recordedOutcome === 'transfer_initiated',
+        `audit outcome=${String(recordedOutcome ?? 'none')}; recorded as a transfer result only, staff answering is not observable`);
+      log.record(step, '17', 'Staff answer after a connected transfer', 'UNVERIFIED',
+        'Not observable from the server: no event fires when staff pick up the transferred call. Measured only by the transfer outcome row (ADR 0003 open item).');
 
       const r3 = await postWebhook(fake.envelopes.logOutcome);
       const humanLog = await plain.humanAssistedCallLog.findUnique({ where: { vapiCallId } });
