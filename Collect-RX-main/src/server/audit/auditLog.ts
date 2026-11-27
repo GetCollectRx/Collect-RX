@@ -73,6 +73,11 @@ export interface AppendAuditInput {
   required?: boolean;
 }
 
+// Waiting for a pooled connection is bounded but longer than Prisma's 2s default.
+// A required audit write that cannot get a connection fails the whole request, so
+// under a burst of concurrent practices it should queue briefly, not 503.
+const AUDIT_TX_OPTIONS = { maxWait: 10_000, timeout: 15_000 } as const;
+
 // In-process queue: audit writes for the same practice run one at a time in memory,
 // so waiting writes do not hold database connections from the pool.
 const practiceAuditQueues = new Map<string, Promise<void>>();
@@ -123,7 +128,7 @@ async function insertTenantChainedAudit(prisma: PrismaClient, input: AppendAudit
           previousHash, integrityHash,
         },
       });
-    }),
+    }, AUDIT_TX_OPTIONS),
   );
 }
 

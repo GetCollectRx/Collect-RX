@@ -316,12 +316,10 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
   );
 
   it(
-    'CARRIER_BLOCK propagates to a sibling practice in the same Organization, and clearing it on the tripped practice restores dispatch for both',
+    'CARRIER_BLOCK is practice level only: a sibling practice in the same Organization keeps dialing, and the tripped practice resumes once it is cleared',
     async () => {
-      // Second location in the same DSO/group — its own CarrierBlockEvent
-      // table has no row for manulife, so without organization-aware
-      // propagation it would keep dialing manulife on the same voice model
-      // right after a sibling location got flagged for automation.
+      // Second location in the same DSO/group. Owner rule: a block belongs to the
+      // practice that tripped it, so this location is not affected.
       //
       // Only the sibling's claim is run through validateDispatch's full guard
       // chain (including carrier authorization) in this test — applyCarrierBlock
@@ -381,8 +379,19 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
           hangVapi: false,
         });
 
-        // The OTHER location — which never tripped its own block — must also
-        // be blocked, and told why, not left dialing manulife blind.
+        // The tripped practice is blocked; the sibling location is not.
+        const trippedAfter = await validateDispatch(prisma, {
+          practiceId,
+          claimId: siblingClaim.id,
+          carrierId: 'manulife',
+          daysOutstanding: 45,
+          attemptsSoFar: 0,
+          scheduledFor: TUESDAY_10AM_ET,
+          claimStatus: 'PENDING',
+        });
+        expect(trippedAfter.allowed).toBe(false);
+        expect(trippedAfter.code).toBe('CARRIER_BLOCK');
+
         const siblingAfter = await validateDispatch(prisma, {
           practiceId: siblingPractice.id,
           claimId: siblingClaim.id,
@@ -392,9 +401,7 @@ describe('Safety-critical dispatch gating — validateDispatch()', () => {
           scheduledFor: TUESDAY_10AM_ET,
           claimStatus: 'PENDING',
         });
-        expect(siblingAfter.allowed).toBe(false);
-        expect(siblingAfter.code).toBe('CARRIER_BLOCK');
-        expect(siblingAfter.reason).toMatch(/Another location in your organization/);
+        expect(siblingAfter.allowed).toBe(true);
 
         const cleared = await clearCarrierBlock(
           prisma,
